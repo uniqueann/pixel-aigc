@@ -1,0 +1,51 @@
+:root {
+  /* 暗色创作工具风：中性冷灰基底 + 提亮版墨绿主色 */
+  --color-bg: #17171a;
+  --color-surface: #1f1f23;
+  --color-surface-2: #29292e;
+  --color-canvas: #3a3a3e; /* 画布专用中性灰，不与面板背景共用，避免干扰图片色彩判断 */
+
+  --color-border: #38383e;
+  --color-border-strong: #4a4a52;
+
+  --color-text-primary: #ededec;
+  --color-text-secondary: #9c9a9f;
+  --color-text-muted: #6c6a70;
+
+  --color-accent: #21cfa0;
+  --color-accent-soft: #163a32;
+
+  --color-success: #4ade80;
+  --color-warning: #f5b942;
+  --color-danger: #f2685c;
+  --color-danger-soft: #3a201d;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
