@@ -14,6 +14,7 @@ export enum Capability {
   TextToImage = 'text_to_image',
   TextToVideo = 'text_to_video',
   EmailAssist = 'email_assist',
+  SmartSelect = 'smart_select', // 智能选区，同步接口，不进入生成任务队列
 }
 
 export type TaskStatus =
@@ -47,6 +48,20 @@ export interface ImageTaskParams {
   enhance?: 'high' | 'medium' | 'low' | 'off'
   resolution?: '2k' | '4k'
   extra?: Record<string, unknown>
+}
+
+/** 消除/重绘任务参数 */
+export interface InpaintTaskParams extends ImageTaskParams {
+  mode: 'remove' | 'repaint'
+  /** 重绘模式必填，消除模式不需要 */
+  prompt?: string
+}
+
+/** 扩图任务参数 */
+export interface OutpaintTaskParams extends ImageTaskParams {
+  targetSize: { width: number; height: number }
+  /** 原图在目标画布中的偏移量，用于后端还原蒙版位置 */
+  originOffset: { x: number; y: number }
 }
 
 export interface PlatformSizePreset {

@@ -1,7 +1,8 @@
 # AIGC 电商工作台
 
 电商场景的 AIGC 创作工具，包含邮件助手、图片工作站、工具箱、自由画布四大模块。
-架构设计背景见 [`docs/architecture.md`](./docs/architecture.md)。
+架构设计背景见 [`docs/architecture.md`](./docs/architecture.md)，图片工作站画布方案见
+[`docs/canvas-interaction-plan.md`](./docs/canvas-interaction-plan.md)。
 
 ## 启动
 
@@ -10,7 +11,7 @@ npm install
 npm run dev
 ```
 
-> 脚手架在无网络环境下生成，依赖尚未安装，本地拉取后即可跑起来。
+当前依赖已锁定在 `package-lock.json`，建议使用 Node.js 20 或更高版本。
 
 ## 目录结构
 
@@ -38,4 +39,8 @@ src/
 
 ## 已完成 / 待补充
 
-当前是页面骨架 + 类型契约，尚未接入真实后端。后续按 `docs/architecture.md` 第 7 节的清单继续细化各模块交互与后端实现。
+当前已完成页面框架、嵌套路由，以及图片工作站的蒙版涂抹、橡皮擦、撤销/重做、
+智能选区 mock、重绘描述和扩图边界/平台预设。任务提交已接入统一 API 封装。
+
+真实 AI Provider、对象存储直传、登录鉴权和任务队列仍需后端支持；现阶段蒙版上传使用
+dataURL 占位，智能选区使用前端 mock。

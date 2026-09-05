@@ -1,20 +1,36 @@
-import { Select, Slider, Space } from 'antd'
+import { Input, Segmented, Select, Slider, Space } from 'antd'
+import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { Capability } from '@/types'
 
 interface Props {
   capability: Capability
+  mode?: 'remove' | 'repaint'
+  repaintPrompt: string
+  onRepaintPromptChange: (prompt: string) => void
+  outpaintMode: 'free' | 'preset'
+  onOutpaintModeChange: (mode: 'free' | 'preset') => void
+  presetPlatform: string
+  onPresetPlatformChange: (platform: string) => void
 }
 
-/**
- * 右侧参数面板：按 capability 渲染不同表单。
- * 这里先实现「智能编辑」和「重新打光」两个示例，其余工具照此模式补充。
- */
-export default function ParamPanel({ capability }: Props) {
+const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
+
+/** 右侧参数面板：按能力和子工具模式渲染对应表单 */
+export default function ParamPanel({
+  capability,
+  mode,
+  repaintPrompt,
+  onRepaintPromptChange,
+  outpaintMode,
+  onOutpaintModeChange,
+  presetPlatform,
+  onPresetPlatformChange,
+}: Props) {
   if (capability === Capability.Relight) {
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <div>
-          <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>模式</div>
+          <div style={labelStyle}>模式</div>
           <Select
             style={{ width: '100%' }}
             defaultValue="soft"
@@ -26,7 +42,7 @@ export default function ParamPanel({ capability }: Props) {
           />
         </div>
         <div>
-          <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>后期增强</div>
+          <div style={labelStyle}>后期增强</div>
           <Select
             style={{ width: '100%' }}
             defaultValue="medium"
@@ -42,23 +58,66 @@ export default function ParamPanel({ capability }: Props) {
     )
   }
 
-  // 默认：智能编辑一类的通用参数
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {mode === 'repaint' ? (
+        <div>
+          <div style={labelStyle}>重绘描述</div>
+          <Input.TextArea
+            value={repaintPrompt}
+            onChange={(event) => onRepaintPromptChange(event.target.value)}
+            placeholder="描述希望在选区内生成的内容"
+            autoSize={{ minRows: 4, maxRows: 8 }}
+          />
+        </div>
+      ) : null}
+
+      {capability === Capability.Outpaint ? (
+        <>
+          <div>
+            <div style={labelStyle}>扩图方式</div>
+            <Segmented
+              block
+              options={[
+                { label: '自由拖拽', value: 'free' },
+                { label: '平台预设', value: 'preset' },
+              ]}
+              value={outpaintMode}
+              onChange={(value) => onOutpaintModeChange(value as 'free' | 'preset')}
+            />
+          </div>
+          {outpaintMode === 'preset' ? (
+            <div>
+              <div style={labelStyle}>目标平台</div>
+              <Select
+                style={{ width: '100%' }}
+                value={presetPlatform}
+                onChange={onPresetPlatformChange}
+                options={PLATFORM_SIZE_PRESETS.map((preset) => ({
+                  value: preset.platform,
+                  label: `${preset.label} · ${preset.width}×${preset.height}`,
+                }))}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div>
+          <div style={labelStyle}>生成尺寸</div>
+          <Select style={{ width: '100%' }} placeholder="选择平台预设" options={[]} />
+        </div>
+      )}
+
       <div>
-        <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>模型</div>
+        <div style={labelStyle}>模型</div>
         <Select style={{ width: '100%' }} defaultValue="default" options={[{ value: 'default', label: '默认模型' }]} />
       </div>
       <div>
-        <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>生成尺寸</div>
-        <Select style={{ width: '100%' }} placeholder="选择平台预设" options={[]} />
-      </div>
-      <div>
-        <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>生成数量</div>
+        <div style={labelStyle}>生成数量</div>
         <Slider min={1} max={4} step={1} marks={{ 1: '1', 2: '2', 3: '3', 4: '4' }} />
       </div>
       <div>
-        <div style={{ marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }}>渲染分辨率</div>
+        <div style={labelStyle}>渲染分辨率</div>
         <Select
           style={{ width: '100%' }}
           defaultValue="2k"
