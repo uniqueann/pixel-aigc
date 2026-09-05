@@ -4,6 +4,8 @@
 >
 > 本文是 Pixel Editor v1 的上位架构文档。Stage/Milestone 实施文档必须遵循本文；若实施文档与本文冲突，以本文为准。
 >
+> Stage 3 实施计划：`docs/stage3-editor-architecture-plan.md`
+>
 > 目标：在不推翻现有 ImageWorkstation / Fabric.js 实现的前提下，为 Pixel AIGC 建立可持续扩展到自由画布、文生图、文生视频、资产管理与后续 Timeline 的统一 Editor Core。
 
 ## 1. 架构原则
@@ -150,37 +152,11 @@ interface BaseNode {
   zIndex: number
 }
 
-export interface ImageNode extends BaseNode {
-  type: 'image'
-  assetId: AssetId
-}
-
-export interface VideoNode extends BaseNode {
-  type: 'video'
-  assetId: AssetId
-  startTime?: number
-  duration?: number
-}
-
-export interface TextNode extends BaseNode {
-  type: 'text'
-  text: string
-  fontFamily: string
-  fontSize: number
-}
-
-export interface ShapeNode extends BaseNode {
-  type: 'shape'
-  shape: 'rect' | 'ellipse'
-  fill: string
-}
-
-export interface GenerationNode extends BaseNode {
-  type: 'generation'
-  generationId: GenerationId
-  outputAssetId?: AssetId
-}
-
+export interface ImageNode extends BaseNode { type: 'image'; assetId: AssetId }
+export interface VideoNode extends BaseNode { type: 'video'; assetId: AssetId; startTime?: number; duration?: number }
+export interface TextNode extends BaseNode { type: 'text'; text: string; fontFamily: string; fontSize: number }
+export interface ShapeNode extends BaseNode { type: 'shape'; shape: 'rect' | 'ellipse'; fill: string }
+export interface GenerationNode extends BaseNode { type: 'generation'; generationId: GenerationId; outputAssetId?: AssetId }
 export type EditorNode = ImageNode | VideoNode | TextNode | ShapeNode | GenerationNode
 ```
 
@@ -197,24 +173,9 @@ interface BaseAsset {
   generationId?: GenerationId
 }
 
-export interface ImageAsset extends BaseAsset {
-  type: 'image'
-  width: number
-  height: number
-}
-
-export interface VideoAsset extends BaseAsset {
-  type: 'video'
-  width: number
-  height: number
-  duration: number
-}
-
-export interface AudioAsset extends BaseAsset {
-  type: 'audio'
-  duration: number
-}
-
+export interface ImageAsset extends BaseAsset { type: 'image'; width: number; height: number }
+export interface VideoAsset extends BaseAsset { type: 'video'; width: number; height: number; duration: number }
+export interface AudioAsset extends BaseAsset { type: 'audio'; duration: number }
 export type Asset = ImageAsset | VideoAsset | AudioAsset
 ```
 
@@ -244,29 +205,11 @@ export interface GenerationJob<TInput = unknown> {
 
 ### Zustand：本地 Editor State
 
-负责高频、同步、可撤销的编辑状态：
-
-```text
-project/document
-activeScene
-nodes
-selection
-viewport
-interaction mode
-document history
-```
+负责 `project/document`、active scene、nodes、selection、viewport、interaction mode、document history。
 
 ### TanStack Query：Server State
 
-继续负责：
-
-```text
-GenerationTask
-upload state
-provider/backend result
-remote assets
-account/credits
-```
+继续负责 GenerationTask、upload state、provider/backend result、remote assets、account/credits。
 
 任务轮询结果不能直接写成 Canvas Node。成功结果先经 adapter 注册为 Asset，再由 command 添加 Node。
 
@@ -274,34 +217,15 @@ account/credits
 
 ## 5. 三层 History 模型
 
-Pixel 不使用一套 History 解决所有问题。v1 明确分为三层：
+Pixel 不使用一套 History 解决所有问题。
 
 ### 5.1 Tool-local History
 
-用于工具内部尚未提交的 transient interaction，例如 MaskPaint 的笔画 Undo/Redo。
-
-```text
-Brush stroke
-Eraser stroke
-Mask snapshot
-```
-
-现有 MaskPaintCanvas 的像素快照 History 保留，不强行迁入全局 store。
+用于工具内部尚未提交的 transient interaction，例如 MaskPaint 的笔画 Undo/Redo。现有像素快照 History 保留。
 
 ### 5.2 Document Command History
 
-用于已进入 Editor Document 的可撤销编辑操作：
-
-```text
-Add Node
-Remove Node
-Move
-Resize
-Rotate
-Update
-```
-
-建议通过 Command boundary：
+用于已进入 Editor Document 的可撤销编辑操作：Add/Remove/Move/Resize/Rotate/Update Node。
 
 ```typescript
 export interface EditorCommand {
@@ -311,19 +235,7 @@ export interface EditorCommand {
 }
 ```
 
-首批 Commands：
-
-```text
-AddNodeCommand
-RemoveNodeCommand
-MoveNodeCommand
-ResizeNodeCommand
-RotateNodeCommand
-UpdateNodeCommand
-InsertGeneratedAssetCommand
-```
-
-不要把 pointer move 的每一帧写入 History；interaction end 时 commit 一条 command。
+不要把 pointer move 每一帧写入 History；interaction end 时 commit 一条 command。
 
 ### 5.3 Generation Lineage
 
@@ -351,56 +263,23 @@ Asset B   Asset C
          VideoAsset D
 ```
 
-因此：
+因此：Tool-local History = “这笔画错了”；Document Command History = “对象操作错了”；Generation Lineage = “回到某个 AI 结果继续生成新分支”。
 
-```text
-Tool-local History       = “这笔画错了”
-Document Command History = “这个对象移动/删除错了”
-Generation Lineage       = “回到某个 AI 结果继续生成新分支”
-```
-
-Generation Lineage 支持 Image→Image、Image→Video、Video→Video、Prompt→Image、Prompt→Video、Multi-Image→Image，而不是被限制为图片版本树。
+Lineage 必须允许 Image→Image、Image→Video、Video→Video、Prompt→Image、Prompt→Video、Multi-Image→Image。
 
 ---
 
 ## 6. ImageWorkstation 演进
 
-现有组件原则上保留：
+现有 ToolSidebar、CanvasArea、MaskPaintCanvas、OutpaintCanvas、BrushToolbar、ParamPanel 原则上保留。
 
-```text
-ToolSidebar
-CanvasArea
-MaskPaintCanvas
-OutpaintCanvas
-BrushToolbar
-ParamPanel
-```
+### 6.1 不建立“唯一共享 Fabric Canvas”作为前提
 
-### 6.1 不建立“唯一共享 Fabric Canvas”作为 Stage 3 前提
+MaskPaint 与 Outpaint 是不同 interaction surface。允许它们维护各自 Fabric runtime，以避免 drawing mode、brush、selection、controls、event listeners、contextTop、composite operation 等状态泄漏。
 
-MaskPaint 与 Outpaint 是不同 interaction surface。允许它们维护各自 Fabric runtime，以避免 drawing mode、brush、selection、controls、event listeners、contextTop、composite operation 等状态在工具切换时泄漏。
-
-架构共享点是：
-
-```text
-PixelProject / EditorStore
-AssetRegistry
-GenerationRegistry
-GenerationService
-Workstation Controller
-```
-
-而不是：
-
-```text
-one global fabric.Canvas
-```
-
-未来若多个工具被证明可以安全共享同一 Fabric runtime，可以作为性能优化，而不是领域架构约束。
+共享的是 PixelProject / EditorStore / AssetRegistry / GenerationRegistry / GenerationService / Workstation Controller，而不是 one global `fabric.Canvas`。
 
 ### 6.2 Controller Layer
-
-新增：
 
 ```text
 ImageWorkstation
@@ -410,16 +289,7 @@ useImageWorkstationController()
 GenerationService + EditorStore
 ```
 
-逐步从 page 移出：
-
-```text
-mask export
-uploadDataUrl
-requestId
-createTask
-capability-specific request build
-任务成功后的 Asset 注册
-```
+逐步从 page 移出 mask export orchestration、uploadDataUrl、requestId、createTask、capability-specific request build、任务成功后的 Asset 注册。
 
 ### 6.3 Workstation Tool Registry
 
@@ -435,15 +305,13 @@ interface WorkstationToolDefinition {
 }
 ```
 
-CanvasArea 仍可根据 `interactionMode` 选择 MaskPaintCanvas / OutpaintCanvas / 后续 interaction adapter。
-
-不要要求 ToolDefinition 实现 `mount(engine)` / `unmount(engine)`。
+CanvasArea 仍可根据 interactionMode 选择 MaskPaintCanvas / OutpaintCanvas / 后续 interaction adapter。
 
 ---
 
 ## 7. FreeCanvas 定位与技术路线
 
-FreeCanvas v1 定义为 **AI-native spatial canvas**：不是完整 Photoshop，也不是纯 ComfyUI node graph。
+FreeCanvas v1 是 **AI-native spatial canvas**：不是完整 Photoshop，也不是纯 ComfyUI node graph。
 
 ```text
 Prompt / Generate
@@ -457,13 +325,11 @@ Result image/video
 Edit / Variation / Image-to-Video
 ```
 
-技术路线：
-
 - Fabric.js：媒体对象、transform、selection、zoom/pan 的主 spatial canvas。
 - React DOM：Inspector、Prompt、Toolbar、Context Menu、Modal。
 - v1 不引入 React Flow 作为主画布。
-- 若未来确有强 DAG workflow 需求，再作为独立 Workflow View 引入 React Flow。
-- WebGL 不作为 v1 前置依赖；性能数据证明 Fabric/Canvas2D 不足后再引入。
+- 若未来确有强 DAG workflow 需求，再作为独立 Workflow View 引入。
+- WebGL 不作为 v1 前置依赖。
 
 ---
 
@@ -501,30 +367,7 @@ Provider-specific branching 留在后端。前端即使允许模型选择，也�
 
 ## 9. Video / Timeline v1 边界
 
-v1 只定义 contract：
-
-```typescript
-export interface Timeline {
-  duration: number
-  tracks: Track[]
-}
-
-export interface Track {
-  id: string
-  type: 'video' | 'audio' | 'overlay'
-  clips: Clip[]
-}
-
-export interface Clip {
-  id: string
-  assetId: AssetId
-  timelineStart: number
-  sourceStart: number
-  duration: number
-}
-```
-
-第一阶段 Text-to-Video 结果作为 VideoAsset + VideoNode 在 FreeCanvas 播放/比较。
+v1 只定义 Timeline / Track / Clip contract。第一阶段 Text-to-Video 结果作为 VideoAsset + VideoNode 在 FreeCanvas 播放/比较。
 
 v1 不做：多轨专业 NLE、WebCodecs renderer、frame-accurate trimming、transition engine、audio waveform editor。
 
@@ -536,24 +379,10 @@ v1 不做：多轨专业 NLE、WebCodecs renderer、frame-accurate trimming、tr
 src/
 ├── editor/
 │   ├── types/
-│   │   ├── project.ts
-│   │   ├── document.ts
-│   │   ├── node.ts
-│   │   ├── asset.ts
-│   │   ├── generation.ts
-│   │   └── timeline.ts
 │   ├── store/
-│   │   ├── editorStore.ts
-│   │   ├── selectionSlice.ts
-│   │   ├── viewportSlice.ts
-│   │   └── historySlice.ts
 │   ├── commands/
 │   ├── services/
-│   │   ├── generationService.ts
-│   │   └── assetService.ts
 │   ├── adapters/
-│   │   ├── taskAdapter.ts
-│   │   └── fabricAdapter.ts
 │   └── selectors/
 ├── features/
 │   ├── image-workstation/
@@ -573,68 +402,31 @@ src/
 
 ### M0 — Architecture Freeze
 
-- 新建 `src/editor/types/*`
-- 明确 Project / Document / Scene / Node / Asset / Generation 类型
-- 保留 `src/types` API contracts
-- 必要时新增 ADR
-- build / lint 保持通过
+新建 `src/editor/types/*`，明确 Project / Document / Scene / Node / Asset / Generation，保留 `src/types` API contracts。build/lint 保持通过。
 
 ### M1 — Editor Store Foundation
 
-- editorStore
-- scene/node CRUD
-- selection
-- viewport
-- selectors
-- command/history skeleton
-- unit tests
-
-验收：不接 UI 也能通过 tests 完成 add/move/remove/undo/redo。
+editorStore、scene/node CRUD、selection、viewport、selectors、command/history skeleton、unit tests。
 
 ### M2 — Asset + Generation Boundary
 
-- AssetRegistry
-- GenerationRegistry
-- GenerationService
-- task → generation adapter
-- result URL → Asset adapter
-- upload abstraction
-- Generation Lineage 基础关系
-
-验收：mock Text-to-Image 成功后生成 ImageAsset，而不是只得到裸 URL。
+AssetRegistry、GenerationRegistry、GenerationService、task→generation adapter、result URL→Asset adapter、upload abstraction、Generation Lineage 基础关系。
 
 ### M3 — ImageWorkstation Controller Migration
 
-- `useImageWorkstationController`
-- request builder 从 page 移出
-- Workstation Tool Registry
-- MaskPaint / Outpaint 不重写
-- 生成结果注册 Asset / GenerationJob
-- page 只负责 route + layout + event wiring
+`useImageWorkstationController`、request builders、Workstation Tool Registry；MaskPaint / Outpaint 不重写；生成结果注册 Asset/GenerationJob；page 只负责 route/layout/event wiring。
 
 ### M4 — FreeCanvas MVP
 
-- Fabric viewport
-- ImageNode / VideoNode
-- selection / transform / zoom / pan
-- Text-to-Image / Text-to-Video placeholder
-- generation success → Asset → Node
-- 从已有 Asset 发起 Variation / Image-to-Video
-- Project JSON 保存/恢复
-
-不实现 Timeline、复杂滤镜、主画布 node graph。
+Fabric viewport、ImageNode/VideoNode、selection/transform/zoom/pan、Text-to-Image/Text-to-Video placeholder、generation success→Asset→Node、从已有 Asset 发起 Variation/Image-to-Video、Project JSON 保存/恢复。
 
 ### M5 — Persistence
 
-- Project serialization
-- schema version
-- autosave debounce
-- remote project API contract
-- migration strategy
+Project serialization、schema version、autosave、remote project API contract、migration strategy。
 
 ### M6 — Advanced Editor
 
-按产品反馈选择：Layers、grouping、alignment/snapping、copy/paste、keyboard shortcuts、context menu、Generation Lineage UI、更丰富图片编辑。
+按反馈选择 Layers、grouping、alignment/snapping、copy/paste、keyboard shortcuts、context menu、Generation Lineage UI、更丰富图片编辑。
 
 ### M7 — Timeline Decision Gate
 
@@ -644,13 +436,9 @@ src/
 
 ## 12. 模型分工
 
-### GPT-6 Astra
+GPT-6 Astra：Editor domain architecture、FreeCanvas interaction architecture、cross-module migration plan、Timeline architecture、复杂状态/并发问题、browser-driven UX/QA。
 
-用于：Editor domain architecture、FreeCanvas interaction architecture、cross-module migration plan、Timeline architecture、复杂状态/并发问题、browser-driven UX/QA。
-
-### GPT-5.6 Sol
-
-默认开发模型：React components、Fabric integrations、Zustand stores、commands、adapters、API integration、tests、Ant Design/CSS、增量重构。
+GPT-5.6 Sol：默认开发模型，负责 React components、Fabric integrations、Zustand stores、commands、adapters、API integration、tests、Ant Design/CSS、增量重构。
 
 原则：Astra 决定高成本边界，Sol 实现已确定边界。
 
@@ -661,20 +449,18 @@ src/
 1. 不为了新架构重写已工作的 MaskPaintCanvas / OutpaintCanvas。
 2. 不把 Fabric object 当作 Project JSON 或数据库 schema。
 3. 不把后端 GenerationTask 直接当 Canvas Node。
-4. 不以“唯一共享 fabric.Canvas”作为 Editor Core 的前提。
+4. 不以“唯一共享 fabric.Canvas”作为 Editor Core 前提。
 5. 不在 React component 内新增 Provider-specific branching。
 6. 不在 v1 同时引入 Fabric + React Flow + WebGL 三套主渲染系统。
-7. 不把所有 Editor 状态塞进一个巨型 Zustand 文件；使用 slices/selectors。
+7. 不把所有 Editor 状态塞进一个巨型 Zustand 文件。
 8. 不把 pointer move 每一帧写入 Document History。
 9. 不把 Generation Lineage 简化成只保存 `imageUrl` 的版本树。
-10. 不因为未来可能做视频剪辑就提前实现完整 Timeline。
-11. 每个 milestone 都必须可 build、可运行、可回退。
+10. 不提前实现完整 Timeline。
+11. 每个 milestone 必须可 build、可运行、可回退。
 
 ---
 
 ## 14. Definition of Done
-
-Editor Architecture v1 落地需满足：
 
 - PixelProject / PixelDocument / Scene / Asset / EditorNode / GenerationJob 成为明确领域实体。
 - API task contracts 与 Editor entities 分离。
