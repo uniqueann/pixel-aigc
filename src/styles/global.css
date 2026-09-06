@@ -70,13 +70,57 @@ a {
   margin-bottom: 6px;
 }
 
+.app-sidebar-header.is-collapsed {
+  justify-content: center;
+}
+
 .app-brand,
 .sidebar-icon-button,
+.collapsed-brand-toggle,
 .account-trigger {
   border: 0;
   color: var(--color-text-primary);
   background: transparent;
   cursor: pointer;
+}
+
+.collapsed-brand-toggle {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  border-radius: 10px;
+}
+
+.collapsed-brand-toggle:hover {
+  background: var(--color-surface-2);
+}
+
+.collapsed-brand-mark,
+.collapsed-brand-icon {
+  position: absolute;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.collapsed-brand-icon {
+  color: var(--color-text-primary);
+  font-size: 19px;
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.collapsed-brand-toggle:hover .collapsed-brand-mark,
+.collapsed-brand-toggle:focus-visible .collapsed-brand-mark {
+  opacity: 0;
+  transform: scale(0.82);
+}
+
+.collapsed-brand-toggle:hover .collapsed-brand-icon,
+.collapsed-brand-toggle:focus-visible .collapsed-brand-icon {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .app-brand {
@@ -130,6 +174,45 @@ a {
   border-radius: 9px;
 }
 
+.app-sidebar-menu.ant-menu-inline-collapsed {
+  width: 100%;
+}
+
+.app-sidebar-menu.ant-menu-inline-collapsed .ant-menu-item {
+  display: flex;
+  width: 48px;
+  padding-inline: 0 !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-sidebar-menu.ant-menu-inline-collapsed .ant-menu-item .ant-menu-item-icon {
+  display: inline-flex !important;
+  width: 19px !important;
+  height: 19px !important;
+  margin: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-primary);
+  flex: 0 0 19px !important;
+  font-size: 19px !important;
+  opacity: 1;
+}
+
+.app-sidebar-menu.ant-menu-inline-collapsed .ant-menu-item .ant-menu-item-icon svg {
+  display: block;
+  width: 19px !important;
+  height: 19px !important;
+}
+
+.app-sidebar-menu.ant-menu-inline-collapsed .ant-menu-title-content {
+  display: none !important;
+}
+
+.app-sidebar-menu.ant-menu-inline-collapsed .ant-menu-item-selected .ant-menu-item-icon {
+  color: var(--color-accent);
+}
+
 .app-sidebar-account {
   padding-top: 8px;
   border-top: 1px solid var(--color-border);
@@ -143,6 +226,17 @@ a {
   padding: 8px;
   border-radius: 10px;
   text-align: left;
+}
+
+.ant-layout-sider-collapsed .app-sidebar-account {
+  display: flex;
+  justify-content: center;
+}
+
+.ant-layout-sider-collapsed .account-trigger {
+  width: 48px;
+  justify-content: center;
+  padding-inline: 0;
 }
 
 .account-trigger-copy {

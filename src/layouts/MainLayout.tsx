@@ -77,23 +77,33 @@ export default function MainLayout() {
     <Layout style={{ height: '100vh' }}>
       <Sider
         width={260}
-        collapsedWidth={0}
+        collapsedWidth={68}
         collapsible
         collapsed={!sidebarOpen}
         trigger={null}
         className="app-sidebar"
       >
-        <div className="app-sidebar-header">
-          <button className="app-brand" type="button" onClick={() => navigate('/')} aria-label="返回工作台首页">
-            <span className="app-brand-mark">P</span>
-            <span>Pixel AIGC</span>
-          </button>
-          <button className="sidebar-icon-button" type="button" onClick={() => setSidebarOpen(false)} aria-label="收起侧边栏">
-            <MenuFoldOutlined />
-          </button>
+        <div className={`app-sidebar-header${sidebarOpen ? '' : ' is-collapsed'}`}>
+          {sidebarOpen ? (
+            <>
+              <button className="app-brand" type="button" onClick={() => navigate('/')} aria-label="返回工作台首页">
+                <span className="app-brand-mark">P</span>
+                <span>Pixel AIGC</span>
+              </button>
+              <button className="sidebar-icon-button" type="button" onClick={() => setSidebarOpen(false)} aria-label="收起侧边栏">
+                <MenuFoldOutlined />
+              </button>
+            </>
+          ) : (
+            <button className="collapsed-brand-toggle" type="button" onClick={() => setSidebarOpen(true)} aria-label="展开侧边栏">
+              <span className="app-brand-mark collapsed-brand-mark">P</span>
+              <MenuUnfoldOutlined className="collapsed-brand-icon" />
+            </button>
+          )}
         </div>
         <Menu
           mode="inline"
+          inlineCollapsed={!sidebarOpen}
           selectedKeys={[topKey]}
           items={NAV_ITEMS}
           onClick={({ key }) => navigate(key)}
@@ -103,6 +113,7 @@ export default function MainLayout() {
           <Dropdown
             trigger={['click']}
             placement="topLeft"
+            align={sidebarOpen ? undefined : { offset: [52, 0] }}
             overlayClassName="account-dropdown"
             menu={{
               onClick: handleAccountMenu,
@@ -118,10 +129,12 @@ export default function MainLayout() {
           >
             <button className="account-trigger" type="button">
               <Avatar size={34} icon={<UserOutlined />} />
-              <span className="account-trigger-copy">
-                <span className="account-name">{userId ?? '个人账号'}</span>
-                <span className="account-meta">{tier.toUpperCase()} · 积分 {credits}</span>
-              </span>
+              {sidebarOpen ? (
+                <span className="account-trigger-copy">
+                  <span className="account-name">{userId ?? '个人账号'}</span>
+                  <span className="account-meta">{tier.toUpperCase()} · 积分 {credits}</span>
+                </span>
+              ) : null}
             </button>
           </Dropdown>
         </div>
@@ -129,11 +142,6 @@ export default function MainLayout() {
       <Layout>
         <Header className="app-header">
           <Space size={14}>
-            {!sidebarOpen ? (
-              <button className="sidebar-icon-button" type="button" onClick={() => setSidebarOpen(true)} aria-label="展开侧边栏">
-                <MenuUnfoldOutlined />
-              </button>
-            ) : null}
             <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />
           </Space>
         </Header>
