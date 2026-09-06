@@ -49,3 +49,237 @@ a {
   color: var(--color-accent);
   text-decoration: none;
 }
+
+.app-sidebar {
+  background: #171719 !important;
+  border-right: 1px solid var(--color-border);
+}
+
+.app-sidebar .ant-layout-sider-children {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding: 10px;
+}
+
+.app-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-bottom: 6px;
+}
+
+.app-brand,
+.sidebar-icon-button,
+.account-trigger {
+  border: 0;
+  color: var(--color-text-primary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  font: inherit;
+  font-weight: 600;
+}
+
+.app-brand-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--color-accent);
+  color: #06251d;
+  font-weight: 800;
+}
+
+.sidebar-icon-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--color-text-secondary);
+  font-size: 17px;
+}
+
+.sidebar-icon-button:hover,
+.app-brand:hover,
+.account-trigger:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+.app-sidebar-menu {
+  flex: 1;
+  border-inline-end: 0 !important;
+  background: transparent !important;
+}
+
+.app-sidebar-menu .ant-menu-item {
+  height: 42px;
+  margin-inline: 0;
+  margin-block: 2px;
+  width: 100%;
+  border-radius: 9px;
+}
+
+.app-sidebar-account {
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.account-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.account-trigger-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.account-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-meta {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.account-dropdown .ant-dropdown-menu {
+  width: 250px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 35%);
+}
+
+.account-dropdown .ant-dropdown-menu-item {
+  min-height: 40px;
+  border-radius: 8px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  height: 56px;
+  padding: 0 16px !important;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface) !important;
+}
+
+.settings-modal .ant-modal-content {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+}
+
+.settings-modal .ant-modal-header {
+  margin: 0;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settings-modal .ant-modal-close {
+  top: 15px;
+}
+
+.settings-layout {
+  display: grid;
+  min-height: 430px;
+  grid-template-columns: 180px 1fr;
+}
+
+.settings-menu {
+  padding: 12px 8px;
+  border-inline-end: 1px solid var(--color-border) !important;
+  background: var(--color-bg) !important;
+}
+
+.settings-menu .ant-menu-item {
+  margin-inline: 0;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.settings-content {
+  padding: 28px 30px;
+}
+
+.settings-content h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.settings-description {
+  margin: 0 0 24px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.settings-rows {
+  border-top: 1px solid var(--color-border);
+}
+
+.setting-row {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.setting-row > span:first-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.setting-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.setting-row small {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-menu {
+    display: flex;
+    min-height: auto;
+    overflow-x: auto;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--color-border) !important;
+  }
+
+  .settings-content {
+    padding: 22px;
+  }
+}

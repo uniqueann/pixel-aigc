@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Avatar, Breadcrumb, Dropdown, Layout, Menu, Space } from 'antd'
+import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu, Modal, Space, Switch } from 'antd'
 import {
   AppstoreOutlined,
+  CrownOutlined,
   MailOutlined,
   PictureOutlined,
   ToolOutlined,
   BgColorsOutlined,
   FolderOutlined,
+  LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  QuestionCircleOutlined,
+  SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -17,6 +21,13 @@ import { useUserStore } from '@/store/useUserStore'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 const { Sider, Content, Header } = Layout
+
+const SETTINGS_ITEMS = [
+  { key: 'general', label: '通用' },
+  { key: 'personalization', label: '个性化' },
+  { key: 'data', label: '数据控制' },
+  { key: 'account', label: '账号' },
+]
 
 const NAV_ITEMS = [
   { key: '/', icon: <AppstoreOutlined />, label: '工作台首页' },
@@ -36,8 +47,13 @@ function getActiveTopKey(pathname: string) {
 export default function MainLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [collapsed, setCollapsed] = useState(false)
+  const { message } = App.useApp()
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState('general')
   const credits = useUserStore((s) => s.credits)
+  const userId = useUserStore((s) => s.userId)
+  const tier = useUserStore((s) => s.tier)
 
   const segments = location.pathname.split('/').filter(Boolean)
   const topKey = getActiveTopKey(location.pathname)
@@ -48,57 +64,77 @@ export default function MainLayout() {
     document.title = subTitle ? `${subTitle} · ${topTitle} · AIGC 工作台` : `${topTitle} · AIGC 工作台`
   }, [topTitle, subTitle])
 
+  const handleAccountMenu = ({ key }: { key: string }) => {
+    if (key === 'settings') {
+      setSettingsSection('general')
+      setSettingsOpen(true)
+      return
+    }
+    message.info(key === 'logout' ? '退出登录功能尚未接入' : '该功能将在后续版本开放')
+  }
+
   return (
     <Layout style={{ height: '100vh' }}>
       <Sider
-        width={200}
+        width={260}
+        collapsedWidth={0}
         collapsible
-        collapsed={collapsed}
+        collapsed={!sidebarOpen}
         trigger={null}
-        style={{ background: 'var(--color-surface)', borderRight: '1px solid var(--color-border)' }}
+        className="app-sidebar"
       >
-        <div style={{ padding: '16px 20px', fontWeight: 600, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-          {collapsed ? 'AI' : 'AIGC 工作台'}
+        <div className="app-sidebar-header">
+          <button className="app-brand" type="button" onClick={() => navigate('/')} aria-label="返回工作台首页">
+            <span className="app-brand-mark">P</span>
+            <span>Pixel AIGC</span>
+          </button>
+          <button className="sidebar-icon-button" type="button" onClick={() => setSidebarOpen(false)} aria-label="收起侧边栏">
+            <MenuFoldOutlined />
+          </button>
         </div>
         <Menu
           mode="inline"
           selectedKeys={[topKey]}
           items={NAV_ITEMS}
           onClick={({ key }) => navigate(key)}
-          style={{ borderInlineEnd: 'none' }}
+          className="app-sidebar-menu"
         />
+        <div className="app-sidebar-account">
+          <Dropdown
+            trigger={['click']}
+            placement="topLeft"
+            overlayClassName="account-dropdown"
+            menu={{
+              onClick: handleAccountMenu,
+              items: [
+                { key: 'upgrade', icon: <CrownOutlined />, label: '升级方案' },
+                { key: 'personalization', icon: <UserOutlined />, label: '个性化' },
+                { key: 'settings', icon: <SettingOutlined />, label: '设置' },
+                { key: 'help', icon: <QuestionCircleOutlined />, label: '帮助与支持' },
+                { type: 'divider' },
+                { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
+              ],
+            }}
+          >
+            <button className="account-trigger" type="button">
+              <Avatar size={34} icon={<UserOutlined />} />
+              <span className="account-trigger-copy">
+                <span className="account-name">{userId ?? '个人账号'}</span>
+                <span className="account-meta">{tier.toUpperCase()} · 积分 {credits}</span>
+              </span>
+            </button>
+          </Dropdown>
+        </div>
       </Sider>
       <Layout>
-        <Header
-          style={{
-            background: 'var(--color-surface)',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 16px',
-          }}
-        >
+        <Header className="app-header">
           <Space size={14}>
-            {collapsed ? (
-              <MenuUnfoldOutlined onClick={() => setCollapsed(false)} style={{ fontSize: 16, cursor: 'pointer' }} />
-            ) : (
-              <MenuFoldOutlined onClick={() => setCollapsed(true)} style={{ fontSize: 16, cursor: 'pointer' }} />
-            )}
+            {!sidebarOpen ? (
+              <button className="sidebar-icon-button" type="button" onClick={() => setSidebarOpen(true)} aria-label="展开侧边栏">
+                <MenuUnfoldOutlined />
+              </button>
+            ) : null}
             <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />
-          </Space>
-          <Space size={16}>
-            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>积分 {credits}</span>
-            <Dropdown
-              menu={{
-                items: [
-                  { key: 'settings', label: '设置' },
-                  { key: 'logout', label: '退出登录' },
-                ],
-              }}
-            >
-              <Avatar size={28} icon={<UserOutlined />} style={{ cursor: 'pointer' }} />
-            </Dropdown>
           </Space>
         </Header>
         <Content style={{ padding: 20, overflow: 'auto' }}>
@@ -107,6 +143,75 @@ export default function MainLayout() {
           </ErrorBoundary>
         </Content>
       </Layout>
+      <Modal
+        open={settingsOpen}
+        onCancel={() => setSettingsOpen(false)}
+        footer={null}
+        width={760}
+        title="设置"
+        centered
+        className="settings-modal"
+      >
+        <div className="settings-layout">
+          <Menu
+            mode="inline"
+            selectedKeys={[settingsSection]}
+            items={SETTINGS_ITEMS}
+            onClick={({ key }) => setSettingsSection(key)}
+            className="settings-menu"
+          />
+          <div className="settings-content">
+            <SettingsContent section={settingsSection} credits={credits} tier={tier} />
+          </div>
+        </div>
+      </Modal>
     </Layout>
+  )
+}
+
+function SettingsContent({ section, credits, tier }: { section: string; credits: number; tier: string }) {
+  if (section === 'personalization') {
+    return <SettingsPanel title="个性化" description="管理生成偏好、默认风格和工作台习惯。" />
+  }
+  if (section === 'data') {
+    return (
+      <SettingsPanel title="数据控制" description="管理项目数据与产品改进选项。">
+        <SettingRow label="帮助改进 Pixel AIGC" detail="允许使用匿名使用数据改进产品体验">
+          <Switch defaultChecked />
+        </SettingRow>
+      </SettingsPanel>
+    )
+  }
+  if (section === 'account') {
+    return (
+      <SettingsPanel title="账号" description="查看当前方案和账号资源。">
+        <SettingRow label="当前方案" detail={tier.toUpperCase()}><span>{credits} 积分</span></SettingRow>
+      </SettingsPanel>
+    )
+  }
+  return (
+    <SettingsPanel title="通用" description="调整界面显示和常用体验。">
+      <SettingRow label="外观" detail="跟随当前工作台主题"><span>深色</span></SettingRow>
+      <SettingRow label="语言" detail="界面显示语言"><span>简体中文</span></SettingRow>
+    </SettingsPanel>
+  )
+}
+
+function SettingsPanel({ title, description, children }: { title: string; description: string; children?: React.ReactNode }) {
+  return (
+    <section>
+      <h2>{title}</h2>
+      <p className="settings-description">{description}</p>
+      <div className="settings-rows">{children}</div>
+    </section>
+  )
+}
+
+function SettingRow({ label, detail, children }: { label: string; detail: string; children: React.ReactNode }) {
+  return (
+    <div className="setting-row">
+      <span><strong>{label}</strong><small>{detail}</small></span>
+      {children}
+    </div>
   )
 }
