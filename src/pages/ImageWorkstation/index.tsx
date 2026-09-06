@@ -2,15 +2,12 @@ import { useCallback, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { App, Button } from 'antd'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
-import { useTaskPolling } from '@/hooks/useTaskPolling'
-import { createTask } from '@/services/api/task'
-import { uploadDataUrl } from '@/services/api/upload'
-import type { InpaintTaskParams, OutpaintTaskParams } from '@/types'
+import { createImageAsset } from '@/editor/services/assetService'
+import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
+import { getWorkstationTool } from '@/features/image-workstation/tools/registry'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
-import type { OutpaintCanvasHandle } from './components/canvas/OutpaintCanvas'
 import ParamPanel from './components/ParamPanel'
 import ToolSidebar from './components/ToolSidebar'
-import { WORKSTATION_TOOLS } from './tools'
 
 const DEMO_IMAGE_SIZE = { width: 1280, height: 960 }
 const DEMO_IMAGE_SVG = `
@@ -35,23 +32,23 @@ const DEMO_IMAGE_SVG = `
   </svg>
 `
 const DEMO_IMAGE_URL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(DEMO_IMAGE_SVG)}`
-
-function isOutpaintHandle(handle: CanvasHandle): handle is OutpaintCanvasHandle {
-  return 'getTargetSize' in handle
-}
+const DEMO_IMAGE_ASSET = createImageAsset({
+  id: 'asset:demo-image',
+  name: '示例商品图',
+  url: DEMO_IMAGE_URL,
+  ...DEMO_IMAGE_SIZE,
+})
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
   const { message } = App.useApp()
   const canvasHandleRef = useRef<CanvasHandle | null>(null)
-  const [activeTaskId, setActiveTaskId] = useState<string>()
-  const [submitting, setSubmitting] = useState(false)
   const [repaintPrompt, setRepaintPrompt] = useState('')
   const [outpaintMode, setOutpaintMode] = useState<'free' | 'preset'>('free')
   const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
-  const activeTool = WORKSTATION_TOOLS.find((item) => item.slug === tool) ?? WORKSTATION_TOOLS[0]
-  const taskQuery = useTaskPolling(activeTaskId)
+  const activeTool = getWorkstationTool(tool)
+  const controller = useImageWorkstationController({ activeTool, initialAsset: DEMO_IMAGE_ASSET, prompt: repaintPrompt })
 
   const inpaintMode = activeTool.slug === 'repaint' ? 'repaint' : activeTool.slug === 'remove' ? 'remove' : undefined
   const selectedPreset = PLATFORM_SIZE_PRESETS.find((preset) => preset.platform === presetPlatform)
@@ -64,48 +61,12 @@ export default function ImageWorkstation() {
   }, [])
 
   const handleGenerate = async () => {
-    const handle = canvasHandleRef.current
-    if (!handle) {
-      message.info('当前工具的画布交互仍在后续迭代中')
-      return
-    }
-    if (inpaintMode === 'repaint' && !repaintPrompt.trim()) {
-      message.warning('请先填写重绘描述')
-      return
-    }
-
-    setSubmitting(true)
     try {
-      const mask = handle.exportMask()
-      const maskUrl = await uploadDataUrl(mask.maskDataUrl)
-      const requestId = crypto.randomUUID()
-
-      if (isOutpaintHandle(handle)) {
-        const params: OutpaintTaskParams = {
-          sourceImageUrl: DEMO_IMAGE_URL,
-          maskUrl,
-          targetSize: handle.getTargetSize(),
-          originOffset: handle.getOriginOffset(),
-        }
-        const task = await createTask<OutpaintTaskParams>({ capability: activeTool.key, requestId, params })
-        setActiveTaskId(task.id)
-      } else if (inpaintMode) {
-        const params: InpaintTaskParams = {
-          sourceImageUrl: DEMO_IMAGE_URL,
-          maskUrl,
-          mode: inpaintMode,
-          prompt: inpaintMode === 'repaint' ? repaintPrompt.trim() : undefined,
-        }
-        const task = await createTask<InpaintTaskParams>({ capability: activeTool.key, requestId, params })
-        setActiveTaskId(task.id)
-      }
-
+      await controller.generate(canvasHandleRef.current)
       message.success('任务已提交')
     } catch (error) {
       const description = error instanceof Error ? error.message : '请检查 API 服务是否已启动'
       message.error({ content: `任务提交失败：${description}`, duration: 4 })
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -115,14 +76,14 @@ export default function ImageWorkstation() {
         <ToolSidebar activeSlug={activeTool.slug} onChange={(slug) => navigate(`/image-workstation/${slug}`)} />
         <CanvasArea
           interactionMode={activeTool.interactionMode}
-          imageUrl={DEMO_IMAGE_URL}
-          imageNaturalSize={DEMO_IMAGE_SIZE}
+          imageUrl={controller.inputAsset.url}
+          imageNaturalSize={{ width: controller.inputAsset.width, height: controller.inputAsset.height }}
           presetTargetSize={presetTargetSize}
           onReady={handleCanvasReady}
         />
         <div style={{ width: 220, flexShrink: 0 }}>
           <ParamPanel
-            capability={activeTool.key}
+            capability={activeTool.capability}
             mode={inpaintMode}
             repaintPrompt={repaintPrompt}
             onRepaintPromptChange={setRepaintPrompt}
@@ -144,9 +105,9 @@ export default function ImageWorkstation() {
         }}
       >
         <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-          {taskQuery.data ? `任务状态：${taskQuery.data.status}` : '历史版本'}
+          {controller.activeTask ? `任务状态：${controller.activeTask.status}` : '历史版本'}
         </div>
-        <Button type="primary" loading={submitting} onClick={handleGenerate}>
+        <Button type="primary" loading={controller.submitting} onClick={handleGenerate}>
           生成
         </Button>
       </div>

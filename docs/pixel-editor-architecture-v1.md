@@ -221,7 +221,7 @@ Pixel 不使用一套 History 解决所有问题。
 
 ### 5.1 Tool-local History
 
-用于工具内部尚未提交的 transient interaction，例如 MaskPaint 的笔画 Undo/Redo。现有像素快照 History 保留。
+用于工具内部尚未提交的 transient interaction，例如 MaskPaint 的笔画 Undo/Redo。现有 Fabric JSON 快照 History 保留。
 
 ### 5.2 Document Command History
 

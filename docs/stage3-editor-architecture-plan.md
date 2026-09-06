@@ -328,7 +328,7 @@ export interface EditorCommand {
 
 ### 5.1 与 Mask History 的关系
 
-MaskPaintCanvas 当前的 brush snapshot history 保持原样。
+MaskPaintCanvas 当前基于 Fabric JSON 快照的 brush history 保持原样。
 
 ```text
 Tool-local History

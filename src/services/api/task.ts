@@ -9,7 +9,7 @@ export interface CreateTaskPayload<TParams = Record<string, unknown>> {
 }
 
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {
-  return apiClient.post<unknown, GenerationTask>('/tasks', payload)
+  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload)
 }
 
 export function getTask(taskId: string) {
