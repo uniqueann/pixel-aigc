@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
 import {
   DeleteOutlined,
   ExpandOutlined,
@@ -8,15 +8,16 @@ import {
   UndoOutlined,
 } from '@ant-design/icons'
 import { Button, Tooltip } from 'antd'
-import { Canvas, FabricImage, Point, Rect, Shadow, type FabricObject } from 'fabric'
-import type { ImageNode, NodeId, ViewportState } from '@/editor/types'
+import { Canvas, FabricImage, FabricText, Group, Point, Rect, Shadow, type FabricObject } from 'fabric'
+import type { EditorNode, GenerationNode, ImageNode, NodeId, ViewportState } from '@/editor/types'
+import type { TaskStatus } from '@/types'
 import {
   calculateFitViewport,
   clampZoom,
   MIN_NODE_SIZE,
   normalizeNodeTransform,
 } from './geometry'
-import type { FreeCanvasStageProps, NodeTransform } from './types'
+import type { FreeCanvasStageHandle, FreeCanvasStageProps, NodeTransform } from './types'
 
 const ARTBOARD_FILL = '#f7f7f5'
 const ARTBOARD_STROKE = '#d6d6d2'
@@ -95,9 +96,95 @@ function readNodeTransform(object: FabricImage): NodeTransform {
   })
 }
 
-export default function FreeCanvasStage({
+function generationAppearance(status: TaskStatus | undefined) {
+  if (status === 'failed' || status === 'cancelled') {
+    return { fill: '#3b2729', stroke: '#ff7875', label: '生成失败', detail: '可在右侧重试或修改参数' }
+  }
+  if (status === 'processing') {
+    return { fill: '#173b35', stroke: SELECTION_COLOR, label: '生成中', detail: '结果完成后会替换此占位' }
+  }
+  return { fill: '#292f30', stroke: '#6b7b78', label: '排队中', detail: '正在等待生成任务' }
+}
+
+function createGenerationObject(node: GenerationNode, status: TaskStatus | undefined) {
+  const appearance = generationAppearance(status)
+  const background = new Rect({
+    left: 0,
+    top: 0,
+    originX: 'left',
+    originY: 'top',
+    width: node.width,
+    height: node.height,
+    rx: 12,
+    ry: 12,
+    fill: appearance.fill,
+    stroke: appearance.stroke,
+    strokeWidth: 2,
+    strokeDashArray: status === 'failed' || status === 'cancelled' ? undefined : [8, 8],
+  })
+  const label = new FabricText(appearance.label, {
+    left: node.width / 2,
+    top: node.height / 2 - 14,
+    originX: 'center',
+    originY: 'center',
+    fill: '#f5f5f4',
+    fontFamily: 'sans-serif',
+    fontSize: 17,
+    fontWeight: 600,
+  })
+  const detail = new FabricText(appearance.detail, {
+    left: node.width / 2,
+    top: node.height / 2 + 17,
+    originX: 'center',
+    originY: 'center',
+    fill: '#aeb7b4',
+    fontFamily: 'sans-serif',
+    fontSize: 11,
+  })
+  const object = new Group([background, label, detail], {
+    left: node.x,
+    top: node.y,
+    originX: 'left',
+    originY: 'top',
+    angle: node.rotation,
+    opacity: node.opacity,
+    visible: node.visible,
+    selectable: node.visible,
+    evented: node.visible,
+    lockMovementX: node.locked,
+    lockMovementY: node.locked,
+    lockRotation: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    hasControls: false,
+    borderColor: SELECTION_COLOR,
+    padding: 2,
+    hoverCursor: node.locked ? 'not-allowed' : 'move',
+  })
+  object.setCoords()
+  return object
+}
+
+function applyGenerationNodeToObject(object: FabricObject, node: GenerationNode) {
+  object.set({
+    left: node.x,
+    top: node.y,
+    angle: node.rotation,
+    opacity: node.opacity,
+    visible: node.visible,
+    selectable: node.visible,
+    evented: node.visible,
+    lockMovementX: node.locked,
+    lockMovementY: node.locked,
+    hoverCursor: node.locked ? 'not-allowed' : 'move',
+  })
+  object.setCoords()
+}
+
+const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(function FreeCanvasStage({
   scene,
   assets,
+  generations,
   selectedNodeId,
   viewport,
   canUndo,
@@ -109,13 +196,15 @@ export default function FreeCanvasStage({
   onRedo,
   onDelete,
   onAssetLoadError,
-}: FreeCanvasStageProps) {
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = useRef<Canvas | null>(null)
   const artboardRef = useRef<Rect | null>(null)
-  const nodeObjectsRef = useRef(new Map<NodeId, FabricImage>())
+  const nodeObjectsRef = useRef(new Map<NodeId, FabricObject>())
   const objectNodeIdsRef = useRef(new WeakMap<FabricObject, NodeId>())
+  const nodesByIdRef = useRef(new Map<NodeId, EditorNode>())
+  const generationStatusesRef = useRef(new Map<NodeId, TaskStatus | undefined>())
   const pendingImagesRef = useRef(new Map<NodeId, PendingImage>())
   const wantedNodeIdsRef = useRef(new Set<NodeId>())
   const reportedLoadErrorsRef = useRef(new Set<string>())
@@ -132,6 +221,20 @@ export default function FreeCanvasStage({
   const panningRef = useRef(false)
   const lastPointerRef = useRef({ x: 0, y: 0 })
   const initialFitAppliedRef = useRef(false)
+
+  useImperativeHandle(ref, () => ({
+    getViewportCenter: () => {
+      const canvas = canvasRef.current
+      const container = containerRef.current
+      if (!canvas || !container) return { x: sceneSizeRef.current.width / 2, y: sceneSizeRef.current.height / 2 }
+      const transform = canvas.viewportTransform
+      const zoom = canvas.getZoom()
+      return {
+        x: (container.clientWidth / 2 - transform[4]) / zoom,
+        y: (container.clientHeight / 2 - transform[5]) / zoom,
+      }
+    },
+  }), [])
 
   useEffect(() => {
     callbacksRef.current = { onSelectNode, onTransformNode, onViewportChange, onAssetLoadError }
@@ -230,6 +333,7 @@ export default function FreeCanvasStage({
       if (!panningRef.current) callbacksRef.current.onSelectNode()
     })
     canvas.on('object:scaling', ({ target }) => {
+      if (!(target instanceof FabricImage)) return
       const width = target.getScaledWidth()
       const height = target.getScaledHeight()
       if (width >= MIN_NODE_SIZE && height >= MIN_NODE_SIZE) return
@@ -240,15 +344,28 @@ export default function FreeCanvasStage({
     })
     canvas.on('object:modified', ({ target }) => {
       const nodeId = objectNodeIdsRef.current.get(target)
-      if (!nodeId || !(target instanceof FabricImage)) return
-      const transform = readNodeTransform(target)
-      target.set({
-        left: transform.x,
-        top: transform.y,
-        angle: transform.rotation,
-        scaleX: transform.width / target.width,
-        scaleY: transform.height / target.height,
-      })
+      const node = nodeId ? nodesByIdRef.current.get(nodeId) : undefined
+      if (!nodeId || !node) return
+      const transform = target instanceof FabricImage
+        ? readNodeTransform(target)
+        : normalizeNodeTransform({
+          x: target.left,
+          y: target.top,
+          width: node.width,
+          height: node.height,
+          rotation: node.rotation,
+        })
+      if (target instanceof FabricImage) {
+        target.set({
+          left: transform.x,
+          top: transform.y,
+          angle: transform.rotation,
+          scaleX: transform.width / target.width,
+          scaleY: transform.height / target.height,
+        })
+      } else {
+        target.set({ left: transform.x, top: transform.y })
+      }
       target.setCoords()
       callbacksRef.current.onTransformNode(nodeId, transform)
     })
@@ -330,17 +447,19 @@ export default function FreeCanvasStage({
     artboard.set({ width: scene.width, height: scene.height })
     artboard.setCoords()
 
-    const imageNodes = scene.nodes
-      .filter((node): node is ImageNode => node.type === 'image')
+    const supportedNodes = scene.nodes
+      .filter((node): node is ImageNode | GenerationNode => node.type === 'image' || node.type === 'generation')
       .slice()
       .sort((a, b) => a.zIndex - b.zIndex)
-    const wantedNodeIds = new Set(imageNodes.map((node) => node.id))
+    const wantedNodeIds = new Set(supportedNodes.map((node) => node.id))
     wantedNodeIdsRef.current = wantedNodeIds
+    nodesByIdRef.current = new Map(supportedNodes.map((node) => [node.id, node]))
 
     nodeObjectsRef.current.forEach((object, nodeId) => {
       if (wantedNodeIds.has(nodeId)) return
       canvas.remove(object)
       nodeObjectsRef.current.delete(nodeId)
+      generationStatusesRef.current.delete(nodeId)
     })
     pendingImagesRef.current.forEach((pending, nodeId) => {
       if (wantedNodeIds.has(nodeId)) return
@@ -350,15 +469,35 @@ export default function FreeCanvasStage({
 
     const reorderObjects = () => {
       canvas.moveObjectTo(artboard, 0)
-      imageNodes.forEach((node, index) => {
+      supportedNodes.forEach((node, index) => {
         const object = nodeObjectsRef.current.get(node.id)
         if (object) canvas.moveObjectTo(object, index + 1)
       })
     }
 
-    imageNodes.forEach((node) => {
+    supportedNodes.forEach((node) => {
       const existing = nodeObjectsRef.current.get(node.id)
-      if (existing) {
+      if (node.type === 'generation') {
+        const status = generations[node.generationId]?.status
+        const statusChanged = generationStatusesRef.current.get(node.id) !== status
+        if (existing && statusChanged) {
+          canvas.remove(existing)
+          nodeObjectsRef.current.delete(node.id)
+        } else if (existing) {
+          applyGenerationNodeToObject(existing, node)
+          return
+        }
+
+        const placeholder = createGenerationObject(node, status)
+        generationStatusesRef.current.set(node.id, status)
+        nodeObjectsRef.current.set(node.id, placeholder)
+        objectNodeIdsRef.current.set(placeholder, node.id)
+        canvas.add(placeholder)
+        if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(placeholder)
+        return
+      }
+
+      if (existing instanceof FabricImage) {
         applyNodeToObject(existing, node)
         return
       }
@@ -394,7 +533,7 @@ export default function FreeCanvasStage({
 
     reorderObjects()
     canvas.requestRenderAll()
-  }, [assets, scene.height, scene.nodes, scene.width, selectedNodeId])
+  }, [assets, generations, scene.height, scene.nodes, scene.width, selectedNodeId])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -413,6 +552,11 @@ export default function FreeCanvasStage({
     canvas.requestRenderAll()
   }, [selectedNodeId, scene.nodes])
 
+  const selectedNode = selectedNodeId
+    ? scene.nodes.find((node) => node.id === selectedNodeId)
+    : undefined
+  const canDeleteSelected = !!selectedNode && selectedNode.type !== 'generation'
+
   return (
     <div className="free-canvas-stage" ref={containerRef}>
       <canvas ref={canvasElementRef} aria-label="自由画布编辑区域" />
@@ -420,7 +564,7 @@ export default function FreeCanvasStage({
         <Tooltip title="撤销（⌘/Ctrl+Z）"><Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} aria-label="撤销" /></Tooltip>
         <Tooltip title="重做（⇧⌘/Ctrl+Z）"><Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} aria-label="重做" /></Tooltip>
         <span className="free-canvas-toolbar-divider" />
-        <Tooltip title="删除所选节点"><Button type="text" danger icon={<DeleteOutlined />} disabled={!selectedNodeId} onClick={onDelete} aria-label="删除节点" /></Tooltip>
+        <Tooltip title={selectedNode?.type === 'generation' ? '生成占位不能单独删除' : '删除所选节点'}><Button type="text" danger icon={<DeleteOutlined />} disabled={!canDeleteSelected} onClick={onDelete} aria-label="删除节点" /></Tooltip>
         <span className="free-canvas-toolbar-divider" />
         <Tooltip title="缩小"><Button type="text" icon={<MinusOutlined />} onClick={() => zoomBy(0.8)} aria-label="缩小画布" /></Tooltip>
         <span className="free-canvas-zoom-label">{Math.round(viewport.zoom * 100)}%</span>
@@ -430,4 +574,6 @@ export default function FreeCanvasStage({
       <div className="free-canvas-help">滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布</div>
     </div>
   )
-}
+})
+
+export default FreeCanvasStage

@@ -5,6 +5,18 @@ export const MIN_ZOOM = 0.1
 export const MAX_ZOOM = 4
 export const MIN_NODE_SIZE = 32
 export const FIT_PADDING = 64
+export const GENERATION_NODE_MAX_EDGE = 320
+export const GENERATION_NODE_GAP = 32
+
+export interface CanvasPoint {
+  x: number
+  y: number
+}
+
+export interface GenerationPlacement extends CanvasPoint {
+  width: number
+  height: number
+}
 
 export function clampZoom(zoom: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
@@ -53,6 +65,28 @@ export function calculateInitialImageNode(
     locked: false,
     zIndex: 0,
   }
+}
+
+export function calculateGenerationPlacements(
+  center: CanvasPoint,
+  size: { width: number; height: number },
+  count: number,
+): GenerationPlacement[] {
+  const normalizedCount = Math.min(4, Math.max(1, Math.round(count)))
+  const scale = Math.min(1, GENERATION_NODE_MAX_EDGE / Math.max(size.width, size.height))
+  const width = size.width * scale
+  const height = size.height * scale
+  const columns = normalizedCount <= 2 ? normalizedCount : 2
+  const rows = Math.ceil(normalizedCount / columns)
+  const gridWidth = columns * width + (columns - 1) * GENERATION_NODE_GAP
+  const gridHeight = rows * height + (rows - 1) * GENERATION_NODE_GAP
+
+  return Array.from({ length: normalizedCount }, (_, index) => ({
+    x: round(center.x - gridWidth / 2 + (index % columns) * (width + GENERATION_NODE_GAP)),
+    y: round(center.y - gridHeight / 2 + Math.floor(index / columns) * (height + GENERATION_NODE_GAP)),
+    width: round(width),
+    height: round(height),
+  }))
 }
 
 export function normalizeNodeTransform(transform: NodeTransform): NodeTransform {

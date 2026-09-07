@@ -1,4 +1,4 @@
-import type { Asset, EditorNode, NodeId, SceneId } from '@/editor/types'
+import type { Asset, EditorNode, ImageNode, NodeId, SceneId } from '@/editor/types'
 import type { EditorCommand, EditorContext } from './types'
 
 function findNode(ctx: EditorContext, sceneId: SceneId, nodeId: NodeId) {
@@ -80,5 +80,31 @@ export class InsertGeneratedAssetCommand extends BaseCommand {
   undo(ctx: EditorContext) {
     // Asset 是可复用资源，撤销画布插入时仍保留在 Registry 中。
     ctx.removeNode(this.sceneId, this.node.id)
+  }
+}
+
+export interface GeneratedImageOutput {
+  asset: Asset
+  node: ImageNode
+}
+
+export class ResolveGenerationCommand extends BaseCommand {
+  constructor(
+    private readonly sceneId: SceneId,
+    private readonly placeholderNodeIds: NodeId[],
+    private readonly outputs: GeneratedImageOutput[],
+  ) { super() }
+
+  execute(ctx: EditorContext) {
+    this.placeholderNodeIds.forEach((nodeId) => ctx.removeNode(this.sceneId, nodeId))
+    this.outputs.forEach(({ asset, node }) => {
+      ctx.registerAsset(asset)
+      ctx.addNode(this.sceneId, node)
+    })
+  }
+
+  undo(ctx: EditorContext) {
+    // 生成资源保留在 Registry 中，撤销时按批次移除画布节点。
+    this.outputs.forEach(({ node }) => ctx.removeNode(this.sceneId, node.id))
   }
 }

@@ -1,9 +1,9 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { App } from 'antd'
 import { getTask } from '@/services/api/task'
 import { useTaskStore } from '@/store/useTaskStore'
-import type { TaskStatus } from '@/types'
+import type { GenerationTask, TaskStatus } from '@/types'
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
 
@@ -12,16 +12,21 @@ const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
  * 并在状态从"进行中"变为终态时弹一次全局通知。
  * 生产环境建议优先用 WebSocket/SSE 推送，这里先用轮询兜底，接口不用改。
  */
-export function useTaskPolling(taskId: string | undefined) {
+export function useTaskPolling(taskId: string | undefined, onTask?: (task: GenerationTask<unknown>) => void) {
   const upsertTask = useTaskStore((s) => s.upsertTask)
   const { notification } = App.useApp()
   const prevStatusRef = useRef<TaskStatus>()
+
+  useEffect(() => {
+    prevStatusRef.current = undefined
+  }, [taskId])
 
   return useQuery({
     queryKey: ['task', taskId],
     queryFn: async () => {
       const task = await getTask(taskId!)
       upsertTask(task)
+      onTask?.(task)
 
       const prev = prevStatusRef.current
       if (prev && prev !== task.status && !ACTIVE_STATUSES.has(task.status)) {

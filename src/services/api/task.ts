@@ -1,5 +1,6 @@
 import { apiClient } from './client'
 import type { Capability, GenerationTask } from '@/types'
+import { cancelMockTask, createMockTask, getMockTask, listMockTasks } from './mockTaskGateway'
 
 export interface CreateTaskPayload<TParams = Record<string, unknown>> {
   capability: Capability
@@ -8,18 +9,24 @@ export interface CreateTaskPayload<TParams = Record<string, unknown>> {
   requestId: string
 }
 
+const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock'
+
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {
+  if (useMockGateway) return createMockTask(payload)
   return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload)
 }
 
 export function getTask(taskId: string) {
-  return apiClient.get<unknown, GenerationTask>(`/tasks/${taskId}`)
+  if (useMockGateway) return getMockTask(taskId)
+  return apiClient.get<unknown, GenerationTask<unknown>>(`/tasks/${taskId}`)
 }
 
 export function listTasks(params?: { capability?: Capability; page?: number }) {
-  return apiClient.get<unknown, { items: GenerationTask[]; total: number }>('/tasks', { params })
+  if (useMockGateway) return listMockTasks()
+  return apiClient.get<unknown, { items: GenerationTask<unknown>[]; total: number }>('/tasks', { params })
 }
 
 export function cancelTask(taskId: string) {
+  if (useMockGateway) return cancelMockTask(taskId)
   return apiClient.post<unknown, void>(`/tasks/${taskId}/cancel`)
 }

@@ -64,6 +64,13 @@ export interface OutpaintTaskParams extends ImageTaskParams {
   originOffset: { x: number; y: number }
 }
 
+/** 自由画布文生图任务参数 */
+export interface TextToImageTaskParams {
+  prompt: string
+  size: { width: number; height: number }
+  count: number
+}
+
 export interface PlatformSizePreset {
   platform: string
   label: string

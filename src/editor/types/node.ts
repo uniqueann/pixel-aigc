@@ -21,6 +21,8 @@ export interface ShapeNode extends BaseNode { type: 'shape'; shape: 'rect' | 'el
 export interface GenerationNode extends BaseNode {
   type: 'generation'
   generationId: GenerationId
+  /** 同一生成任务中对应的结果序号 */
+  resultIndex?: number
   outputAssetId?: AssetId
 }
 

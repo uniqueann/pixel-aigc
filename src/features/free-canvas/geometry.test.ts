@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createImageAsset } from '@/editor/services/assetService'
 import {
   calculateFitViewport,
+  calculateGenerationPlacements,
   calculateInitialImageNode,
   clampZoom,
   normalizeNodeTransform,
@@ -48,5 +49,33 @@ describe('自由画布几何计算', () => {
       width: 576,
       height: 432,
     })
+  })
+
+  it('将四个横向结果按 2×2 居中排列并限制最长边', () => {
+    const placements = calculateGenerationPlacements(
+      { x: 1000, y: 500 },
+      { width: 1024, height: 768 },
+      4,
+    )
+
+    expect(placements).toEqual([
+      { x: 664, y: 244, width: 320, height: 240 },
+      { x: 1016, y: 244, width: 320, height: 240 },
+      { x: 664, y: 516, width: 320, height: 240 },
+      { x: 1016, y: 516, width: 320, height: 240 },
+    ])
+  })
+
+  it('将两个竖向结果放在同一行', () => {
+    const placements = calculateGenerationPlacements(
+      { x: 0, y: 0 },
+      { width: 720, height: 1280 },
+      2,
+    )
+
+    expect(placements).toEqual([
+      { x: -196, y: -160, width: 180, height: 320 },
+      { x: 16, y: -160, width: 180, height: 320 },
+    ])
   })
 })

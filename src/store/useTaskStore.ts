@@ -2,8 +2,8 @@ import { create } from 'zustand'
 import type { GenerationTask } from '@/types'
 
 interface TaskStoreState {
-  tasks: Record<string, GenerationTask>
-  upsertTask: (task: GenerationTask) => void
+  tasks: Record<string, GenerationTask<unknown>>
+  upsertTask: (task: GenerationTask<unknown>) => void
   removeTask: (taskId: string) => void
 }
 

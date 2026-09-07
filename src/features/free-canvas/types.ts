@@ -1,4 +1,4 @@
-import type { Asset, NodeId, Scene, ViewportState } from '@/editor/types'
+import type { Asset, GenerationJob, NodeId, Scene, ViewportState } from '@/editor/types'
 
 export interface NodeTransform {
   x: number
@@ -11,6 +11,7 @@ export interface NodeTransform {
 export interface FreeCanvasStageProps {
   scene: Scene
   assets: Record<string, Asset>
+  generations: Record<string, GenerationJob>
   selectedNodeId?: NodeId
   viewport: ViewportState
   canUndo: boolean
@@ -22,4 +23,8 @@ export interface FreeCanvasStageProps {
   onRedo: () => void
   onDelete: () => void
   onAssetLoadError: (message: string) => void
+}
+
+export interface FreeCanvasStageHandle {
+  getViewportCenter: () => { x: number; y: number }
 }

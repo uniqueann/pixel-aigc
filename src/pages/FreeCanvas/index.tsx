@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { App, Button, Input, Segmented, Tooltip } from 'antd'
+import { App, Segmented } from 'antd'
 import { RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
 import { useEditorStore } from '@/editor/store'
 import FreeCanvasStage from '@/features/free-canvas/FreeCanvasStage'
+import GenerationPanel from '@/features/free-canvas/generation/GenerationPanel'
+import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
+import { useFreeCanvasGenerationController } from '@/features/free-canvas/generation/useFreeCanvasGenerationController'
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
-import type { NodeTransform } from '@/features/free-canvas/types'
+import type { FreeCanvasStageHandle, NodeTransform } from '@/features/free-canvas/types'
 import { CANVAS_MODES } from './modes'
 
 function isEditingText(target: EventTarget | null) {
@@ -18,6 +21,9 @@ export default function FreeCanvas() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const [prompt, setPrompt] = useState('')
+  const [presetKey, setPresetKey] = useState(IMAGE_SIZE_PRESETS[0].key)
+  const [count, setCount] = useState(1)
+  const stageRef = useRef<FreeCanvasStageHandle>(null)
   const project = useEditorStore((state) => state.project)
   const activeSceneId = useEditorStore((state) => state.activeSceneId)
   const selectedNodeId = useEditorStore((state) => state.selectedNodeIds[0])
@@ -31,6 +37,7 @@ export default function FreeCanvas() {
   const setViewport = useEditorStore((state) => state.setViewport)
   const activeSlug = CANVAS_MODES.find((m) => m.slug === mode)?.slug ?? CANVAS_MODES[0].slug
   const scene = project?.document.scenes.find((item) => item.id === activeSceneId)
+  const generation = useFreeCanvasGenerationController(scene?.id)
 
   useEffect(() => {
     ensureFreeCanvasContent()
@@ -41,17 +48,34 @@ export default function FreeCanvas() {
   }, [selectNodes])
 
   const handleTransformNode = useCallback((nodeId: string, transform: NodeTransform) => {
-    const currentSceneId = useEditorStore.getState().activeSceneId
-    if (!currentSceneId) return
-    executeCommand(new UpdateNodeCommand(currentSceneId, nodeId, transform))
+    const state = useEditorStore.getState()
+    const currentScene = state.project?.document.scenes.find((item) => item.id === state.activeSceneId)
+    const node = currentScene?.nodes.find((item) => item.id === nodeId)
+    if (!currentScene || !node) return
+    if (node.type === 'generation') {
+      state.updateNode(currentScene.id, nodeId, { x: transform.x, y: transform.y })
+      return
+    }
+    executeCommand(new UpdateNodeCommand(currentScene.id, nodeId, transform))
   }, [executeCommand])
 
   const handleDelete = useCallback(() => {
     const state = useEditorStore.getState()
     const nodeId = state.selectedNodeIds[0]
     if (!state.activeSceneId || !nodeId) return
+    const currentScene = state.project?.document.scenes.find((item) => item.id === state.activeSceneId)
+    if (currentScene?.nodes.find((node) => node.id === nodeId)?.type === 'generation') return
     state.executeCommand(new RemoveNodeCommand(state.activeSceneId, nodeId))
   }, [])
+
+  const handleGenerate = () => {
+    const preset = IMAGE_SIZE_PRESETS.find((item) => item.key === presetKey) ?? IMAGE_SIZE_PRESETS[0]
+    const center = stageRef.current?.getViewportCenter() ?? {
+      x: scene?.width ? scene.width / 2 : 0,
+      y: scene?.height ? scene.height / 2 : 0,
+    }
+    void generation.generate(prompt, preset, count, center)
+  }
 
   const handleAssetLoadError = useCallback((content: string) => {
     message.error({ content, duration: 4 })
@@ -98,8 +122,10 @@ export default function FreeCanvas() {
       <div className="free-canvas-workspace">
         <FreeCanvasStage
           key={scene.id}
+          ref={stageRef}
           scene={scene}
           assets={project.assets}
+          generations={project.generations}
           selectedNodeId={selectedNodeId}
           viewport={viewport}
           canUndo={canUndo}
@@ -112,28 +138,27 @@ export default function FreeCanvas() {
           onDelete={handleDelete}
           onAssetLoadError={handleAssetLoadError}
         />
-        <aside className="free-canvas-generation-panel">
-          <div>
-            <h2>{activeSlug === 'text-to-video' ? '文生视频' : '文生图'}</h2>
-            <p>输入创意描述，生成结果将在后续迭代中直接加入当前画布。</p>
-          </div>
-          <Input.TextArea
-            rows={7}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder="描述你想生成的画面"
-          />
-          <div className="free-canvas-generation-placeholder">
-            <span>参考图</span><strong>下一迭代接入</strong>
-            <span>生成参数</span><strong>下一迭代接入</strong>
-          </div>
-          <Tooltip title="生成能力将在下一迭代接入">
-            <span className="free-canvas-disabled-action">
-              <Button type="primary" disabled block>生成 · 下一迭代接入</Button>
-            </span>
-          </Tooltip>
-          <p className="free-canvas-panel-hint">当前版本已支持图片节点的移动、缩放、旋转和删除。</p>
-        </aside>
+        <GenerationPanel
+          mode={activeSlug}
+          prompt={prompt}
+          presetKey={presetKey}
+          count={count}
+          task={generation.task}
+          submitting={generation.submitting}
+          active={generation.active}
+          formLocked={generation.formLocked}
+          polling={generation.polling}
+          submissionError={generation.submissionError}
+          protocolError={generation.protocolError}
+          pollError={generation.pollError}
+          onPromptChange={setPrompt}
+          onPresetChange={setPresetKey}
+          onCountChange={setCount}
+          onGenerate={handleGenerate}
+          onRetry={() => { void generation.retry() }}
+          onModifyParameters={generation.modifyParameters}
+          onRefetch={() => { void generation.refetch() }}
+        />
       </div>
     </div>
   )

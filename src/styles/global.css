@@ -483,6 +483,70 @@ a {
   line-height: 1.55;
 }
 
+.free-canvas-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.free-canvas-field .ant-segmented-item-label {
+  min-width: 0;
+  padding-inline: 5px;
+  font-size: 11px;
+}
+
+.free-canvas-field .ant-radio-group {
+  display: flex;
+  width: 100%;
+}
+
+.free-canvas-field .ant-radio-button-wrapper {
+  flex: 1;
+  padding-inline: 0;
+  text-align: center;
+}
+
+.free-canvas-task-card {
+  display: flex;
+  padding: 12px;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface-subtle);
+}
+
+.free-canvas-task-card.is-succeeded {
+  border-color: rgb(33 207 160 / 34%);
+  background: rgb(33 207 160 / 7%);
+}
+
+.free-canvas-task-card.is-failed,
+.free-canvas-task-card.is-cancelled {
+  border-color: rgb(255 120 117 / 34%);
+  background: rgb(255 120 117 / 7%);
+}
+
+.free-canvas-task-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.free-canvas-task-card > span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.free-canvas-task-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .free-canvas-generation-placeholder {
   display: grid;
   padding: 12px 0;
