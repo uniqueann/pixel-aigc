@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { AddNodeCommand, MoveNodeCommand, RemoveNodeCommand } from '@/editor/commands'
+import { AddNodeCommand, MoveNodeCommand, RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from './editorStore'
 import type { ImageNode } from '@/editor/types'
@@ -55,5 +55,44 @@ describe('Editor Store', () => {
     expect(useEditorStore.getState().project?.document.scenes[0].nodes[0]).toMatchObject({ x: 40, y: 30 })
     state.redo()
     expect(useEditorStore.getState().project?.document.scenes[0].nodes).toHaveLength(0)
+  })
+
+  it('将一次完整变换作为单个命令撤销和重做', () => {
+    const state = useEditorStore.getState()
+    const sceneId = state.activeSceneId!
+    state.addNode(sceneId, node)
+    state.executeCommand(new UpdateNodeCommand(sceneId, node.id, {
+      x: 120,
+      y: -40,
+      width: 240,
+      height: 192,
+      rotation: 45,
+    }))
+
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes[0]).toMatchObject({
+      x: 120,
+      y: -40,
+      width: 240,
+      height: 192,
+      rotation: 45,
+    })
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+
+    state.undo()
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes[0]).toMatchObject({
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 80,
+      rotation: 0,
+    })
+    state.redo()
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes[0]).toMatchObject({
+      x: 120,
+      y: -40,
+      width: 240,
+      height: 192,
+      rotation: 45,
+    })
   })
 })

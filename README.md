@@ -20,7 +20,7 @@ npm run dev
 ```
 src/
 ├── editor/           # 编辑器领域模型、Store、Command、Asset/Generation 服务与适配器
-├── features/         # 跨页面业务能力，目前包含图片工作站 Controller 与工具注册表
+├── features/         # 跨页面业务能力，包含图片工作站 Controller 与 FreeCanvas Fabric 渲染器
 ├── layouts/          # 主布局（可折叠侧边导航 + 面包屑 + 内容区）
 ├── router/           # 路由配置（含嵌套路由）+ meta.ts（面包屑/标题用的路径-标签映射）
 ├── components/        # 通用组件：EmptyState、ErrorBoundary
@@ -51,10 +51,11 @@ src/
 - Editor Store、节点 Command History、Generation Lineage selectors 及核心单元测试。
 - `GenerationTask → GenerationJob → Asset` 适配链路，以及图片工作站 Controller、工具注册表和请求构建器。
 - 生成结果注册为 Asset，并可作为下一次图片编辑任务的输入继续生成。
+- FreeCanvas 空间画布、ImageNode 渲染与单选变换、缩放平移、快捷键和 Command History 接入。
 
 当前待补充：
 
-- 自由画布仍是页面占位，下一阶段实现 ImageNode/VideoNode 渲染、选择变换、缩放平移和生成结果入画布。
+- 自由画布的实际生成、VideoNode、Variation/Image-to-Video 和生成结果自动入画布。
 - 图片工作站当前使用内置示例图片，真实文件上传和对象存储直传尚未接入。
 - 智能选区仍使用前端 mock；真实 AI Provider、登录鉴权、任务队列、限流和积分结算需要后端支持。
 - Project JSON 保存恢复、自动保存和远端项目持久化尚未实现。

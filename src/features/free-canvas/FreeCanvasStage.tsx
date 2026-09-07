@@ -1,0 +1,433 @@
+import { useCallback, useEffect, useRef } from 'react'
+import {
+  DeleteOutlined,
+  ExpandOutlined,
+  MinusOutlined,
+  PlusOutlined,
+  RedoOutlined,
+  UndoOutlined,
+} from '@ant-design/icons'
+import { Button, Tooltip } from 'antd'
+import { Canvas, FabricImage, Point, Rect, Shadow, type FabricObject } from 'fabric'
+import type { ImageNode, NodeId, ViewportState } from '@/editor/types'
+import {
+  calculateFitViewport,
+  clampZoom,
+  MIN_NODE_SIZE,
+  normalizeNodeTransform,
+} from './geometry'
+import type { FreeCanvasStageProps, NodeTransform } from './types'
+
+const ARTBOARD_FILL = '#f7f7f5'
+const ARTBOARD_STROKE = '#d6d6d2'
+const SELECTION_COLOR = '#21cfa0'
+
+interface PendingImage {
+  assetUrl: string
+  controller: AbortController
+}
+
+interface StageCallbacks {
+  onSelectNode: FreeCanvasStageProps['onSelectNode']
+  onTransformNode: FreeCanvasStageProps['onTransformNode']
+  onViewportChange: FreeCanvasStageProps['onViewportChange']
+  onAssetLoadError: FreeCanvasStageProps['onAssetLoadError']
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+}
+
+function viewportFromCanvas(canvas: Canvas): ViewportState {
+  const transform = canvas.viewportTransform
+  return {
+    zoom: canvas.getZoom(),
+    panX: transform[4],
+    panY: transform[5],
+  }
+}
+
+function applyViewport(canvas: Canvas, viewport: ViewportState) {
+  canvas.setViewportTransform([viewport.zoom, 0, 0, viewport.zoom, viewport.panX, viewport.panY])
+}
+
+function applyNodeToObject(object: FabricImage, node: ImageNode) {
+  const sourceWidth = object.width || node.width
+  const sourceHeight = object.height || node.height
+  object.set({
+    left: node.x,
+    top: node.y,
+    originX: 'left',
+    originY: 'top',
+    scaleX: node.width / sourceWidth,
+    scaleY: node.height / sourceHeight,
+    angle: node.rotation,
+    opacity: node.opacity,
+    visible: node.visible,
+    selectable: node.visible,
+    evented: node.visible,
+    lockMovementX: node.locked,
+    lockMovementY: node.locked,
+    lockRotation: node.locked,
+    lockScalingX: node.locked,
+    lockScalingY: node.locked,
+    lockScalingFlip: true,
+    transparentCorners: false,
+    cornerColor: SELECTION_COLOR,
+    cornerStrokeColor: '#0b6f59',
+    borderColor: SELECTION_COLOR,
+    cornerStyle: 'circle',
+    cornerSize: 11,
+    padding: 1,
+  })
+  object.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false })
+  object.setCoords()
+}
+
+function readNodeTransform(object: FabricImage): NodeTransform {
+  return normalizeNodeTransform({
+    x: object.left,
+    y: object.top,
+    width: object.getScaledWidth(),
+    height: object.getScaledHeight(),
+    rotation: object.angle,
+  })
+}
+
+export default function FreeCanvasStage({
+  scene,
+  assets,
+  selectedNodeId,
+  viewport,
+  canUndo,
+  canRedo,
+  onSelectNode,
+  onTransformNode,
+  onViewportChange,
+  onUndo,
+  onRedo,
+  onDelete,
+  onAssetLoadError,
+}: FreeCanvasStageProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const canvasElementRef = useRef<HTMLCanvasElement>(null)
+  const canvasRef = useRef<Canvas | null>(null)
+  const artboardRef = useRef<Rect | null>(null)
+  const nodeObjectsRef = useRef(new Map<NodeId, FabricImage>())
+  const objectNodeIdsRef = useRef(new WeakMap<FabricObject, NodeId>())
+  const pendingImagesRef = useRef(new Map<NodeId, PendingImage>())
+  const wantedNodeIdsRef = useRef(new Set<NodeId>())
+  const reportedLoadErrorsRef = useRef(new Set<string>())
+  const callbacksRef = useRef<StageCallbacks>({
+    onSelectNode,
+    onTransformNode,
+    onViewportChange,
+    onAssetLoadError,
+  })
+  const viewportRef = useRef(viewport)
+  const selectedNodeIdRef = useRef(selectedNodeId)
+  const sceneSizeRef = useRef({ width: scene.width, height: scene.height })
+  const spacePressedRef = useRef(false)
+  const panningRef = useRef(false)
+  const lastPointerRef = useRef({ x: 0, y: 0 })
+  const initialFitAppliedRef = useRef(false)
+
+  useEffect(() => {
+    callbacksRef.current = { onSelectNode, onTransformNode, onViewportChange, onAssetLoadError }
+    viewportRef.current = viewport
+    selectedNodeIdRef.current = selectedNodeId
+    sceneSizeRef.current = { width: scene.width, height: scene.height }
+  }, [onAssetLoadError, onSelectNode, onTransformNode, onViewportChange, scene.height, scene.width, selectedNodeId, viewport])
+
+  const setCanvasViewport = useCallback((next: ViewportState) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const normalized = { ...next, zoom: clampZoom(next.zoom) }
+    applyViewport(canvas, normalized)
+    canvas.requestRenderAll()
+    callbacksRef.current.onViewportChange(normalized)
+  }, [])
+
+  const fitToScene = useCallback(() => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+    setCanvasViewport(calculateFitViewport(
+      { width: container.clientWidth, height: container.clientHeight },
+      sceneSizeRef.current,
+    ))
+  }, [setCanvasViewport])
+
+  const zoomBy = useCallback((factor: number) => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+    const nextZoom = clampZoom(canvas.getZoom() * factor)
+    canvas.zoomToPoint(new Point(container.clientWidth / 2, container.clientHeight / 2), nextZoom)
+    canvas.requestRenderAll()
+    callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+  }, [])
+
+  useEffect(() => {
+    const canvasElement = canvasElementRef.current
+    const container = containerRef.current
+    if (!canvasElement || !container) return
+
+    const canvas = new Canvas(canvasElement, {
+      backgroundColor: '#303035',
+      preserveObjectStacking: true,
+      selection: false,
+      uniformScaling: true,
+    })
+    canvasRef.current = canvas
+    const pendingImages = pendingImagesRef.current
+    const nodeObjects = nodeObjectsRef.current
+
+    const artboard = new Rect({
+      left: 0,
+      top: 0,
+      originX: 'left',
+      originY: 'top',
+      width: sceneSizeRef.current.width,
+      height: sceneSizeRef.current.height,
+      fill: ARTBOARD_FILL,
+      stroke: ARTBOARD_STROKE,
+      strokeWidth: 1,
+      selectable: false,
+      evented: false,
+      shadow: new Shadow({ color: 'rgba(0, 0, 0, 0.28)', blur: 18, offsetX: 0, offsetY: 6 }),
+    })
+    artboardRef.current = artboard
+    canvas.add(artboard)
+    applyViewport(canvas, viewportRef.current)
+
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.max(1, Math.floor(entry.contentRect.width))
+      const height = Math.max(1, Math.floor(entry.contentRect.height))
+      canvas.setDimensions({ width, height })
+
+      if (!initialFitAppliedRef.current) {
+        initialFitAppliedRef.current = true
+        const current = viewportRef.current
+        if (current.zoom === 1 && current.panX === 0 && current.panY === 0) {
+          const fitted = calculateFitViewport({ width, height }, sceneSizeRef.current)
+          applyViewport(canvas, fitted)
+          callbacksRef.current.onViewportChange(fitted)
+        }
+      }
+      canvas.requestRenderAll()
+    })
+    observer.observe(container)
+
+    canvas.on('selection:created', ({ selected }) => {
+      callbacksRef.current.onSelectNode(objectNodeIdsRef.current.get(selected[0]))
+    })
+    canvas.on('selection:updated', ({ selected }) => {
+      callbacksRef.current.onSelectNode(objectNodeIdsRef.current.get(selected[0]))
+    })
+    canvas.on('selection:cleared', () => {
+      if (!panningRef.current) callbacksRef.current.onSelectNode()
+    })
+    canvas.on('object:scaling', ({ target }) => {
+      const width = target.getScaledWidth()
+      const height = target.getScaledHeight()
+      if (width >= MIN_NODE_SIZE && height >= MIN_NODE_SIZE) return
+      const adjustment = Math.max(MIN_NODE_SIZE / width, MIN_NODE_SIZE / height)
+      target.scaleX *= adjustment
+      target.scaleY *= adjustment
+      target.setCoords()
+    })
+    canvas.on('object:modified', ({ target }) => {
+      const nodeId = objectNodeIdsRef.current.get(target)
+      if (!nodeId || !(target instanceof FabricImage)) return
+      const transform = readNodeTransform(target)
+      target.set({
+        left: transform.x,
+        top: transform.y,
+        angle: transform.rotation,
+        scaleX: transform.width / target.width,
+        scaleY: transform.height / target.height,
+      })
+      target.setCoords()
+      callbacksRef.current.onTransformNode(nodeId, transform)
+    })
+    canvas.on('mouse:wheel', ({ e, viewportPoint }) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.ctrlKey || e.metaKey) {
+        const nextZoom = clampZoom(canvas.getZoom() * Math.exp(-e.deltaY * 0.0015))
+        canvas.zoomToPoint(viewportPoint, nextZoom)
+      } else {
+        const transform = canvas.viewportTransform
+        transform[4] -= e.deltaX
+        transform[5] -= e.deltaY
+        canvas.setViewportTransform(transform)
+      }
+      canvas.requestRenderAll()
+      callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+    })
+    canvas.on('mouse:down:before', ({ e }) => {
+      if (!(e instanceof MouseEvent) || (!spacePressedRef.current && e.button !== 1)) return
+      panningRef.current = true
+      lastPointerRef.current = { x: e.clientX, y: e.clientY }
+      canvas.skipTargetFind = true
+      canvas.defaultCursor = 'grabbing'
+      canvas.selection = false
+      e.preventDefault()
+    })
+    canvas.on('mouse:move', ({ e }) => {
+      if (!panningRef.current || !(e instanceof MouseEvent)) return
+      const deltaX = e.clientX - lastPointerRef.current.x
+      const deltaY = e.clientY - lastPointerRef.current.y
+      lastPointerRef.current = { x: e.clientX, y: e.clientY }
+      const transform = canvas.viewportTransform
+      transform[4] += deltaX
+      transform[5] += deltaY
+      canvas.setViewportTransform(transform)
+      canvas.requestRenderAll()
+    })
+    canvas.on('mouse:up', () => {
+      if (!panningRef.current) return
+      panningRef.current = false
+      canvas.skipTargetFind = false
+      canvas.defaultCursor = spacePressedRef.current ? 'grab' : 'default'
+      callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+    })
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || isEditableTarget(event.target)) return
+      spacePressedRef.current = true
+      if (!panningRef.current) canvas.defaultCursor = 'grab'
+      event.preventDefault()
+    }
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return
+      spacePressedRef.current = false
+      if (!panningRef.current) canvas.defaultCursor = 'default'
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      pendingImages.forEach(({ controller }) => controller.abort())
+      pendingImages.clear()
+      nodeObjects.clear()
+      artboardRef.current = null
+      canvasRef.current = null
+      void canvas.dispose()
+    }
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const artboard = artboardRef.current
+    if (!canvas || !artboard) return
+
+    artboard.set({ width: scene.width, height: scene.height })
+    artboard.setCoords()
+
+    const imageNodes = scene.nodes
+      .filter((node): node is ImageNode => node.type === 'image')
+      .slice()
+      .sort((a, b) => a.zIndex - b.zIndex)
+    const wantedNodeIds = new Set(imageNodes.map((node) => node.id))
+    wantedNodeIdsRef.current = wantedNodeIds
+
+    nodeObjectsRef.current.forEach((object, nodeId) => {
+      if (wantedNodeIds.has(nodeId)) return
+      canvas.remove(object)
+      nodeObjectsRef.current.delete(nodeId)
+    })
+    pendingImagesRef.current.forEach((pending, nodeId) => {
+      if (wantedNodeIds.has(nodeId)) return
+      pending.controller.abort()
+      pendingImagesRef.current.delete(nodeId)
+    })
+
+    const reorderObjects = () => {
+      canvas.moveObjectTo(artboard, 0)
+      imageNodes.forEach((node, index) => {
+        const object = nodeObjectsRef.current.get(node.id)
+        if (object) canvas.moveObjectTo(object, index + 1)
+      })
+    }
+
+    imageNodes.forEach((node) => {
+      const existing = nodeObjectsRef.current.get(node.id)
+      if (existing) {
+        applyNodeToObject(existing, node)
+        return
+      }
+
+      const asset = assets[node.assetId]
+      if (!asset || asset.type !== 'image') return
+      const pending = pendingImagesRef.current.get(node.id)
+      if (pending?.assetUrl === asset.url) return
+      pending?.controller.abort()
+
+      const controller = new AbortController()
+      pendingImagesRef.current.set(node.id, { assetUrl: asset.url, controller })
+      void FabricImage.fromURL(asset.url, { crossOrigin: 'anonymous', signal: controller.signal })
+        .then((image) => {
+          if (!canvasRef.current || !wantedNodeIdsRef.current.has(node.id)) return
+          pendingImagesRef.current.delete(node.id)
+          applyNodeToObject(image, node)
+          nodeObjectsRef.current.set(node.id, image)
+          objectNodeIdsRef.current.set(image, node.id)
+          canvas.add(image)
+          reorderObjects()
+          if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(image)
+          canvas.requestRenderAll()
+        })
+        .catch((error: unknown) => {
+          pendingImagesRef.current.delete(node.id)
+          if (controller.signal.aborted || reportedLoadErrorsRef.current.has(asset.url)) return
+          reportedLoadErrorsRef.current.add(asset.url)
+          const detail = error instanceof Error ? error.message : '未知错误'
+          callbacksRef.current.onAssetLoadError(`图片“${asset.name}”加载失败：${detail}`)
+        })
+    })
+
+    reorderObjects()
+    canvas.requestRenderAll()
+  }, [assets, scene.height, scene.nodes, scene.width, selectedNodeId])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    applyViewport(canvas, viewport)
+    canvas.requestRenderAll()
+  }, [viewport])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const activeObject = canvas.getActiveObject()
+    const nextObject = selectedNodeId ? nodeObjectsRef.current.get(selectedNodeId) : undefined
+    if (nextObject && activeObject !== nextObject) canvas.setActiveObject(nextObject)
+    if (!nextObject && activeObject) canvas.discardActiveObject()
+    canvas.requestRenderAll()
+  }, [selectedNodeId, scene.nodes])
+
+  return (
+    <div className="free-canvas-stage" ref={containerRef}>
+      <canvas ref={canvasElementRef} aria-label="自由画布编辑区域" />
+      <div className="free-canvas-toolbar" aria-label="画布工具栏">
+        <Tooltip title="撤销（⌘/Ctrl+Z）"><Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} aria-label="撤销" /></Tooltip>
+        <Tooltip title="重做（⇧⌘/Ctrl+Z）"><Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} aria-label="重做" /></Tooltip>
+        <span className="free-canvas-toolbar-divider" />
+        <Tooltip title="删除所选节点"><Button type="text" danger icon={<DeleteOutlined />} disabled={!selectedNodeId} onClick={onDelete} aria-label="删除节点" /></Tooltip>
+        <span className="free-canvas-toolbar-divider" />
+        <Tooltip title="缩小"><Button type="text" icon={<MinusOutlined />} onClick={() => zoomBy(0.8)} aria-label="缩小画布" /></Tooltip>
+        <span className="free-canvas-zoom-label">{Math.round(viewport.zoom * 100)}%</span>
+        <Tooltip title="放大"><Button type="text" icon={<PlusOutlined />} onClick={() => zoomBy(1.25)} aria-label="放大画布" /></Tooltip>
+        <Tooltip title="适合画板"><Button type="text" icon={<ExpandOutlined />} onClick={fitToScene} aria-label="适合画板" /></Tooltip>
+      </div>
+      <div className="free-canvas-help">滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布</div>
+    </div>
+  )
+}
