@@ -23,7 +23,7 @@ src/
 ├── features/         # 跨页面业务能力，包含图片工作站 Controller 与 FreeCanvas Fabric 渲染器
 ├── layouts/          # 主布局（可折叠侧边导航 + 面包屑 + 内容区）
 ├── router/           # 路由配置（含嵌套路由）+ meta.ts（面包屑/标题用的路径-标签映射）
-├── components/        # 通用组件：EmptyState、ErrorBoundary
+├── components/        # 通用组件：空状态、错误边界、生成任务状态
 ├── pages/
 │   ├── Dashboard/         # 工作台首页
 │   ├── EmailAssistant/    # 邮件助手
@@ -50,13 +50,15 @@ src/
 - `PixelProject / PixelDocument / Scene / Asset / EditorNode / GenerationJob` 领域契约。
 - Editor Store、节点 Command History、Generation Lineage selectors 及核心单元测试。
 - `GenerationTask → GenerationJob → Asset` 适配链路，以及图片工作站 Controller、工具注册表和请求构建器。
-- 生成结果注册为 Asset，并可作为下一次图片编辑任务的输入继续生成。
-- FreeCanvas 空间画布、ImageNode 渲染与单选变换、缩放平移、快捷键和 Command History 接入。
+- 智能编辑支持上传图片、编辑提示词、1–4 个候选结果及基于候选继续生成。
+- 邮件助手支持总结、回复、润色、语法检查，以及可编辑、复制和重新生成的文本结果。
+- FreeCanvas 空间画布、ImageNode 编辑、文生图占位与结果入画布、缩放平移及 Command History。
+- Mock Gateway 可完整演示文生图、智能编辑和邮件助手异步任务流程。
 
 当前待补充：
 
-- 自由画布的实际生成、VideoNode、Variation/Image-to-Video 和生成结果自动入画布。
-- 图片工作站当前使用内置示例图片，真实文件上传和对象存储直传尚未接入。
+- 自由画布的 VideoNode、文生视频和 Variation/Image-to-Video。
+- 图片上传在 Mock 模式使用本地 Data URL；真实对象存储需提供 `POST /api/uploads`。
 - 智能选区仍使用前端 mock；真实 AI Provider、登录鉴权、任务队列、限流和积分结算需要后端支持。
 - Project JSON 保存恢复、自动保存和远端项目持久化尚未实现。
 

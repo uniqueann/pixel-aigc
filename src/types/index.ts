@@ -31,6 +31,8 @@ export interface GenerationTask<TParams = Record<string, unknown>> {
   status: TaskStatus
   params: TParams
   resultUrls?: string[]
+  /** 文本生成类任务的单条结果 */
+  resultText?: string
   errorMessage?: string
   creditsCost: number
   createdAt: string
@@ -48,6 +50,14 @@ export interface ImageTaskParams {
   enhance?: 'high' | 'medium' | 'low' | 'off'
   resolution?: '2k' | '4k'
   extra?: Record<string, unknown>
+}
+
+/** 智能编辑任务参数 */
+export interface ImageEditTaskParams extends ImageTaskParams {
+  sourceImageUrl: string
+  prompt: string
+  count: number
+  resolution: '2k' | '4k'
 }
 
 /** 消除/重绘任务参数 */
@@ -69,6 +79,19 @@ export interface TextToImageTaskParams {
   prompt: string
   size: { width: number; height: number }
   count: number
+}
+
+export type EmailAssistOperation = 'summarize' | 'reply' | 'polish' | 'grammar'
+export type EmailAssistLanguage = 'zh' | 'en' | 'ja'
+export type EmailPolishStyle = 'clear' | 'shorten' | 'lengthen' | 'simplify'
+
+/** 邮件助手异步任务参数 */
+export interface EmailAssistTaskParams {
+  sourceText: string
+  operation: EmailAssistOperation
+  language: EmailAssistLanguage
+  instruction?: string
+  polishStyles?: EmailPolishStyle[]
 }
 
 export interface PlatformSizePreset {

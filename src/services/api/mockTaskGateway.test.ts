@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { Capability, type TextToImageTaskParams } from '@/types'
+import {
+  Capability,
+  type EmailAssistTaskParams,
+  type ImageEditTaskParams,
+  type TextToImageTaskParams,
+} from '@/types'
 import { createMockTask, getMockTask, resetMockTasks } from './mockTaskGateway'
 
 describe('mockTaskGateway', () => {
@@ -23,5 +28,35 @@ describe('mockTaskGateway', () => {
     expect(completed.status).toBe('succeeded')
     expect(completed.resultUrls).toHaveLength(3)
     expect(completed.resultUrls?.every((url) => url.startsWith('data:image/svg+xml'))).toBe(true)
+  })
+
+  it('为智能编辑生成可区分的图片候选', async () => {
+    const params: ImageEditTaskParams = {
+      sourceImageUrl: 'source.png',
+      prompt: '更换背景',
+      count: 2,
+      resolution: '2k',
+      size: { width: 2048, height: 1536 },
+    }
+    const created = await createMockTask({ capability: Capability.ImageEdit, requestId: 'edit-1', params })
+    await getMockTask(created.id)
+    const completed = await getMockTask(created.id)
+    expect(completed.resultUrls).toHaveLength(2)
+    expect(completed.resultUrls?.[0]).not.toBe(completed.resultUrls?.[1])
+  })
+
+  it('为邮件助手返回单条文本结果', async () => {
+    const params: EmailAssistTaskParams = {
+      sourceText: '请问订单什么时候发货？',
+      operation: 'reply',
+      language: 'zh',
+      instruction: '礼貌说明明天发货',
+    }
+    const created = await createMockTask({ capability: Capability.EmailAssist, requestId: 'email-1', params })
+    await getMockTask(created.id)
+    const completed = await getMockTask(created.id)
+    expect(completed.resultText).toContain('建议回复')
+    expect(completed.resultText).toContain('礼貌说明明天发货')
+    expect(completed.resultUrls).toBeUndefined()
   })
 })

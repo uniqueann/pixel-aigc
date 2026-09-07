@@ -1,5 +1,11 @@
 import type { ImageAsset } from '@/editor/types'
-import type { Capability, ImageTaskParams, InpaintTaskParams, OutpaintTaskParams } from '@/types'
+import type {
+  Capability,
+  ImageEditTaskParams,
+  ImageTaskParams,
+  InpaintTaskParams,
+  OutpaintTaskParams,
+} from '@/types'
 
 export type InteractionMode = 'params-only' | 'mask-paint' | 'drag-resize' | 'multi-source' | 'light-control'
 
@@ -11,6 +17,8 @@ export interface ValidationResult {
 export interface WorkstationContext {
   sourceAsset: ImageAsset
   prompt?: string
+  count?: number
+  resolution?: '2k' | '4k'
   maskUrl?: string
   targetSize?: { width: number; height: number }
   originOffset?: { x: number; y: number }
@@ -18,7 +26,7 @@ export interface WorkstationContext {
 
 export interface WorkstationGenerationRequest {
   capability: Capability
-  params: ImageTaskParams | InpaintTaskParams | OutpaintTaskParams
+  params: ImageTaskParams | ImageEditTaskParams | InpaintTaskParams | OutpaintTaskParams
   outputSize: { width: number; height: number }
 }
 

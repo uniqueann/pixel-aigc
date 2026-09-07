@@ -1,4 +1,10 @@
-import { Capability, type GenerationTask, type TextToImageTaskParams } from '@/types'
+import {
+  Capability,
+  type EmailAssistTaskParams,
+  type GenerationTask,
+  type ImageEditTaskParams,
+  type TextToImageTaskParams,
+} from '@/types'
 import type { CreateTaskPayload } from './task'
 
 interface MockTaskRecord {
@@ -29,10 +35,11 @@ export async function getMockTask(taskId: string): Promise<GenerationTask<unknow
 
   record.pollCount += 1
   const status = record.pollCount >= 2 ? 'succeeded' : 'processing'
+  const result = status === 'succeeded' ? createMockResult(record.task) : {}
   record.task = {
     ...record.task,
     status,
-    resultUrls: status === 'succeeded' ? createResultUrls(record.task) : undefined,
+    ...result,
     updatedAt: new Date().toISOString(),
   }
   return record.task
@@ -59,17 +66,26 @@ function readCount(params: unknown) {
   return Number.isFinite(count) ? Math.min(4, Math.max(1, Math.round(count))) : 1
 }
 
-function createResultUrls(task: GenerationTask<unknown>) {
+function createMockResult(task: GenerationTask<unknown>): Pick<GenerationTask<unknown>, 'resultUrls' | 'resultText'> {
+  if (task.capability === Capability.EmailAssist) {
+    return { resultText: createMockEmail(task.params as EmailAssistTaskParams) }
+  }
+
   if (task.capability === Capability.TextToImage) {
     const params = task.params as unknown as TextToImageTaskParams
-    return Array.from({ length: readCount(params) }, (_, index) => createMockImage(params, index))
+    return { resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockImage(params, index)) }
+  }
+
+  if (task.capability === Capability.ImageEdit) {
+    const params = task.params as unknown as ImageEditTaskParams
+    return { resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockEditedImage(params, index)) }
   }
 
   if (task.params && typeof task.params === 'object' && 'sourceImageUrl' in task.params) {
     const sourceImageUrl = task.params.sourceImageUrl
-    return typeof sourceImageUrl === 'string' ? [sourceImageUrl] : []
+    return { resultUrls: typeof sourceImageUrl === 'string' ? [sourceImageUrl] : [] }
   }
-  return []
+  return { resultUrls: [] }
 }
 
 function createMockImage(params: TextToImageTaskParams, index: number) {
@@ -92,6 +108,43 @@ function createMockImage(params: TextToImageTaskParams, index: number) {
     </svg>
   `
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+function createMockEditedImage(params: ImageEditTaskParams, index: number) {
+  const longEdge = params.resolution === '4k' ? 4096 : 2048
+  const width = params.size?.width ?? longEdge
+  const height = params.size?.height ?? Math.round(longEdge * 0.75)
+  const prompt = escapeSvgText(params.prompt.trim().slice(0, 42) || '智能编辑')
+  const hue = (index * 62 + 142) % 360
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop stop-color="hsl(${hue} 42% 20%)"/>
+          <stop offset="1" stop-color="hsl(${(hue + 58) % 360} 66% 48%)"/>
+        </linearGradient>
+      </defs>
+      <rect width="${width}" height="${height}" fill="url(#bg)"/>
+      <rect x="${width * 0.12}" y="${height * 0.12}" width="${width * 0.76}" height="${height * 0.76}" rx="${Math.min(width, height) * 0.06}" fill="#fff" opacity=".12"/>
+      <text x="${width / 2}" y="${height / 2}" text-anchor="middle" font-family="sans-serif" font-size="${Math.max(24, Math.min(width, height) * 0.055)}" fill="#fff">${prompt}</text>
+      <text x="${width / 2}" y="${height / 2 + Math.max(42, Math.min(width, height) * 0.08)}" text-anchor="middle" font-family="sans-serif" font-size="${Math.max(16, Math.min(width, height) * 0.025)}" fill="#fff" opacity=".72">智能编辑候选 ${index + 1}</text>
+    </svg>
+  `
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+function createMockEmail(params: EmailAssistTaskParams) {
+  const source = params.sourceText.trim().replace(/\s+/g, ' ').slice(0, 96)
+  const instruction = params.instruction?.trim()
+  const operationLabels = {
+    summarize: '邮件摘要',
+    reply: '建议回复',
+    polish: '润色结果',
+    grammar: '语法检查结果',
+  }
+  const languageLabels = { zh: '中文', en: 'English', ja: '日本語' }
+  const guidance = instruction ? `\n\n已结合编写指导：${instruction}` : ''
+  return `${operationLabels[params.operation]}（${languageLabels[params.language]}）\n\n${source}${source.length >= 96 ? '…' : ''}${guidance}`
 }
 
 function escapeSvgText(value: string) {

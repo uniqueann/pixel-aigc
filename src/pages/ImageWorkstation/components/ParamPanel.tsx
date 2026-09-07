@@ -5,6 +5,13 @@ import { Capability } from '@/types'
 interface Props {
   capability: Capability
   mode?: 'remove' | 'repaint'
+  smartEditPrompt: string
+  onSmartEditPromptChange: (prompt: string) => void
+  count: number
+  onCountChange: (count: number) => void
+  resolution: '2k' | '4k'
+  onResolutionChange: (resolution: '2k' | '4k') => void
+  disabled?: boolean
   repaintPrompt: string
   onRepaintPromptChange: (prompt: string) => void
   outpaintMode: 'free' | 'preset'
@@ -19,6 +26,13 @@ const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-sec
 export default function ParamPanel({
   capability,
   mode,
+  smartEditPrompt,
+  onSmartEditPromptChange,
+  count,
+  onCountChange,
+  resolution,
+  onResolutionChange,
+  disabled = false,
   repaintPrompt,
   onRepaintPromptChange,
   outpaintMode,
@@ -26,6 +40,48 @@ export default function ParamPanel({
   presetPlatform,
   onPresetPlatformChange,
 }: Props) {
+  if (capability === Capability.ImageEdit) {
+    return (
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <div>
+          <div style={labelStyle}>编辑要求</div>
+          <Input.TextArea
+            value={smartEditPrompt}
+            disabled={disabled}
+            onChange={(event) => onSmartEditPromptChange(event.target.value)}
+            placeholder="例如：换成纯白电商背景，保留商品细节"
+            autoSize={{ minRows: 5, maxRows: 10 }}
+          />
+        </div>
+        <div>
+          <div style={labelStyle}>生成数量</div>
+          <Slider
+            min={1}
+            max={4}
+            step={1}
+            marks={{ 1: '1', 2: '2', 3: '3', 4: '4' }}
+            value={count}
+            disabled={disabled}
+            onChange={onCountChange}
+          />
+        </div>
+        <div>
+          <div style={labelStyle}>渲染分辨率</div>
+          <Select
+            style={{ width: '100%' }}
+            value={resolution}
+            disabled={disabled}
+            onChange={onResolutionChange}
+            options={[
+              { value: '2k', label: '2K' },
+              { value: '4k', label: '4K' },
+            ]}
+          />
+        </div>
+      </Space>
+    )
+  }
+
   if (capability === Capability.Relight) {
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>

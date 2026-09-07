@@ -1,6 +1,7 @@
 import { Capability } from '@/types'
 import type { WorkstationToolDefinition } from '../types'
 import { buildInpaintRequest } from './requestBuilders/inpaint'
+import { buildImageEditRequest } from './requestBuilders/imageEdit'
 import { buildOutpaintRequest } from './requestBuilders/outpaint'
 
 const unsupported = () => ({ valid: false, message: '当前工具的画布交互仍在后续迭代中' })
@@ -11,7 +12,16 @@ const buildBasicRequest = (capability: Capability): WorkstationToolDefinition['b
 })
 
 export const WORKSTATION_TOOLS: WorkstationToolDefinition[] = [
-  { slug: 'smart-edit', capability: Capability.ImageEdit, label: '智能编辑', interactionMode: 'params-only', validate: unsupported, buildRequest: buildBasicRequest(Capability.ImageEdit) },
+  {
+    slug: 'smart-edit',
+    capability: Capability.ImageEdit,
+    label: '智能编辑',
+    interactionMode: 'params-only',
+    validate: (context) => context.prompt?.trim()
+      ? { valid: true }
+      : { valid: false, message: '请先填写编辑要求' },
+    buildRequest: buildImageEditRequest,
+  },
   { slug: 'relight', capability: Capability.Relight, label: '重新打光', interactionMode: 'light-control', validate: unsupported, buildRequest: buildBasicRequest(Capability.Relight) },
   { slug: 'remove', capability: Capability.Inpaint, label: '消除', interactionMode: 'mask-paint', buildRequest: (ctx) => buildInpaintRequest(ctx, 'remove') },
   {
