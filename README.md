@@ -2,7 +2,9 @@
 
 电商场景的 AIGC 创作工具，包含邮件助手、图片工作站、工具箱、自由画布四大模块。
 架构设计背景见 [`docs/architecture.md`](./docs/architecture.md)，图片工作站画布方案见
-[`docs/canvas-interaction-plan.md`](./docs/canvas-interaction-plan.md)。
+[`docs/canvas-interaction-plan.md`](./docs/canvas-interaction-plan.md)，统一编辑器领域架构见
+[`docs/pixel-editor-architecture-v1.md`](./docs/pixel-editor-architecture-v1.md)，Stage 3 实施边界见
+[`docs/stage3-editor-architecture-plan.md`](./docs/stage3-editor-architecture-plan.md)。
 
 ## 启动
 
@@ -17,6 +19,8 @@ npm run dev
 
 ```
 src/
+├── editor/           # 编辑器领域模型、Store、Command、Asset/Generation 服务与适配器
+├── features/         # 跨页面业务能力，目前包含图片工作站 Controller 与工具注册表
 ├── layouts/          # 主布局（可折叠侧边导航 + 面包屑 + 内容区）
 ├── router/           # 路由配置（含嵌套路由）+ meta.ts（面包屑/标题用的路径-标签映射）
 ├── components/        # 通用组件：EmptyState、ErrorBoundary
@@ -39,8 +43,26 @@ src/
 
 ## 已完成 / 待补充
 
-当前已完成页面框架、嵌套路由，以及图片工作站的蒙版涂抹、橡皮擦、撤销/重做、
-智能选区 mock、重绘描述和扩图边界/平台预设。任务提交已接入统一 API 封装。
+当前已完成：
 
-真实 AI Provider、对象存储直传、登录鉴权和任务队列仍需后端支持；现阶段蒙版上传使用
-dataURL 占位，智能选区使用前端 mock。
+- 页面框架、嵌套路由、可折叠导航和账号设置弹层。
+- 图片工作站的蒙版涂抹、橡皮擦、局部撤销/重做、智能选区 mock、重绘描述、扩图边界和平台预设。
+- `PixelProject / PixelDocument / Scene / Asset / EditorNode / GenerationJob` 领域契约。
+- Editor Store、节点 Command History、Generation Lineage selectors 及核心单元测试。
+- `GenerationTask → GenerationJob → Asset` 适配链路，以及图片工作站 Controller、工具注册表和请求构建器。
+- 生成结果注册为 Asset，并可作为下一次图片编辑任务的输入继续生成。
+
+当前待补充：
+
+- 自由画布仍是页面占位，下一阶段实现 ImageNode/VideoNode 渲染、选择变换、缩放平移和生成结果入画布。
+- 图片工作站当前使用内置示例图片，真实文件上传和对象存储直传尚未接入。
+- 智能选区仍使用前端 mock；真实 AI Provider、登录鉴权、任务队列、限流和积分结算需要后端支持。
+- Project JSON 保存恢复、自动保存和远端项目持久化尚未实现。
+
+提交前运行：
+
+```bash
+npm test
+npm run build
+npm run lint
+```
