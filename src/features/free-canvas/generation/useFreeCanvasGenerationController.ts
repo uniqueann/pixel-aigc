@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { ResolveGenerationCommand } from '@/editor/commands'
 import { generationIdForTask } from '@/editor/adapters/taskAdapter'
+import { ResolveGenerationCommand } from '@/editor/commands'
 import { GenerationService } from '@/editor/services/generationService'
 import { useEditorStore } from '@/editor/store'
 import type {
@@ -9,28 +9,46 @@ import type {
   ImageNode,
   NodeId,
   SceneId,
+  VideoAsset,
+  VideoNode,
 } from '@/editor/types'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
 import { useTaskStore } from '@/store/useTaskStore'
-import { Capability, type GenerationTask, type TextToImageTaskParams } from '@/types'
+import {
+  Capability,
+  type GenerationTask,
+  type TextToImageTaskParams,
+  type TextToVideoTaskParams,
+} from '@/types'
 import type { CanvasPoint, GenerationPlacement } from '../geometry'
 import { calculateGenerationPlacements } from '../geometry'
-import type { ImageSizePreset } from './config'
-import { buildTextToImageRequest } from './requestBuilder'
+import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
 
-function isTextToImageParams(value: unknown): value is TextToImageTaskParams {
+type CanvasGenerationTask = GenerationTask<CanvasGenerationTaskParams>
+type GeneratedMediaAsset = ImageAsset | VideoAsset
+
+function isCanvasGenerationCapability(capability: Capability) {
+  return capability === Capability.TextToImage || capability === Capability.TextToVideo
+}
+
+function isCanvasGenerationParams(
+  value: unknown,
+  capability: Capability,
+): value is CanvasGenerationTaskParams {
   if (!value || typeof value !== 'object') return false
-  const params = value as Partial<TextToImageTaskParams>
-  return typeof params.prompt === 'string'
+  const params = value as Partial<TextToImageTaskParams & TextToVideoTaskParams>
+  const commonValid = typeof params.prompt === 'string'
     && typeof params.count === 'number'
     && typeof params.size?.width === 'number'
     && typeof params.size.height === 'number'
+  if (!commonValid) return false
+  return capability !== Capability.TextToVideo || typeof params.durationSeconds === 'number'
 }
 
 function createGenerationNodes(
-  task: GenerationTask<TextToImageTaskParams>,
+  task: CanvasGenerationTask,
   placements: GenerationPlacement[],
   zIndexStart: number,
 ): GenerationNode[] {
@@ -61,7 +79,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const upsertTask = useTaskStore((state) => state.upsertTask)
   const tasks = useTaskStore((state) => state.tasks)
   const [activeTaskId, setActiveTaskId] = useState<string>()
-  const [task, setTask] = useState<GenerationTask<TextToImageTaskParams>>()
+  const [task, setTask] = useState<CanvasGenerationTask>()
   const [submitting, setSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState<string>()
   const [protocolError, setProtocolError] = useState<string>()
@@ -76,11 +94,16 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     const scene = project?.document.scenes.find((item) => item.id === sceneId)
     const placeholder = scene?.nodes.find((node): node is GenerationNode => node.type === 'generation')
     const generation = placeholder ? project?.generations[placeholder.generationId] : undefined
-    return generation?.backendTaskId && isTextToImageParams(generation.input) ? generation : undefined
+    return generation?.backendTaskId
+      && isCanvasGenerationCapability(generation.capability)
+      && isCanvasGenerationParams(generation.input, generation.capability)
+      ? generation
+      : undefined
   }, [project, sceneId])
   const restoredTask = useMemo(() => {
-    if (!restoredGeneration?.backendTaskId || !isTextToImageParams(restoredGeneration.input)) return undefined
-    return tasks[restoredGeneration.backendTaskId] as GenerationTask<TextToImageTaskParams> | undefined
+    if (!restoredGeneration?.backendTaskId
+      || !isCanvasGenerationParams(restoredGeneration.input, restoredGeneration.capability)) return undefined
+    return tasks[restoredGeneration.backendTaskId] as CanvasGenerationTask | undefined
       ?? {
         id: restoredGeneration.backendTaskId,
         capability: restoredGeneration.capability,
@@ -106,8 +129,8 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   }, [readScene])
 
   const resolveTask = useCallback((
-    completedTask: GenerationTask<TextToImageTaskParams>,
-    assets: ImageAsset[],
+    completedTask: CanvasGenerationTask,
+    assets: GeneratedMediaAsset[],
     fallbackPlacements: GenerationPlacement[] = [],
     placeholderIds?: NodeId[],
   ) => {
@@ -117,7 +140,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     if (assets.length === 0) {
       idsToRemove.forEach((nodeId) => removeNode(sceneId, nodeId))
       resolvedTaskIdsRef.current.add(completedTask.id)
-      setProtocolError('任务已完成，但接口没有返回图片结果')
+      setProtocolError('任务已完成，但接口没有返回媒体结果')
       return
     }
 
@@ -127,9 +150,8 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       const placement = placeholders[index] ?? fallbackPlacements[index] ?? fallbackPlacements[0]
       const width = placement?.width ?? Math.min(320, asset.width || 320)
       const height = placement?.height ?? Math.min(320, asset.height || 320)
-      const node: ImageNode = {
+      const common = {
         id: `generated-node:${completedTask.id}:${index}`,
-        type: 'image',
         assetId: asset.id,
         name: asset.name,
         x: placement?.x ?? 0,
@@ -142,6 +164,9 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
         locked: false,
         zIndex: baseZIndex + index,
       }
+      const node: ImageNode | VideoNode = asset.type === 'video'
+        ? { ...common, type: 'video', duration: asset.duration, startTime: 0 }
+        : { ...common, type: 'image' }
       return { asset, node }
     })
 
@@ -152,23 +177,33 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   }, [executeCommand, placeholdersForTask, readScene, removeNode, sceneId, selectNodes])
 
   const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
-    if (!isTextToImageParams(nextTask.params)) return
+    if (!isCanvasGenerationCapability(nextTask.capability)
+      || !isCanvasGenerationParams(nextTask.params, nextTask.capability)) return
     const version = `${nextTask.id}:${nextTask.status}:${nextTask.updatedAt}`
     if (handledTaskVersionsRef.current.has(version)) return
     handledTaskVersionsRef.current.add(version)
-    const typedTask = nextTask as GenerationTask<TextToImageTaskParams>
+    const typedTask = nextTask as CanvasGenerationTask
     setTask(typedTask)
-    const adapted = service.reconcile(typedTask, { inputAssetIds: [], outputSize: typedTask.params.size })
+    const adapted = service.reconcile(typedTask, {
+      inputAssetIds: [],
+      outputSize: typedTask.params.size,
+      outputDuration: typedTask.capability === Capability.TextToVideo
+        ? (typedTask.params as TextToVideoTaskParams).durationSeconds
+        : undefined,
+    })
     if (typedTask.status === 'succeeded') {
-      resolveTask(typedTask, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
+      resolveTask(
+        typedTask,
+        adapted.assets.filter((asset): asset is GeneratedMediaAsset => asset.type === 'image' || asset.type === 'video'),
+      )
     }
   }, [resolveTask, service])
 
   const taskQuery = useTaskPolling(activeTaskId ?? restoredGeneration?.backendTaskId, handlePolledTask)
   const displayedTask = task ?? restoredTask
 
-  const submitParams = useCallback(async (
-    params: TextToImageTaskParams,
+  const submitRequest = useCallback(async (
+    request: CanvasGenerationRequest,
     placements: GenerationPlacement[],
     replacedPlaceholders: GenerationNode[] = [],
   ) => {
@@ -177,15 +212,14 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     setSubmissionError(undefined)
     setProtocolError(undefined)
     try {
-      const result = await service.submit({
-        capability: Capability.TextToImage,
-        params,
-        requestId: crypto.randomUUID(),
-      }, {
+      const result = await service.submit(request, {
         inputAssetIds: [],
-        outputSize: params.size,
+        outputSize: request.params.size,
+        outputDuration: request.capability === Capability.TextToVideo
+          ? (request.params as TextToVideoTaskParams).durationSeconds
+          : undefined,
       })
-      const typedTask = result.task as GenerationTask<TextToImageTaskParams>
+      const typedTask = result.task as CanvasGenerationTask
       setTask(typedTask)
       upsertTask(typedTask)
       setActiveTaskId(typedTask.id)
@@ -193,7 +227,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       if (typedTask.status === 'succeeded') {
         resolveTask(
           typedTask,
-          result.assets.filter((asset): asset is ImageAsset => asset.type === 'image'),
+          result.assets.filter((asset): asset is GeneratedMediaAsset => asset.type === 'image' || asset.type === 'video'),
           placements,
           replacedPlaceholders.map((node) => node.id),
         )
@@ -213,23 +247,21 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     }
   }, [addNode, readScene, removeNode, resolveTask, sceneId, selectNodes, service, upsertTask])
 
-  const generate = useCallback(async (
-    prompt: string,
-    preset: ImageSizePreset,
-    count: number,
-    center: CanvasPoint,
-  ) => {
-    const request = buildTextToImageRequest(prompt, preset, count)
+  const generate = useCallback(async (request: CanvasGenerationRequest, center: CanvasPoint) => {
     const placements = calculateGenerationPlacements(center, request.params.size, request.params.count)
-    await submitParams(request.params, placements)
-  }, [submitParams])
+    await submitRequest(request, placements)
+  }, [submitRequest])
 
   const retry = useCallback(async () => {
-    if (!displayedTask) return
+    if (!displayedTask || !isCanvasGenerationCapability(displayedTask.capability)) return
     const placeholders = placeholdersForTask(displayedTask.id)
     const placements = placeholders.map(({ x, y, width, height }) => ({ x, y, width, height }))
-    await submitParams(displayedTask.params, placements, placeholders)
-  }, [displayedTask, placeholdersForTask, submitParams])
+    await submitRequest({
+      capability: displayedTask.capability,
+      params: displayedTask.params,
+      requestId: crypto.randomUUID(),
+    }, placements, placeholders)
+  }, [displayedTask, placeholdersForTask, submitRequest])
 
   const modifyParameters = useCallback(() => {
     if (displayedTask && sceneId) {

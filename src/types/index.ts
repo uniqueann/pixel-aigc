@@ -81,6 +81,14 @@ export interface TextToImageTaskParams {
   count: number
 }
 
+/** 自由画布文生视频任务参数 */
+export interface TextToVideoTaskParams {
+  prompt: string
+  size: { width: number; height: number }
+  durationSeconds: number
+  count: 1
+}
+
 export type EmailAssistOperation = 'summarize' | 'reply' | 'polish' | 'grammar'
 export type EmailAssistLanguage = 'zh' | 'en' | 'ja'
 export type EmailPolishStyle = 'clear' | 'shorten' | 'lengthen' | 'simplify'

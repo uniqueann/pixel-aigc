@@ -5,8 +5,14 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEditorStore } from '@/editor/store'
 import { useTaskStore } from '@/store/useTaskStore'
-import { Capability, type GenerationTask, type TextToImageTaskParams } from '@/types'
+import {
+  Capability,
+  type GenerationTask,
+  type TextToImageTaskParams,
+  type TextToVideoTaskParams,
+} from '@/types'
 import { IMAGE_SIZE_PRESETS } from './config'
+import { buildTextToImageRequest, buildTextToVideoRequest } from './requestBuilder'
 import { useFreeCanvasGenerationController } from './useFreeCanvasGenerationController'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -95,7 +101,10 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     mocks.createTask.mockResolvedValue(processingTask)
 
     await act(async () => {
-      await currentController.generate('未来城市', IMAGE_SIZE_PRESETS[0], 2, { x: 640, y: 360 })
+      await currentController.generate(
+        buildTextToImageRequest('未来城市', IMAGE_SIZE_PRESETS[0], 2),
+        { x: 640, y: 360 },
+      )
     })
 
     let state = useEditorStore.getState()
@@ -149,7 +158,10 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     mocks.createTask.mockResolvedValueOnce(processingTask).mockResolvedValueOnce(retryTask)
 
     await act(async () => {
-      await currentController.generate('失败重试', IMAGE_SIZE_PRESETS[1], 1, { x: 640, y: 360 })
+      await currentController.generate(
+        buildTextToImageRequest('失败重试', IMAGE_SIZE_PRESETS[1], 1),
+        { x: 640, y: 360 },
+      )
     })
     mocks.polling.data = failedTask as unknown as GenerationTask<unknown>
     await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
@@ -180,5 +192,55 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     await act(async () => currentController.modifyParameters())
     expect(useEditorStore.getState().project?.document.scenes[0].nodes).toHaveLength(0)
     expect(currentController.formLocked).toBe(false)
+  })
+
+  it('把文生视频结果作为 VideoNode 写入画布并支持历史回放', async () => {
+    const params: TextToVideoTaskParams = {
+      prompt: '穿过霓虹城市的镜头',
+      size: { width: 1280, height: 720 },
+      durationSeconds: 10,
+      count: 1,
+    }
+    const processingTask: GenerationTask<TextToVideoTaskParams> = {
+      id: 'task-video',
+      capability: Capability.TextToVideo,
+      status: 'processing',
+      params,
+      creditsCost: 1,
+      createdAt: '2026-09-08T00:00:00.000Z',
+      updatedAt: '2026-09-08T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValue(processingTask)
+
+    await act(async () => {
+      await currentController.generate(
+        buildTextToVideoRequest('穿过霓虹城市的镜头', IMAGE_SIZE_PRESETS[3], 10),
+        { x: 640, y: 360 },
+      )
+    })
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes[0]?.type).toBe('generation')
+
+    mocks.polling.data = {
+      ...processingTask,
+      status: 'succeeded',
+      resultUrls: ['/mock/text-to-video-10s.mp4'],
+      updatedAt: '2026-09-08T00:01:00.000Z',
+    }
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+
+    let state = useEditorStore.getState()
+    expect(state.project?.document.scenes[0].nodes[0]).toMatchObject({
+      type: 'video',
+      duration: 10,
+      startTime: 0,
+    })
+    expect(state.project?.assets['asset:task-video:0']).toMatchObject({ type: 'video', duration: 10 })
+    expect(state.undoStack).toHaveLength(1)
+
+    await act(async () => state.undo())
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes).toHaveLength(0)
+    await act(async () => useEditorStore.getState().redo())
+    state = useEditorStore.getState()
+    expect(state.project?.document.scenes[0].nodes[0]?.type).toBe('video')
   })
 })

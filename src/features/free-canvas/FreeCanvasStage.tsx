@@ -1,15 +1,19 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import {
+  AudioMutedOutlined,
+  CaretRightOutlined,
   DeleteOutlined,
   ExpandOutlined,
   MinusOutlined,
+  PauseOutlined,
   PlusOutlined,
   RedoOutlined,
+  SoundOutlined,
   UndoOutlined,
 } from '@ant-design/icons'
 import { Button, Tooltip } from 'antd'
 import { Canvas, FabricImage, FabricText, Group, Point, Rect, Shadow, type FabricObject } from 'fabric'
-import type { EditorNode, GenerationNode, ImageNode, NodeId, ViewportState } from '@/editor/types'
+import type { EditorNode, GenerationNode, ImageNode, NodeId, VideoNode, ViewportState } from '@/editor/types'
 import type { TaskStatus } from '@/types'
 import {
   calculateFitViewport,
@@ -23,7 +27,7 @@ const ARTBOARD_FILL = '#f7f7f5'
 const ARTBOARD_STROKE = '#d6d6d2'
 const SELECTION_COLOR = '#21cfa0'
 
-interface PendingImage {
+interface PendingMedia {
   assetUrl: string
   controller: AbortController
 }
@@ -53,7 +57,7 @@ function applyViewport(canvas: Canvas, viewport: ViewportState) {
   canvas.setViewportTransform([viewport.zoom, 0, 0, viewport.zoom, viewport.panX, viewport.panY])
 }
 
-function applyNodeToObject(object: FabricImage, node: ImageNode) {
+function applyNodeToObject(object: FabricImage, node: ImageNode | VideoNode) {
   const sourceWidth = object.width || node.width
   const sourceHeight = object.height || node.height
   object.set({
@@ -84,6 +88,57 @@ function applyNodeToObject(object: FabricImage, node: ImageNode) {
   })
   object.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false })
   object.setCoords()
+}
+
+function releaseVideo(video: HTMLVideoElement) {
+  video.pause()
+  video.removeAttribute('src')
+  video.load()
+}
+
+function loadVideo(url: string, signal: AbortSignal) {
+  return new Promise<HTMLVideoElement>((resolve, reject) => {
+    const video = document.createElement('video')
+    let settled = false
+    video.crossOrigin = 'anonymous'
+    video.preload = 'auto'
+    video.muted = true
+    video.loop = true
+    video.playsInline = true
+
+    const cleanup = () => {
+      video.removeEventListener('loadeddata', handleLoaded)
+      video.removeEventListener('error', handleError)
+      signal.removeEventListener('abort', handleAbort)
+    }
+    const handleLoaded = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      video.width = video.videoWidth
+      video.height = video.videoHeight
+      resolve(video)
+    }
+    const handleError = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      releaseVideo(video)
+      reject(new Error('浏览器无法解码该视频'))
+    }
+    const handleAbort = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      releaseVideo(video)
+      reject(new DOMException('视频加载已取消', 'AbortError'))
+    }
+    video.addEventListener('loadeddata', handleLoaded)
+    video.addEventListener('error', handleError)
+    signal.addEventListener('abort', handleAbort, { once: true })
+    video.src = url
+    video.load()
+  })
 }
 
 function readNodeTransform(object: FabricImage): NodeTransform {
@@ -205,7 +260,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const objectNodeIdsRef = useRef(new WeakMap<FabricObject, NodeId>())
   const nodesByIdRef = useRef(new Map<NodeId, EditorNode>())
   const generationStatusesRef = useRef(new Map<NodeId, TaskStatus | undefined>())
-  const pendingImagesRef = useRef(new Map<NodeId, PendingImage>())
+  const pendingMediaRef = useRef(new Map<NodeId, PendingMedia>())
+  const objectAssetUrlsRef = useRef(new Map<NodeId, string>())
+  const videoElementsRef = useRef(new Map<NodeId, HTMLVideoElement>())
+  const videoFrameRef = useRef<number>()
   const wantedNodeIdsRef = useRef(new Set<NodeId>())
   const reportedLoadErrorsRef = useRef(new Set<string>())
   const callbacksRef = useRef<StageCallbacks>({
@@ -219,8 +277,51 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const sceneSizeRef = useRef({ width: scene.width, height: scene.height })
   const spacePressedRef = useRef(false)
   const panningRef = useRef(false)
+  const reconcilingObjectsRef = useRef(false)
   const lastPointerRef = useRef({ x: 0, y: 0 })
   const initialFitAppliedRef = useRef(false)
+  const [, setVideoUiVersion] = useState(0)
+
+  const startVideoRendering = useCallback(() => {
+    if (videoFrameRef.current !== undefined) return
+    const renderFrame = () => {
+      const hasPlayingVideo = Array.from(videoElementsRef.current.values())
+        .some((video) => !video.paused && !video.ended)
+      if (!hasPlayingVideo) {
+        videoFrameRef.current = undefined
+        return
+      }
+      canvasRef.current?.requestRenderAll()
+      videoFrameRef.current = requestAnimationFrame(renderFrame)
+    }
+    videoFrameRef.current = requestAnimationFrame(renderFrame)
+  }, [])
+
+  const toggleVideo = useCallback(async (nodeId: NodeId) => {
+    const video = videoElementsRef.current.get(nodeId)
+    if (!video) return
+    if (video.paused) {
+      try {
+        await video.play()
+        startVideoRendering()
+      } catch (error) {
+        const node = nodesByIdRef.current.get(nodeId)
+        const detail = error instanceof Error ? error.message : '未知错误'
+        callbacksRef.current.onAssetLoadError(`视频“${node?.name ?? '生成结果'}”播放失败：${detail}`)
+      }
+    } else {
+      video.pause()
+      canvasRef.current?.requestRenderAll()
+    }
+    setVideoUiVersion((version) => version + 1)
+  }, [startVideoRendering])
+
+  const toggleVideoMuted = useCallback((nodeId: NodeId) => {
+    const video = videoElementsRef.current.get(nodeId)
+    if (!video) return
+    video.muted = !video.muted
+    setVideoUiVersion((version) => version + 1)
+  }, [])
 
   useImperativeHandle(ref, () => ({
     getViewportCenter: () => {
@@ -284,8 +385,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       uniformScaling: true,
     })
     canvasRef.current = canvas
-    const pendingImages = pendingImagesRef.current
+    const pendingMedia = pendingMediaRef.current
     const nodeObjects = nodeObjectsRef.current
+    const videoElements = videoElementsRef.current
+    const objectAssetUrls = objectAssetUrlsRef.current
 
     const artboard = new Rect({
       left: 0,
@@ -324,13 +427,18 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     observer.observe(container)
 
     canvas.on('selection:created', ({ selected }) => {
-      callbacksRef.current.onSelectNode(objectNodeIdsRef.current.get(selected[0]))
+      callbacksRef.current.onSelectNode(selected[0] ? objectNodeIdsRef.current.get(selected[0]) : undefined)
     })
     canvas.on('selection:updated', ({ selected }) => {
-      callbacksRef.current.onSelectNode(objectNodeIdsRef.current.get(selected[0]))
+      callbacksRef.current.onSelectNode(selected[0] ? objectNodeIdsRef.current.get(selected[0]) : undefined)
     })
     canvas.on('selection:cleared', () => {
-      if (!panningRef.current) callbacksRef.current.onSelectNode()
+      if (!panningRef.current && !reconcilingObjectsRef.current) callbacksRef.current.onSelectNode()
+    })
+    canvas.on('mouse:dblclick', ({ target }) => {
+      const nodeId = target ? objectNodeIdsRef.current.get(target) : undefined
+      const node = nodeId ? nodesByIdRef.current.get(nodeId) : undefined
+      if (nodeId && node?.type === 'video') void toggleVideo(nodeId)
     })
     canvas.on('object:scaling', ({ target }) => {
       if (!(target instanceof FabricImage)) return
@@ -430,25 +538,33 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       observer.disconnect()
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
-      pendingImages.forEach(({ controller }) => controller.abort())
-      pendingImages.clear()
+      pendingMedia.forEach(({ controller }) => controller.abort())
+      pendingMedia.clear()
+      videoElements.forEach(releaseVideo)
+      videoElements.clear()
+      objectAssetUrls.clear()
+      if (videoFrameRef.current !== undefined) cancelAnimationFrame(videoFrameRef.current)
+      videoFrameRef.current = undefined
       nodeObjects.clear()
       artboardRef.current = null
       canvasRef.current = null
       void canvas.dispose()
     }
-  }, [])
+  }, [toggleVideo])
 
   useEffect(() => {
     const canvas = canvasRef.current
     const artboard = artboardRef.current
     if (!canvas || !artboard) return
+    reconcilingObjectsRef.current = true
 
     artboard.set({ width: scene.width, height: scene.height })
     artboard.setCoords()
 
     const supportedNodes = scene.nodes
-      .filter((node): node is ImageNode | GenerationNode => node.type === 'image' || node.type === 'generation')
+      .filter((node): node is ImageNode | VideoNode | GenerationNode => (
+        node.type === 'image' || node.type === 'video' || node.type === 'generation'
+      ))
       .slice()
       .sort((a, b) => a.zIndex - b.zIndex)
     const wantedNodeIds = new Set(supportedNodes.map((node) => node.id))
@@ -460,11 +576,15 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       canvas.remove(object)
       nodeObjectsRef.current.delete(nodeId)
       generationStatusesRef.current.delete(nodeId)
+      objectAssetUrlsRef.current.delete(nodeId)
+      const video = videoElementsRef.current.get(nodeId)
+      if (video) releaseVideo(video)
+      videoElementsRef.current.delete(nodeId)
     })
-    pendingImagesRef.current.forEach((pending, nodeId) => {
+    pendingMediaRef.current.forEach((pending, nodeId) => {
       if (wantedNodeIds.has(nodeId)) return
       pending.controller.abort()
-      pendingImagesRef.current.delete(nodeId)
+      pendingMediaRef.current.delete(nodeId)
     })
 
     const reorderObjects = () => {
@@ -497,42 +617,63 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         return
       }
 
-      if (existing instanceof FabricImage) {
+      const asset = assets[node.assetId]
+      if (!asset || (node.type === 'image' && asset.type !== 'image') || (node.type === 'video' && asset.type !== 'video')) return
+
+      if (existing instanceof FabricImage && objectAssetUrlsRef.current.get(node.id) === asset.url) {
         applyNodeToObject(existing, node)
         return
       }
+      if (existing) {
+        canvas.remove(existing)
+        nodeObjectsRef.current.delete(node.id)
+        objectAssetUrlsRef.current.delete(node.id)
+        const previousVideo = videoElementsRef.current.get(node.id)
+        if (previousVideo) releaseVideo(previousVideo)
+        videoElementsRef.current.delete(node.id)
+      }
 
-      const asset = assets[node.assetId]
-      if (!asset || asset.type !== 'image') return
-      const pending = pendingImagesRef.current.get(node.id)
+      const pending = pendingMediaRef.current.get(node.id)
       if (pending?.assetUrl === asset.url) return
       pending?.controller.abort()
 
       const controller = new AbortController()
-      pendingImagesRef.current.set(node.id, { assetUrl: asset.url, controller })
-      void FabricImage.fromURL(asset.url, { crossOrigin: 'anonymous', signal: controller.signal })
-        .then((image) => {
-          if (!canvasRef.current || !wantedNodeIdsRef.current.has(node.id)) return
-          pendingImagesRef.current.delete(node.id)
-          applyNodeToObject(image, node)
-          nodeObjectsRef.current.set(node.id, image)
-          objectNodeIdsRef.current.set(image, node.id)
-          canvas.add(image)
+      pendingMediaRef.current.set(node.id, { assetUrl: asset.url, controller })
+      const mediaPromise = asset.type === 'video'
+        ? loadVideo(asset.url, controller.signal).then((video) => ({ object: new FabricImage(video), video }))
+        : FabricImage.fromURL(asset.url, { crossOrigin: 'anonymous', signal: controller.signal })
+          .then((image) => ({ object: image, video: undefined }))
+      void mediaPromise
+        .then(({ object, video }) => {
+          if (!canvasRef.current || !wantedNodeIdsRef.current.has(node.id)) {
+            if (video) releaseVideo(video)
+            return
+          }
+          pendingMediaRef.current.delete(node.id)
+          applyNodeToObject(object, node)
+          nodeObjectsRef.current.set(node.id, object)
+          objectAssetUrlsRef.current.set(node.id, asset.url)
+          if (video) videoElementsRef.current.set(node.id, video)
+          objectNodeIdsRef.current.set(object, node.id)
+          canvas.add(object)
           reorderObjects()
-          if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(image)
+          if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(object)
           canvas.requestRenderAll()
+          if (video) setVideoUiVersion((version) => version + 1)
         })
         .catch((error: unknown) => {
-          pendingImagesRef.current.delete(node.id)
+          pendingMediaRef.current.delete(node.id)
           if (controller.signal.aborted || reportedLoadErrorsRef.current.has(asset.url)) return
           reportedLoadErrorsRef.current.add(asset.url)
           const detail = error instanceof Error ? error.message : '未知错误'
-          callbacksRef.current.onAssetLoadError(`图片“${asset.name}”加载失败：${detail}`)
+          const mediaLabel = asset.type === 'video' ? '视频' : '图片'
+          callbacksRef.current.onAssetLoadError(`${mediaLabel}“${asset.name}”加载失败：${detail}`)
         })
     })
 
     reorderObjects()
     canvas.requestRenderAll()
+    reconcilingObjectsRef.current = false
   }, [assets, generations, scene.height, scene.nodes, scene.width, selectedNodeId])
 
   useEffect(() => {
@@ -556,6 +697,9 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     ? scene.nodes.find((node) => node.id === selectedNodeId)
     : undefined
   const canDeleteSelected = !!selectedNode && selectedNode.type !== 'generation'
+  const selectedVideo = selectedNode?.type === 'video'
+    ? videoElementsRef.current.get(selectedNode.id)
+    : undefined
 
   return (
     <div className="free-canvas-stage" ref={containerRef}>
@@ -565,13 +709,36 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <Tooltip title="重做（⇧⌘/Ctrl+Z）"><Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} aria-label="重做" /></Tooltip>
         <span className="free-canvas-toolbar-divider" />
         <Tooltip title={selectedNode?.type === 'generation' ? '生成占位不能单独删除' : '删除所选节点'}><Button type="text" danger icon={<DeleteOutlined />} disabled={!canDeleteSelected} onClick={onDelete} aria-label="删除节点" /></Tooltip>
+        {selectedNode?.type === 'video' && (
+          <>
+            <span className="free-canvas-toolbar-divider" />
+            <Tooltip title={selectedVideo?.paused ? '播放视频' : '暂停视频'}>
+              <Button
+                type="text"
+                icon={selectedVideo?.paused ? <CaretRightOutlined /> : <PauseOutlined />}
+                disabled={!selectedVideo}
+                onClick={() => { void toggleVideo(selectedNode.id) }}
+                aria-label={selectedVideo?.paused ? '播放视频' : '暂停视频'}
+              />
+            </Tooltip>
+            <Tooltip title={selectedVideo?.muted ? '取消静音' : '静音'}>
+              <Button
+                type="text"
+                icon={selectedVideo?.muted ? <AudioMutedOutlined /> : <SoundOutlined />}
+                disabled={!selectedVideo}
+                onClick={() => toggleVideoMuted(selectedNode.id)}
+                aria-label={selectedVideo?.muted ? '取消静音' : '静音'}
+              />
+            </Tooltip>
+          </>
+        )}
         <span className="free-canvas-toolbar-divider" />
         <Tooltip title="缩小"><Button type="text" icon={<MinusOutlined />} onClick={() => zoomBy(0.8)} aria-label="缩小画布" /></Tooltip>
         <span className="free-canvas-zoom-label">{Math.round(viewport.zoom * 100)}%</span>
         <Tooltip title="放大"><Button type="text" icon={<PlusOutlined />} onClick={() => zoomBy(1.25)} aria-label="放大画布" /></Tooltip>
         <Tooltip title="适合画板"><Button type="text" icon={<ExpandOutlined />} onClick={fitToScene} aria-label="适合画板" /></Tooltip>
       </div>
-      <div className="free-canvas-help">滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布</div>
+      <div className="free-canvas-help">滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · 双击视频播放/暂停</div>
     </div>
   )
 })

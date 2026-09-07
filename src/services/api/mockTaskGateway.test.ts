@@ -4,6 +4,7 @@ import {
   type EmailAssistTaskParams,
   type ImageEditTaskParams,
   type TextToImageTaskParams,
+  type TextToVideoTaskParams,
 } from '@/types'
 import { createMockTask, getMockTask, resetMockTasks } from './mockTaskGateway'
 
@@ -43,6 +44,19 @@ describe('mockTaskGateway', () => {
     const completed = await getMockTask(created.id)
     expect(completed.resultUrls).toHaveLength(2)
     expect(completed.resultUrls?.[0]).not.toBe(completed.resultUrls?.[1])
+  })
+
+  it('为文生视频返回与时长匹配的本地视频', async () => {
+    const params: TextToVideoTaskParams = {
+      prompt: '云海日出延时摄影',
+      size: { width: 1280, height: 720 },
+      durationSeconds: 10,
+      count: 1,
+    }
+    const created = await createMockTask({ capability: Capability.TextToVideo, requestId: 'video-1', params })
+    await getMockTask(created.id)
+    const completed = await getMockTask(created.id)
+    expect(completed.resultUrls).toEqual(['/mock/text-to-video-10s.mp4'])
   })
 
   it('为邮件助手返回单条文本结果', async () => {

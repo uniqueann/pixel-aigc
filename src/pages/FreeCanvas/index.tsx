@@ -6,6 +6,10 @@ import { useEditorStore } from '@/editor/store'
 import FreeCanvasStage from '@/features/free-canvas/FreeCanvasStage'
 import GenerationPanel from '@/features/free-canvas/generation/GenerationPanel'
 import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
+import {
+  buildTextToImageRequest,
+  buildTextToVideoRequest,
+} from '@/features/free-canvas/generation/requestBuilder'
 import { useFreeCanvasGenerationController } from '@/features/free-canvas/generation/useFreeCanvasGenerationController'
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
 import type { FreeCanvasStageHandle, NodeTransform } from '@/features/free-canvas/types'
@@ -23,6 +27,7 @@ export default function FreeCanvas() {
   const [prompt, setPrompt] = useState('')
   const [presetKey, setPresetKey] = useState(IMAGE_SIZE_PRESETS[0].key)
   const [count, setCount] = useState(1)
+  const [durationSeconds, setDurationSeconds] = useState(5)
   const stageRef = useRef<FreeCanvasStageHandle>(null)
   const project = useEditorStore((state) => state.project)
   const activeSceneId = useEditorStore((state) => state.activeSceneId)
@@ -74,7 +79,10 @@ export default function FreeCanvas() {
       x: scene?.width ? scene.width / 2 : 0,
       y: scene?.height ? scene.height / 2 : 0,
     }
-    void generation.generate(prompt, preset, count, center)
+    const request = activeSlug === 'text-to-video'
+      ? buildTextToVideoRequest(prompt, preset, durationSeconds)
+      : buildTextToImageRequest(prompt, preset, count)
+    void generation.generate(request, center)
   }
 
   const handleAssetLoadError = useCallback((content: string) => {
@@ -143,6 +151,7 @@ export default function FreeCanvas() {
           prompt={prompt}
           presetKey={presetKey}
           count={count}
+          durationSeconds={durationSeconds}
           task={generation.task}
           submitting={generation.submitting}
           active={generation.active}
@@ -154,6 +163,7 @@ export default function FreeCanvas() {
           onPromptChange={setPrompt}
           onPresetChange={setPresetKey}
           onCountChange={setCount}
+          onDurationChange={setDurationSeconds}
           onGenerate={handleGenerate}
           onRetry={() => { void generation.retry() }}
           onModifyParameters={generation.modifyParameters}

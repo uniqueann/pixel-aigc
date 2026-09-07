@@ -420,6 +420,8 @@ AssetRegistry、GenerationRegistry、GenerationService、task→generation adapt
 
 Fabric viewport、ImageNode/VideoNode、selection/transform/zoom/pan、Text-to-Image/Text-to-Video placeholder、generation success→Asset→Node、从已有 Asset 发起 Variation/Image-to-Video、Project JSON 保存/恢复。
 
+当前进度：空间画布、ImageNode、VideoNode、Text-to-Image 和 Text-to-Video 闭环已经完成；后续进入从已有 Asset 发起 Variation/Image-to-Video 及项目持久化。具体拆分与验收标准见 [Stage 4 FreeCanvas 开发计划](./stage4-freecanvas-development-plan.md)。
+
 ### M5 — Persistence
 
 Project serialization、schema version、autosave、remote project API contract、migration strategy。

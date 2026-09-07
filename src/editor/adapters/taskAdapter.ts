@@ -6,6 +6,7 @@ export interface TaskAdapterOptions {
   inputAssetIds?: AssetId[]
   parentGenerationId?: GenerationId
   outputSize?: { width: number; height: number }
+  outputDuration?: number
 }
 
 export interface AdaptedTask {
@@ -38,7 +39,9 @@ export function adaptGenerationTask<TParams>(
       generationId,
       createdAt: task.updatedAt,
     }
-    return isVideo ? createVideoAsset(common) : createImageAsset({ ...common, source: 'generation' })
+    return isVideo
+      ? createVideoAsset({ ...common, duration: options.outputDuration })
+      : createImageAsset({ ...common, source: 'generation' })
   })
 
   return {

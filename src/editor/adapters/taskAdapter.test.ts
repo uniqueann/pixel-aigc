@@ -41,4 +41,24 @@ describe('GenerationTask Adapter', () => {
     expect(second.generation.id).toBe(first.generation.id)
     expect(second.assets[0].id).toBe(first.assets[0].id)
   })
+
+  it('把文生视频结果转换为带时长的 VideoAsset', () => {
+    const adapted = adaptGenerationTask({
+      ...task,
+      id: 'task-video',
+      capability: Capability.TextToVideo,
+      resultUrls: ['https://example.com/result.mp4'],
+    }, {
+      outputSize: { width: 1280, height: 720 },
+      outputDuration: 10,
+    })
+
+    expect(adapted.assets[0]).toMatchObject({
+      type: 'video',
+      width: 1280,
+      height: 720,
+      duration: 10,
+      mimeType: 'video/mp4',
+    })
+  })
 })

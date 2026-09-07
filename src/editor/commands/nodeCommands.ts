@@ -1,4 +1,4 @@
-import type { Asset, EditorNode, ImageNode, NodeId, SceneId } from '@/editor/types'
+import type { Asset, EditorNode, ImageNode, NodeId, SceneId, VideoNode } from '@/editor/types'
 import type { EditorCommand, EditorContext } from './types'
 
 function findNode(ctx: EditorContext, sceneId: SceneId, nodeId: NodeId) {
@@ -83,16 +83,16 @@ export class InsertGeneratedAssetCommand extends BaseCommand {
   }
 }
 
-export interface GeneratedImageOutput {
+export interface GeneratedMediaOutput {
   asset: Asset
-  node: ImageNode
+  node: ImageNode | VideoNode
 }
 
 export class ResolveGenerationCommand extends BaseCommand {
   constructor(
     private readonly sceneId: SceneId,
     private readonly placeholderNodeIds: NodeId[],
-    private readonly outputs: GeneratedImageOutput[],
+    private readonly outputs: GeneratedMediaOutput[],
   ) { super() }
 
   execute(ctx: EditorContext) {

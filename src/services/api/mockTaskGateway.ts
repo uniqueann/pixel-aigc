@@ -4,6 +4,7 @@ import {
   type GenerationTask,
   type ImageEditTaskParams,
   type TextToImageTaskParams,
+  type TextToVideoTaskParams,
 } from '@/types'
 import type { CreateTaskPayload } from './task'
 
@@ -74,6 +75,11 @@ function createMockResult(task: GenerationTask<unknown>): Pick<GenerationTask<un
   if (task.capability === Capability.TextToImage) {
     const params = task.params as unknown as TextToImageTaskParams
     return { resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockImage(params, index)) }
+  }
+
+  if (task.capability === Capability.TextToVideo) {
+    const params = task.params as unknown as TextToVideoTaskParams
+    return { resultUrls: [`/mock/text-to-video-${params.durationSeconds === 10 ? 10 : 5}s.mp4`] }
   }
 
   if (task.capability === Capability.ImageEdit) {
