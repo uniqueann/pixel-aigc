@@ -1,3 +1,4 @@
+import { cloudEnabled } from '@/cloud/client'
 import { apiClient } from './client'
 
 const ACCEPTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -22,7 +23,7 @@ export async function uploadImage(file: File): Promise<UploadedImage> {
   validateImageFile(file)
   const previewUrl = await readFileAsDataUrl(file)
   const size = await readImageSize(previewUrl)
-  if (useMockGateway) {
+  if (useMockGateway || cloudEnabled) {
     return { url: previewUrl, name: file.name, mimeType: file.type, ...size }
   }
 

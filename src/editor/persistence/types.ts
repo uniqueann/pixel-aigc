@@ -43,6 +43,7 @@ export interface CanvasDrafts {
 }
 
 export interface ProjectSnapshot {
+  cloud?: { revision: number; pending: boolean; conflict?: boolean }
   schemaVersion: 1
   project: PixelProject
   drafts: CanvasDrafts

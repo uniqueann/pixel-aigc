@@ -33,5 +33,16 @@ export async function databaseOperation<T>(
   })
 }
 
-export const readCurrentSnapshot = () => databaseOperation<unknown>('projects', 'readonly', (store) => store.get('current'))
-export const writeCurrentSnapshot = (snapshot: unknown) => databaseOperation('projects', 'readwrite', (store) => store.put(snapshot, 'current'))
+let persistenceUser: string | undefined
+export const setPersistenceUser = (id: string) => { persistenceUser = id }
+export const persistenceScope = () => persistenceUser ?? 'anonymous'
+const currentKey = () => persistenceUser ? `${persistenceUser}:current` : 'current'
+export const readCurrentSnapshot = () => databaseOperation<unknown>('projects', 'readonly', store => store.get(currentKey()))
+export async function writeCurrentSnapshot(snapshot: unknown) {
+  const key = currentKey()
+  const id = (snapshot as { project?: { id?: string } })?.project?.id
+  if (id) await databaseOperation('projects', 'readwrite', store => store.put(snapshot, `${persistenceScope()}:project:${id}`))
+  return databaseOperation('projects', 'readwrite', store => store.put(snapshot, key))
+}
+export const readLegacySnapshot = () => databaseOperation<unknown>('projects', 'readonly', store => store.get('current'))
+export const saveConflictSnapshot = (snapshot: unknown) => databaseOperation('projects', 'readwrite', store => store.put(snapshot, `${persistenceScope()}:conflict:${crypto.randomUUID()}`))

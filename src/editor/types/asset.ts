@@ -4,6 +4,9 @@ interface BaseAsset {
   id: AssetId
   name: string
   url: string
+  storage?: { provider: 'r2'; objectKey: string; projectId: string }
+  accessExpiresAt?: number
+  missing?: boolean
   mimeType: string
   createdAt: string
   source: 'upload' | 'generation' | 'derived'

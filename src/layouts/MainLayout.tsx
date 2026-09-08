@@ -1,3 +1,6 @@
+import { cloudEnabled, supabase } from '@/cloud/client'
+import { flushProject } from '@/editor/persistence/projectPersistence'
+import { useCloudStore } from '@/cloud/sync'
 import { useEffect, useState } from 'react'
 import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu, Modal, Space, Switch } from 'antd'
 import {
@@ -68,6 +71,11 @@ export default function MainLayout() {
     if (key === 'settings') {
       setSettingsSection('general')
       setSettingsOpen(true)
+      return
+    }
+    if (key === 'logout' && cloudEnabled) {
+      if (useCloudStore.getState().busy || useCloudStore.getState().interacting) { message.info('请等待当前同步完成'); return }
+      void flushProject().then(() => supabase!.auth.signOut({ scope: 'local' })).then(({ error }) => { if (error) throw error; window.location.reload() }).catch(error => message.error(String(error.message)))
       return
     }
     message.info(key === 'logout' ? '退出登录功能尚未接入' : '该功能将在后续版本开放')

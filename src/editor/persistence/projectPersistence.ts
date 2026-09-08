@@ -1,8 +1,9 @@
+import { hydrateAssets } from '@/cloud/assets'
 import { useEditorStore } from '@/editor/store'
 import { useTaskStore } from '@/store/useTaskStore'
-import { readCurrentSnapshot, writeCurrentSnapshot } from './database'
+import { readCurrentSnapshot, writeCurrentSnapshot, persistenceScope } from './database'
 import { restoreTaskDrafts } from './restoreDrafts'
-import { parseSnapshot, serializeSnapshot } from './snapshot'
+import { parseSnapshot, serializeSnapshot, persistableSnapshot } from './snapshot'
 import { recoveryForTask, usePersistenceStore } from './persistenceStore'
 import { defaultDrafts, type ProjectSnapshot } from './types'
 
@@ -19,13 +20,15 @@ let suppressChanges = false
 export function currentSnapshot(): ProjectSnapshot {
   const project = useEditorStore.getState().project
   if (!project) throw new Error('当前没有项目')
-  const { drafts, recoveries } = usePersistenceStore.getState()
-  return { schemaVersion: 1, project, drafts, recoveries }
+  const { drafts, recoveries, cloud } = usePersistenceStore.getState()
+  return { schemaVersion: 1, project, drafts, recoveries, cloud }
 }
 
 function changed() {
   if (suppressChanges || usePersistenceStore.getState().phase !== 'ready') return
   revision += 1
+  const cloud = usePersistenceStore.getState().cloud
+  if (cloud && !cloud.pending) usePersistenceStore.setState({ cloud: { ...cloud, pending: true } })
   usePersistenceStore.setState({ status: 'dirty' })
   clearTimeout(timer)
   timer = setTimeout(() => { void flushProject().catch(() => undefined) }, 500)
@@ -41,7 +44,7 @@ export function flushProject(): Promise<void> {
     const savingRevision = revision
     const snapshot = parseSnapshot(currentSnapshot())
     usePersistenceStore.setState({ status: 'saving' })
-    await writeCurrentSnapshot(snapshot)
+    await writeCurrentSnapshot(persistableSnapshot(snapshot))
     savedRevision = savingRevision
     usePersistenceStore.setState({ status: revision === savedRevision ? 'saved' : 'dirty', error: undefined })
   }).catch((error: unknown) => {
@@ -77,7 +80,7 @@ async function acquireLock() {
   if (hasLock) return true
   if (!navigator.locks) throw new Error('此浏览器不支持安全的本地项目编辑锁，请使用新版浏览器')
   return new Promise<boolean>((resolve, reject) => {
-    void navigator.locks.request('pixel-aigc-current-project', { ifAvailable: true }, async (lock) => {
+    void navigator.locks.request(`pixel-aigc-current-project:${persistenceScope()}`, { ifAvailable: true }, async (lock) => {
       if (!lock) { resolve(false); return }
       hasLock = true
       resolve(true)
@@ -96,7 +99,7 @@ export function initializePersistence(): Promise<void> {
       const raw = await readCurrentSnapshot()
       usePersistenceStore.setState({ raw, writable })
       if (raw !== undefined) {
-        applySnapshot(parseSnapshot(raw))
+        applySnapshot(await hydrateAssets(parseSnapshot(raw)))
         savedRevision = revision
       }
       usePersistenceStore.setState({ phase: 'ready' })
@@ -117,6 +120,7 @@ function applySnapshot(snapshot: ProjectSnapshot) {
   useTaskStore.setState({ tasks: {} })
   useEditorStore.getState().loadProject(snapshot.project)
   usePersistenceStore.setState((state) => ({
+    cloud: snapshot.cloud,
     drafts: restoreTaskDrafts(snapshot),
     recoveries: snapshot.recoveries,
     epoch: state.epoch + 1,
@@ -136,12 +140,13 @@ export async function replaceSnapshot(snapshot: ProjectSnapshot) {
   if (!usePersistenceStore.getState().writable) throw new Error('当前页面没有项目编辑权')
   if (hasUnfinishedGeneration()) throw new Error('请先处理未完成的任务')
   const valid = parseSnapshot(snapshot)
+  if (useEditorStore.getState().project && usePersistenceStore.getState().phase === 'ready') await flushProject()
   const previousPhase = usePersistenceStore.getState().phase
   // 替换期间卸载业务入口，并与自动保存共用同一条写入队列。
   usePersistenceStore.setState({ phase: 'loading' })
   clearTimeout(timer)
   const operation = queue.catch(() => undefined).then(async () => {
-    await writeCurrentSnapshot(valid)
+    await writeCurrentSnapshot(persistableSnapshot(valid))
     applySnapshot(valid)
     revision += 1
     savedRevision = revision
@@ -189,4 +194,18 @@ export function downloadJson(value: unknown, filename: string) {
 export function exportProject() {
   const snapshot = currentSnapshot()
   downloadJson(serializeSnapshot(snapshot), `${snapshot.project.name.replace(/[\\/:*?"<>|]/g, '_')}.pixel.json`)
+}
+
+/** 签名地址属于运行时缓存，更新时不生成本地或云端编辑版本。 */
+export function updateRuntimeAssetAccess(items: { id: string; url: string; expiresAt: number }[]) {
+  const previous = suppressChanges
+  suppressChanges = true
+  try {
+    useEditorStore.setState(state => {
+      if (!state.project) return state
+      const assets = { ...state.project.assets }
+      for (const item of items) if (assets[item.id]) assets[item.id] = { ...assets[item.id], url: item.url, accessExpiresAt: item.expiresAt, missing: false }
+      return { project: { ...state.project, assets } }
+    })
+  } finally { suppressChanges = previous }
 }

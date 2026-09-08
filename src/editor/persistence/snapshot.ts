@@ -1,3 +1,4 @@
+import { assetPlaceholder } from '@/cloud/assets'
 import type { PixelProject } from '@/editor/types'
 import { Capability } from '@/types'
 import { defaultDrafts, type ProjectSnapshot } from './types'
@@ -59,6 +60,11 @@ function validateProject(value: unknown): asserts value is PixelProject {
     object(asset)
     if (id !== asset.id) throw new Error('素材 ID 不一致')
     string(asset.id); string(asset.name); string(asset.mimeType); string(asset.createdAt); mediaUrl(asset.url)
+    if (asset.storage !== undefined) {
+      object(asset.storage)
+      if (asset.storage.provider !== 'r2') throw new Error('素材存储类型无效')
+      string(asset.storage.objectKey); string(asset.storage.projectId)
+    }
     if (!['upload', 'generation', 'derived'].includes(String(asset.source))) throw new Error('素材来源无效')
     if (!['image', 'video', 'audio'].includes(String(asset.type))) throw new Error('素材类型无效')
     if (asset.type !== 'audio') { finite(asset.width, true); finite(asset.height, true) }
@@ -175,9 +181,24 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
     snapshot.drafts = value.drafts as unknown as ProjectSnapshot['drafts']
     snapshot.recoveries = value.recoveries as unknown as ProjectSnapshot['recoveries']
   }
+  if ('schemaVersion' in value && value.cloud !== undefined) {
+    object(value.cloud)
+    if (!Number.isInteger(value.cloud.revision) || Number(value.cloud.revision) < 1 || typeof value.cloud.pending !== 'boolean') throw new Error('云端同步版本无效')
+    snapshot.cloud = { revision: Number(value.cloud.revision), pending: value.cloud.pending, conflict: value.cloud.conflict === true }
+  }
   return structuredClone(snapshot)
 }
 
+export function persistableSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
+  const copy = parseSnapshot(snapshot)
+  for (const asset of Object.values(copy.project.assets)) {
+    if (asset.storage?.provider === 'r2') {
+      asset.url = assetPlaceholder(asset.id)
+      delete asset.accessExpiresAt
+    }
+  }
+  return copy
+}
 export function serializeSnapshot(snapshot: ProjectSnapshot) {
-  return JSON.stringify(parseSnapshot(snapshot), null, 2)
+  return JSON.stringify(persistableSnapshot(snapshot), null, 2)
 }

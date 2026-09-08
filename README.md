@@ -69,3 +69,7 @@ npm test
 npm run build
 npm run lint
 ```
+
+## 后端与云同步
+
+认证、`aigc` schema、R2 和 Vercel 配置见 [后端基础设施说明](docs/backend-foundation.md)。默认保留本地模式；外部配置完成后启用 `VITE_CLOUD_MODE=enabled`。

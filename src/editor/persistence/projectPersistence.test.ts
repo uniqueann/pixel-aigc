@@ -5,7 +5,7 @@ import { useEditorStore } from '@/editor/store'
 import * as database from './database'
 import { defaultDrafts } from './types'
 import { usePersistenceStore } from './persistenceStore'
-import { currentSnapshot, flushProject, initializePersistence, newProject, replaceSnapshot } from './projectPersistence'
+import { currentSnapshot, flushProject, initializePersistence, newProject, replaceSnapshot, updateRuntimeAssetAccess } from './projectPersistence'
 
 Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: (_name: string, _options: unknown, callback: (lock: object) => Promise<void>) => callback({}) } })
 
@@ -84,4 +84,14 @@ describe('IndexedDB 项目保存与恢复', () => {
     expect(usePersistenceStore.getState().raw).toEqual({ schemaVersion: 99 })
     expect(await database.readCurrentSnapshot()).toEqual({ schemaVersion: 99 })
   })
+})
+
+it('签名地址刷新不产生业务编辑版本', async () => {
+  useEditorStore.getState().registerAsset({ id: 'cloud-asset', name: '图', type: 'image', width: 10, height: 10, mimeType: 'image/png', source: 'upload', createdAt: '2026-01-01', url: 'https://example.com/old', storage: { provider: 'r2', projectId: useEditorStore.getState().project!.id, objectKey: 'media/test' } })
+  usePersistenceStore.setState({ cloud: { revision: 4, pending: false } })
+  await flushProject()
+  updateRuntimeAssetAccess([{ id: 'cloud-asset', url: 'https://example.com/new', expiresAt: 1000 }])
+  expect(usePersistenceStore.getState().cloud?.pending).toBe(false)
+  expect(usePersistenceStore.getState().status).toBe('saved')
+  expect(useEditorStore.getState().project?.assets['cloud-asset'].url).toBe('https://example.com/new')
 })

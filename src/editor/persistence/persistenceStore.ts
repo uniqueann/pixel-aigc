@@ -3,6 +3,7 @@ import { useEditorStore } from '@/editor/store'
 import { defaultDrafts, type CanvasDrafts, type GenerationRecovery } from './types'
 
 interface PersistenceState {
+  cloud?: import('./types').ProjectSnapshot['cloud']
   phase: 'idle' | 'loading' | 'ready' | 'error'
   writable: boolean
   status: 'saved' | 'dirty' | 'saving' | 'error'
