@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import 'fake-indexeddb/auto'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   Capability,
   type EmailAssistTaskParams,
@@ -88,4 +89,18 @@ describe('mockTaskGateway', () => {
     expect(completed.resultText).toContain('礼貌说明明天发货')
     expect(completed.resultUrls).toBeUndefined()
   })
+  it('重复幂等键返回原任务，模块重载后仍能查询且终态不变化', async () => {
+    const payload = { capability: Capability.TextToImage, requestId: 'durable-mock', params: { prompt: '持久化', size: { width: 512, height: 512 }, count: 1 } }
+    const original = await createMockTask(payload)
+    expect(await createMockTask(payload)).toEqual(original)
+    await getMockTask(original.id)
+    vi.resetModules()
+    const reloaded = await import('./mockTaskGateway')
+    const completed = await reloaded.getMockTask(original.id)
+    expect(completed.status).toBe('succeeded')
+    expect(await reloaded.getMockTask(original.id)).toEqual(completed)
+    await reloaded.cancelMockTask(original.id)
+    expect(await reloaded.getMockTask(original.id)).toEqual(completed)
+  })
+
 })

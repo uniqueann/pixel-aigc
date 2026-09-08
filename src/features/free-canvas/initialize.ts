@@ -5,6 +5,7 @@ import { calculateInitialImageNode } from './geometry'
 
 export function ensureFreeCanvasContent() {
   let state = useEditorStore.getState()
+  const isNew = !state.project
   if (!state.project) {
     state.createProject('自由画布', { width: 1280, height: 720 })
     state = useEditorStore.getState()
@@ -12,7 +13,7 @@ export function ensureFreeCanvasContent() {
 
   const sceneId = state.activeSceneId
   const project = state.project
-  if (!project || !sceneId) return
+  if (!project || !sceneId || !isNew) return
 
   const scene = project.document.scenes.find((item) => item.id === sceneId)
   if (!scene || scene.nodes.length > 0) return

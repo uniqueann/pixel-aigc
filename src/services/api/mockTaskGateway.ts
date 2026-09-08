@@ -1,3 +1,4 @@
+import { databaseOperation } from '@/editor/persistence/database'
 import {
   Capability,
   type EmailAssistTaskParams,
@@ -17,6 +18,8 @@ interface MockTaskRecord {
 const tasks = new Map<string, MockTaskRecord>()
 
 export async function createMockTask<TParams>(payload: CreateTaskPayload<TParams>): Promise<GenerationTask<TParams>> {
+  const existing = await readRecord(`mock:${payload.requestId}`)
+  if (existing) return existing.task as GenerationTask<TParams>
   const timestamp = new Date().toISOString()
   const task: GenerationTask<TParams> = {
     id: `mock:${payload.requestId}`,
@@ -27,13 +30,14 @@ export async function createMockTask<TParams>(payload: CreateTaskPayload<TParams
     createdAt: timestamp,
     updatedAt: timestamp,
   }
-  tasks.set(task.id, { task: task as GenerationTask<unknown>, pollCount: 0 })
+  await writeRecord(task.id, { task: task as GenerationTask<unknown>, pollCount: 0 })
   return task
 }
 
 export async function getMockTask(taskId: string): Promise<GenerationTask<unknown>> {
-  const record = tasks.get(taskId)
-  if (!record) throw new Error('模拟任务不存在')
+  const record = await readRecord(taskId)
+  if (!record) throw new Error('模拟任务不存在，请重新查询或放弃此任务')
+  if (['succeeded', 'failed', 'cancelled'].includes(record.task.status)) return record.task
 
   record.pollCount += 1
   const status = record.pollCount >= 2 ? 'succeeded' : 'processing'
@@ -44,22 +48,39 @@ export async function getMockTask(taskId: string): Promise<GenerationTask<unknow
     ...result,
     updatedAt: new Date().toISOString(),
   }
+  await writeRecord(taskId, record)
   return record.task
 }
 
 export async function listMockTasks() {
-  const items = Array.from(tasks.values(), ({ task }) => task)
+  const records = typeof indexedDB === 'undefined'
+    ? Array.from(tasks.values())
+    : await databaseOperation<MockTaskRecord[]>('mockTasks', 'readonly', (store) => store.getAll())
+  const items = records.map(({ task }) => task)
   return { items, total: items.length }
 }
 
 export async function cancelMockTask(taskId: string) {
-  const record = tasks.get(taskId)
+  const record = await readRecord(taskId)
   if (!record) return
+  if (['succeeded', 'failed', 'cancelled'].includes(record.task.status)) return
   record.task = { ...record.task, status: 'cancelled', updatedAt: new Date().toISOString() }
+  await writeRecord(taskId, record)
 }
 
-export function resetMockTasks() {
+export async function resetMockTasks() {
   tasks.clear()
+  if (typeof indexedDB !== 'undefined') await databaseOperation('mockTasks', 'readwrite', (store) => store.clear())
+}
+
+async function readRecord(taskId: string): Promise<MockTaskRecord | undefined> {
+  if (typeof indexedDB === 'undefined') return tasks.get(taskId)
+  return databaseOperation('mockTasks', 'readonly', (store) => store.get(taskId))
+}
+
+async function writeRecord(taskId: string, record: MockTaskRecord) {
+  if (typeof indexedDB !== 'undefined') await databaseOperation('mockTasks', 'readwrite', (store) => store.put(record, taskId))
+  tasks.set(taskId, record)
 }
 
 function readCount(params: unknown) {

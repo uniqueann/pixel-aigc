@@ -12,7 +12,7 @@ const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
  * 并在状态从"进行中"变为终态时弹一次全局通知。
  * 生产环境建议优先用 WebSocket/SSE 推送，这里先用轮询兜底，接口不用改。
  */
-export function useTaskPolling(taskId: string | undefined, onTask?: (task: GenerationTask<unknown>) => void) {
+export function useTaskPolling(taskId: string | undefined, onTask?: (task: GenerationTask<unknown>) => void, enabled = true) {
   const upsertTask = useTaskStore((s) => s.upsertTask)
   const { notification } = App.useApp()
   const prevStatusRef = useRef<TaskStatus>()
@@ -40,7 +40,7 @@ export function useTaskPolling(taskId: string | undefined, onTask?: (task: Gener
 
       return task
     },
-    enabled: !!taskId,
+    enabled: !!taskId && enabled,
     refetchInterval: (query) => {
       const status = query.state.data?.status
       return status && ACTIVE_STATUSES.has(status) ? 2000 : false

@@ -271,6 +271,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const videoFrameRef = useRef<number>()
   const wantedNodeIdsRef = useRef(new Set<NodeId>())
   const reportedLoadErrorsRef = useRef(new Set<string>())
+  const [mediaLoadVersion, setMediaLoadVersion] = useState(0)
   const callbacksRef = useRef<StageCallbacks>({
     onSelectNode,
     onTransformNode,
@@ -572,6 +573,18 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       ))
       .slice()
       .sort((a, b) => a.zIndex - b.zIndex)
+    const activeAssetUrls = new Set(supportedNodes.flatMap((node) => {
+      if (node.type === 'generation') return []
+      const asset = assets[node.assetId]
+      return asset ? [asset.url] : []
+    }))
+    let removedStaleError = false
+    reportedLoadErrorsRef.current.forEach((url) => {
+      if (activeAssetUrls.has(url)) return
+      reportedLoadErrorsRef.current.delete(url)
+      removedStaleError = true
+    })
+    if (removedStaleError) setMediaLoadVersion((version) => version + 1)
     const wantedNodeIds = new Set(supportedNodes.map((node) => node.id))
     wantedNodeIdsRef.current = wantedNodeIds
     nodesByIdRef.current = new Map(supportedNodes.map((node) => [node.id, node]))
@@ -638,6 +651,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         videoElementsRef.current.delete(node.id)
       }
 
+      if (reportedLoadErrorsRef.current.has(asset.url)) return
       const pending = pendingMediaRef.current.get(node.id)
       if (pending?.assetUrl === asset.url) return
       pending?.controller.abort()
@@ -670,6 +684,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           pendingMediaRef.current.delete(node.id)
           if (controller.signal.aborted || reportedLoadErrorsRef.current.has(asset.url)) return
           reportedLoadErrorsRef.current.add(asset.url)
+          setMediaLoadVersion((version) => version + 1)
           const detail = error instanceof Error ? error.message : '未知错误'
           const mediaLabel = asset.type === 'video' ? '视频' : '图片'
           callbacksRef.current.onAssetLoadError(`${mediaLabel}“${asset.name}”加载失败：${detail}`)
@@ -679,7 +694,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     reorderObjects()
     canvas.requestRenderAll()
     reconcilingObjectsRef.current = false
-  }, [assets, generations, scene.height, scene.nodes, scene.width, selectedNodeId])
+  }, [assets, generations, mediaLoadVersion, scene.height, scene.nodes, scene.width, selectedNodeId])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -722,6 +737,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   return (
     <div className="free-canvas-stage" ref={containerRef}>
       <canvas ref={canvasElementRef} aria-label="自由画布编辑区域" />
+      {reportedLoadErrorsRef.current.size > 0 && <div className="free-canvas-media-error" role="status">
+        部分媒体加载失败，节点数据已保留。
+        <Button size="small" onClick={() => { reportedLoadErrorsRef.current.clear(); setMediaLoadVersion((version) => version + 1) }}>重新加载媒体</Button>
+      </div>}
       {selectedImage && nodeActionPosition && (
         <div className="free-canvas-node-actions" style={nodeActionPosition} aria-label="图片派生操作">
           <Button

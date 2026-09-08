@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { App, Segmented } from 'antd'
+import { Alert, App, Button, Segmented, Space } from 'antd'
+import { Capability } from '@/types'
+import ProjectToolbar from '@/editor/persistence/ProjectToolbar'
+import { flushProject } from '@/editor/persistence/projectPersistence'
+import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
+import type { GenerationDraft } from '@/editor/persistence/types'
 import { RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
 import { useEditorStore } from '@/editor/store'
 import FreeCanvasStage from '@/features/free-canvas/FreeCanvasStage'
@@ -16,17 +21,11 @@ import {
   buildVariationRequest,
 } from '@/features/free-canvas/generation/requestBuilder'
 import {
-  type DerivedGenerationSource,
   useFreeCanvasGenerationController,
 } from '@/features/free-canvas/generation/useFreeCanvasGenerationController'
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
 import type { FreeCanvasStageHandle, NodeTransform } from '@/features/free-canvas/types'
 import { CANVAS_MODES } from './modes'
-
-interface DerivedGenerationContext {
-  mode: DerivedGenerationMode
-  source: DerivedGenerationSource
-}
 
 function isEditingText(target: EventTarget | null) {
   return target instanceof HTMLElement
@@ -37,14 +36,25 @@ export default function FreeCanvas() {
   const { mode } = useParams<{ mode: string }>()
   const navigate = useNavigate()
   const { message } = App.useApp()
-  const [prompt, setPrompt] = useState('')
-  const [presetKey, setPresetKey] = useState(IMAGE_SIZE_PRESETS[0].key)
-  const [count, setCount] = useState(1)
-  const [durationSeconds, setDurationSeconds] = useState(5)
-  const [derivedContext, setDerivedContext] = useState<DerivedGenerationContext>()
-  const [derivedPrompt, setDerivedPrompt] = useState('')
-  const [variationCount, setVariationCount] = useState(4)
-  const [derivedDurationSeconds, setDerivedDurationSeconds] = useState(5)
+  const activeSlug = CANVAS_MODES.find((m) => m.slug === mode)?.slug === 'text-to-video' ? 'text-to-video' : 'text-to-image'
+  const drafts = usePersistenceStore((state) => state.drafts)
+  const { prompt, presetKey, count, durationSeconds } = drafts[activeSlug]
+  const updateDraft = (changes: Partial<GenerationDraft>) => {
+    const state = usePersistenceStore.getState()
+    state.setDrafts({ ...state.drafts, [activeSlug]: { ...state.drafts[activeSlug], ...changes } })
+  }
+  const derivedDraft = drafts.derived
+  const derivedAsset = useEditorStore((state) => derivedDraft ? state.project?.assets[derivedDraft.sourceAssetId] : undefined)
+  const derivedContext = derivedDraft && derivedAsset?.type === 'image'
+    ? { mode: derivedDraft.mode, source: { node: derivedDraft.sourceNode, asset: derivedAsset } }
+    : undefined
+  const updateDerived = (changes: Partial<NonNullable<typeof derivedDraft>>) => {
+    const state = usePersistenceStore.getState()
+    if (state.drafts.derived) state.setDrafts({ ...state.drafts, derived: { ...state.drafts.derived, ...changes } })
+  }
+  const derivedPrompt = derivedDraft?.prompt ?? ''
+  const variationCount = derivedDraft?.count ?? 4
+  const derivedDurationSeconds = derivedDraft?.durationSeconds ?? 5
   const stageRef = useRef<FreeCanvasStageHandle>(null)
   const project = useEditorStore((state) => state.project)
   const activeSceneId = useEditorStore((state) => state.activeSceneId)
@@ -57,13 +67,21 @@ export default function FreeCanvas() {
   const undo = useEditorStore((state) => state.undo)
   const redo = useEditorStore((state) => state.redo)
   const setViewport = useEditorStore((state) => state.setViewport)
-  const activeSlug = CANVAS_MODES.find((m) => m.slug === mode)?.slug ?? CANVAS_MODES[0].slug
   const scene = project?.document.scenes.find((item) => item.id === activeSceneId)
   const generation = useFreeCanvasGenerationController(scene?.id)
 
   useEffect(() => {
     ensureFreeCanvasContent()
+    return () => { void flushProject().catch(() => undefined) }
   }, [])
+
+  useEffect(() => {
+    const task = generation.task
+    if (task && generation.formLocked && !derivedDraft) {
+      const target = task.capability === Capability.TextToVideo ? 'text-to-video' : 'text-to-image'
+      if (activeSlug !== target) navigate(`/canvas/${target}`, { replace: true })
+    }
+  }, [activeSlug, derivedDraft, generation.formLocked, generation.task, navigate])
 
   const handleSelectNode = useCallback((nodeId?: string) => {
     selectNodes(nodeId ? [nodeId] : [])
@@ -112,10 +130,8 @@ export default function FreeCanvas() {
       return
     }
     generation.dismissTask()
-    setDerivedContext({ mode: action, source: { node: { ...node }, asset } })
-    setDerivedPrompt('')
-    setVariationCount(4)
-    setDerivedDurationSeconds(5)
+    const persistence = usePersistenceStore.getState()
+    persistence.setDrafts({ ...persistence.drafts, derived: { mode: action, sourceNode: { ...node }, sourceAssetId: asset.id, prompt: '', count: 4, durationSeconds: 5 } })
   }, [generation, message])
 
   const handleDerivedGenerate = () => {
@@ -128,7 +144,8 @@ export default function FreeCanvas() {
 
   const handleCloseDerived = () => {
     generation.dismissTask()
-    setDerivedContext(undefined)
+    const persistence = usePersistenceStore.getState()
+    persistence.setDrafts({ ...persistence.drafts, derived: undefined })
   }
 
   const handleAssetLoadError = useCallback((content: string) => {
@@ -165,6 +182,12 @@ export default function FreeCanvas() {
 
   return (
     <div className="free-canvas-page">
+      <ProjectToolbar busy={generation.submitting || generation.active || !!generation.pendingSubmission} />
+      {generation.pendingSubmission && !generation.submitting && <Alert type="warning" showIcon message="生成请求等待恢复" description="继续操作会使用原幂等键确认同一次请求，避免重复生成；放弃后将清理本地等待状态。" action={<Space>
+        <Button onClick={() => { void generation.resumeSubmission() }}>继续原请求</Button>
+        <Button onClick={generation.abandonSubmission}>放弃等待</Button>
+      </Space>} />}
+      {generation.pollError && <Alert type="warning" message="原任务暂时无法查询" description={generation.pollError.message} action={<Button onClick={generation.modifyParameters}>放弃占位并修改参数</Button>} />}
       <div className="free-canvas-page-header">
         <Segmented
           options={CANVAS_MODES.map((item) => ({ label: item.label, value: item.slug }))}
@@ -211,9 +234,9 @@ export default function FreeCanvas() {
             protocolError={generation.protocolError}
             pollError={generation.pollError}
             onBack={handleCloseDerived}
-            onPromptChange={setDerivedPrompt}
-            onCountChange={setVariationCount}
-            onDurationChange={setDerivedDurationSeconds}
+            onPromptChange={(prompt) => updateDerived({ prompt })}
+            onCountChange={(count) => updateDerived({ count })}
+            onDurationChange={(durationSeconds) => updateDerived({ durationSeconds })}
             onGenerate={handleDerivedGenerate}
             onRetry={() => { void generation.retry() }}
             onModifyParameters={generation.modifyParameters}
@@ -234,10 +257,10 @@ export default function FreeCanvas() {
             submissionError={generation.submissionError}
             protocolError={generation.protocolError}
             pollError={generation.pollError}
-            onPromptChange={setPrompt}
-            onPresetChange={setPresetKey}
-            onCountChange={setCount}
-            onDurationChange={setDurationSeconds}
+            onPromptChange={(prompt) => updateDraft({ prompt })}
+            onPresetChange={(presetKey) => updateDraft({ presetKey })}
+            onCountChange={(count) => updateDraft({ count })}
+            onDurationChange={(durationSeconds) => updateDraft({ durationSeconds })}
             onGenerate={handleGenerate}
             onRetry={() => { void generation.retry() }}
             onModifyParameters={generation.modifyParameters}

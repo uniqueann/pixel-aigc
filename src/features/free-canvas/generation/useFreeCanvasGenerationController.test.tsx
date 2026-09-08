@@ -3,6 +3,8 @@
 import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defaultDrafts } from '@/editor/persistence/types'
+import { recoveryForTask, usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { useEditorStore } from '@/editor/store'
 import { createImageAsset } from '@/editor/services/assetService'
 import type { GenerationJob, ImageNode } from '@/editor/types'
@@ -67,6 +69,7 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
   let sceneId: string
 
   beforeEach(async () => {
+    usePersistenceStore.setState({ phase: 'idle', writable: true, recoveries: {}, drafts: defaultDrafts() })
     mocks.createTask.mockReset()
     mocks.polling.data = undefined
     mocks.polling.error = null
@@ -529,4 +532,114 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     expect(currentController.submissionError).toBe('网络不可用')
     expect(useEditorStore.getState().project?.document.scenes[0].nodes.filter((node) => node.type === 'generation')).toHaveLength(0)
   })
+  async function reloadController() {
+    await act(async () => root.unmount())
+    mocks.polling.data = undefined
+    useTaskStore.setState({ tasks: {} })
+    root = createRoot(container)
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+  }
+
+  it('控制器重建后查询原任务，恢复占位位置，成功结果只应用一次', async () => {
+    const request = buildTextToImageRequest('刷新恢复', IMAGE_SIZE_PRESETS[0], 1)
+    const task = { id: 'reload-task', capability: Capability.TextToImage, params: request.params, status: 'processing' as const, creditsCost: 1, createdAt: '2026-09-08T00:00:00Z', updatedAt: '2026-09-08T00:00:00Z' }
+    mocks.createTask.mockResolvedValue(task)
+    await act(async () => currentController.generate(request, { x: 100, y: 200 }))
+    await act(async () => useEditorStore.getState().updateNode(sceneId, 'generation-node:reload-task:0', { x: 777, y: 333 }))
+    await reloadController()
+    expect(currentController.task?.id).toBe(task.id)
+    expect(mocks.createTask).toHaveBeenCalledTimes(1)
+    const succeeded = { ...task, status: 'succeeded' as const, resultUrls: ['result.png'], updatedAt: '2026-09-08T00:01:00Z' }
+    mocks.polling.data = succeeded
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes[0]).toMatchObject({ type: 'image', x: 777, y: 333 })
+    expect(recoveryForTask(task.id)?.applied).toBe(true)
+    await act(async () => useEditorStore.getState().undo())
+    await reloadController()
+    mocks.polling.data = succeeded
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes).toEqual([])
+  })
+
+  it('任务号已保存但占位尚未落盘时，刷新后仍按持久化位置放置结果', async () => {
+    const request = buildTextToImageRequest('关键保存窗口', IMAGE_SIZE_PRESETS[0], 1)
+    const task = { id: 'saved-before-placeholder', capability: Capability.TextToImage, params: request.params, status: 'processing' as const, creditsCost: 1, createdAt: '2026-09-08T00:00:00Z', updatedAt: '2026-09-08T00:00:00Z' }
+    await act(async () => {
+      useEditorStore.getState().registerGeneration({
+        id: 'generation:saved-before-placeholder', capability: task.capability, status: task.status,
+        input: task.params, inputAssetIds: [], outputAssetIds: [], backendTaskId: task.id,
+        createdAt: task.createdAt, updatedAt: task.updatedAt,
+      })
+      usePersistenceStore.getState().setRecovery({
+        projectId: useEditorStore.getState().project!.id,
+        sceneId,
+        request,
+        context: { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
+        placements: [{ x: 456, y: 234, width: 320, height: 320 }],
+        replacedPlaceholderIds: [],
+        backendTaskId: task.id,
+        applied: false,
+      })
+    })
+    await reloadController()
+    mocks.polling.data = { ...task, status: 'succeeded', resultUrls: ['recovered.png'], updatedAt: '2026-09-08T00:01:00Z' }
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes[0]).toMatchObject({
+      type: 'image', x: 456, y: 234, width: 320, height: 320,
+    })
+  })
+
+  it('自动重试过程中重建控制器不恢复已消耗额度，手动重试开启新周期', async () => {
+    let source!: ReturnType<typeof addGeneratedSource>
+    await act(async () => { source = addGeneratedSource() })
+    const request = buildVariationRequest(source.asset, '', 1)
+    const task = { id: 'budget-first', capability: Capability.Variation, params: request.params, status: 'processing' as const, creditsCost: 1, createdAt: '2026-09-08T00:00:00Z', updatedAt: '2026-09-08T00:00:00Z' }
+    const retryTask = { ...task, id: 'budget-second' }
+    mocks.createTask.mockResolvedValueOnce(task).mockResolvedValueOnce(retryTask)
+    await act(async () => currentController.generateDerived(request, source))
+    mocks.polling.data = { ...task, status: 'failed', updatedAt: '2026-09-08T00:01:00Z' }
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+    await reloadController()
+    expect(currentController.task?.id).toBe(retryTask.id)
+    expect(currentController.autoRetrying).toBe(true)
+    expect(recoveryForTask(retryTask.id)?.context.autoRetryRemaining).toBe(0)
+    mocks.polling.data = { ...retryTask, status: 'failed', updatedAt: '2026-09-08T00:02:00Z' }
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+    expect(mocks.createTask).toHaveBeenCalledTimes(2)
+    expect(currentController.autoRetrying).toBe(false)
+    mocks.createTask.mockResolvedValue({ ...task, id: 'manual-cycle' })
+    await act(async () => currentController.retry())
+    expect(recoveryForTask('manual-cycle')?.context).toMatchObject({ autoRetryRemaining: 1, retryOfGenerationId: 'generation:budget-second' })
+  })
+
+  it('提交结果未知时不自动重发，用户确认后使用同一个幂等键', async () => {
+    const request = buildTextToImageRequest('网络中断', IMAGE_SIZE_PRESETS[0], 1)
+    mocks.createTask.mockRejectedValueOnce(new Error('连接中断'))
+    await act(async () => currentController.generate(request, { x: 0, y: 0 }))
+    await reloadController()
+    expect(currentController.pendingSubmission?.request.requestId).toBe(request.requestId)
+    expect(currentController.formLocked).toBe(true)
+    expect(mocks.createTask).toHaveBeenCalledTimes(1)
+    mocks.createTask.mockResolvedValue({ id: 'confirmed-task', capability: request.capability, params: request.params, status: 'queued', creditsCost: 1, createdAt: '2026-09-08T00:00:00Z', updatedAt: '2026-09-08T00:00:00Z' })
+    await act(async () => currentController.resumeSubmission())
+    expect(mocks.createTask.mock.calls[1][0].requestId).toBe(request.requestId)
+    expect(currentController.pendingSubmission).toBeUndefined()
+  })
+
+  it('卸载后到达的提交响应不向当前项目注册 Generation 或节点', async () => {
+    const request = buildTextToImageRequest('延迟响应', IMAGE_SIZE_PRESETS[0], 1)
+    let resolveRequest!: (task: GenerationTask<CanvasGenerationTaskParams>) => void
+    mocks.createTask.mockImplementation(() => new Promise((resolve) => { resolveRequest = resolve }))
+    let submitting!: Promise<void>
+    await act(async () => { submitting = currentController.generate(request, { x: 0, y: 0 }) })
+    await reloadController()
+    await act(async () => {
+      resolveRequest({ id: 'late-task', capability: request.capability, params: request.params, status: 'queued', creditsCost: 1, createdAt: '2026-09-08T00:00:00Z', updatedAt: '2026-09-08T00:00:00Z' })
+      await submitting
+    })
+    expect(useEditorStore.getState().project?.generations).toEqual({})
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes).toEqual([])
+    expect(currentController.pendingSubmission).toBeDefined()
+  })
+
 })
