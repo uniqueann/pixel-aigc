@@ -18,6 +18,13 @@ export interface GenerationPlacement extends CanvasPoint {
   height: number
 }
 
+export interface NodeBounds {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
 export function clampZoom(zoom: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
 }
@@ -86,6 +93,44 @@ export function calculateGenerationPlacements(
     y: round(center.y - gridHeight / 2 + Math.floor(index / columns) * (height + GENERATION_NODE_GAP)),
     width: round(width),
     height: round(height),
+  }))
+}
+
+export function calculateNodeBounds(
+  node: Pick<ImageNode, 'x' | 'y' | 'width' | 'height' | 'rotation'>,
+): NodeBounds {
+  const radians = node.rotation * Math.PI / 180
+  const cosine = Math.cos(radians)
+  const sine = Math.sin(radians)
+  const corners = [
+    { x: 0, y: 0 },
+    { x: node.width, y: 0 },
+    { x: 0, y: node.height },
+    { x: node.width, y: node.height },
+  ].map((point) => ({
+    x: node.x + point.x * cosine - point.y * sine,
+    y: node.y + point.x * sine + point.y * cosine,
+  }))
+  return {
+    left: round(Math.min(...corners.map((point) => point.x))),
+    top: round(Math.min(...corners.map((point) => point.y))),
+    right: round(Math.max(...corners.map((point) => point.x))),
+    bottom: round(Math.max(...corners.map((point) => point.y))),
+  }
+}
+
+export function calculateDerivedPlacements(
+  source: Pick<ImageNode, 'x' | 'y' | 'width' | 'height' | 'rotation'>,
+  count: number,
+): GenerationPlacement[] {
+  const normalizedCount = Math.min(4, Math.max(1, Math.round(count)))
+  const bounds = calculateNodeBounds(source)
+  const columns = normalizedCount <= 2 ? normalizedCount : 2
+  return Array.from({ length: normalizedCount }, (_, index) => ({
+    x: round(bounds.right + GENERATION_NODE_GAP + (index % columns) * (source.width + GENERATION_NODE_GAP)),
+    y: round(bounds.top + Math.floor(index / columns) * (source.height + GENERATION_NODE_GAP)),
+    width: round(source.width),
+    height: round(source.height),
   }))
 }
 

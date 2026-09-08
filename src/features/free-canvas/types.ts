@@ -16,12 +16,14 @@ export interface FreeCanvasStageProps {
   viewport: ViewportState
   canUndo: boolean
   canRedo: boolean
+  generationActive: boolean
   onSelectNode: (nodeId?: NodeId) => void
   onTransformNode: (nodeId: NodeId, transform: NodeTransform) => void
   onViewportChange: (viewport: ViewportState) => void
   onUndo: () => void
   onRedo: () => void
   onDelete: () => void
+  onNodeGenerationAction: (action: 'variation' | 'image-to-video', nodeId: NodeId) => void
   onAssetLoadError: (message: string) => void
 }
 

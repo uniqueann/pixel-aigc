@@ -1,6 +1,6 @@
 # Stage 4 FreeCanvas 开发计划
 
-> 状态：Stage 4.1、4.2、4.3 已实现；下一阶段从 Stage 4.4 开始。
+> 状态：Stage 4.1、4.2、4.3、4.4 已实现；下一阶段从 Stage 4.5 开始。
 > 更新时间：2026-09-08
 
 ## 1. Stage 4 目标
@@ -28,7 +28,7 @@ Stage 4 不实现多轨时间线、视频剪辑、音频波形和最终合成渲
 | 4.1 | Fabric 空间画布、选择、移动、缩放、旋转、删除、视口控制与 Command History | 已完成 |
 | 4.2 | 文生图参数、异步占位、多结果入画布、失败重试与位置保留 | 已完成 |
 | 4.3 | VideoNode 渲染、文生视频任务、播放控制和媒体通用生成链路 | 已完成 |
-| 4.4 | 从已有 Asset 发起 Variation 与 Image-to-Video，补齐 Generation Lineage 入口 | 待开发 |
+| 4.4 | 从已有 Asset 发起 Variation 与 Image-to-Video，补齐 Generation Lineage 入口 | 已完成 |
 | 4.5 | Project JSON 保存、恢复、版本迁移和自动保存 | 待开发 |
 | 4.6 | Stage 4 集成验收、性能与错误恢复收口 | 待开发 |
 
@@ -103,11 +103,39 @@ interface TextToVideoTaskParams {
 - 请求构建器、Task Adapter、Mock Gateway 和 Controller 闭环测试通过。
 - `npm test`、`npm run lint`、`npm run build` 通过，并完成浏览器端完整流程验证。
 
-## 7. Stage 4.4 入口
+## 7. Stage 4.4 交付范围
 
-Stage 4.3 完成后，下一轮围绕已有资产继续创作：
+### 7.1 基于节点继续生成
 
-- 图片节点发起 Variation，生成结果作为新的 ImageAsset/ImageNode 放到原节点附近。
-- 图片节点发起 Image-to-Video，复用 Stage 4.3 的视频占位、VideoAsset 和 VideoNode 能力。
-- 生成请求记录输入 Asset ID 和 `parentGenerationId`，形成可查询的 Generation Lineage。
-- 先提供选中节点后的明确操作入口，不提前建设复杂节点图或完整版本树 UI。
+- 选中 `ImageNode` 时，在节点上方显示“裂变”和“生成视频”浮动操作条。
+- 点击操作后，右侧栏切换为派生生成表单并展示源 Asset；顶部文生图/文生视频路由保持不变。
+- Variation 支持可选变化描述和 1–4 个结果，默认生成 4 张。
+- Image-to-Video 复用 `Capability.TextToVideo`，通过 `sourceImageUrl` 区分，支持必填动态描述和 5/10 秒时长。
+- 派生请求使用源 Asset 的 URL 和固有尺寸；节点旋转、缩放和透明度不烘焙到输入图片。
+
+### 7.2 排布与历史
+
+- 提交时根据源节点旋转后的包围盒，在其右侧预留结果位置，固定间距为 32。
+- 结果显示尺寸与源节点相同；两个结果水平排列，三个或四个结果按两列网格排列。
+- 源节点之后移动或删除不影响已预留的占位、任务和结果。
+- 用户移动占位后，最终结果继续沿用移动后的位置和尺寸。
+- 同一任务的全部结果仍由一条 `ResolveGenerationCommand` 写入，支持整批撤销和重做。
+
+### 7.3 Generation Lineage
+
+- `inputAssetIds` 记录源 Asset，是内容血缘的权威关系。
+- 源 Asset 来自生成任务时，`parentGenerationId` 记录其直接父 Generation。
+- `retryOfGenerationId` 单独记录自动或手动重试关系，不占用内容父代字段。
+- 输出 Asset 的 `generationId` 指向实际产生该结果的 Generation。
+
+### 7.4 失败恢复
+
+- 每个派生生成周期在 `failed` 或成功但无结果时自动重试一次。
+- 自动重试创建新的 `requestId`，复用原参数、Lineage 和当前占位位置。
+- 第二次仍失败时保留失败占位，可手动再次重试或修改参数；手动重试开启新的周期。
+- `cancelled`、提交网络错误和轮询网络错误不会创建新的自动重试任务。
+- 空结果会在本地转为失败 Generation，避免画布占位显示错误状态。
+
+## 8. Stage 4.5 入口
+
+下一轮进入项目持久化，覆盖 Project JSON 保存与恢复、schema migration、自动保存边界及生成中任务的恢复策略。

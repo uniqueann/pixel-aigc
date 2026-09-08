@@ -4,6 +4,10 @@ import { ResolveGenerationCommand } from '@/editor/commands'
 import { GenerationService } from '@/editor/services/generationService'
 import { useEditorStore } from '@/editor/store'
 import type {
+  Asset,
+  AssetId,
+  GenerationId,
+  GenerationJob,
   GenerationNode,
   ImageAsset,
   ImageNode,
@@ -17,20 +21,38 @@ import { useTaskStore } from '@/store/useTaskStore'
 import {
   Capability,
   type GenerationTask,
+  type ImageToVideoTaskParams,
   type TextToImageTaskParams,
   type TextToVideoTaskParams,
+  type VariationTaskParams,
 } from '@/types'
 import type { CanvasPoint, GenerationPlacement } from '../geometry'
-import { calculateGenerationPlacements } from '../geometry'
+import { calculateDerivedPlacements, calculateGenerationPlacements } from '../geometry'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
+const EMPTY_RESULT_ERROR = '任务完成但未返回结果'
 
 type CanvasGenerationTask = GenerationTask<CanvasGenerationTaskParams>
 type GeneratedMediaAsset = ImageAsset | VideoAsset
 
+interface SubmissionContext {
+  inputAssetIds: AssetId[]
+  parentGenerationId?: GenerationId
+  retryOfGenerationId?: GenerationId
+  autoRetryRemaining: number
+  automaticRetry: boolean
+}
+
+export interface DerivedGenerationSource {
+  node: ImageNode
+  asset: ImageAsset
+}
+
 function isCanvasGenerationCapability(capability: Capability) {
-  return capability === Capability.TextToImage || capability === Capability.TextToVideo
+  return capability === Capability.TextToImage
+    || capability === Capability.TextToVideo
+    || capability === Capability.Variation
 }
 
 function isCanvasGenerationParams(
@@ -38,13 +60,23 @@ function isCanvasGenerationParams(
   capability: Capability,
 ): value is CanvasGenerationTaskParams {
   if (!value || typeof value !== 'object') return false
-  const params = value as Partial<TextToImageTaskParams & TextToVideoTaskParams>
-  const commonValid = typeof params.prompt === 'string'
-    && typeof params.count === 'number'
+  const params = value as Partial<
+    TextToImageTaskParams & TextToVideoTaskParams & VariationTaskParams & ImageToVideoTaskParams
+  >
+  const commonValid = typeof params.count === 'number'
     && typeof params.size?.width === 'number'
     && typeof params.size.height === 'number'
   if (!commonValid) return false
-  return capability !== Capability.TextToVideo || typeof params.durationSeconds === 'number'
+  if (capability === Capability.Variation) {
+    return typeof params.sourceImageUrl === 'string'
+      && (params.prompt === undefined || typeof params.prompt === 'string')
+  }
+  if (capability === Capability.TextToVideo) {
+    return typeof params.prompt === 'string'
+      && typeof params.durationSeconds === 'number'
+      && (params.sourceImageUrl === undefined || typeof params.sourceImageUrl === 'string')
+  }
+  return capability === Capability.TextToImage && typeof params.prompt === 'string'
 }
 
 function createGenerationNodes(
@@ -68,6 +100,18 @@ function createGenerationNodes(
   }))
 }
 
+function mediaAssets(assets: Asset[]) {
+  return assets.filter((asset): asset is GeneratedMediaAsset => asset.type === 'image' || asset.type === 'video')
+}
+
+function requestForRetry(task: CanvasGenerationTask): CanvasGenerationRequest {
+  return {
+    capability: task.capability as CanvasGenerationRequest['capability'],
+    params: task.params,
+    requestId: crypto.randomUUID(),
+  }
+}
+
 export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) {
   const registerAsset = useEditorStore((state) => state.registerAsset)
   const registerGeneration = useEditorStore((state) => state.registerGeneration)
@@ -81,10 +125,13 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const [activeTaskId, setActiveTaskId] = useState<string>()
   const [task, setTask] = useState<CanvasGenerationTask>()
   const [submitting, setSubmitting] = useState(false)
+  const [autoRetrying, setAutoRetrying] = useState(false)
   const [submissionError, setSubmissionError] = useState<string>()
   const [protocolError, setProtocolError] = useState<string>()
   const resolvedTaskIdsRef = useRef(new Set<string>())
   const handledTaskVersionsRef = useRef(new Set<string>())
+  const contextsByTaskIdRef = useRef(new Map<string, SubmissionContext>())
+  const retryingTaskIdsRef = useRef(new Set<string>())
   const service = useMemo(
     () => new GenerationService({ registerAsset, registerGeneration }),
     [registerAsset, registerGeneration],
@@ -128,22 +175,43 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       .sort((a, b) => (a.resultIndex ?? 0) - (b.resultIndex ?? 0))
   }, [readScene])
 
+  const contextForTask = useCallback((taskId: string): SubmissionContext => {
+    const cached = contextsByTaskIdRef.current.get(taskId)
+    if (cached) return cached
+    const generation = useEditorStore.getState().project?.generations[generationIdForTask(taskId)]
+    return {
+      inputAssetIds: generation?.inputAssetIds ?? [],
+      parentGenerationId: generation?.parentGenerationId,
+      retryOfGenerationId: generation?.retryOfGenerationId,
+      autoRetryRemaining: generation?.inputAssetIds.length && !generation.retryOfGenerationId ? 1 : 0,
+      automaticRetry: false,
+    }
+  }, [])
+
+  const markEmptyResultFailed = useCallback((
+    completedTask: CanvasGenerationTask,
+    generation: GenerationJob,
+  ) => {
+    const failedTask: CanvasGenerationTask = {
+      ...completedTask,
+      status: 'failed',
+      errorMessage: EMPTY_RESULT_ERROR,
+    }
+    setTask(failedTask)
+    upsertTask(failedTask)
+    registerGeneration({ ...generation, status: 'failed', error: EMPTY_RESULT_ERROR })
+    return failedTask
+  }, [registerGeneration, upsertTask])
+
   const resolveTask = useCallback((
     completedTask: CanvasGenerationTask,
     assets: GeneratedMediaAsset[],
     fallbackPlacements: GenerationPlacement[] = [],
     placeholderIds?: NodeId[],
   ) => {
-    if (!sceneId || resolvedTaskIdsRef.current.has(completedTask.id)) return
+    if (!sceneId || resolvedTaskIdsRef.current.has(completedTask.id) || assets.length === 0) return
     const placeholders = placeholdersForTask(completedTask.id)
     const idsToRemove = placeholderIds ?? placeholders.map((node) => node.id)
-    if (assets.length === 0) {
-      idsToRemove.forEach((nodeId) => removeNode(sceneId, nodeId))
-      resolvedTaskIdsRef.current.add(completedTask.id)
-      setProtocolError('任务已完成，但接口没有返回媒体结果')
-      return
-    }
-
     const currentScene = readScene()
     const baseZIndex = Math.max(-1, ...(currentScene?.nodes.map((node) => node.zIndex) ?? [-1])) + 1
     const outputs = assets.map((asset, index) => {
@@ -174,64 +242,74 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     executeCommand(new ResolveGenerationCommand(sceneId, idsToRemove, outputs))
     selectNodes([outputs[0].node.id])
     setProtocolError(undefined)
-  }, [executeCommand, placeholdersForTask, readScene, removeNode, sceneId, selectNodes])
-
-  const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
-    if (!isCanvasGenerationCapability(nextTask.capability)
-      || !isCanvasGenerationParams(nextTask.params, nextTask.capability)) return
-    const version = `${nextTask.id}:${nextTask.status}:${nextTask.updatedAt}`
-    if (handledTaskVersionsRef.current.has(version)) return
-    handledTaskVersionsRef.current.add(version)
-    const typedTask = nextTask as CanvasGenerationTask
-    setTask(typedTask)
-    const adapted = service.reconcile(typedTask, {
-      inputAssetIds: [],
-      outputSize: typedTask.params.size,
-      outputDuration: typedTask.capability === Capability.TextToVideo
-        ? (typedTask.params as TextToVideoTaskParams).durationSeconds
-        : undefined,
-    })
-    if (typedTask.status === 'succeeded') {
-      resolveTask(
-        typedTask,
-        adapted.assets.filter((asset): asset is GeneratedMediaAsset => asset.type === 'image' || asset.type === 'video'),
-      )
-    }
-  }, [resolveTask, service])
-
-  const taskQuery = useTaskPolling(activeTaskId ?? restoredGeneration?.backendTaskId, handlePolledTask)
-  const displayedTask = task ?? restoredTask
+  }, [executeCommand, placeholdersForTask, readScene, sceneId, selectNodes])
 
   const submitRequest = useCallback(async (
-    request: CanvasGenerationRequest,
-    placements: GenerationPlacement[],
-    replacedPlaceholders: GenerationNode[] = [],
+    initialRequest: CanvasGenerationRequest,
+    initialPlacements: GenerationPlacement[],
+    initialReplacedPlaceholders: GenerationNode[] = [],
+    initialContext: SubmissionContext = { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
   ) => {
     if (!sceneId) return
+    if (!initialContext.automaticRetry) setAutoRetrying(false)
     setSubmitting(true)
     setSubmissionError(undefined)
     setProtocolError(undefined)
-    try {
+
+    const submitSingle = async (
+      request: CanvasGenerationRequest,
+      placements: GenerationPlacement[],
+      replacedPlaceholders: GenerationNode[],
+      context: SubmissionContext,
+    ): Promise<void> => {
       const result = await service.submit(request, {
-        inputAssetIds: [],
+        inputAssetIds: context.inputAssetIds,
+        parentGenerationId: context.parentGenerationId,
+        retryOfGenerationId: context.retryOfGenerationId,
         outputSize: request.params.size,
         outputDuration: request.capability === Capability.TextToVideo
           ? (request.params as TextToVideoTaskParams).durationSeconds
           : undefined,
       })
-      const typedTask = result.task as CanvasGenerationTask
+      let typedTask = result.task as CanvasGenerationTask
+      const outputs = mediaAssets(result.assets)
+      contextsByTaskIdRef.current.set(typedTask.id, context)
       setTask(typedTask)
       upsertTask(typedTask)
       setActiveTaskId(typedTask.id)
+      if (context.automaticRetry && !ACTIVE_STATUSES.has(typedTask.status)) setAutoRetrying(false)
 
-      if (typedTask.status === 'succeeded') {
+      const emptyResult = typedTask.status === 'succeeded' && outputs.length === 0
+      if ((typedTask.status === 'failed' || emptyResult) && context.autoRetryRemaining > 0) {
+        if (emptyResult) typedTask = markEmptyResultFailed(typedTask, result.generation)
+        setAutoRetrying(true)
+        await submitSingle(
+          requestForRetry(typedTask),
+          placements,
+          replacedPlaceholders,
+          {
+            ...context,
+            retryOfGenerationId: generationIdForTask(typedTask.id),
+            autoRetryRemaining: context.autoRetryRemaining - 1,
+            automaticRetry: true,
+          },
+        )
+        return
+      }
+
+      if (typedTask.status === 'succeeded' && outputs.length > 0) {
         resolveTask(
           typedTask,
-          result.assets.filter((asset): asset is GeneratedMediaAsset => asset.type === 'image' || asset.type === 'video'),
+          outputs,
           placements,
           replacedPlaceholders.map((node) => node.id),
         )
         return
+      }
+
+      if (emptyResult) {
+        typedTask = markEmptyResultFailed(typedTask, result.generation)
+        setProtocolError(EMPTY_RESULT_ERROR)
       }
 
       replacedPlaceholders.forEach((node) => removeNode(sceneId, node.id))
@@ -240,28 +318,144 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       const placeholders = createGenerationNodes(typedTask, placements, zIndexStart)
       placeholders.forEach((node) => addNode(sceneId, node))
       selectNodes(placeholders.length ? [placeholders[0].id] : [])
+    }
+
+    try {
+      await submitSingle(
+        initialRequest,
+        initialPlacements,
+        initialReplacedPlaceholders,
+        initialContext,
+      )
     } catch (error) {
+      setAutoRetrying(false)
       setSubmissionError(error instanceof Error ? error.message : '生成任务提交失败')
     } finally {
       setSubmitting(false)
     }
-  }, [addNode, readScene, removeNode, resolveTask, sceneId, selectNodes, service, upsertTask])
+  }, [
+    addNode,
+    markEmptyResultFailed,
+    readScene,
+    removeNode,
+    resolveTask,
+    sceneId,
+    selectNodes,
+    service,
+    upsertTask,
+  ])
+
+  const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
+    if (!isCanvasGenerationCapability(nextTask.capability)
+      || !isCanvasGenerationParams(nextTask.params, nextTask.capability)) return
+    const version = `${nextTask.id}:${nextTask.status}:${nextTask.updatedAt}`
+    if (handledTaskVersionsRef.current.has(version)) return
+    handledTaskVersionsRef.current.add(version)
+    let typedTask = nextTask as CanvasGenerationTask
+    const context = contextForTask(typedTask.id)
+    const adapted = service.reconcile(typedTask, {
+      inputAssetIds: context.inputAssetIds,
+      parentGenerationId: context.parentGenerationId,
+      retryOfGenerationId: context.retryOfGenerationId,
+      outputSize: typedTask.params.size,
+      outputDuration: typedTask.capability === Capability.TextToVideo
+        ? (typedTask.params as TextToVideoTaskParams).durationSeconds
+        : undefined,
+    })
+    const outputs = mediaAssets(adapted.assets)
+    const emptyResult = typedTask.status === 'succeeded' && outputs.length === 0
+    if (context.automaticRetry && !ACTIVE_STATUSES.has(typedTask.status)) setAutoRetrying(false)
+    setTask(typedTask)
+    upsertTask(typedTask)
+
+    if ((typedTask.status === 'failed' || emptyResult)
+      && context.autoRetryRemaining > 0
+      && !retryingTaskIdsRef.current.has(typedTask.id)) {
+      if (emptyResult) typedTask = markEmptyResultFailed(typedTask, adapted.generation)
+      retryingTaskIdsRef.current.add(typedTask.id)
+      setAutoRetrying(true)
+      const placeholders = placeholdersForTask(typedTask.id)
+      const placements = placeholders.map(({ x, y, width, height }) => ({ x, y, width, height }))
+      void submitRequest(
+        requestForRetry(typedTask),
+        placements,
+        placeholders,
+        {
+          ...context,
+          retryOfGenerationId: generationIdForTask(typedTask.id),
+          autoRetryRemaining: context.autoRetryRemaining - 1,
+          automaticRetry: true,
+        },
+      ).finally(() => retryingTaskIdsRef.current.delete(typedTask.id))
+      return
+    }
+
+    if (typedTask.status === 'succeeded' && outputs.length > 0) {
+      resolveTask(typedTask, outputs)
+      return
+    }
+    if (emptyResult) {
+      markEmptyResultFailed(typedTask, adapted.generation)
+      setProtocolError(EMPTY_RESULT_ERROR)
+    }
+  }, [
+    contextForTask,
+    markEmptyResultFailed,
+    placeholdersForTask,
+    resolveTask,
+    service,
+    submitRequest,
+    upsertTask,
+  ])
+
+  const taskQuery = useTaskPolling(activeTaskId ?? restoredGeneration?.backendTaskId, handlePolledTask)
+  const displayedTask = task ?? restoredTask
 
   const generate = useCallback(async (request: CanvasGenerationRequest, center: CanvasPoint) => {
     const placements = calculateGenerationPlacements(center, request.params.size, request.params.count)
     await submitRequest(request, placements)
   }, [submitRequest])
 
+  const generateDerived = useCallback(async (
+    request: CanvasGenerationRequest,
+    source: DerivedGenerationSource,
+  ) => {
+    const state = useEditorStore.getState()
+    const latestNode = readScene()?.nodes.find((node): node is ImageNode => (
+      node.id === source.node.id && node.type === 'image'
+    ))
+    const sourceNode = latestNode ?? source.node
+    const origin = source.asset.generationId
+      ? state.project?.generations[source.asset.generationId]
+      : Object.values(state.project?.generations ?? {})
+        .find((generation) => generation.outputAssetIds.includes(source.asset.id))
+    const placements = calculateDerivedPlacements(sourceNode, request.params.count)
+    await submitRequest(request, placements, [], {
+      inputAssetIds: [source.asset.id],
+      parentGenerationId: origin?.id,
+      autoRetryRemaining: 1,
+      automaticRetry: false,
+    })
+  }, [readScene, submitRequest])
+
   const retry = useCallback(async () => {
     if (!displayedTask || !isCanvasGenerationCapability(displayedTask.capability)) return
     const placeholders = placeholdersForTask(displayedTask.id)
     const placements = placeholders.map(({ x, y, width, height }) => ({ x, y, width, height }))
-    await submitRequest({
-      capability: displayedTask.capability,
-      params: displayedTask.params,
-      requestId: crypto.randomUUID(),
-    }, placements, placeholders)
-  }, [displayedTask, placeholdersForTask, submitRequest])
+    const previousContext = contextForTask(displayedTask.id)
+    const derived = previousContext.inputAssetIds.length > 0
+    await submitRequest(
+      requestForRetry(displayedTask),
+      placements,
+      placeholders,
+      {
+        ...previousContext,
+        retryOfGenerationId: generationIdForTask(displayedTask.id),
+        autoRetryRemaining: derived ? 1 : 0,
+        automaticRetry: false,
+      },
+    )
+  }, [contextForTask, displayedTask, placeholdersForTask, submitRequest])
 
   const modifyParameters = useCallback(() => {
     if (displayedTask && sceneId) {
@@ -271,22 +465,35 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     setActiveTaskId(undefined)
     setSubmissionError(undefined)
     setProtocolError(undefined)
+    setAutoRetrying(false)
     selectNodes([])
   }, [displayedTask, placeholdersForTask, removeNode, sceneId, selectNodes])
 
+  const dismissTask = useCallback(() => {
+    if (autoRetrying || (displayedTask?.status && ACTIVE_STATUSES.has(displayedTask.status))) return
+    setTask(undefined)
+    setActiveTaskId(undefined)
+    setSubmissionError(undefined)
+    setProtocolError(undefined)
+  }, [autoRetrying, displayedTask])
+
   const status = displayedTask?.status
+  const active = autoRetrying || (!!status && ACTIVE_STATUSES.has(status))
   return {
     task: displayedTask,
     submitting,
-    active: !!status && ACTIVE_STATUSES.has(status),
-    formLocked: !!status && (ACTIVE_STATUSES.has(status) || status === 'failed' || status === 'cancelled'),
+    autoRetrying,
+    active,
+    formLocked: active || status === 'failed' || status === 'cancelled',
     submissionError,
     protocolError,
     pollError: taskQuery.error,
     polling: taskQuery.isFetching,
     generate,
+    generateDerived,
     retry,
     modifyParameters,
+    dismissTask,
     refetch: taskQuery.refetch,
   }
 }

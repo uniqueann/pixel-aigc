@@ -5,6 +5,7 @@ import { createImageAsset, createVideoAsset } from '@/editor/services/assetServi
 export interface TaskAdapterOptions {
   inputAssetIds?: AssetId[]
   parentGenerationId?: GenerationId
+  retryOfGenerationId?: GenerationId
   outputSize?: { width: number; height: number }
   outputDuration?: number
 }
@@ -53,6 +54,7 @@ export function adaptGenerationTask<TParams>(
       inputAssetIds: options.inputAssetIds ?? [],
       outputAssetIds: assets.map((asset) => asset.id),
       parentGenerationId: options.parentGenerationId,
+      retryOfGenerationId: options.retryOfGenerationId,
       backendTaskId: task.id,
       error: task.errorMessage,
       createdAt: task.createdAt,

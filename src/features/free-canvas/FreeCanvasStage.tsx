@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import {
   AudioMutedOutlined,
+  BranchesOutlined,
   CaretRightOutlined,
   DeleteOutlined,
   ExpandOutlined,
@@ -10,6 +11,7 @@ import {
   RedoOutlined,
   SoundOutlined,
   UndoOutlined,
+  VideoCameraAddOutlined,
 } from '@ant-design/icons'
 import { Button, Tooltip } from 'antd'
 import { Canvas, FabricImage, FabricText, Group, Point, Rect, Shadow, type FabricObject } from 'fabric'
@@ -17,6 +19,7 @@ import type { EditorNode, GenerationNode, ImageNode, NodeId, VideoNode, Viewport
 import type { TaskStatus } from '@/types'
 import {
   calculateFitViewport,
+  calculateNodeBounds,
   clampZoom,
   MIN_NODE_SIZE,
   normalizeNodeTransform,
@@ -244,12 +247,14 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   viewport,
   canUndo,
   canRedo,
+  generationActive,
   onSelectNode,
   onTransformNode,
   onViewportChange,
   onUndo,
   onRedo,
   onDelete,
+  onNodeGenerationAction,
   onAssetLoadError,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -700,10 +705,46 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const selectedVideo = selectedNode?.type === 'video'
     ? videoElementsRef.current.get(selectedNode.id)
     : undefined
+  const selectedImage = selectedNode?.type === 'image' ? selectedNode : undefined
+  const nodeActionPosition = selectedImage ? (() => {
+    const bounds = calculateNodeBounds(selectedImage)
+    const centerX = (bounds.left + bounds.right) / 2 * viewport.zoom + viewport.panX
+    const top = bounds.top * viewport.zoom + viewport.panY
+    const bottom = bounds.bottom * viewport.zoom + viewport.panY
+    const preferredTop = top >= 52 ? top - 48 : bottom + 12
+    return {
+      left: `clamp(104px, ${centerX}px, calc(100% - 104px))`,
+      top: `clamp(12px, ${preferredTop}px, calc(100% - 48px))`,
+      transform: 'translateX(-50%)',
+    }
+  })() : undefined
 
   return (
     <div className="free-canvas-stage" ref={containerRef}>
       <canvas ref={canvasElementRef} aria-label="自由画布编辑区域" />
+      {selectedImage && nodeActionPosition && (
+        <div className="free-canvas-node-actions" style={nodeActionPosition} aria-label="图片派生操作">
+          <Button
+            size="small"
+            type="text"
+            icon={<BranchesOutlined />}
+            disabled={generationActive}
+            onClick={() => onNodeGenerationAction('variation', selectedImage.id)}
+          >
+            裂变
+          </Button>
+          <span className="free-canvas-node-actions-divider" />
+          <Button
+            size="small"
+            type="text"
+            icon={<VideoCameraAddOutlined />}
+            disabled={generationActive}
+            onClick={() => onNodeGenerationAction('image-to-video', selectedImage.id)}
+          >
+            生成视频
+          </Button>
+        </div>
+      )}
       <div className="free-canvas-toolbar" aria-label="画布工具栏">
         <Tooltip title="撤销（⌘/Ctrl+Z）"><Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} aria-label="撤销" /></Tooltip>
         <Tooltip title="重做（⇧⌘/Ctrl+Z）"><Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} aria-label="重做" /></Tooltip>

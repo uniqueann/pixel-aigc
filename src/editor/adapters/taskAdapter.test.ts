@@ -17,6 +17,8 @@ describe('GenerationTask Adapter', () => {
   it('把 API Task 转换为 GenerationJob 和 Asset', () => {
     const adapted = adaptGenerationTask(task, {
       inputAssetIds: ['asset-input'],
+      parentGenerationId: 'generation-parent',
+      retryOfGenerationId: 'generation-failed',
       outputSize: { width: 1024, height: 1024 },
     })
 
@@ -25,6 +27,8 @@ describe('GenerationTask Adapter', () => {
       backendTaskId: 'task-1',
       inputAssetIds: ['asset-input'],
       outputAssetIds: ['asset:task-1:0'],
+      parentGenerationId: 'generation-parent',
+      retryOfGenerationId: 'generation-failed',
     })
     expect(adapted.assets[0]).toMatchObject({
       id: 'asset:task-1:0',

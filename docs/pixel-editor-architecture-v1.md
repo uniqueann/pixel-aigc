@@ -190,6 +190,7 @@ export interface GenerationJob<TInput = unknown> {
   inputAssetIds: AssetId[]
   outputAssetIds: AssetId[]
   parentGenerationId?: GenerationId
+  retryOfGenerationId?: GenerationId
   backendTaskId?: string
   error?: string
   createdAt: string
@@ -197,7 +198,7 @@ export interface GenerationJob<TInput = unknown> {
 }
 ```
 
-`parentGenerationId` 是可选快捷关系；真正的 lineage 以 `inputAssetIds → outputAssetIds` 为主，因此未来可以自然表达 multi-source generation。
+`parentGenerationId` 是可选快捷关系；真正的 lineage 以 `inputAssetIds → outputAssetIds` 为主，因此未来可以自然表达 multi-source generation。`retryOfGenerationId` 单独表示任务重试关系，不能替代内容血缘。
 
 ---
 
@@ -420,7 +421,7 @@ AssetRegistry、GenerationRegistry、GenerationService、task→generation adapt
 
 Fabric viewport、ImageNode/VideoNode、selection/transform/zoom/pan、Text-to-Image/Text-to-Video placeholder、generation success→Asset→Node、从已有 Asset 发起 Variation/Image-to-Video、Project JSON 保存/恢复。
 
-当前进度：空间画布、ImageNode、VideoNode、Text-to-Image 和 Text-to-Video 闭环已经完成；后续进入从已有 Asset 发起 Variation/Image-to-Video 及项目持久化。具体拆分与验收标准见 [Stage 4 FreeCanvas 开发计划](./stage4-freecanvas-development-plan.md)。
+当前进度：空间画布、ImageNode、VideoNode、Text-to-Image、Text-to-Video、Variation 和 Image-to-Video 闭环已经完成；后续进入项目持久化。具体拆分与验收标准见 [Stage 4 FreeCanvas 开发计划](./stage4-freecanvas-development-plan.md)。
 
 ### M5 — Persistence
 

@@ -5,6 +5,7 @@ import {
   type ImageEditTaskParams,
   type TextToImageTaskParams,
   type TextToVideoTaskParams,
+  type VariationTaskParams,
 } from '@/types'
 import { createMockTask, getMockTask, resetMockTasks } from './mockTaskGateway'
 
@@ -44,6 +45,20 @@ describe('mockTaskGateway', () => {
     const completed = await getMockTask(created.id)
     expect(completed.resultUrls).toHaveLength(2)
     expect(completed.resultUrls?.[0]).not.toBe(completed.resultUrls?.[1])
+  })
+
+  it('为图片裂变生成指定数量的候选', async () => {
+    const params: VariationTaskParams = {
+      sourceImageUrl: 'source.png',
+      prompt: '改变光线',
+      size: { width: 1280, height: 720 },
+      count: 4,
+    }
+    const created = await createMockTask({ capability: Capability.Variation, requestId: 'variation-1', params })
+    await getMockTask(created.id)
+    const completed = await getMockTask(created.id)
+    expect(completed.resultUrls).toHaveLength(4)
+    expect(completed.resultUrls?.every((url) => url.startsWith('data:image/svg+xml'))).toBe(true)
   })
 
   it('为文生视频返回与时长匹配的本地视频', async () => {

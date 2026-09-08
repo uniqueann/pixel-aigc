@@ -5,6 +5,7 @@ import {
   type ImageEditTaskParams,
   type TextToImageTaskParams,
   type TextToVideoTaskParams,
+  type VariationTaskParams,
 } from '@/types'
 import type { CreateTaskPayload } from './task'
 
@@ -75,6 +76,17 @@ function createMockResult(task: GenerationTask<unknown>): Pick<GenerationTask<un
   if (task.capability === Capability.TextToImage) {
     const params = task.params as unknown as TextToImageTaskParams
     return { resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockImage(params, index)) }
+  }
+
+  if (task.capability === Capability.Variation) {
+    const params = task.params as unknown as VariationTaskParams
+    return {
+      resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockImage({
+        prompt: params.prompt || '图片裂变',
+        size: params.size,
+        count: params.count,
+      }, index)),
+    }
   }
 
   if (task.capability === Capability.TextToVideo) {

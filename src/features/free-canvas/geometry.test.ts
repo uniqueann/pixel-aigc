@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { createImageAsset } from '@/editor/services/assetService'
 import {
   calculateFitViewport,
+  calculateDerivedPlacements,
   calculateGenerationPlacements,
   calculateInitialImageNode,
+  calculateNodeBounds,
   clampZoom,
   normalizeNodeTransform,
 } from './geometry'
@@ -76,6 +78,17 @@ describe('自由画布几何计算', () => {
     expect(placements).toEqual([
       { x: -196, y: -160, width: 180, height: 320 },
       { x: 16, y: -160, width: 180, height: 320 },
+    ])
+  })
+
+  it('从旋转后源节点的右边缘开始排布派生结果', () => {
+    const source = { x: 100, y: 50, width: 200, height: 100, rotation: 90 }
+    expect(calculateNodeBounds(source)).toEqual({ left: 0, top: 50, right: 100, bottom: 250 })
+    expect(calculateDerivedPlacements(source, 4)).toEqual([
+      { x: 132, y: 50, width: 200, height: 100 },
+      { x: 364, y: 50, width: 200, height: 100 },
+      { x: 132, y: 182, width: 200, height: 100 },
+      { x: 364, y: 182, width: 200, height: 100 },
     ])
   })
 })

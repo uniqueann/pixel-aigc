@@ -89,6 +89,23 @@ export interface TextToVideoTaskParams {
   count: 1
 }
 
+/** 自由画布图片裂变任务参数 */
+export interface VariationTaskParams {
+  sourceImageUrl: string
+  prompt?: string
+  size: { width: number; height: number }
+  count: number
+}
+
+/** 自由画布图生视频任务参数，复用文生视频能力路由 */
+export interface ImageToVideoTaskParams {
+  sourceImageUrl: string
+  prompt: string
+  size: { width: number; height: number }
+  durationSeconds: 5 | 10
+  count: 1
+}
+
 export type EmailAssistOperation = 'summarize' | 'reply' | 'polish' | 'grammar'
 export type EmailAssistLanguage = 'zh' | 'en' | 'ja'
 export type EmailPolishStyle = 'clear' | 'shorten' | 'lengthen' | 'simplify'
