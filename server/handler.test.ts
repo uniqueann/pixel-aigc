@@ -17,9 +17,11 @@ async function request(payload: unknown, method='PUT', url='/api/projects/p') {
 }
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.authenticate.mockResolvedValue({ id: 'owner',email: 'owner@example.com' })
+  mocks.authenticate.mockResolvedValue({ id: 'owner',email: 'owner@example.com',suggestedName: '测试用户',avatarUrl: null,providers: ['email'] })
   mocks.sql.mockImplementation(async (parts: TemplateStringsArray) => {
     const query=parts.join('?')
+    if (query.includes('initialize_member')) return [{ allowed: true }]
+    if (query.includes('from aigc.members m join')) return [{ displayName: '测试用户',workspaceId: '00000000-0000-4000-8000-000000000001',workspaceName: '我的工作空间',role: 'admin' }]
     if (query.includes('select status')) return [{ status: 'active' }]
     if (query.includes('select * from aigc.projects')) return [{ id: 'p',revision: 3 }]
     if (query.includes('update aigc.projects')) return [{ revision: 4 }]
@@ -27,6 +29,19 @@ beforeEach(() => {
   })
 })
 describe('API 认证、版本和写入边界', () => {
+  it('已验证邮箱账号可初始化并获取个人空间，重复请求保持同一空间', async () => {
+    const first = await request(undefined,'POST','/api/me')
+    const second = await request(undefined,'POST','/api/me')
+    expect(first.status).toHaveBeenCalledWith(200)
+    expect(first.json).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner',workspace: expect.objectContaining({ id: '00000000-0000-4000-8000-000000000001' }) }))
+    expect(second.json).toHaveBeenCalledWith(first.json.mock.calls[0][0])
+  })
+  it('停用成员初始化返回可识别的错误码', async () => {
+    mocks.sql.mockResolvedValueOnce([{ allowed: false }])
+    const res = await request(undefined,'POST','/api/me')
+    expect(res.status).toHaveBeenCalledWith(403)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'MEMBER_DISABLED' }))
+  })
   it('无有效身份时不会访问数据库', async () => {
     mocks.authenticate.mockRejectedValue(new HttpError(401,'请登录'))
     const res = await request(body)

@@ -1,4 +1,4 @@
-import { cloudEnabled, supabase } from '@/cloud/client'
+import { authEnabled, supabase } from '@/cloud/client'
 import axios from 'axios'
 
 export const apiClient = axios.create({
@@ -7,7 +7,7 @@ export const apiClient = axios.create({
 })
 
 apiClient.interceptors.request.use(async (config) => {
-  const token = cloudEnabled ? (await supabase!.auth.getSession()).data.session?.access_token : localStorage.getItem('access_token')
+  const token = authEnabled ? (await supabase!.auth.getSession()).data.session?.access_token : localStorage.getItem('access_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -19,7 +19,7 @@ apiClient.interceptors.response.use(
   (err) => {
     // 统一错误处理：401 跳转登录、其余交给调用方 catch
     if (err.response?.status === 401) {
-      if (!cloudEnabled) window.location.href = '/login'
+      if (authEnabled) window.location.href = '/login'
     }
     return Promise.reject(err)
   },

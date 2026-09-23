@@ -1,11 +1,10 @@
-import { cloudEnabled, supabase } from '@/cloud/client'
+import { authEnabled, cloudRequest, supabase } from '@/cloud/client'
 import { flushProject } from '@/editor/persistence/projectPersistence'
 import { useCloudStore } from '@/cloud/sync'
 import { useEffect, useState } from 'react'
-import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu, Modal, Space, Switch } from 'antd'
+import { App, Avatar, Breadcrumb, Button, Dropdown, Input, Layout, Menu, Modal, Space, Switch } from 'antd'
 import {
   AppstoreOutlined,
-  CrownOutlined,
   MailOutlined,
   PictureOutlined,
   ToolOutlined,
@@ -54,9 +53,7 @@ export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
-  const credits = useUserStore((s) => s.credits)
-  const userId = useUserStore((s) => s.userId)
-  const tier = useUserStore((s) => s.tier)
+  const account = useUserStore((s) => s.account)
 
   const segments = location.pathname.split('/').filter(Boolean)
   const topKey = getActiveTopKey(location.pathname)
@@ -73,9 +70,15 @@ export default function MainLayout() {
       setSettingsOpen(true)
       return
     }
-    if (key === 'logout' && cloudEnabled) {
-      if (useCloudStore.getState().busy || useCloudStore.getState().interacting) { message.info('请等待当前同步完成'); return }
-      void flushProject().then(() => supabase!.auth.signOut({ scope: 'local' })).then(({ error }) => { if (error) throw error; window.location.reload() }).catch(error => message.error(String(error.message)))
+    if (key === 'logout' && authEnabled) {
+      void (async () => {
+        try { await flushProject() } catch { message.warning('本地项目保存未完成，请稍后检查当前账号的本地存档') }
+        if (useCloudStore.getState().busy) message.warning('云端同步可能尚未完成；本地存档会保留在当前账号下')
+        useUserStore.getState().setAccount(null)
+        const { error } = await supabase!.auth.signOut({ scope: 'local' })
+        if (error) throw error
+        window.location.replace('/login')
+      })().catch(error => message.error(String(error.message)))
       return
     }
     message.info(key === 'logout' ? '退出登录功能尚未接入' : '该功能将在后续版本开放')
@@ -126,7 +129,6 @@ export default function MainLayout() {
             menu={{
               onClick: handleAccountMenu,
               items: [
-                { key: 'upgrade', icon: <CrownOutlined />, label: '升级方案' },
                 { key: 'personalization', icon: <UserOutlined />, label: '个性化' },
                 { key: 'settings', icon: <SettingOutlined />, label: '设置' },
                 { key: 'help', icon: <QuestionCircleOutlined />, label: '帮助与支持' },
@@ -136,11 +138,11 @@ export default function MainLayout() {
             }}
           >
             <button className="account-trigger" type="button">
-              <Avatar size={34} icon={<UserOutlined />} />
+              <Avatar size={34} src={account?.avatarUrl ?? undefined} icon={account ? undefined : <UserOutlined />}>{account && !account.avatarUrl ? account.displayName.slice(0,1) : null}</Avatar>
               {sidebarOpen ? (
                 <span className="account-trigger-copy">
-                  <span className="account-name">{userId ?? '个人账号'}</span>
-                  <span className="account-meta">{tier.toUpperCase()} · 积分 {credits}</span>
+                  <span className="account-name">{account?.displayName ?? '个人账号'}</span>
+                  <span className="account-meta">{account?.email ?? '本地模式'}</span>
                 </span>
               ) : null}
             </button>
@@ -177,7 +179,7 @@ export default function MainLayout() {
             className="settings-menu"
           />
           <div className="settings-content">
-            <SettingsContent section={settingsSection} credits={credits} tier={tier} />
+            <SettingsContent section={settingsSection} />
           </div>
         </div>
       </Modal>
@@ -185,7 +187,7 @@ export default function MainLayout() {
   )
 }
 
-function SettingsContent({ section, credits, tier }: { section: string; credits: number; tier: string }) {
+function SettingsContent({ section }: { section: string }) {
   if (section === 'personalization') {
     return <SettingsPanel title="个性化" description="管理生成偏好、默认风格和工作台习惯。" />
   }
@@ -199,11 +201,7 @@ function SettingsContent({ section, credits, tier }: { section: string; credits:
     )
   }
   if (section === 'account') {
-    return (
-      <SettingsPanel title="账号" description="查看当前方案和账号资源。">
-        <SettingRow label="当前方案" detail={tier.toUpperCase()}><span>{credits} 积分</span></SettingRow>
-      </SettingsPanel>
-    )
+    return <AccountSettings />
   }
   return (
     <SettingsPanel title="通用" description="调整界面显示和常用体验。">
@@ -211,6 +209,37 @@ function SettingsContent({ section, credits, tier }: { section: string; credits:
       <SettingRow label="语言" detail="界面显示语言"><span>简体中文</span></SettingRow>
     </SettingsPanel>
   )
+}
+
+function AccountSettings() {
+  const account = useUserStore((state) => state.account)
+  const [displayName, setDisplayName] = useState(account?.displayName ?? '')
+  const [workspaceName, setWorkspaceName] = useState(account?.workspace.name ?? '')
+  const [busy, setBusy] = useState(false)
+  const { message } = App.useApp()
+  if (!account) return <SettingsPanel title="账号" description="当前为本地模式，未连接账号。" />
+  const save = async (path: string, body: unknown) => {
+    setBusy(true)
+    try {
+      const next = await cloudRequest<import('@/store/useUserStore').AccountContext>(path, 'PATCH', body)
+      useUserStore.getState().setAccount(next)
+      message.success('已保存')
+    } catch (error) { message.error(error instanceof Error ? error.message : '保存失败') }
+    finally { setBusy(false) }
+  }
+  return <SettingsPanel title="账号" description="管理 Pixel AIGC 的个人资料与工作空间。">
+    <SettingRow label="昵称" detail="仅在 Pixel AIGC 显示">
+      <Space.Compact><Input maxLength={80} value={displayName} onChange={event => setDisplayName(event.target.value)} /><Button disabled={busy || !displayName.trim()} onClick={() => void save('/me', { displayName })}>保存</Button></Space.Compact>
+    </SettingRow>
+    <SettingRow label="个人空间" detail="项目归属的个人空间">
+      <Space.Compact><Input maxLength={80} value={workspaceName} onChange={event => setWorkspaceName(event.target.value)} /><Button disabled={busy || !workspaceName.trim()} onClick={() => void save(`/workspaces/${account.workspace.id}`, { name: workspaceName })}>保存</Button></Space.Compact>
+    </SettingRow>
+    <SettingRow label="邮箱" detail={account.emailVerified ? '已验证' : '未验证'}><span>{account.email}</span></SettingRow>
+    <SettingRow label="登录方式" detail="共享 Supabase 账号"><span>{account.providers.map(p => p === 'google' ? 'Google' : p === 'email' ? '邮箱密码' : p).join('、')}</span></SettingRow>
+    <SettingRow label="账号安全" detail="重置密码也会影响此账号在 ContentUp、EDM 中的密码登录">
+      {account.providers.includes('email') ? <Button onClick={() => window.location.assign('/forgot-password')}>重置密码</Button> : <span>请在 Google 账号中管理登录安全</span>}
+    </SettingRow>
+  </SettingsPanel>
 }
 
 function SettingsPanel({ title, description, children }: { title: string; description: string; children?: React.ReactNode }) {

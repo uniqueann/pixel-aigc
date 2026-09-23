@@ -2,35 +2,34 @@
 
 ## 当前交付边界
 
-React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc` schema 保存项目和素材元数据，Google 登录共用 Supabase Auth，R2 私有桶保存媒体。首轮提供邀请准入、图片上传、项目云同步和冲突保留；真实生成、额度扣减、视频上传和媒体打包导出留待服务商接口确定后接入。
+React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc` schema 保存账号资料、个人工作空间、项目和素材元数据；邮箱密码与 Google 登录共用 Supabase Auth，R2 私有桶保存媒体。注册开放，邮箱需验证。真实生成、额度扣减、视频上传和媒体打包导出留待服务商接口确定后接入。
 
-本地默认关闭云端模式。`VITE_CLOUD_MODE=enabled` 时不会执行 Mock 生成，生成入口返回明确的未接入提示。没有登录配置时不要启用该开关。
+本地默认关闭账号与云端模式。`VITE_AUTH_MODE=enabled` 可独立启用账号，`VITE_CLOUD_MODE=enabled` 启用项目云同步，且要求账号同步启用。账号开启而云同步关闭时，项目仍按 Auth UUID 保存在本地。云同步开启时不会执行 Mock 生成，生成入口返回明确的未接入提示。
 
 ## Supabase 与账号
 
 目标项目：`content-up`（`gnrhyahjegvcicektebh`），区域 `us-west-2`。`aigc` 不加入 exposed schemas，不修改 `public` 原有表、积分或支付逻辑。共享 Auth 的 `handle_new_user` 仍会为新账号创建旧应用免费档案，这是共享用户池的既有行为。
 
-新增表：`members`、`invitations`、`projects`、`assets`、`generations`、`generation_assets`。所有表开启 RLS；邀请表仅由受限领取函数或管理员访问。API 角色 `aigc_api` 无登录、无 BYPASSRLS、无成员写入或 Generation 写入权限。每个业务事务先切换到该角色，再使用事务局部身份设置执行查询。运行登录角色不得拥有管理员权限或继承旧应用角色。
+账号迁移新增 `members.display_name`、`workspaces`、`workspace_members` 与状态审计，给项目补充个人空间归属。现有 `invitations` 保留历史记录，但不参与准入。所有业务表开启 RLS；API 角色 `aigc_api` 无登录、无 BYPASSRLS、无成员状态写入或 Generation 写入权限。每个业务事务先切换到该角色，再使用事务局部身份设置执行查询。运行登录角色不得拥有管理员权限或继承旧应用角色。
 
-在 Supabase 启用 Google Provider。Google OAuth 应用的重定向地址使用 Supabase 控制台给出的 `/auth/v1/callback`，Supabase 的允许跳转地址加入实际 Pixel 首页，如 `http://127.0.0.1:5173/` 和正式 HTTPS 域名。保留其他应用的已有跳转配置、Site URL、注册策略和邮件模板。
+在 Supabase 启用邮箱注册、邮箱验证、Google Provider 和可正常发信的 SMTP。Google OAuth 应用的重定向地址使用 Supabase 控制台给出的 `/auth/v1/callback`；Supabase 的允许跳转地址加入 `http://127.0.0.1:5173/auth/callback*` 与 `https://aigc.contentup.cc/auth/callback*`，保留旧根路径与其他应用已有条目。恢复邮件须在发起请求的浏览器完成 PKCE 交换。共享验证邮件模板目前将确认链接固定到 ContentUp 的 `/auth/confirm`，因此 AIGC 注册后会在 ContentUp 验证，再返回 AIGC 登录；不要宣称验证邮件直接回到 AIGC。修改共享邮件模板前，需回归 ContentUp 和 EDM。
 
-使用 Google 提供商的公开客户端标识与密钥配置到 Supabase 控制台；前端只配置 publishable key。通过 `getUser` 验证用户、邮箱确认状态和 Google 身份后领取邀请，不能用可编辑的 user_metadata 授权。
+Google 提供商的客户端标识与密钥只配置到 Supabase 控制台；前端只配置 publishable key。服务端通过 `getUser` 验证身份和邮箱确认状态，随后幂等初始化 AIGC 成员与个人空间。可编辑的 user_metadata 仅用作初始展示名称，不参与授权。AIGC 停用不封禁共享 Auth 账号。
 
-先在 `.env.local` 配置管理员事务池连接 `AIGC_ADMIN_DATABASE_URL`，再用 `npm run aigc:bootstrap` 创建受限运行账号。命令将随机密码对应的运行连接串保存到权限为 0600 的 `.env.local`，不会打印密码；已有账号时拒绝隐式轮换。
+`aigc_server` 受限运行角色已在共享项目创建，具有 `NOINHERIT`、`NOBYPASSRLS`，仅被授予 `aigc_api` 成员资格；不要重复运行 `aigc:bootstrap` 或重置其密码。运行凭据保存在本机权限为 0600 的 `.env.local`。迁移管理员连接 `AIGC_ADMIN_DATABASE_URL` 只供管理命令使用，不部署到 Vercel。
 
 管理员命令：
 
 ```sh
-npm run aigc:invite -- tester@example.com
-npm run aigc:member -- 用户UUID disabled
-npm run aigc:member -- 用户UUID active
+npm run aigc:member -- 用户UUID disabled 停用原因
+npm run aigc:member -- 用户UUID active 恢复原因
 ```
 
-邀请命令只维护邮箱名单，不发邮件。停用成员不删除共享账号；已签发的媒体访问链接最多在 15 分钟后过期。前端退出使用本地会话范围，避免全局注销其他会话。
+`aigc:invite` 已停用。成员状态变化在同一事务中写入审计表，操作者来自 `AIGC_ADMIN_OPERATOR` 或本机用户名。停用成员不删除共享账号；已签发的媒体访问链接最多在 15 分钟后过期。前端退出使用本地会话范围，避免全局注销其他会话。
 
 ## 凭据和启动
 
-复制 `.env.example` 为 `.env.local`，填写其中各项。运行 API 使用专用数据库登录角色（建议 `aigc_server`），仅授予 `aigc_api` 角色成员资格，不给管理员权限。使用 Supabase Connect 页面中的事务池地址（6543），用户名按其池配置填写专用角色和项目 ref。密码及完整连接串只存环境变量。
+复制 `.env.example` 为 `.env.local`，填写其中各项。运行 API 使用专用数据库登录角色 `aigc_server`，仅授予 `aigc_api` 角色成员资格，不给管理员权限。Vercel 运行连接需使用 Supabase Connect 页面显示的实际事务池地址（6543）及其用户名格式；不能根据区域猜测池化主机。本机已通过 `aws-1-us-west-2.pooler.supabase.com:6543` 的事务池连接验证 `aigc_server` 登录。密码及完整连接串只存环境变量。
 
 数据库迁移采用 `supabase/migrations` 中的 SQL。已有共享项目不要执行 `db reset`，也不要把其他应用的远端迁移缺失误判为待删除对象。本轮迁移使用命名空间限定的新增 DDL；上线前在本地 PostgreSQL 验证，应用后检查表、RLS 和函数权限。
 
@@ -67,7 +66,7 @@ Vercel 使用 Node.js 24，Vite 构建，API 在 `api/[...path].ts`。配置函�
 
 ## API 契约
 
-所有接口要求 Bearer 令牌。`POST /api/me` 原子领取邀请；其他接口还要求 active 成员。错误响应为 `{ error, requestId }`，日志不记录令牌、签名地址或请求全文。
+所有接口要求 Bearer 令牌。`POST /api/me` 幂等初始化个人资料和空间；其他接口还要求 active 成员。`GET /api/me` 只读、`PATCH /api/me` 只改昵称、`PATCH /api/workspaces/:id` 只改本人个人空间名。响应包含 `userId`、邮箱、昵称、头像、登录方式和个人空间。错误响应为 `{ error, code, requestId }`，日志不记录令牌、签名地址或请求全文。
 
 | 接口 | 输入或行为 |
 | --- | --- |
@@ -92,14 +91,16 @@ IndexedDB 当前项目与归档按用户隔离，旧匿名 `current` 仅在点�
 
 ## 验证与上线资料
 
-`npm test` 覆盖 PGlite 中实际迁移、RLS、邀请领取、成员停用、跨用户外键、上传字节核验、版本冲突、网络重试、账号分区与签名剥离。`npm run lint`、`npm run build` 检查前后端代码。
+`npm test` 覆盖 PGlite 中实际迁移、RLS、开放初始化、成员停用、跨用户外键、上传字节核验、版本冲突、网络重试、账号分区与签名剥离。`npm run lint`、`npm run build` 检查前后端代码。
 
-真实联调还需：Google Provider、允许跳转的应用域名、Vercel 团队和项目、R2 桶及凭据、受限数据库连接、至少两个 Google 测试邮箱。联调需验证完整登录与换账号、上传与画布导出、跨设备恢复、签名过期、断网与冲突。没有这些配置时，自动化测试不等于云端端到端验收。
+账号真实联调还需：邮箱注册与验证、至少两个独立测试账号。Google 登录、存量共享账号首次进入、受限数据库连接和个人资料修改已在本机联调通过；共享 SMTP 已启用，AIGC 的生产与本地登录、恢复回调地址已加入 Supabase 允许列表。后续还需验证密码恢复、切换账号、停用恢复，以及 ContentUp 和 EDM 原有登录流程。R2 桶及凭据属于后续云同步与上传联调；自动化测试不能代替真实邮件与 OAuth 验收。
 
 ## 本次数据库应用记录
 
-迁移 `20260908094310_aigc_foundation` 已应用到 `content-up`，本地文件版本与远端迁移历史一致。远端核验：六张表均开启 RLS，anon/authenticated 无 schema USAGE，anon 无邀请函数 EXECUTE，aigc_api 无 Generation INSERT 权限。
+迁移 `20260908094310_aigc_foundation`、`20260923015953_aigc_accounts` 和 `20260923020155_aigc_project_compat` 已应用到 `content-up`，本地文件版本与远端迁移历史一致。兼容迁移给旧项目创建请求自动补齐个人空间并建立复合外键索引。远端核验：账号相关三张表启用 RLS，`aigc_api` 可执行初始化函数且不可再执行邀请函数；原六张业务表依旧启用 RLS，Generation 无运行角色写入权限。
 
-安全顾问新增一条信息级提示：邀请表开启 RLS、没有直接访问策略。这是默认拒绝设计，邀请只经受限函数领取，不应为消除提示而增加开放策略。[顾问说明](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)。原 `public` 函数和 Auth 的既有告警未修改。
+安全顾问对历史邀请表和新状态审计表给出“启用 RLS 但无直接策略”的信息级提示；两表均只允许管理端访问，不应为消除提示而增加开放策略。[顾问说明](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)。原 `public` 函数和 Auth 的既有告警未修改。
 
-浏览器已验证独立测试端口上的 Google 登录入口、受邀成员进入、云端工具栏及空白项目保存状态；使用模拟会话和 API 响应，不能替代真实 OAuth 与 R2 联调。
+旧版曾使用模拟会话验证 Google 入口、云端工具栏及空白项目保存。本轮 Google 登录已通过真实 Supabase Auth 回调，完成成员与工作空间初始化；完整账号验收仍需邮件链路与生产部署验证。
+
+Vercel `pixel-aigc` 的 Production 与 Preview 已更新 `AIGC_DATABASE_URL` 并新增 `VITE_AUTH_MODE=enabled`；两项变量均需新部署生效。回调允许列表保留 ContentUp、EDM 原条目，新增本地与生产 AIGC 的普通登录及密码恢复四个精确地址。

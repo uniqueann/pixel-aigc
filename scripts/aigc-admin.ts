@@ -28,14 +28,19 @@ try {
     })
     console.log('受限运行账号已创建，连接串已写入 .env.local；未打印密码。请将 AIGC_DATABASE_URL 配置到 Vercel。')
   } else if (command === 'invite') {
-    const email = value?.trim().toLowerCase()
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('用法：npm run aigc:invite -- 用户邮箱')
-    await sql`insert into aigc.invitations(email) values(${email}) on conflict(email) do update set status='pending' where aigc.invitations.status='revoked'`
-    console.log('邀请名单已更新；未发送邮件。')
+    throw new Error('AIGC 已开放注册，邀请命令已停用')
   } else if (command === 'member') {
     if (!value || !['active','disabled'].includes(status)) throw new Error('用法：npm run aigc:member -- 用户UUID active或disabled')
-    const rows = await sql`update aigc.members set status=${status} where user_id=${value} returning user_id`
-    if (!rows.length) throw new Error('成员不存在')
+    const operator = process.env.AIGC_ADMIN_OPERATOR || process.env.USER || 'local-admin'
+    const reason = process.argv.slice(5).join(' ').trim() || '管理员手动操作'
+    await sql.begin(async tx => {
+      const [member] = await tx`select status from aigc.members where user_id=${value} for update`
+      if (!member) throw new Error('成员不存在')
+      if (member.status === status) return
+      await tx`update aigc.members set status=${status},updated_at=now() where user_id=${value}`
+      await tx`insert into aigc.member_status_events(user_id,previous_status,next_status,operator,reason)
+        values(${value},${member.status},${status},${operator},${reason})`
+    })
     console.log('应用成员状态已更新；共享 Auth 账号未改变。')
   } else throw new Error('不支持的管理命令')
 } finally { await sql.end() }

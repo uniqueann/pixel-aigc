@@ -22,12 +22,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (Buffer.byteLength(JSON.stringify(body ?? null)) > 3 * 1024 * 1024) throw new HttpError(413, '项目文档超过 3 MB')
     const result = await withIdentity(user.id, user.email, async sql => {
       if (path.join('/') === 'me' && method === 'POST') {
-        const [row] = await sql`select aigc.claim_invitation() as allowed`
-        if (!row.allowed) throw new HttpError(403, '当前账号尚未受邀或已被停用，请联系管理员')
-        return { userId: user.id, email: user.email }
+        const [row] = await sql`select aigc.initialize_member(${user.suggestedName}) as allowed`
+        if (!row.allowed) throw new HttpError(403, '当前账号已被停用，请联系管理员', 'MEMBER_DISABLED')
+        return accountContext(sql, user)
       }
-      const [member] = await sql`select status from aigc.members where user_id=${user.id} and status='active'`
-      if (!member) throw new HttpError(403, '当前账号尚未受邀或已被停用')
+      const [member] = await sql`select status from aigc.members where user_id=${user.id}`
+      if (!member) throw new HttpError(403, '当前账号尚未初始化', 'MEMBER_UNAVAILABLE')
+      if (member.status !== 'active') throw new HttpError(403, '当前账号已被停用，请联系管理员', 'MEMBER_DISABLED')
+      if (path.join('/') === 'me' && method === 'GET') return accountContext(sql, user)
+      if (path.join('/') === 'me' && method === 'PATCH') {
+        const { displayName } = z.object({ displayName: z.string().trim().min(1).max(80) }).strict().parse(body)
+        await sql`update aigc.members set display_name=${displayName},updated_at=now() where user_id=${user.id}`
+        return accountContext(sql, user)
+      }
+      if (path[0] === 'workspaces' && path.length === 2 && method === 'PATCH') {
+        const workspaceId = z.uuid().parse(path[1])
+        const { name } = z.object({ name: z.string().trim().min(1).max(80) }).strict().parse(body)
+        const rows = await sql`update aigc.workspaces set name=${name},updated_at=now() where id=${workspaceId} and owner_id=${user.id} returning id`
+        if (!rows.length) throw new HttpError(404, '工作空间不存在或无权访问', 'NOT_FOUND')
+        return accountContext(sql, user)
+      }
       if (path[0] === 'projects') {
         if (path.length === 1 && method === 'GET') {
           const rows = await sql`select id,name,revision,updated_at as "updatedAt" from aigc.projects where deleted_at is null order by updated_at desc limit 200`
@@ -38,7 +52,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // 创建接口只接收空素材文档；随后上传素材，再进行版本化保存。
           if (input.document.scenes.some(s => s.nodes.some(n => ['image','video','generation'].includes(n.type))) || input.drafts.derived)
             throw new HttpError(400, '请先创建项目，再上传关联素材')
-          const rows = await sql`insert into aigc.projects(id,user_id,name,document,drafts) values(${id},${user.id},${input.name},${sql.json(input.document)},${sql.json(input.drafts)}) on conflict(id) do nothing returning id`
+          const [space] = await sql`select id from aigc.workspaces where owner_id=${user.id}`
+          if (!space) throw new HttpError(403, '个人工作空间不可用', 'WORKSPACE_UNAVAILABLE')
+          const rows = await sql`insert into aigc.projects(id,user_id,workspace_id,name,document,drafts) values(${id},${user.id},${space.id},${input.name},${sql.json(input.document)},${sql.json(input.drafts)}) on conflict(id) do nothing returning id`
           if (!rows.length) {
             const existing = await requireProject(sql, id)
             if (existing.revision !== 1) throw new HttpError(409, '项目已存在，请从云端打开或另存为新项目')
@@ -100,7 +116,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     const status = error instanceof HttpError ? error.status : error instanceof z.ZodError || error instanceof SyntaxError ? 400 : 500
     const message = error instanceof HttpError ? error.message : status === 400 ? '请求参数无效' : '服务暂时不可用，请稍后重试'
-    res.status(status).json({ error: message, requestId })
+    const code = error instanceof HttpError ? error.code : status === 400 ? 'INVALID_REQUEST' : 'SERVER_ERROR'
+    res.status(status).json({ error: message, code, requestId })
     console.error(JSON.stringify({ requestId, userId, status, category: error instanceof Error ? error.name : '未知错误', durationMs: Date.now() - start }))
   }
+}
+
+async function accountContext(sql: import('./db.js').Transaction, user: Awaited<ReturnType<typeof authenticate>>) {
+  const [row] = await sql`select m.display_name as "displayName", w.id as "workspaceId",w.name as "workspaceName",wm.role
+    from aigc.members m join aigc.workspaces w on w.owner_id=m.user_id
+    join aigc.workspace_members wm on wm.workspace_id=w.id and wm.user_id=m.user_id and wm.status='active'
+    where m.user_id=${user.id} and m.status='active'`
+  if (!row) throw new HttpError(403, '账号资料不可用', 'PROFILE_UNAVAILABLE')
+  return { userId: user.id, email: user.email, emailVerified: true, displayName: row.displayName,
+    avatarUrl: user.avatarUrl, providers: user.providers, status: 'active',
+    workspace: { id: row.workspaceId, name: row.workspaceName, type: 'personal', role: row.role } }
 }

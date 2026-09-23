@@ -1,4 +1,4 @@
-import { cloudEnabled } from '@/cloud/client'
+import { authEnabled, cloudEnabled } from '@/cloud/client'
 import { apiClient } from './client'
 import type { Capability, GenerationTask } from '@/types'
 import { cancelMockTask, createMockTask, getMockTask, listMockTasks } from './mockTaskGateway'
@@ -13,7 +13,7 @@ export interface CreateTaskPayload<TParams = Record<string, unknown>> {
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
 
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {
-  if (cloudEnabled) return Promise.reject(new Error('真实生成服务尚未接入，当前可使用上传与项目云同步'))
+  if (authEnabled && !useMockGateway) return Promise.reject(new Error('真实生成服务尚未接入，当前可使用账号与本地项目'))
   if (useMockGateway) return createMockTask(payload)
   return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload)
 }
