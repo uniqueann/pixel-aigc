@@ -797,9 +797,25 @@ a {
   .settings-menu {
     display: flex;
     min-height: auto;
+    min-width: 0;
     overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    overscroll-behavior-x: contain;
     border-right: 0 !important;
     border-bottom: 1px solid var(--color-border) !important;
+  }
+
+  .settings-menu .ant-menu-item {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: max-content;
+    padding-inline: 14px !important;
+  }
+
+  .settings-menu .ant-menu-title-content {
+    overflow: visible;
+    text-overflow: clip;
   }
 
   .settings-content {
