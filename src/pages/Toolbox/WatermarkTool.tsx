@@ -324,14 +324,39 @@ export default function WatermarkTool() {
               <Slider min={5} max={50} value={settings.logoSizePercent} disabled={controlsLocked} onChange={value => updateSettings({ logoSizePercent: value })} />
             </>
           )}
-          <label className="toolbox-field-label">位置</label>
-          <div className="toolbox-anchor-grid">
-            {anchors.map(anchor => <button key={anchor.value} type="button" className={settings.anchor === anchor.value ? 'is-active' : ''} disabled={controlsLocked} aria-label={anchor.label} title={anchor.label} onClick={() => updateSettings({ anchor: anchor.value })}>{anchor.label}</button>)}
-          </div>
+          <label className="toolbox-field-label">排列方式</label>
+          <Radio.Group
+            className="toolbox-layout-options"
+            value={settings.layout}
+            disabled={controlsLocked}
+            onChange={event => updateSettings({ layout: event.target.value })}
+            options={[{ label: '单个', value: 'single' }, { label: '平铺', value: 'tile' }]}
+            optionType="button"
+            buttonStyle="solid"
+          />
+          {settings.layout === 'tile' ? (
+            <>
+              <label className="toolbox-field-label">平铺间距：短边的 {settings.tileGapPercent}%</label>
+              <Slider min={0} max={30} value={settings.tileGapPercent} disabled={controlsLocked} onChange={value => updateSettings({ tileGapPercent: value })} />
+              <label className="toolbox-field-label">旋转角度：{settings.tileRotation}°</label>
+              <Slider min={-60} max={60} value={settings.tileRotation} disabled={controlsLocked} onChange={value => updateSettings({ tileRotation: value })} />
+            </>
+          ) : (
+            <>
+              <label className="toolbox-field-label">位置</label>
+              <div className="toolbox-anchor-grid">
+                {anchors.map(anchor => <button key={anchor.value} type="button" className={settings.anchor === anchor.value ? 'is-active' : ''} disabled={controlsLocked} aria-label={anchor.label} title={anchor.label} onClick={() => updateSettings({ anchor: anchor.value })}>{anchor.label}</button>)}
+              </div>
+            </>
+          )}
           <label className="toolbox-field-label">透明度：{settings.opacity}%</label>
           <Slider min={10} max={100} value={settings.opacity} disabled={controlsLocked} onChange={value => updateSettings({ opacity: value })} />
-          <label className="toolbox-field-label">边距：短边的 {settings.marginPercent}%</label>
-          <Slider min={0} max={10} value={settings.marginPercent} disabled={controlsLocked} onChange={value => updateSettings({ marginPercent: value })} />
+          {settings.layout === 'single' && (
+            <>
+              <label className="toolbox-field-label">边距：短边的 {settings.marginPercent}%</label>
+              <Slider min={0} max={10} value={settings.marginPercent} disabled={controlsLocked} onChange={value => updateSettings({ marginPercent: value })} />
+            </>
+          )}
           <div className="toolbox-presets">
             <label className="toolbox-field-label">本机模板</label>
             <div className="toolbox-preset-row">

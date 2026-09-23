@@ -12,4 +12,16 @@ describe('本机水印模板', () => {
     await deletePreset(saved.id)
     expect(await listPresets('user-a')).toEqual([])
   })
+
+  it('旧模板缺少平铺参数时仍按单点模式读取', async () => {
+    const legacy: Partial<typeof DEFAULT_WATERMARK_SETTINGS> = { ...DEFAULT_WATERMARK_SETTINGS }
+    delete legacy.layout
+    delete legacy.tileGapPercent
+    delete legacy.tileRotation
+    const saved = await savePreset('legacy-user', '旧模板', legacy as typeof DEFAULT_WATERMARK_SETTINGS)
+    const [record] = await listPresets('legacy-user')
+    expect(record.settings.layout).toBe('single')
+    expect(record.settings.tileGapPercent).toBe(DEFAULT_WATERMARK_SETTINGS.tileGapPercent)
+    await deletePreset(saved.id)
+  })
 })

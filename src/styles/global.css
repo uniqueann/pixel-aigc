@@ -906,6 +906,8 @@ a {
 
 .toolbox-settings-panel { display: flex; flex-direction: column; gap: 6px; }
 .toolbox-settings-panel > .ant-radio-group { margin: 2px 0 10px; }
+.toolbox-settings-panel > .toolbox-layout-options { display: flex; margin-bottom: 0; }
+.toolbox-layout-options .ant-radio-button-wrapper { flex: 1; text-align: center; }
 .toolbox-field-label { display: block; margin-top: 10px; color: var(--color-text-secondary); font-size: 12px; }
 .toolbox-field-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; color: var(--color-text-secondary); font-size: 12px; }
 .toolbox-logo-name { display: block; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

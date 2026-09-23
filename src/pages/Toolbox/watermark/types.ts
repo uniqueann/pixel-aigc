@@ -1,4 +1,5 @@
 export type WatermarkKind = 'text' | 'logo'
+export type WatermarkLayout = 'single' | 'tile'
 export type WatermarkAnchor =
   | 'top-left' | 'top-center' | 'top-right'
   | 'middle-left' | 'middle-center' | 'middle-right'
@@ -12,7 +13,10 @@ export interface WatermarkSettings {
   textSizePercent: number
   logoSizePercent: number
   marginPercent: number
+  layout: WatermarkLayout
   anchor: WatermarkAnchor
+  tileGapPercent: number
+  tileRotation: number
   logo: Blob | null
   logoName: string | null
 }
@@ -25,7 +29,10 @@ export const DEFAULT_WATERMARK_SETTINGS: WatermarkSettings = {
   textSizePercent: 4,
   logoSizePercent: 20,
   marginPercent: 3,
+  layout: 'single',
   anchor: 'bottom-right',
+  tileGapPercent: 8,
+  tileRotation: -25,
   logo: null,
   logoName: null,
 }
