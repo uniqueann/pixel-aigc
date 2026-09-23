@@ -101,6 +101,8 @@ IndexedDB 当前项目与归档按用户隔离，旧匿名 `current` 仅在点�
 
 安全顾问对历史邀请表和新状态审计表给出“启用 RLS 但无直接策略”的信息级提示；两表均只允许管理端访问，不应为消除提示而增加开放策略。[顾问说明](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)。原 `public` 函数和 Auth 的既有告警未修改。
 
-旧版曾使用模拟会话验证 Google 入口、云端工具栏及空白项目保存。本轮 Google 登录已通过真实 Supabase Auth 回调，完成成员与工作空间初始化；完整账号验收仍需邮件链路与生产部署验证。
+旧版曾使用模拟会话验证 Google 入口、云端工具栏及空白项目保存。本轮 Google 登录已通过真实 Supabase Auth 回调，完成成员与工作空间初始化；完整账号验收仍需邮件链路与第二账号的状态切换验证。
 
 Vercel `pixel-aigc` 的 Production 与 Preview 已更新 `AIGC_DATABASE_URL`、`SUPABASE_URL`、`SUPABASE_PUBLISHABLE_KEY` 并新增 `VITE_AUTH_MODE=enabled`；变量更新后需新部署生效。旧版 `VITE_SUPABASE_*` 被保存为不可读取的 Secret，Vercel 现行校验阻止继续以 Secret 更新公开给浏览器的 `VITE_` 值；因此前端优先读取同范围的 `VITE_AIGC_SUPABASE_URL` 和 `VITE_AIGC_SUPABASE_PUBLISHABLE_KEY` Config，旧名称保留为本地回退。回调允许列表保留 ContentUp、EDM 原条目，新增本地与生产 AIGC 的普通登录及密码恢复四个精确地址。
+
+生产域名 `https://aigc.contentup.cc` 已验证：未登录请求 `/api/me` 返回 `401/AUTH_REQUIRED`，现有共享 Google 账号完成 OAuth 回调后显示个人首页与账号资料。共享验证邮件仍按 ContentUp 模板跳转，邮箱注册、恢复邮件以及停用恢复流程尚待独立测试账号验收。
