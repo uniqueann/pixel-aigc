@@ -10,3 +10,4 @@ vite.config.d.ts
 .env.local
 
 supabase/.temp/
+.vercel

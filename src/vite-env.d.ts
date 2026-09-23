@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_MODE?: 'enabled' | 'disabled'
   readonly VITE_SUPABASE_URL?: string
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string
+  readonly VITE_AIGC_SUPABASE_URL?: string
+  readonly VITE_AIGC_SUPABASE_PUBLISHABLE_KEY?: string
   readonly VITE_GENERATION_MODE?: 'real' | 'mock'
 }
 

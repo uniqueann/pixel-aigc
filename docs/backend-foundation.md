@@ -103,4 +103,4 @@ IndexedDB 当前项目与归档按用户隔离，旧匿名 `current` 仅在点�
 
 旧版曾使用模拟会话验证 Google 入口、云端工具栏及空白项目保存。本轮 Google 登录已通过真实 Supabase Auth 回调，完成成员与工作空间初始化；完整账号验收仍需邮件链路与生产部署验证。
 
-Vercel `pixel-aigc` 的 Production 与 Preview 已更新 `AIGC_DATABASE_URL` 并新增 `VITE_AUTH_MODE=enabled`；两项变量均需新部署生效。回调允许列表保留 ContentUp、EDM 原条目，新增本地与生产 AIGC 的普通登录及密码恢复四个精确地址。
+Vercel `pixel-aigc` 的 Production 与 Preview 已更新 `AIGC_DATABASE_URL`、`SUPABASE_URL`、`SUPABASE_PUBLISHABLE_KEY` 并新增 `VITE_AUTH_MODE=enabled`；变量更新后需新部署生效。旧版 `VITE_SUPABASE_*` 被保存为不可读取的 Secret，Vercel 现行校验阻止继续以 Secret 更新公开给浏览器的 `VITE_` 值；因此前端优先读取同范围的 `VITE_AIGC_SUPABASE_URL` 和 `VITE_AIGC_SUPABASE_PUBLISHABLE_KEY` Config，旧名称保留为本地回退。回调允许列表保留 ContentUp、EDM 原条目，新增本地与生产 AIGC 的普通登录及密码恢复四个精确地址。
