@@ -5,10 +5,11 @@ import { readFileSync } from 'node:fs'
 const alice = '00000000-0000-4000-8000-000000000001'
 const bob = '00000000-0000-4000-8000-000000000002'
 let db: PGlite
-async function asUser<T>(id: string, email: string, fn: () => Promise<T>) {
+async function asUser<T>(id: string, email: string, fn: () => Promise<T>, scope = 'production') {
   await db.exec('begin; set local role aigc_api;')
   try {
     await db.query("select set_config('aigc.user_id',$1,true),set_config('aigc.email',$2,true)", [id, email])
+    await db.query("select set_config('aigc.scope',$1,true)", [scope])
     const result = await fn()
     await db.exec('commit')
     return result
@@ -24,6 +25,7 @@ beforeAll(async () => {
   await db.query("insert into aigc.projects(id,user_id,name,document,drafts) values('legacy',$1,'旧项目','{}','{}')",[alice])
   await db.exec(readFileSync('supabase/migrations/20260923015953_aigc_accounts.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20260923020155_aigc_project_compat.sql','utf8'))
+  await db.exec(readFileSync('supabase/migrations/20260923102829_aigc_email_byok.sql','utf8'))
 }, 30000)
 afterAll(async () => { await db.close() })
 describe('aigc 数据库权限与隔离', () => {
@@ -71,6 +73,26 @@ describe('aigc 数据库权限与隔离', () => {
       await expect(asUser(alice,'alice@example.com', () => db.exec(statement))).rejects.toThrow()
     }
     expect((await db.query('select * from public.legacy_data')).rows).toEqual([{ id: 1 }])
+  })
+  it('模型密钥和邮件任务只对本人及同一环境可见', async () => {
+    const taskId = '00000000-0000-4000-8000-000000000101'
+    await asUser(alice,'alice@example.com', async () => {
+      await db.query("insert into aigc.model_credentials(user_id,scope,provider,ciphertext,iv,key_tail,verification_status) values($1,'production','deepseek','密文','随机值','1234','valid')",[alice])
+      await db.query("insert into aigc.email_tasks(id,user_id,scope,request_id,request_fingerprint,params,model_profile_id,status) values($1,$2,'production',$3,'hash','{}','deepseek:deepseek-flash','processing')",[taskId,alice,'00000000-0000-4000-8000-000000000102'])
+      expect((await db.query('select * from aigc.model_credentials')).rows).toHaveLength(1)
+      expect((await db.query('select * from aigc.email_tasks')).rows).toHaveLength(1)
+    })
+    await asUser(bob,'bob@example.com', async () => {
+      expect((await db.query('select * from aigc.model_credentials')).rows).toHaveLength(0)
+      expect((await db.query('select * from aigc.email_tasks')).rows).toHaveLength(0)
+      expect((await db.query('update aigc.email_tasks set status=\'failed\' where id=$1 returning id',[taskId])).rows).toHaveLength(0)
+    })
+    await asUser(alice,'alice@example.com', async () => {
+      expect((await db.query('select * from aigc.model_credentials')).rows).toHaveLength(0)
+      expect((await db.query('select * from aigc.email_tasks')).rows).toHaveLength(0)
+    }, 'preview')
+    const count = await asUser(alice,'alice@example.com', () => db.query<{ used: number }>("select aigc.email_processing_count('production') as used"))
+    expect(Number(count.rows[0].used)).toBe(1)
   })
   it('跨所有者素材关联被数据库外键拒绝', async () => {
     await expect(asUser(bob,'bob@example.com', () => db.query("insert into aigc.assets(id,project_id,user_id,name,mime_type,size,object_key,temp_key) values('a','p1',$1,'图','image/png',10,'a','b')",[bob]))).rejects.toThrow()

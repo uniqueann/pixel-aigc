@@ -1,12 +1,14 @@
 import type { VercelRequest, VercelResponse } from './http.js'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { authenticate } from './auth.js'
-import { withIdentity } from './db.js'
+import { database, withIdentity } from './db.js'
 import { HttpError } from './errors.js'
 import { identifier, projectWriteSchema, uploadSchema } from '../shared/cloud.js'
 import { readProject, requireProject, toAsset, validateReferences } from './projects.js'
 import { signRead, signUpload, verifyAndPromote } from './storage.js'
+import { handleModelRoute } from './model-settings.js'
+import { handleEmailTaskRoute } from './email-tasks.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = randomUUID(), start = Date.now()
@@ -14,12 +16,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('X-Request-Id', requestId)
   let userId: string | undefined
   try {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    const path = url.pathname.replace(/^\/api/, '').split('/').filter(Boolean).map(decodeURIComponent)
+    const method = req.method ?? 'GET'
+    if (path.join('/') === 'internal/email-cleanup' && method === 'GET') {
+      const secret = process.env.CRON_SECRET
+      const supplied = req.headers.authorization?.replace(/^Bearer /, '') ?? ''
+      if (!secret || supplied.length !== secret.length || !timingSafeEqual(Buffer.from(supplied), Buffer.from(secret)))
+        throw new HttpError(401, '未授权', 'AUTH_REQUIRED')
+      const result = await database().begin(async sql => {
+        await sql`set local role aigc_api`
+        const [row] = await sql`select aigc.purge_expired_email_tasks() as deleted`
+        return { deleted: Number(row.deleted) }
+      })
+      res.status(200).json(result)
+      return
+    }
     const user = await authenticate(req.headers.authorization)
     userId = user.id
-    const path = new URL(req.url ?? '/', 'http://localhost').pathname.replace(/^\/api/, '').split('/').filter(Boolean).map(decodeURIComponent)
-    const method = req.method ?? 'GET'
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
     if (Buffer.byteLength(JSON.stringify(body ?? null)) > 3 * 1024 * 1024) throw new HttpError(413, '项目文档超过 3 MB')
+    if (path[0] === 'model-settings' || path[0] === 'model-profiles') {
+      res.status(200).json(await handleModelRoute(user, method, path, body))
+      return
+    }
+    if (path[0] === 'tasks') {
+      res.status(200).json(await handleEmailTaskRoute(user, method, path, body, url.searchParams))
+      return
+    }
     const result = await withIdentity(user.id, user.email, async sql => {
       if (path.join('/') === 'me' && method === 'POST') {
         const [row] = await sql`select aigc.initialize_member(${user.suggestedName}) as allowed`
@@ -109,7 +133,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (rows.length !== new Set(assetIds).size) throw new HttpError(404, '素材不存在或无权访问')
         return { items: await Promise.all(rows.map(async row => ({ id: row.id, ...await signRead(row.object_key) }))) }
       }
-      if (path[0] === 'tasks') throw new HttpError(501, '真实生成服务尚未配置，本轮提供账号、素材和项目同步')
       throw new HttpError(404, '接口不存在')
     })
     res.status(200).json(result)

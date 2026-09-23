@@ -21,12 +21,14 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { NAV_META, SUB_ROUTE_LABELS } from '@/router/meta'
 import { useUserStore } from '@/store/useUserStore'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import ModelSettingsPanel from '@/features/model-settings/ModelSettingsPanel'
 
 const { Sider, Content, Header } = Layout
 
 const SETTINGS_ITEMS = [
   { key: 'general', label: '通用' },
   { key: 'personalization', label: '个性化' },
+  { key: 'models', label: '模型与密钥' },
   { key: 'data', label: '数据控制' },
   { key: 'account', label: '账号' },
 ]
@@ -157,7 +159,7 @@ export default function MainLayout() {
         </Header>
         <Content style={{ padding: 20, overflow: 'auto' }}>
           <ErrorBoundary>
-            <Outlet />
+            <Outlet context={{ openModelSettings: () => { setSettingsSection('models'); setSettingsOpen(true) } }} />
           </ErrorBoundary>
         </Content>
       </Layout>
@@ -188,6 +190,7 @@ export default function MainLayout() {
 }
 
 function SettingsContent({ section }: { section: string }) {
+  if (section === 'models') return <ModelSettingsPanel />
   if (section === 'personalization') {
     return <SettingsPanel title="个性化" description="管理生成偏好、默认风格和工作台习惯。" />
   }

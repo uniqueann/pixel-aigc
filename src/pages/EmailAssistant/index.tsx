@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react'
-import { App, Button, Card, Col, Input, Radio, Row, Select, Space } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
+import { App, Alert, Button, Card, Col, Input, Popconfirm, Radio, Row, Select, Space } from 'antd'
 import { CopyOutlined, RedoOutlined } from '@ant-design/icons'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import { buildEmailAssistRequest } from '@/features/email-assistant/requestBuilder'
 import { useEmailAssistantController } from '@/features/email-assistant/useEmailAssistantController'
+import { authEnabled } from '@/cloud/client'
+import { getModelProfiles, getModelSettings, type ModelProfile } from '@/services/api/modelSettings'
 import type {
   EmailAssistLanguage,
   EmailAssistOperation,
@@ -26,12 +29,43 @@ const POLISH_STYLES = [
 
 export default function EmailAssistant() {
   const { message } = App.useApp()
+  const { openModelSettings } = useOutletContext<{ openModelSettings: () => void }>()
   const [sourceText, setSourceText] = useState('')
   const [instruction, setInstruction] = useState('')
   const [operation, setOperation] = useState<EmailAssistOperation>('reply')
   const [language, setLanguage] = useState<EmailAssistLanguage>('zh')
   const [polishStyles, setPolishStyles] = useState<EmailPolishStyle[]>(['clear'])
+  const [profiles, setProfiles] = useState<ModelProfile[]>([])
+  const [modelProfileId, setModelProfileId] = useState('deepseek:deepseek-flash')
+  const [keyConfigured, setKeyConfigured] = useState(false)
   const controller = useEmailAssistantController()
+
+  useEffect(() => {
+    if (!authEnabled) return
+    const load = () => { void Promise.all([getModelProfiles(), getModelSettings()]).then(([catalog, settings]) => {
+        setProfiles(catalog.items)
+        setModelProfileId(settings.defaultEmailModelId)
+        setKeyConfigured(settings.deepseek.configured && settings.deepseek.verificationStatus === 'valid')
+      }).catch(error => message.error(error instanceof Error ? error.message : '模型设置加载失败')) }
+    load()
+    window.addEventListener('pixel:model-settings-changed', load)
+    return () => window.removeEventListener('pixel:model-settings-changed', load)
+  }, [message])
+
+  useEffect(() => {
+    const task = controller.task
+    if (!task) return
+    queueMicrotask(() => {
+      setSourceText(task.params.sourceText)
+      setInstruction(task.params.instruction ?? '')
+      setOperation(task.params.operation)
+      setLanguage(task.params.language)
+      setPolishStyles(task.params.polishStyles ?? ['clear'])
+      if (task.modelProfileId) setModelProfileId(task.modelProfileId)
+    })
+  // 仅在切换历史任务时恢复表单，避免覆盖用户正在修改的参数。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller.task?.id])
 
   const currentParams = useMemo(() => ({
     sourceText,
@@ -51,8 +85,12 @@ export default function EmailAssistant() {
   const handleGenerate = async () => {
     try {
       const request = buildEmailAssistRequest(currentParams)
-      await controller.generate(request.params)
-      message.success('邮件任务已提交')
+      const task = await controller.generate(request.params, modelProfileId)
+      if (task.status === 'succeeded') message.success('邮件内容已生成')
+      else if (task.status === 'failed') {
+        if (task.errorCode === 'INVALID_PROVIDER_KEY') window.dispatchEvent(new Event('pixel:model-settings-changed'))
+        message.error(task.errorMessage ?? '邮件生成失败')
+      }
     } catch (error) {
       message.error(error instanceof Error ? error.message : '邮件任务提交失败')
     }
@@ -70,8 +108,9 @@ export default function EmailAssistant() {
 
   const handleRetry = async () => {
     try {
-      await controller.retry()
-      message.success('已按原参数重新提交')
+      const task = await controller.retry()
+      if (task?.status === 'succeeded') message.success('邮件内容已重新生成')
+      else if (task?.status === 'failed') message.error(task.errorMessage ?? '重试失败')
     } catch (error) {
       message.error(error instanceof Error ? error.message : '任务重试失败')
     }
@@ -79,6 +118,10 @@ export default function EmailAssistant() {
 
   return (
     <div className="email-assistant-page">
+      {authEnabled && !keyConfigured ? <Alert type="info" showIcon style={{ marginBottom: 16 }}
+        message="配置自己的 DeepSeek API Key 后即可生成"
+        description="邮件内容会发送到 DeepSeek；调用费用由你的 DeepSeek 账号承担。任务和修改稿保留 7 天。"
+        action={<Button size="small" onClick={openModelSettings}>模型与密钥设置</Button>} /> : null}
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>
           <Card title="原始邮件内容" size="small">
@@ -140,10 +183,18 @@ export default function EmailAssistant() {
                   />
                 </div>
               ) : null}
+              {authEnabled ? <div>
+                <div className="field-label">本次使用的模型</div>
+                <Space>
+                  <Select style={{ width: 220 }} value={modelProfileId} disabled={controller.formLocked}
+                    onChange={setModelProfileId} options={profiles.map(profile => ({ value: profile.id, label: profile.label }))} />
+                  <Button size="small" onClick={openModelSettings}>设置</Button>
+                </Space>
+              </div> : null}
               <Button
                 type="primary"
                 loading={controller.submitting}
-                disabled={!sourceText.trim() || controller.formLocked}
+                disabled={!sourceText.trim() || controller.formLocked || (authEnabled && !keyConfigured)}
                 onClick={handleGenerate}
               >
                 生成
@@ -187,11 +238,27 @@ export default function EmailAssistant() {
             <Input.TextArea
               rows={12}
               value={controller.resultText}
-              disabled={!controller.resultText}
+              disabled={controller.task?.status !== 'succeeded'}
               onChange={(event) => controller.setResultText(event.target.value)}
               placeholder={controller.active ? '正在生成邮件内容…' : '生成结果将在这里显示'}
             />
+            {controller.savingEdit ? <span className="email-save-hint">正在保存修改稿…</span> : null}
+            {controller.task?.tokenUsage ? <span className="email-save-hint">本次使用 {controller.task.tokenUsage.totalTokens} tokens</span> : null}
           </Card>
+          {authEnabled ? <Card title="最近 7 天" size="small" style={{ marginTop: 16 }}>
+            {controller.history.length ? <Space direction="vertical" style={{ width: '100%' }}>
+              <Select style={{ width: '100%' }} value={controller.task?.id} placeholder="选择历史任务"
+                options={controller.history.map(item => ({ value: item.id, label: `${new Date(item.createdAt).toLocaleString('zh-CN')} · ${TASK_TYPES.find(type => type.value === item.operation)?.label ?? item.operation} · ${item.preview ?? ''}` }))}
+                onChange={id => { void controller.openTask(id).catch(error => message.error(error instanceof Error ? error.message : '历史任务读取失败')) }} />
+              <Space>
+                <Button size="small" onClick={() => void controller.refreshHistory()}>刷新</Button>
+                {controller.history.length < controller.historyTotal ? <Button size="small" onClick={() => void controller.loadMoreHistory().catch(error => message.error(error instanceof Error ? error.message : '加载失败'))}>加载更多</Button> : null}
+                <Popconfirm title="删除这条邮件任务及其内容？" onConfirm={() => controller.task && void controller.removeTask(controller.task.id).catch(error => message.error(error instanceof Error ? error.message : '删除失败'))}>
+                  <Button danger size="small" disabled={!controller.task || controller.active}>删除当前任务</Button>
+                </Popconfirm>
+              </Space>
+            </Space> : <span>暂无邮件任务</span>}
+          </Card> : null}
         </Col>
       </Row>
     </div>

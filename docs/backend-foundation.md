@@ -2,9 +2,17 @@
 
 ## 当前交付边界
 
-React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc` schema 保存账号资料、个人工作空间、项目和素材元数据；邮箱密码与 Google 登录共用 Supabase Auth，R2 私有桶保存媒体。注册开放，邮箱需验证。真实生成、额度扣减、视频上传和媒体打包导出留待服务商接口确定后接入。
+React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc` schema 保存账号资料、个人工作空间、项目和素材元数据；邮箱密码与 Google 登录共用 Supabase Auth，R2 私有桶保存媒体。注册开放，邮箱需验证。邮件助手使用用户自带 DeepSeek 密钥同步生成；图片、视频真实生成、额度扣减、视频上传和媒体打包导出仍待接入。
 
-本地默认关闭账号与云端模式。`VITE_AUTH_MODE=enabled` 可独立启用账号，`VITE_CLOUD_MODE=enabled` 启用项目云同步，且要求账号同步启用。账号开启而云同步关闭时，项目仍按 Auth UUID 保存在本地。云同步开启时不会执行 Mock 生成，生成入口返回明确的未接入提示。
+本地默认关闭账号与云端模式。`VITE_AUTH_MODE=enabled` 可独立启用账号，`VITE_CLOUD_MODE=enabled` 启用项目云同步，且要求账号同步启用。账号开启而云同步关闭时，项目仍按 Auth UUID 保存在本地。真实模式只有邮件助手已接入；其他生成能力继续返回未接入提示。
+
+## 邮件助手与用户自带模型密钥
+
+设置弹窗的“模型与密钥”支持每个用户配置自己的 DeepSeek API Key 和默认邮件模型。邮件页面可为单次任务选择 `deepseek-flash` 或 `deepseek-v4-pro`。API Key 经后端调用 DeepSeek `/models` 验证后，以 AES-256-GCM 密文写入 `aigc.model_credentials`；服务端加密主密钥 `AIGC_CREDENTIAL_KEY_V1` 是 32 字节随机值的 Base64 编码，只存本地或 Vercel 服务端环境变量。密文绑定用户、服务商及环境，API 只返回末四位和验证状态，不回显明文。密钥版本字段支持后续轮换；轮换前必须保留旧密钥直到全部密文重加密。`AIGC_RUNTIME_SCOPE` 本地设为 `local`，Vercel 默认使用 `VERCEL_ENV`；共用数据库时生产、预览、本地凭据相互隔离。
+
+`POST /api/tasks` 仅支持 `email_assist`，传 `requestId`、邮件参数和可选的 `modelProfileId`。后端在短事务中验证账号、并发上限和幂等性，建立任务后关闭事务，再以用户密钥调用 DeepSeek；成功或失败均将终态写回。浏览器超时后可以用 `GET /api/tasks/by-request/:requestId` 找回任务。历史列表分页返回摘要，详情才返回邮件正文；用户修改稿与模型原始结果分别保存，超过 7 天不可查询，Vercel 每日任务执行物理清理。`CRON_SECRET` 必须作为服务端环境变量配置，否则清理接口拒绝调用。
+
+用户密钥产生的费用由用户的 DeepSeek 账户承担，不使用 EDM 积分，也没有平台每日免费额度。应用保护上限为每账号同时 1 个任务、全站同时 20 个任务、每账号每小时 60 次；邮件原文不超过 10,000 字符，指导不超过 1,000 字符。服务端日志不记录密钥、邮件原文或生成结果。正式上线前需要对测试账号的自带密钥完成真实调用、余额不足、密钥失效、7 天过期和定时清理验收。
 
 ## Supabase 与账号
 

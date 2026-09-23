@@ -33,7 +33,12 @@ export interface GenerationTask<TParams = Record<string, unknown>> {
   resultUrls?: string[]
   /** 文本生成类任务的单条结果 */
   resultText?: string
+  /** 用户修改稿与 AI 原始结果分别保存。 */
+  editedText?: string
+  modelProfileId?: string
+  tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number }
   errorMessage?: string
+  errorCode?: string
   creditsCost: number
   createdAt: string
   updatedAt: string

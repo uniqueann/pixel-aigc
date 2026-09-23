@@ -8,14 +8,16 @@ export interface CreateTaskPayload<TParams = Record<string, unknown>> {
   params: TParams
   /** 幂等键，前端生成，防止网络重试导致重复扣积分 */
   requestId: string
+  modelProfileId?: string
 }
 
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
 
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {
-  if (authEnabled && !useMockGateway) return Promise.reject(new Error('真实生成服务尚未接入，当前可使用账号与本地项目'))
+  if (authEnabled && !useMockGateway && payload.capability !== 'email_assist')
+    return Promise.reject(new Error('该生成能力尚未接入真实服务'))
   if (useMockGateway) return createMockTask(payload)
-  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload)
+  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload, { timeout: 55000 })
 }
 
 export function getTask(taskId: string) {
@@ -24,8 +26,41 @@ export function getTask(taskId: string) {
 }
 
 export function listTasks(params?: { capability?: Capability; page?: number }) {
-  if (useMockGateway) return listMockTasks()
-  return apiClient.get<unknown, { items: GenerationTask<unknown>[]; total: number }>('/tasks', { params })
+  if (useMockGateway) return listMockTasks().then(result => ({
+    items: result.items.map(task => ({ id: task.id, capability: task.capability, status: task.status,
+      modelProfileId: task.modelProfileId, operation: (task.params as { operation?: string })?.operation,
+      language: (task.params as { language?: string })?.language,
+      preview: (task.params as { sourceText?: string })?.sourceText?.slice(0, 80),
+      createdAt: task.createdAt, updatedAt: task.updatedAt })), total: result.total,
+  }))
+  return apiClient.get<unknown, TaskListResponse>('/tasks', { params })
+}
+
+export interface TaskSummary {
+  id: string
+  capability: Capability
+  status: GenerationTask['status']
+  modelProfileId?: string
+  operation?: string
+  language?: string
+  preview?: string
+  createdAt: string
+  updatedAt: string
+}
+export interface TaskListResponse { items: TaskSummary[]; total: number }
+
+export function getTaskByRequest(requestId: string) {
+  return apiClient.get<unknown, GenerationTask<unknown>>(`/tasks/by-request/${requestId}`)
+}
+
+export function saveTaskEdit(taskId: string, editedText: string) {
+  if (useMockGateway) return Promise.resolve(undefined)
+  return apiClient.patch<unknown, GenerationTask<unknown>>(`/tasks/${taskId}`, { editedText })
+}
+
+export function deleteTask(taskId: string) {
+  if (useMockGateway) return cancelMockTask(taskId)
+  return apiClient.delete(`/tasks/${taskId}`)
 }
 
 export function cancelTask(taskId: string) {

@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-当前依赖已锁定在 `package-lock.json`，建议使用 Node.js 20 或更高版本。
+当前依赖已锁定在 `package-lock.json`，请使用 Node.js 24。
 
 ## 目录结构
 
@@ -51,7 +51,7 @@ src/
 - Editor Store、节点 Command History、Generation Lineage selectors 及核心单元测试。
 - `GenerationTask → GenerationJob → Asset` 适配链路，以及图片工作站 Controller、工具注册表和请求构建器。
 - 智能编辑支持上传图片、编辑提示词、1–4 个候选结果及基于候选继续生成。
-- 邮件助手支持总结、回复、润色、语法检查，以及可编辑、复制和重新生成的文本结果。
+- 邮件助手支持总结、回复、润色、语法检查；登录用户可在设置中加密保存自己的 DeepSeek API Key，选择模型，查看最近 7 天任务并恢复修改稿。
 - FreeCanvas 空间画布、ImageNode/VideoNode 编辑、文生图/文生视频占位与结果入画布、节点裂变、图生视频、Generation Lineage、视频播放控制及 Command History。
 - 当前项目通过 IndexedDB 自动保存，支持刷新恢复、版本化 Project JSON 导入导出、生成任务续接和多标签页编辑保护。
 - Mock Gateway 可完整演示文生图、文生视频、图片裂变、图生视频、智能编辑和邮件助手异步任务流程。
@@ -59,7 +59,7 @@ src/
 当前待补充：
 
 - 图片上传在 Mock 模式使用本地 Data URL；真实对象存储需提供 `POST /api/uploads`。
-- 智能选区仍使用前端 mock；真实 AI Provider、登录鉴权、任务队列、限流和积分结算需要后端支持。
+- 智能选区及图片、视频生成仍使用前端 mock；这些能力的真实 Provider、队列和积分结算尚未接入。
 - 多项目列表、账号间同步和远端项目持久化尚未实现。
 
 提交前运行：

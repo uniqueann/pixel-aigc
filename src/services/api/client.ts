@@ -21,6 +21,7 @@ apiClient.interceptors.response.use(
     if (err.response?.status === 401) {
       if (authEnabled) window.location.href = '/login'
     }
-    return Promise.reject(err)
+    const serverMessage = err.response?.data?.error
+    return Promise.reject(serverMessage ? new Error(serverMessage) : err)
   },
 )

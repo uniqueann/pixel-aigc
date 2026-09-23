@@ -3,5 +3,6 @@
   "framework": "vite",
   "regions": ["pdx1"],
   "functions": { "api/**/*.ts": { "maxDuration": 60 } },
+  "crons": [{ "path": "/api/internal/email-cleanup", "schedule": "0 1 * * *" }],
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }

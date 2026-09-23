@@ -6,10 +6,16 @@ export const database = () => connection ??= postgres(env('AIGC_DATABASE_URL'), 
   ssl: process.env.AIGC_DB_LOCAL === 'true' ? false : 'require',
 })
 export type Transaction = postgres.TransactionSql
+export function runtimeScope(): 'local' | 'preview' | 'production' {
+  const value = process.env.AIGC_RUNTIME_SCOPE ?? process.env.VERCEL_ENV ?? 'local'
+  if (value !== 'local' && value !== 'preview' && value !== 'production') throw new Error('AIGC_RUNTIME_SCOPE 无效')
+  return value
+}
 export function withIdentity<T>(userId: string, email: string, action: (sql: Transaction) => Promise<T>): Promise<T> {
   return database().begin(async sql => {
     await sql`set local role aigc_api`
     await sql`select set_config('aigc.user_id', ${userId}, true), set_config('aigc.email', ${email}, true)`
+    await sql`select set_config('aigc.scope', ${runtimeScope()}, true)`
     return action(sql)
   }) as Promise<T>
 }
