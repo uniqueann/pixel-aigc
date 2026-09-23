@@ -52,7 +52,7 @@ export default function MainLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { message } = App.useApp()
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia('(max-width: 720px)').matches)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
   const account = useUserStore((s) => s.account)
@@ -65,6 +65,13 @@ export default function MainLayout() {
   useEffect(() => {
     document.title = subTitle ? `${subTitle} · ${topTitle} · AIGC 工作台` : `${topTitle} · AIGC 工作台`
   }, [topTitle, subTitle])
+
+  useEffect(() => {
+    const narrowScreen = window.matchMedia('(max-width: 720px)')
+    const collapseOnNarrowScreen = (event: MediaQueryListEvent) => { if (event.matches) setSidebarOpen(false) }
+    narrowScreen.addEventListener('change', collapseOnNarrowScreen)
+    return () => narrowScreen.removeEventListener('change', collapseOnNarrowScreen)
+  }, [])
 
   const handleAccountMenu = ({ key }: { key: string }) => {
     if (key === 'settings') {
@@ -157,7 +164,7 @@ export default function MainLayout() {
             <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />
           </Space>
         </Header>
-        <Content style={{ padding: 20, overflow: 'auto' }}>
+        <Content className="app-main-content">
           <ErrorBoundary>
             <Outlet context={{ openModelSettings: () => { setSettingsSection('models'); setSettingsOpen(true) } }} />
           </ErrorBoundary>
