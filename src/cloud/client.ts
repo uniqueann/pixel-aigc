@@ -19,7 +19,7 @@ export async function cloudRequest<T>(path: string, method = 'GET', body?: unkno
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token ?? ''}` },
     body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(60000),
   })
-  const result = await response.json().catch(() => ({ error: '账号服务暂时不可用', code: 'SERVICE_UNAVAILABLE' }))
+  const result = await response.json().catch(() => ({ error: `服务接口异常（HTTP ${response.status}）`, code: 'SERVICE_UNAVAILABLE' }))
   if (!response.ok) throw new CloudError(response.status, result.error ?? '请求失败', result.code)
   return result as T
 }

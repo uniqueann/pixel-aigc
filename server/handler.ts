@@ -17,7 +17,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let userId: string | undefined
   try {
     const url = new URL(req.url ?? '/', 'http://localhost')
-    const path = url.pathname.replace(/^\/api/, '').split('/').filter(Boolean).map(decodeURIComponent)
+    const route = url.searchParams.get('__route') ?? url.pathname.replace(/^\/api/, '')
+    const path = route.split('/').filter(Boolean).map(decodeURIComponent)
     const method = req.method ?? 'GET'
     if (path.join('/') === 'internal/email-cleanup' && method === 'GET') {
       const secret = process.env.CRON_SECRET
