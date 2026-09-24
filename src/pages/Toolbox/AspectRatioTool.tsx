@@ -7,6 +7,8 @@ import BatchImageQueue from './BatchImageQueue'
 import { invalidateBatch, processBatch } from './aspect-ratio/batch'
 import { createAspectRatioZip, downloadBlob, namesForImages } from './aspect-ratio/download'
 import { fitScale } from './aspect-ratio/geometry'
+import { expansionPlan, processOutpaintBatch } from './aspect-ratio/expansion'
+import { expandRemoteImage } from './aspect-ratio/outpaintClient'
 import { readPrefs, writePrefs } from './aspect-ratio/prefs'
 import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
@@ -127,17 +129,20 @@ export default function AspectRatioTool() {
   useEffect(() => {
     let cancelled = false
     let previewRenderer: AspectRatioRenderer | null = null
-    if (!selected || settings.strategy === 'outpaint') {
+    if (!selected) {
       replacePreview(null)
       return
     }
     if (processing) return
+    const previewSettings = settings.strategy === 'outpaint'
+      ? { ...settings, strategy: 'letterbox' as const, background: '#14352c' }
+      : settings
     const timer = window.setTimeout(() => {
       setPreviewState({ imageId: selected.id, settings, loading: true })
       previewRenderer = new AspectRatioRenderer()
       void previewRenderer.render({
         file: selected.file,
-        settings,
+        settings: previewSettings,
         targetWidth: preset.width,
         targetHeight: preset.height,
         previewMaxDimension: PREVIEW_MAX_DIMENSION,
@@ -243,23 +248,42 @@ export default function AspectRatioTool() {
   }
 
   async function processImages(onlyIds?: string[]) {
-    if (processingRef.current || addingCountRef.current || settings.strategy === 'outpaint') return
+    if (processingRef.current || addingCountRef.current) return
     const targets = itemsRef.current.filter(item => (onlyIds ? onlyIds.includes(item.id) : item.status !== 'succeeded'))
     if (!targets.length) return
     processingRef.current = true
     cancelledRef.current = false
     setProcessing(true)
     try {
-      await processBatch({
-        images: itemsRef.current,
-        settings,
-        targetWidth: preset.width,
-        targetHeight: preset.height,
-        ids: onlyIds,
-        render: request => renderer().render(request),
-        update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
-        shouldStop: () => cancelledRef.current || !mountedRef.current,
-      })
+      if (settings.strategy === 'outpaint') {
+        await processOutpaintBatch({
+          images: itemsRef.current,
+          settings,
+          targetWidth: preset.width,
+          targetHeight: preset.height,
+          ids: onlyIds,
+          renderLocal: image => renderer().render({
+            file: image.file,
+            settings: { ...settings, strategy: 'letterbox', background: '#ffffff' },
+            targetWidth: preset.width,
+            targetHeight: preset.height,
+          }),
+          expandRemote: (image, plan) => expandRemoteImage(image, plan, preset.width, preset.height, () => cancelledRef.current || !mountedRef.current),
+          update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
+          shouldStop: () => cancelledRef.current || !mountedRef.current,
+        })
+      } else {
+        await processBatch({
+          images: itemsRef.current,
+          settings,
+          targetWidth: preset.width,
+          targetHeight: preset.height,
+          ids: onlyIds,
+          render: request => renderer().render(request),
+          update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
+          shouldStop: () => cancelledRef.current || !mountedRef.current,
+        })
+      }
     } finally {
       processingRef.current = false
       if (mountedRef.current) {
@@ -333,10 +357,14 @@ export default function AspectRatioTool() {
             options={[
               { label: '留白填充', value: 'letterbox' },
               { label: '智能裁剪', value: 'crop' },
-              { label: '智能扩展', value: 'outpaint', disabled: true },
+              { label: '智能扩展', value: 'outpaint' },
             ]}
           />
-          <p className="toolbox-hint">智能扩展会接入扩图，当前版本先支持留白和智能裁剪。</p>
+          <p className="toolbox-hint">
+            {settings.strategy === 'outpaint'
+              ? `智能扩展会提交 ${items.filter(item => expansionPlan(item.width, item.height, preset.width, preset.height).mode === 'remote').length} 个扩图任务。比例已经一致的图片只在本机缩放。预览里的深色区域是待补全的留白。`
+              : '智能扩展会把原图完整放进目标尺寸，不足的边缘交给扩图补上。'}
+          </p>
           {settings.strategy === 'letterbox' && (
             <>
               <div className="toolbox-field-row">
@@ -414,7 +442,7 @@ export default function AspectRatioTool() {
           <Button icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
           {failed.length > 0 && !processing && <Button disabled={busy} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>}
           {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
-            <Button type="primary" disabled={!items.some(item => item.status !== 'succeeded') || settings.strategy === 'outpaint' || busy} onClick={() => void processImages()}>开始处理</Button>
+            <Button type="primary" disabled={!items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</Button>
           )}
         </div>
       </div>

@@ -16,7 +16,7 @@ export function normalizeSettings(value: Partial<AspectRatioSettings> | null | u
   const presetId = requestedPresetId && PLATFORM_SIZE_PRESETS.some(preset => preset.id === requestedPresetId)
     ? requestedPresetId
     : DEFAULT_ASPECT_RATIO_SETTINGS.selectedPresetId
-  const strategy = value?.strategy && strategies.has(value.strategy) && value.strategy !== 'outpaint'
+  const strategy = value?.strategy && strategies.has(value.strategy)
     ? value.strategy
     : DEFAULT_ASPECT_RATIO_SETTINGS.strategy
   const fx = typeof value?.fx === 'number' && Number.isFinite(value.fx) ? Math.min(1, Math.max(0, value.fx)) : 0.5
