@@ -125,6 +125,7 @@ export interface EmailAssistTaskParams {
 }
 
 export interface PlatformSizePreset {
+  id: string
   platform: string
   label: string
   width: number
