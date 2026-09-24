@@ -106,7 +106,7 @@ interface AspectRatioBatchItem {
 | M1 | `AspectRatioTool`、单选目标平台 + 记住上次选择、留白 + 智能裁剪（中心/焦点）、本机批量、ZIP | 无 |
 | M2 | 常用模板 IndexedDB；从 watermark 抽离 `toolbox/shared` 通用组件（inspect、zip、限额） | 无 |
 | M3 | 智能扩展：并发工作池、Outpaint 任务与轮询、整图失败重试 | 任务 API |
-| M4 | 智能裁剪主体检测见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md)，等检测接口；失败项跳转工作站扩图精修已落地 | 模型 |
+| M4 | 智能裁剪主体检测见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md)。真实接口仍待定；本机焦点换算和模拟检测可以先做。失败项跳转工作站扩图精修已落地 | 模型 |
 
 ## 7. 与水印串联预留（8.5）
 
