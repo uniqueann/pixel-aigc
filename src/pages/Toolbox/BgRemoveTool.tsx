@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { App, Button, ColorPicker, Progress, Radio } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useUserStore } from '@/store/useUserStore'
@@ -7,7 +8,9 @@ import { processRemovalBatch, recompositeBatch } from './bg-remove/batch'
 import { requestMatte } from './bg-remove/client'
 import { compositeMatte } from './bg-remove/composite'
 import { createBgRemoveZip, downloadBlob, namesForImages } from './bg-remove/download'
+import { canRefineEdge } from './bg-remove/edgeRefine'
 import { readPrefs, writePrefs } from './bg-remove/prefs'
+import { applyEdgeRefineResult, loadBgRemoveSession, saveBgRemoveSession, setEdgeRefineHandoff, takeEdgeRefineResult } from './bg-remove/session'
 import { DEFAULT_BG_REMOVE_SETTINGS, PREVIEW_MAX_DIMENSION, type BatchImage, type BgRemoveSettings } from './bg-remove/types'
 import { inspectImage, MAX_BATCH_BYTES, MAX_FILES, MAX_ZIP_BYTES } from './shared/inspect'
 
@@ -16,11 +19,13 @@ function errorMessage(error: unknown) {
 }
 
 export default function BgRemoveTool() {
+  const navigate = useNavigate()
   const { message } = App.useApp()
   const scope = useUserStore(state => state.userId ?? 'local')
   const [items, setItems] = useState<BatchImage[]>([])
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selectedIdRef = useRef<string | null>(null)
   const [settings, setSettings] = useState<BgRemoveSettings>(DEFAULT_BG_REMOVE_SETTINGS)
   const settingsRef = useRef(settings)
   const [prefsReady, setPrefsReady] = useState(false)
@@ -30,6 +35,7 @@ export default function BgRemoveTool() {
   const processingRef = useRef(false)
   const cancelledRef = useRef(false)
   const mountedRef = useRef(true)
+  const restoredRef = useRef(false)
   const addChainRef = useRef<Promise<void>>(Promise.resolve())
   const addingCountRef = useRef(0)
   const [adding, setAdding] = useState(false)
@@ -56,20 +62,44 @@ export default function BgRemoveTool() {
 
   useEffect(() => {
     mountedRef.current = true
+    const saved = loadBgRemoveSession()
+    if (saved) {
+      restoredRef.current = true
+      itemsRef.current = saved.items
+      setItems(saved.items)
+      settingsRef.current = saved.settings
+      setSettings(saved.settings)
+      selectedIdRef.current = saved.selectedId
+      setSelectedId(saved.selectedId)
+    }
+    const refined = applyEdgeRefineResult(itemsRef.current, takeEdgeRefineResult())
+    if (refined !== itemsRef.current) {
+      itemsRef.current = refined
+      setItems(refined)
+      void recompositeBatch(
+        refined,
+        (_image, matte) => compositeMatte(matte, settingsRef.current.background),
+        (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
+      ).catch(error => {
+        if (mountedRef.current) message.error(errorMessage(error))
+      })
+    }
     return () => {
       mountedRef.current = false
       cancelledRef.current = true
-      for (const item of itemsRef.current) URL.revokeObjectURL(item.sourceUrl)
+      saveBgRemoveSession({ items: itemsRef.current, settings: settingsRef.current, selectedId: selectedIdRef.current })
       if (previewRef.current) URL.revokeObjectURL(previewRef.current)
     }
-  }, [])
+  }, [message])
 
   useEffect(() => {
     let active = true
     void readPrefs(scope).then(stored => {
       if (!active) return
-      settingsRef.current = stored
-      setSettings(stored)
+      if (!restoredRef.current) {
+        settingsRef.current = stored
+        setSettings(stored)
+      }
       setPrefsReady(true)
     }).catch(error => {
       if (active) message.warning(`读取上次选择失败：${errorMessage(error)}`)
@@ -138,7 +168,10 @@ export default function BgRemoveTool() {
         sourceUrl: URL.createObjectURL(file), width: inspected.width, height: inspected.height, status: 'pending',
       }
       commitItems([...itemsRef.current, item])
-      setSelectedId(current => current ?? item.id)
+      if (!selectedIdRef.current) {
+        selectedIdRef.current = item.id
+        setSelectedId(item.id)
+      }
     }).catch(error => {
       if (mountedRef.current) message.error(`${file.name}：${errorMessage(error)}`)
     }).finally(() => {
@@ -153,15 +186,31 @@ export default function BgRemoveTool() {
     if (item) URL.revokeObjectURL(item.sourceUrl)
     const next = itemsRef.current.filter(candidate => candidate.id !== id)
     commitItems(next)
-    if (selectedId === id) setSelectedId(next[0]?.id ?? null)
+    if (selectedIdRef.current === id) {
+      selectedIdRef.current = next[0]?.id ?? null
+      setSelectedId(selectedIdRef.current)
+    }
   }
 
   function clearFiles() {
     if (processingRef.current) return
     for (const item of itemsRef.current) URL.revokeObjectURL(item.sourceUrl)
     commitItems([])
+    selectedIdRef.current = null
     setSelectedId(null)
     replacePreview(null)
+  }
+
+  function selectImage(id: string) {
+    selectedIdRef.current = id
+    setSelectedId(id)
+  }
+
+  function refineEdge(id: string) {
+    const item = itemsRef.current.find(candidate => candidate.id === id)
+    if (!item?.matte || !canRefineEdge(item)) return
+    setEdgeRefineHandoff({ itemId: item.id, file: item.file, matte: item.matte, width: item.width, height: item.height })
+    navigate('/image-workstation/remove')
   }
 
   async function processImages(onlyIds?: string[]) {
@@ -245,15 +294,16 @@ export default function BgRemoveTool() {
         </section>
       </div>
       <BatchImageQueue
-        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error }))}
+        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error, canRefine: canRefineEdge(item) }))}
         selectedId={selectedId}
         disabled={busy}
         onAdd={addFile}
-        onSelect={setSelectedId}
+        onSelect={selectImage}
         onRemove={removeFile}
         onClear={clearFiles}
         onRetry={id => { void processImages([id]) }}
         onDownload={downloadOne}
+        onRefine={refineEdge}
       />
       <div className="toolbox-watermark-footer">
         <div className="toolbox-progress">

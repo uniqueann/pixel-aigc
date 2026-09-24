@@ -13,11 +13,13 @@ interface MaskPaintCanvasProps {
   brushSize: number
   tool: PaintTool
   smartSelectEnabled: boolean
+  refineMode?: boolean
   onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void
 }
 
 export interface MaskPaintCanvasHandle {
   exportMask: () => MaskExportResult
+  exportRefineMarks: () => ImageData
   clear: () => void
   undo: () => void
   redo: () => void
@@ -26,7 +28,7 @@ export interface MaskPaintCanvasHandle {
 }
 
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, brushSize, tool, smartSelectEnabled, onHistoryChange },
+  { imageUrl, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange },
   ref,
 ) {
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
@@ -34,6 +36,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   const historyRef = useRef<string[]>([])
   const historyIndexRef = useRef(-1)
   const toolRef = useRef(tool)
+  const refineModeRef = useRef(refineMode)
   const brushSizeRef = useRef(brushSize)
   const smartSelectRef = useRef(smartSelectEnabled)
   const restoringRef = useRef(false)
@@ -107,6 +110,15 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         canvas.renderAll()
         return exportPaintedMask(canvasElement)
       },
+      exportRefineMarks: () => {
+        const canvas = fabricCanvasRef.current
+        const canvasElement = canvasElementRef.current
+        if (!canvas || !canvasElement) throw new Error('蒙版画布尚未准备好')
+        canvas.renderAll()
+        const context = canvasElement.getContext('2d')
+        if (!context) throw new Error('当前浏览器不支持画布蒙版导出')
+        return context.getImageData(0, 0, canvasElement.width, canvasElement.height)
+      },
       clear,
       undo,
       redo,
@@ -120,16 +132,19 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     toolRef.current = tool
     brushSizeRef.current = brushSize
     smartSelectRef.current = smartSelectEnabled
+    refineModeRef.current = refineMode
     const canvas = fabricCanvasRef.current
     if (!canvas) return
 
     const brush = canvas.freeDrawingBrush ?? new PencilBrush(canvas)
     brush.width = brushSize
-    brush.color = tool === 'brush' ? 'rgba(220, 38, 38, 0.5)' : 'rgba(0, 0, 0, 1)'
+    brush.color = refineMode
+      ? (tool === 'brush' ? 'rgba(255, 0, 0, 0.9)' : 'rgba(0, 80, 255, 0.9)')
+      : (tool === 'brush' ? 'rgba(220, 38, 38, 0.5)' : 'rgba(0, 0, 0, 1)')
     canvas.freeDrawingBrush = brush
     canvas.isDrawingMode = !smartSelectEnabled
-    canvas.contextTop.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over'
-  }, [brushSize, smartSelectEnabled, tool])
+    canvas.contextTop.globalCompositeOperation = !refineMode && tool === 'eraser' ? 'destination-out' : 'source-over'
+  }, [brushSize, refineMode, smartSelectEnabled, tool])
 
   useEffect(() => {
     const canvasElement = canvasElementRef.current
@@ -146,8 +161,11 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
 
     const brush = new PencilBrush(canvas)
     brush.width = brushSizeRef.current
-    brush.color = 'rgba(220, 38, 38, 0.5)'
+    brush.color = refineModeRef.current
+      ? (toolRef.current === 'brush' ? 'rgba(255, 0, 0, 0.9)' : 'rgba(0, 80, 255, 0.9)')
+      : 'rgba(220, 38, 38, 0.5)'
     canvas.freeDrawingBrush = brush
+    canvas.contextTop.globalCompositeOperation = !refineModeRef.current && toolRef.current === 'eraser' ? 'destination-out' : 'source-over'
 
     historyRef.current = [JSON.stringify(canvas.toJSON())]
     historyIndexRef.current = 0
@@ -157,7 +175,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       path.set({
         selectable: false,
         evented: false,
-        globalCompositeOperation: toolRef.current === 'eraser' ? 'destination-out' : 'source-over',
+        globalCompositeOperation: refineModeRef.current || toolRef.current !== 'eraser' ? 'source-over' : 'destination-out',
       })
       canvas.requestRenderAll()
       pushSnapshot()

@@ -20,6 +20,7 @@ interface Props {
   compareMode: 'original' | 'effect'
   uploading?: boolean
   uploadDisabled?: boolean
+  refineMode?: boolean
   onCompareModeChange: (mode: 'original' | 'effect') => void
   onImageUpload: (file: File) => void
   onReady: (handle: CanvasHandle | null) => void
@@ -50,6 +51,7 @@ export default function CanvasArea({
   compareMode,
   uploading = false,
   uploadDisabled = false,
+  refineMode = false,
   onCompareModeChange,
   onImageUpload,
   onReady,
@@ -136,7 +138,7 @@ export default function CanvasArea({
             onClear={() => maskHandleRef.current?.clear()}
           />
         </div>
-        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 4 }}>{replaceButton}</div>
+        {!refineMode && <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 4 }}>{replaceButton}</div>}
         <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载蒙版画布…</div>}>
           <MaskPaintCanvas
             ref={setMaskHandle}
@@ -144,6 +146,7 @@ export default function CanvasArea({
             brushSize={brushSize}
             tool={paintTool}
             smartSelectEnabled={smartSelectEnabled}
+            refineMode={refineMode}
             onHistoryChange={setHistoryState}
           />
         </Suspense>

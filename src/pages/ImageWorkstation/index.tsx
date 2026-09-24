@@ -8,6 +8,8 @@ import type { ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
 import { getWorkstationTool } from '@/features/image-workstation/tools/registry'
 import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
+import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
+import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
@@ -29,6 +31,8 @@ export default function ImageWorkstation() {
   const [repaintPrompt, setRepaintPrompt] = useState('')
   const [outpaintMode, setOutpaintMode] = useState<'free' | 'preset'>('free')
   const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
+  const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
+  const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
   const activePrompt = activeTool.capability === Capability.ImageEdit ? smartEditPrompt : repaintPrompt
   const controller = useImageWorkstationController({
@@ -98,6 +102,56 @@ export default function ImageWorkstation() {
     return () => { active = false }
   }, [activeTool.slug])
 
+  useEffect(() => {
+    if (activeTool.slug !== 'remove') {
+      clearEdgeRefineHandoff()
+      setEdgeRefine(null)
+      return
+    }
+    const handoff = takeEdgeRefineHandoff()
+    if (!handoff) return
+    edgeRefineFinishedRef.current = false
+    const url = URL.createObjectURL(handoff.file)
+    const asset = createImageAsset({
+      name: handoff.file.name,
+      url,
+      width: handoff.width,
+      height: handoff.height,
+      source: 'upload',
+    })
+    setSourceAsset(asset)
+    replaceSourceAsset(asset)
+    setEdgeRefine(handoff)
+    return () => {
+      URL.revokeObjectURL(url)
+      if (!edgeRefineFinishedRef.current) setEdgeRefineHandoff(handoff)
+    }
+  }, [activeTool.slug, replaceSourceAsset])
+
+  const finishEdgeRefine = async () => {
+    if (!edgeRefine) return
+    const handle = canvasHandleRef.current
+    if (!handle || !('exportRefineMarks' in handle)) {
+      message.error('蒙版画布尚未准备好')
+      return
+    }
+    try {
+      const matte = await renderRefinedMatte(edgeRefine.file, edgeRefine.matte, handle.exportRefineMarks())
+      edgeRefineFinishedRef.current = true
+      setEdgeRefineResult({ itemId: edgeRefine.itemId, matte, cancelled: false })
+      navigate('/toolbox/bg-remove')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '边缘精修失败')
+    }
+  }
+
+  const cancelEdgeRefine = () => {
+    if (!edgeRefine) return
+    edgeRefineFinishedRef.current = true
+    setEdgeRefineResult({ itemId: edgeRefine.itemId, matte: null, cancelled: true })
+    navigate('/toolbox/bg-remove')
+  }
+
   const handleGenerate = async () => {
     try {
       await controller.generate(canvasHandleRef.current)
@@ -134,7 +188,8 @@ export default function ImageWorkstation() {
             presetTargetSize={presetTargetSize}
             compareMode={compareMode}
             uploading={uploading}
-            uploadDisabled={controller.formLocked}
+            uploadDisabled={controller.formLocked || Boolean(edgeRefine)}
+            refineMode={Boolean(edgeRefine)}
             onCompareModeChange={setCompareMode}
             onImageUpload={handleImageUpload}
             onReady={handleCanvasReady}
@@ -187,14 +242,21 @@ export default function ImageWorkstation() {
             ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
             : '请先上传需要处理的图片'}
         </div>
-        <Button
-          type="primary"
-          loading={controller.submitting}
-          disabled={!controller.inputAsset || controller.formLocked}
-          onClick={handleGenerate}
-        >
-          生成
-        </Button>
+        {edgeRefine ? (
+          <>
+            <Button onClick={cancelEdgeRefine}>取消精修</Button>
+            <Button type="primary" disabled={!controller.inputAsset} onClick={() => void finishEdgeRefine()}>完成精修</Button>
+          </>
+        ) : (
+          <Button
+            type="primary"
+            loading={controller.submitting}
+            disabled={!controller.inputAsset || controller.formLocked}
+            onClick={handleGenerate}
+          >
+            生成
+          </Button>
+        )}
       </div>
     </div>
   )
