@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { App, Button, ColorPicker, Input, Progress, Radio, Select } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
@@ -7,6 +8,7 @@ import BatchImageQueue from './BatchImageQueue'
 import { invalidateBatch, processBatch } from './aspect-ratio/batch'
 import { createAspectRatioZip, downloadBlob, namesForImages } from './aspect-ratio/download'
 import { fitScale } from './aspect-ratio/geometry'
+import { setOutpaintHandoff } from './aspect-ratio/handoff'
 import { expansionPlan, processOutpaintBatch } from './aspect-ratio/expansion'
 import { expandRemoteImage } from './aspect-ratio/outpaintClient'
 import { readPrefs, writePrefs } from './aspect-ratio/prefs'
@@ -41,6 +43,7 @@ interface PreviewState {
 
 export default function AspectRatioTool() {
   const { message } = App.useApp()
+  const navigate = useNavigate()
   const scope = useUserStore(state => state.userId ?? 'local')
   const [items, setItems] = useState<BatchImage[]>([])
   const itemsRef = useRef<BatchImage[]>([])
@@ -299,6 +302,13 @@ export default function AspectRatioTool() {
     rendererRef.current = null
   }
 
+  function refineFailed(id: string) {
+    const item = itemsRef.current.find(candidate => candidate.id === id)
+    if (!item || settingsRef.current.strategy !== 'outpaint') return
+    setOutpaintHandoff({ file: item.file, presetId: preset.id })
+    navigate('/image-workstation/outpaint')
+  }
+
   function downloadOne(id: string) {
     const item = itemsRef.current.find(candidate => candidate.id === id)
     if (!item?.output) return
@@ -430,6 +440,7 @@ export default function AspectRatioTool() {
         onClear={clearFiles}
         onRetry={id => { void processImages([id]) }}
         onDownload={downloadOne}
+        onRefine={settings.strategy === 'outpaint' ? refineFailed : undefined}
       />
 
       <div className="toolbox-watermark-footer">
