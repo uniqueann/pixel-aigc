@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Button, ColorPicker, Input, Progress, Radio, Select } from 'antd'
+import { App, Button, Checkbox, ColorPicker, Input, Progress, Radio, Select } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { useUserStore } from '@/store/useUserStore'
@@ -14,6 +14,7 @@ import { expandRemoteImage } from './aspect-ratio/outpaintClient'
 import { readPrefs, writePrefs } from './aspect-ratio/prefs'
 import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
+import { detectSubject } from './aspect-ratio/subjectFocus'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
 import { inspectImage, MAX_BATCH_BYTES, MAX_FILES, MAX_ZIP_BYTES } from './shared/inspect'
 
@@ -65,6 +66,8 @@ export default function AspectRatioTool() {
   const [presets, setPresets] = useState<AspectRatioPreset[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [presetName, setPresetName] = useState('')
+  const [missSubject, setMissSubject] = useState(false)
+  const missSubjectRef = useRef(false)
 
   const preset = PLATFORM_SIZE_PRESETS.find(item => item.id === settings.selectedPresetId) ?? PLATFORM_SIZE_PRESETS[0]
   const selected = items.find(item => item.id === selectedId)
@@ -137,9 +140,10 @@ export default function AspectRatioTool() {
       return
     }
     if (processing) return
+    const cropFocus = settings.strategy === 'crop' ? selected.cropFocus : undefined
     const previewSettings = settings.strategy === 'outpaint'
       ? { ...settings, strategy: 'letterbox' as const, background: '#14352c' }
-      : settings
+      : cropFocus ? { ...settings, fx: cropFocus.fx, fy: cropFocus.fy } : settings
     const timer = window.setTimeout(() => {
       setPreviewState({ imageId: selected.id, settings, loading: true })
       previewRenderer = new AspectRatioRenderer()
@@ -282,6 +286,7 @@ export default function AspectRatioTool() {
           targetWidth: preset.width,
           targetHeight: preset.height,
           ids: onlyIds,
+          detect: image => detectSubject(image, missSubjectRef.current),
           render: request => renderer().render(request),
           update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
           shouldStop: () => cancelledRef.current || !mountedRef.current,
@@ -406,6 +411,18 @@ export default function AspectRatioTool() {
                   </button>
                 ))}
               </div>
+              <Checkbox
+                checked={missSubject}
+                disabled={controlsLocked}
+                onChange={event => {
+                  missSubjectRef.current = event.target.checked
+                  setMissSubject(event.target.checked)
+                  if (itemsRef.current.some(item => item.status !== 'pending')) commitItems(invalidateBatch(itemsRef.current))
+                }}
+              >
+                模拟未找到主体
+              </Checkbox>
+              <p className="toolbox-hint">打开后这一批按当前九宫格裁剪。关闭时用模拟主体，焦点会偏向上方。</p>
             </>
           )}
           <div className="toolbox-presets">
@@ -431,7 +448,7 @@ export default function AspectRatioTool() {
       </div>
 
       <BatchImageQueue
-        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error }))}
+        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error, note: item.cropFocus?.note }))}
         selectedId={selectedId}
         disabled={busy}
         onAdd={addFile}

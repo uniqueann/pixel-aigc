@@ -954,7 +954,9 @@ a {
 .toolbox-queue-card-footer { min-height: 30px; margin-top: 4px; }
 .toolbox-queue-card-footer .ant-tag { margin: 0; }
 .toolbox-queue-actions { display: flex; }
-.toolbox-queue-error { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbox-queue-error,
+.toolbox-queue-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbox-queue-note { color: var(--color-text-muted); font-size: 12px; }
 .toolbox-watermark-footer { padding: 4px 0 16px; }
 .toolbox-progress { display: flex; min-width: 0; max-width: 320px; flex: 1; flex-direction: column; gap: 5px; color: var(--color-text-secondary); font-size: 12px; }
 .toolbox-footer-actions { display: flex; flex-wrap: wrap; gap: 10px; }
