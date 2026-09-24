@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { App, Button, ColorPicker, Progress, Radio } from 'antd'
-import { DownloadOutlined } from '@ant-design/icons'
+import { App, Button, ColorPicker, Input, Progress, Radio, Select } from 'antd'
+import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { useUserStore } from '@/store/useUserStore'
 import BatchImageQueue from './BatchImageQueue'
@@ -8,9 +8,10 @@ import { invalidateBatch, processBatch } from './aspect-ratio/batch'
 import { createAspectRatioZip, downloadBlob, namesForImages } from './aspect-ratio/download'
 import { fitScale } from './aspect-ratio/geometry'
 import { readPrefs, writePrefs } from './aspect-ratio/prefs'
+import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
-import { inspectImage, MAX_BATCH_BYTES, MAX_FILES, MAX_ZIP_BYTES } from './watermark/validation'
+import { inspectImage, MAX_BATCH_BYTES, MAX_FILES, MAX_ZIP_BYTES } from './shared/inspect'
 
 const focuses = [
   { fx: 0, fy: 0, label: '左上' },
@@ -56,6 +57,9 @@ export default function AspectRatioTool() {
   const addingCountRef = useRef(0)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
+  const [presets, setPresets] = useState<AspectRatioPreset[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [presetName, setPresetName] = useState('')
 
   const preset = PLATFORM_SIZE_PRESETS.find(item => item.id === settings.selectedPresetId) ?? PLATFORM_SIZE_PRESETS[0]
   const selected = items.find(item => item.id === selectedId)
@@ -106,6 +110,9 @@ export default function AspectRatioTool() {
       if (active) message.warning(`读取上次选择失败：${errorMessage(error)}`)
       setPrefsReady(true)
     })
+    void listPresets(scope).then(records => {
+      if (active) setPresets(records)
+    }).catch(error => { if (active) message.warning(`读取本机模板失败：${errorMessage(error)}`) })
     return () => { active = false }
   }, [scope, message])
 
@@ -156,7 +163,41 @@ export default function AspectRatioTool() {
     const next = { ...settingsRef.current, ...patch }
     settingsRef.current = next
     setSettings(next)
+    setSelectedTemplateId(null)
     if (itemsRef.current.some(item => item.status !== 'pending')) commitItems(invalidateBatch(itemsRef.current))
+  }
+
+  async function saveCurrentPreset() {
+    const name = presetName.trim()
+    if (!name) { message.warning('请先输入模板名称'); return }
+    if (presets.some(preset => preset.name === name)) { message.warning('模板名称已存在'); return }
+    try {
+      const preset = await savePreset(scope, name, settingsRef.current)
+      setPresets(current => [preset, ...current])
+      setSelectedTemplateId(preset.id)
+      setPresetName('')
+      message.success('模板已保存在本机')
+    } catch (error) { message.error(errorMessage(error)) }
+  }
+
+  function choosePreset(id: string) {
+    const preset = presets.find(item => item.id === id)
+    if (!preset || processingRef.current || packaging) return
+    const next = preset.settings
+    settingsRef.current = next
+    setSettings(next)
+    setSelectedTemplateId(id)
+    if (itemsRef.current.some(item => item.status !== 'pending')) commitItems(invalidateBatch(itemsRef.current))
+  }
+
+  async function removePreset() {
+    if (!selectedTemplateId) return
+    try {
+      await deletePreset(selectedTemplateId)
+      setPresets(current => current.filter(item => item.id !== selectedTemplateId))
+      setSelectedTemplateId(null)
+      message.success('模板已删除')
+    } catch (error) { message.error(errorMessage(error)) }
   }
 
   function addFile(file: File) {
@@ -329,6 +370,25 @@ export default function AspectRatioTool() {
               </div>
             </>
           )}
+          <div className="toolbox-presets">
+            <label className="toolbox-field-label">本机模板</label>
+            <div className="toolbox-preset-row">
+              <Select
+                placeholder="选择已保存模板"
+                value={selectedTemplateId}
+                disabled={controlsLocked}
+                options={presets.map(preset => ({ value: preset.id, label: preset.name }))}
+                onChange={choosePreset}
+                allowClear
+                onClear={() => setSelectedTemplateId(null)}
+              />
+              <Button disabled={!selectedTemplateId || controlsLocked} onClick={() => void removePreset()}>删除</Button>
+            </div>
+            <div className="toolbox-preset-row">
+              <Input value={presetName} maxLength={40} disabled={controlsLocked} placeholder="新模板名称" onChange={event => setPresetName(event.target.value)} onPressEnter={() => void saveCurrentPreset()} />
+              <Button icon={<SaveOutlined />} disabled={controlsLocked} onClick={() => void saveCurrentPreset()}>保存</Button>
+            </div>
+          </div>
         </section>
       </div>
 
