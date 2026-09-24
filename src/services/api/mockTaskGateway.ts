@@ -10,6 +10,7 @@ import {
   type VariationTaskParams,
 } from '@/types'
 import type { CreateTaskPayload } from './task'
+import { encodeMockMatte } from './mockMatte'
 
 interface MockTaskRecord {
   task: GenerationTask<unknown>
@@ -42,7 +43,7 @@ export async function getMockTask(taskId: string): Promise<GenerationTask<unknow
 
   record.pollCount += 1
   const status = record.pollCount >= 2 ? 'succeeded' : 'processing'
-  const result = status === 'succeeded' ? createMockResult(record.task) : {}
+  const result = status === 'succeeded' ? await createMockResult(record.task) : {}
   record.task = {
     ...record.task,
     status,
@@ -90,7 +91,7 @@ function readCount(params: unknown) {
   return Number.isFinite(count) ? Math.min(4, Math.max(1, Math.round(count))) : 1
 }
 
-function createMockResult(task: GenerationTask<unknown>): Pick<GenerationTask<unknown>, 'resultUrls' | 'resultText'> {
+async function createMockResult(task: GenerationTask<unknown>): Promise<Pick<GenerationTask<unknown>, 'resultUrls' | 'resultText'>> {
   if (task.capability === Capability.EmailAssist) {
     return { resultText: createMockEmail(task.params as EmailAssistTaskParams) }
   }
@@ -119,6 +120,11 @@ function createMockResult(task: GenerationTask<unknown>): Pick<GenerationTask<un
   if (task.capability === Capability.ImageEdit) {
     const params = task.params as unknown as ImageEditTaskParams
     return { resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockEditedImage(params, index)) }
+  }
+
+  if (task.capability === Capability.BgRemove) {
+    const size = (task.params as { size?: { width?: number; height?: number } }).size
+    return { resultUrls: [await encodeMockMatte(size?.width ?? 1, size?.height ?? 1)] }
   }
 
   if (task.capability === Capability.Outpaint) {

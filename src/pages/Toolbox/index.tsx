@@ -1,11 +1,11 @@
 import { lazy, Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Segmented, Upload } from 'antd'
-import { InboxOutlined } from '@ant-design/icons'
+import { Segmented } from 'antd'
 import { TOOLBOX_TOOLS } from './tools'
 
 const WatermarkTool = lazy(() => import('./WatermarkTool'))
 const AspectRatioTool = lazy(() => import('./AspectRatioTool'))
+const BgRemoveTool = lazy(() => import('./BgRemoveTool'))
 
 export default function Toolbox() {
   const { tool } = useParams<{ tool: string }>()
@@ -20,21 +20,7 @@ export default function Toolbox() {
         onChange={(v) => navigate(`/toolbox/${v}`)}
       />
 
-      {activeSlug === 'watermark' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : activeSlug === 'aspect-ratio' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载转比例工具…</div>}><AspectRatioTool /></Suspense> : (
-        <>
-          <Upload.Dragger multiple style={{ marginTop: 16 }} beforeUpload={() => false}>
-            <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-            <p>拖拽图片或点击上传，支持批量</p>
-          </Upload.Dragger>
-          <div style={{ marginTop: 16 }}>
-            {activeSlug === 'bg-remove' && <div>参数：输出背景（透明 / 白底 / 纯色）</div>}
-          </div>
-          <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button>打包下载</Button>
-            <Button type="primary">开始处理</Button>
-          </div>
-        </>
-      )}
+      {activeSlug === 'bg-remove' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载智能抠图…</div>}><BgRemoveTool /></Suspense> : activeSlug === 'watermark' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : activeSlug === 'aspect-ratio' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载转比例工具…</div>}><AspectRatioTool /></Suspense> : null}
     </div>
   )
 }
