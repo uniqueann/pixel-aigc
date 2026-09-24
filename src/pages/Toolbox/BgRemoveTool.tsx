@@ -232,7 +232,7 @@ export default function BgRemoveTool() {
             value={backgroundMode}
             disabled={controlsLocked}
             onChange={event => void updateBackground(event.target.value === 'transparent' ? 'transparent' : '#ffffff')}
-            options={[{ label: '白底', value: 'color' }, { label: '透明 PNG', value: 'transparent' }]}
+            options={[{ label: '纯色', value: 'color' }, { label: '透明 PNG', value: 'transparent' }]}
             optionType="button"
           />
           {backgroundMode === 'color' && (
