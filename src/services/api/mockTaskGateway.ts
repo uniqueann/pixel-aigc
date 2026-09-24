@@ -6,6 +6,7 @@ import {
   type ImageEditTaskParams,
   type TextToImageTaskParams,
   type TextToVideoTaskParams,
+  type OutpaintTaskParams,
   type VariationTaskParams,
 } from '@/types'
 import type { CreateTaskPayload } from './task'
@@ -118,6 +119,11 @@ function createMockResult(task: GenerationTask<unknown>): Pick<GenerationTask<un
   if (task.capability === Capability.ImageEdit) {
     const params = task.params as unknown as ImageEditTaskParams
     return { resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockEditedImage(params, index)) }
+  }
+
+  if (task.capability === Capability.Outpaint) {
+    const params = task.params as unknown as OutpaintTaskParams
+    return { resultUrls: [createMockImage({ prompt: '扩图', size: params.targetSize, count: 1 }, 0)] }
   }
 
   if (task.params && typeof task.params === 'object' && 'sourceImageUrl' in task.params) {
