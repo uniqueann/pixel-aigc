@@ -9,6 +9,7 @@ export interface BatchQueueItem {
   height: number
   status: 'pending' | 'processing' | 'succeeded' | 'failed'
   error?: string
+  note?: string
   canRefine?: boolean
 }
 
@@ -79,6 +80,7 @@ export default function BatchImageQueue({ items, selectedId, disabled, onAdd, on
                 </div>
               </div>
               {item.error && <div className="toolbox-queue-error" title={item.error}>{item.error}</div>}
+              {item.note && <div className="toolbox-queue-note" title={item.note}>{item.note}</div>}
               {onRefine && (item.canRefine || item.status === 'failed') && (
                 <Button size="small" type="link" disabled={disabled} onClick={() => onRefine(item.id)}>
                   {item.canRefine ? '修边缘' : '去工作站精修'}
