@@ -5,6 +5,7 @@ import { InboxOutlined } from '@ant-design/icons'
 import { TOOLBOX_TOOLS } from './tools'
 
 const WatermarkTool = lazy(() => import('./WatermarkTool'))
+const AspectRatioTool = lazy(() => import('./AspectRatioTool'))
 
 export default function Toolbox() {
   const { tool } = useParams<{ tool: string }>()
@@ -19,7 +20,7 @@ export default function Toolbox() {
         onChange={(v) => navigate(`/toolbox/${v}`)}
       />
 
-      {activeSlug === 'watermark' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : (
+      {activeSlug === 'watermark' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : activeSlug === 'aspect-ratio' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载转比例工具…</div>}><AspectRatioTool /></Suspense> : (
         <>
           <Upload.Dragger multiple style={{ marginTop: 16 }} beforeUpload={() => false}>
             <p className="ant-upload-drag-icon"><InboxOutlined /></p>
@@ -27,7 +28,6 @@ export default function Toolbox() {
           </Upload.Dragger>
           <div style={{ marginTop: 16 }}>
             {activeSlug === 'bg-remove' && <div>参数：输出背景（透明 / 白底 / 纯色）</div>}
-            {activeSlug === 'aspect-ratio' && <div>参数：目标平台（单选）、适配策略（智能裁剪 / 智能扩展 / 留白填充）</div>}
           </div>
           <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button>打包下载</Button>
