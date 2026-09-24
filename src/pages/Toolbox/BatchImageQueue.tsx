@@ -9,6 +9,7 @@ export interface BatchQueueItem {
   height: number
   status: 'pending' | 'processing' | 'succeeded' | 'failed'
   error?: string
+  canRefine?: boolean
 }
 
 interface Props {
@@ -78,7 +79,11 @@ export default function BatchImageQueue({ items, selectedId, disabled, onAdd, on
                 </div>
               </div>
               {item.error && <div className="toolbox-queue-error" title={item.error}>{item.error}</div>}
-              {item.status === 'failed' && onRefine && <Button size="small" type="link" disabled={disabled} onClick={() => onRefine(item.id)}>去工作站精修</Button>}
+              {onRefine && (item.canRefine || item.status === 'failed') && (
+                <Button size="small" type="link" disabled={disabled} onClick={() => onRefine(item.id)}>
+                  {item.canRefine ? '修边缘' : '去工作站精修'}
+                </Button>
+              )}
             </article>
           ))}
         </div>
