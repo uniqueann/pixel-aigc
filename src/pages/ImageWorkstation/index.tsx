@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { App, Button } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
@@ -7,6 +7,7 @@ import { createImageAsset } from '@/editor/services/assetService'
 import type { ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
 import { getWorkstationTool } from '@/features/image-workstation/tools/registry'
+import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
@@ -77,6 +78,25 @@ export default function ImageWorkstation() {
       setUploading(false)
     }
   }, [message, replaceSourceAsset])
+
+  const uploadRef = useRef(handleImageUpload)
+  uploadRef.current = handleImageUpload
+
+  useEffect(() => {
+    if (activeTool.slug !== 'outpaint') return
+    const handoff = takeOutpaintHandoff()
+    if (!handoff) return
+    const preset = presetForHandoff(handoff.presetId)
+    if (preset) {
+      setOutpaintMode('preset')
+      setPresetPlatform(preset.platform)
+    }
+    let active = true
+    void uploadRef.current(handoff.file).finally(() => {
+      if (!active) setOutpaintHandoff(handoff)
+    })
+    return () => { active = false }
+  }, [activeTool.slug])
 
   const handleGenerate = async () => {
     try {

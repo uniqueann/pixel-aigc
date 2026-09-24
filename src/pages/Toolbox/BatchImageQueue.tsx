@@ -21,6 +21,7 @@ interface Props {
   onClear: () => void
   onRetry: (id: string) => void
   onDownload: (id: string) => void
+  onRefine?: (id: string) => void
 }
 
 const statusLabels = {
@@ -37,7 +38,7 @@ const statusColors = {
   failed: 'error',
 }
 
-export default function BatchImageQueue({ items, selectedId, disabled, onAdd, onSelect, onRemove, onClear, onRetry, onDownload }: Props) {
+export default function BatchImageQueue({ items, selectedId, disabled, onAdd, onSelect, onRemove, onClear, onRetry, onDownload, onRefine }: Props) {
   return (
     <section className="toolbox-batch-queue" aria-label="批量图片队列">
       <div className="toolbox-section-heading">
@@ -77,6 +78,7 @@ export default function BatchImageQueue({ items, selectedId, disabled, onAdd, on
                 </div>
               </div>
               {item.error && <div className="toolbox-queue-error" title={item.error}>{item.error}</div>}
+              {item.status === 'failed' && onRefine && <Button size="small" type="link" disabled={disabled} onClick={() => onRefine(item.id)}>去工作站精修</Button>}
             </article>
           ))}
         </div>
