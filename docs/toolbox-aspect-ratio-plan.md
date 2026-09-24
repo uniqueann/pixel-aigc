@@ -4,11 +4,11 @@
 
 ## 1. 目标
 
-电商运营将同一张商品图输出为多个平台规格（见 `src/constants/platformSizes.ts`），支持三种适配策略，批量本机队列 + 可选 AI 扩图，输出可 ZIP 打包。
+电商运营将同一张商品图批量转换为指定平台规格（见 `src/constants/platformSizes.ts`），支持三种适配策略，批量本机队列 + 可选 AI 扩图，输出可逐张或 ZIP 打包。
 
 | 能力 | 说明 |
 |------|------|
-| 多选平台 | 一次勾选多个 `PlatformSizePreset`，每张原图对每个 preset 各出一份 |
+| 单选目标平台 | 一次只能勾选一个目标平台 preset（Radio / Select），每张原图对应输出 1 份结果 |
 | 适配策略 | 留白填充 / **智能裁剪** / 智能扩展（复用扩图 Capability） |
 | 批量 | 与水印一致：最多 20 张、JPG/PNG/WebP、队列预览与逐张/ZIP 下载 |
 | 路由 | `/toolbox/aspect-ratio`，独立 `AspectRatioTool`（lazy），占位见 `Toolbox/index.tsx` |
@@ -17,9 +17,9 @@
 
 | # | 议题 | 决策 |
 |---|------|------|
-| 8.1 | 多平台默认 | **记住上次选择**（本机持久化，按 `userId ?? 'local'` 分 scope，与水印 preset 一致） |
+| 8.1 | 目标平台默认 | **单选平台，记住上次选择**（本机持久化，按 `userId ?? 'local'` 分 scope，初次进入默认第 1 个 preset） |
 | 8.2 | 智能裁剪 MVP | **接受**中心裁剪 + 预览内手动焦点（九宫格/焦点）；UI **仍称「智能裁剪」**，后续再接主体检测 |
-| 8.3 | 扩图失败粒度 | **整图失败**：任一选中平台扩图失败则该队列项整体标记失败，不保留部分平台成功态（用户可整项重试） |
+| 8.3 | 扩图失败粒度 | **整图失败**：该图扩图失败则该队列项标记失败（可单张或批量重试） |
 | 8.4 | 输出尺寸 | **严格 preset 像素**（如 1600×1600），不做「仅保比例缩放到长边」 |
 | 8.5 | 与水印串联 | **预留**：未来可能「转比例 → 加水印」流水线；命名、队列 ID、中间 blob 引用需可串联（见 §7） |
 
@@ -45,8 +45,8 @@
 - 上传给扩图的是缩放后的原图，`targetSize` = preset，`originOffset` / 蒙版里的原图矩形用缩放后的整数宽高，不用文件原始像素
 - 复用 `computeOutpaintMask`、`buildOutpaintRequest`（`Capability.Outpaint`）。无 Fabric 拖框
 - **Outpaint 提示词与参数**：转比例场景下扩图是结构性补全，默认传空或通用背景延续提示词（由后端 capability 处理延伸），不需要向用户暴露复杂画笔与提示词输入，保持批处理工具的轻量
-- **失败策略（8.3）**：任一选中平台失败 → 该队列项 `failed`，错误汇总，不提供部分平台下载。整项重试会重交全部平台任务（含此前已成功的），开始前展示「图片数 × 平台数」任务数
-- **轮询与并发管控**：多张图 × 多平台任务不得使用单一 `useTaskPolling`（只支持单 taskId）。需设计专门的批量轮询器或批量查询接口，且需对向后端提交任务设置最大并发度（如并发 2~3 个任务），避免 20 张 × 4 平台瞬间突发 80 个并发任务打爆服务端或触发表单限流
+- **失败策略（8.3）**：扩图失败 → 该队列项 `failed`，展示失败原因。用户可单项重试或整批重试失败项
+- **轮询与并发管控**：多张图批量任务避免全部瞬间提交打满限流，设置并发工作池（限制如 2~3 个任务并发执行），采用批量轮询器推进队列状态
 
 ## 4. 状态与持久化
 
@@ -54,48 +54,58 @@
 type FitStrategy = 'letterbox' | 'crop' | 'outpaint'
 
 interface AspectRatioSettings {
-  strategy: FitStrategy // 一套策略作用于全部图片、全部已选 preset
-  selectedPresetIds: string[] // 不用 platform 字符串当 key
+  strategy: FitStrategy // 一套策略作用于全部图片
+  selectedPresetId: string // 单选目标平台 preset id
   letterbox: { background: string } // '#ffffff' | 'transparent'
   crop: { fx: number; fy: number } // 0..1，默认 0.5 / 0.5
 }
 
 interface AspectRatioBatchItem {
   id: string
-  status: 'pending' | 'processing' | 'succeeded' | 'failed' // 整项，不做部分成功
-  outputs?: Record<string, Blob> // key = preset id；仅 succeeded 时齐全
+  file: File
+  sourceMime: 'image/jpeg' | 'image/png' | 'image/webp'
+  sourceUrl: string
+  width: number
+  height: number
+  status: 'pending' | 'processing' | 'succeeded' | 'failed'
+  output?: Blob
+  outputMime?: string
   error?: string
 }
 ```
 
-`PLATFORM_SIZE_PRESETS` 增加稳定 `id`（现有四条可取 `amazon-main` 等）。`platform` 只用于展示。以后同一平台多规格（主图 / 详情）不会撞 key。hydrate 时丢掉已下线的 id；若一个都不剩，回退为当前字典全选。
+`PLATFORM_SIZE_PRESETS` 增加稳定 `id`（现有四条可取 `amazon-main` 等）。`platform` 用于展示。单选模式下，每个队列项直接产出单一输出 `output`，结构与水印 `BatchImage` 保持 1:1 对齐，极大降低数据模型复杂度。
 
 **记住上次选择（8.1）**
 
-- IndexedDB key 空间建议：`pixel-aigc-aspect-ratio-prefs`（或并入未来 `toolbox-shared-prefs`）
-- 持久字段：`selectedPresetIds`、`strategy`、留白背景、裁剪焦点；进入页面时 hydrate，变更 debounce 写入
+- IndexedDB key 空间建议：`pixel-aigc-aspect-ratio-prefs`
+- 持久字段：`selectedPresetId`、`strategy`、留白背景、裁剪焦点；进入页面时 hydrate，变更 debounce 写入
 - 不持久化：当前队列图片列表（与水印一致，刷新清空）
 
 **平台模板（M2，可选）**
 
-- 与水印 preset 类似：命名保存「平台组合 + 策略 + 留白色」，与「上次选择」并存：模板应用会覆盖当前选择并写入「上次选择」
+- 命名保存「常用目标平台 + 适配策略 + 留白色」，方便常用工作流一键载入
 
 ## 5. UX
 
-- **预览**：当前图 + 切换当前平台。预览可缩小显示，但裁切/留白用同一套归一化几何，导出仍是 preset 全尺寸
-- **参数**：策略 Radio；平台 Checkbox。无记录时默认全选当前 preset。一个都不选时不能开始。处理中锁定参数（同水印）
-- **改设置**：策略、平台、焦点、背景色变化后作废已有输出，回到 pending（同 `invalidateBatch`）
-- **队列**：处理中显示已完成平台数；结束后只有整项成功或整项失败
-- **下载**：卡片下载该图全部平台（多个则打一个小 ZIP）；底部 ZIP 为全部成功图 × 平台。扁平文件名，扩展名随 MIME
+- **预览**：当前选中图在目标平台尺寸下的实时预览效果。预览区使用降采样渲染，但使用统一几何计算
+- **参数**：
+  - 目标平台：单选（Radio.Group 或卡片式单选），列出平台名称与尺寸（如 Amazon 主图 1600×1600）
+  - 适配策略：Radio（留白填充 / 智能裁剪 / 智能扩展）
+  - 对应子参数：留白显示背景色选择；裁剪显示九宫格/焦点控制器
+  - 处理中锁定参数输入
+- **改设置**：策略、目标平台、焦点、背景色变化后作废已有输出，回到 pending（同 `invalidateBatch`）
+- **队列**：单选平台后，每张图输出 1 个目标结果，卡片状态为待处理 / 处理中 / 已完成 / 失败，支持单张下载、单张重试、整批重试失败项
+- **下载**：单张下载直接保存该图；底部打包下载导出整批已成功的 ZIP
 - **命名**：复用水印 `outputNames` 的清洗与 `_2` 去重，后缀改为 `_{presetId}`，例如 `商品_amazon-main.jpg`
 
 ## 6. 分阶段
 
 | 阶段 | 内容 | 后端 |
 |------|------|------|
-| M1 | `AspectRatioTool`、多选平台 + 记住上次、留白 + 智能裁剪（中心/焦点）、本机批量、ZIP | 无 |
-| M2 | 平台模板 IndexedDB；从 watermark 抽 `toolbox/shared`（inspect、zip、限额） | 无 |
-| M3 | 智能扩展：上传、Outpaint 任务、轮询；整图失败语义 | 任务 API |
+| M1 | `AspectRatioTool`、单选目标平台 + 记住上次选择、留白 + 智能裁剪（中心/焦点）、本机批量、ZIP | 无 |
+| M2 | 常用模板 IndexedDB；从 watermark 抽离 `toolbox/shared` 通用组件（inspect、zip、限额） | 无 |
+| M3 | 智能扩展：并发工作池、Outpaint 任务与轮询、整图失败重试 | 任务 API |
 | M4 | 智能裁剪主体检测；失败项跳转工作站扩图精修 | 模型 |
 
 ## 7. 与水印串联预留（8.5）
@@ -128,11 +138,11 @@ src/pages/Toolbox/
 - 几何：各 preset 输出宽高精确等于 preset；放置矩形为整数且不越界、不留 1px 缝
 - 比例已一致：裁剪与留白像素一致；扩图不发任务
 - 横竖图、放大与缩小；导出 canvas 宽高等于 preset，不乘 `devicePixelRatio`
-- 命名去重；prefs：刷新恢复、未知 id 丢弃、全失效时回退全选
-- 改焦点/策略后已有输出作废
-- 批量轮询与并发限制：多任务并发池不溢出最大并发限制，能正确收集多平台失败原因
-- 预览性能：预览切换平台时只计算缩放预览尺寸，不生成全尺寸高清大图
-- outpaint（M3）：单平台失败 → 整项 failed、无部分下载；蒙版矩形用缩放后尺寸
+- 命名去重；prefs：刷新恢复上次选中平台与策略、未知 id 丢弃并回退到默认第 1 个 preset
+- 改焦点/策略/目标平台后已有输出作废
+- 批量轮询与并发限制：并发池不溢出最大限制（2~3 并发）
+- 预览性能：切换单选平台或选中图片时只计算缩放预览尺寸，不生成全尺寸高清大图
+- outpaint（M3）：失败项标记与重试；蒙版矩形用缩放后尺寸
 
 ## 10. 实现约定（补充）
 
@@ -140,11 +150,11 @@ src/pages/Toolbox/
 
 | 项 | 约定 |
 |----|------|
-| 范围 | 一套策略 + 一套焦点作用于整批。自由尺寸仍只在图片工作站，工具箱不做自定义宽高 |
+| 范围 | 一次单选一个目标平台。一套策略 + 一套焦点作用于整批。自由尺寸仍只在图片工作站，工具箱不做自定义宽高 |
 | 像素 | 原图小于 preset 时放大到 preset（8.4）。`imageSmoothingQuality = 'high'`。放大超过 2 倍时预览区提示，不拦截 |
 | 方向 | 解码用 `imageOrientation: 'from-image'`（同水印）。画布重编码会去掉 EXIF |
 | 格式 | 默认白底 JPEG `0.92`。仅留白且背景为透明时用 PNG。裁剪与扩图结果不透明 |
-| 限额 | 源图仍走水印 `inspectImage`（20 张、单张 20MB、像素上限）。输出数 = 图片 × preset，ZIP 仍是 200MB，超出提示改逐张下 |
+| 限额 | 源图仍走水印 `inspectImage`（20 张、单张 20MB、像素上限）。单选平台输出数为 1:1（20 张对应 20 份结果），ZIP 仍是 200MB，超出提示改逐张下 |
 | 内存 | 按张串行，优先 Worker / OffscreenCanvas。预览与导出不要同时握住全部全尺寸位图 |
 | 预览尺寸 | 预览区使用降采样渲染（如设置 `previewMaxDimension: 800`，类似水印 Worker），避免 4K/2K 大原图或大 preset 直接跑全尺寸 Canvas 导致主线程/Worker 交互卡顿 |
 | 失败 | 本机编码抛错也是整项失败，与扩图同一套状态 |

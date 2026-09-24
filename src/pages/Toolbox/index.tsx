@@ -27,7 +27,7 @@ export default function Toolbox() {
           </Upload.Dragger>
           <div style={{ marginTop: 16 }}>
             {activeSlug === 'bg-remove' && <div>参数：输出背景（透明 / 白底 / 纯色）</div>}
-            {activeSlug === 'aspect-ratio' && <div>参数：目标平台（可多选）、适配策略（智能裁剪 / 智能扩展 / 留白填充）</div>}
+            {activeSlug === 'aspect-ratio' && <div>参数：目标平台（单选）、适配策略（智能裁剪 / 智能扩展 / 留白填充）</div>}
           </div>
           <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button>打包下载</Button>
