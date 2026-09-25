@@ -6,6 +6,13 @@ export const MAX_DESKTOP_PIXELS = 24_000_000
 export const MAX_MOBILE_PIXELS = 12_000_000
 export const MAX_LOGO_BYTES = 10 * 1024 * 1024
 
+export function queueLimitMessage(file: File, queuedCount: number, queuedBytes: number) {
+  if (file.size > MAX_IMAGE_BYTES) return `${file.name}：单张图片不能超过 20 MB`
+  if (queuedCount >= MAX_FILES) return `${file.name}：一批最多添加 20 张图片`
+  if (queuedBytes + file.size > MAX_BATCH_BYTES) return `${file.name}：整批图片不能超过 150 MB`
+  return null
+}
+
 export type SupportedMime = 'image/jpeg' | 'image/png' | 'image/webp'
 
 function equalsAscii(bytes: Uint8Array, offset: number, value: string) {

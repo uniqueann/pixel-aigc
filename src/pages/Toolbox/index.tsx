@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Segmented } from 'antd'
+import { liveCapabilityReady } from '@/services/api/task'
+import { Capability } from '@/types'
 import { TOOLBOX_TOOLS } from './tools'
 
 const WatermarkTool = lazy(() => import('./WatermarkTool'))
@@ -15,7 +17,10 @@ export default function Toolbox() {
   return (
     <div>
       <Segmented
-        options={TOOLBOX_TOOLS.map((t) => ({ label: t.label, value: t.slug }))}
+        options={TOOLBOX_TOOLS.map((t) => ({
+          label: t.slug === 'bg-remove' && !liveCapabilityReady(Capability.BgRemove) ? '智能抠图 · 即将上线' : t.label,
+          value: t.slug,
+        }))}
         value={activeSlug}
         onChange={(v) => navigate(`/toolbox/${v}`)}
       />

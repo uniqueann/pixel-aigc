@@ -8,7 +8,7 @@ import { createWatermarkZip, downloadBlob, namesForImages } from './watermark/do
 import { deletePreset, listPresets, savePreset, type WatermarkPreset } from './watermark/presets'
 import { WatermarkRenderer } from './watermark/renderer'
 import { DEFAULT_WATERMARK_SETTINGS, type BatchImage, type WatermarkAnchor, type WatermarkSettings } from './watermark/types'
-import { inspectImage, inspectLogo, MAX_BATCH_BYTES, MAX_FILES, MAX_ZIP_BYTES } from './watermark/validation'
+import { inspectImage, inspectLogo, MAX_ZIP_BYTES, queueLimitMessage } from './watermark/validation'
 
 const anchors: { value: WatermarkAnchor; label: string }[] = [
   { value: 'top-left', label: '左上' },
@@ -54,6 +54,7 @@ export default function WatermarkTool() {
   const rendererRef = useRef<WatermarkRenderer | null>(null)
   const addChainRef = useRef<Promise<void>>(Promise.resolve())
   const addingCountRef = useRef(0)
+  const pendingBytesRef = useRef(0)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
   const [presets, setPresets] = useState<WatermarkPreset[]>([])
@@ -145,13 +146,13 @@ export default function WatermarkTool() {
 
   function addFile(file: File) {
     if (processingRef.current) return
+    const queuedBytes = itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + pendingBytesRef.current
+    const blocked = queueLimitMessage(file, itemsRef.current.length + addingCountRef.current, queuedBytes)
+    if (blocked) { message.error(blocked); return }
     addingCountRef.current += 1
+    pendingBytesRef.current += file.size
     setAdding(true)
     addChainRef.current = addChainRef.current.then(async () => {
-      if (itemsRef.current.length >= MAX_FILES) throw new Error('一批最多添加 20 张图片')
-      if (itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + file.size > MAX_BATCH_BYTES) {
-        throw new Error('整批图片不能超过 150 MB')
-      }
       const inspected = await inspectImage(file)
       if (!mountedRef.current) return
       const item: BatchImage = {
@@ -165,6 +166,7 @@ export default function WatermarkTool() {
       if (mountedRef.current) message.error(`${file.name}：${errorMessage(error)}`)
     }).finally(() => {
       addingCountRef.current -= 1
+      pendingBytesRef.current -= file.size
       if (mountedRef.current && addingCountRef.current === 0) setAdding(false)
     })
   }
