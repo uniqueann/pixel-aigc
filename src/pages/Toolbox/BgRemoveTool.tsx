@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { App, Button, ColorPicker, Progress, Radio } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
+import { liveCapabilityReady } from '@/services/api/task'
+import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 import BatchImageQueue from './BatchImageQueue'
 import { processRemovalBatch, recompositeBatch } from './bg-remove/batch'
@@ -12,7 +14,7 @@ import { canRefineEdge } from './bg-remove/edgeRefine'
 import { readPrefs, writePrefs } from './bg-remove/prefs'
 import { applyEdgeRefineResult, loadBgRemoveSession, saveBgRemoveSession, setEdgeRefineHandoff, takeEdgeRefineResult } from './bg-remove/session'
 import { DEFAULT_BG_REMOVE_SETTINGS, PREVIEW_MAX_DIMENSION, type BatchImage, type BgRemoveSettings } from './bg-remove/types'
-import { inspectImage, MAX_BATCH_BYTES, MAX_FILES, MAX_ZIP_BYTES } from './shared/inspect'
+import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败'
@@ -38,6 +40,8 @@ export default function BgRemoveTool() {
   const restoredRef = useRef(false)
   const addChainRef = useRef<Promise<void>>(Promise.resolve())
   const addingCountRef = useRef(0)
+  const pendingBytesRef = useRef(0)
+  const serviceReady = liveCapabilityReady(Capability.BgRemove)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
 
@@ -154,13 +158,13 @@ export default function BgRemoveTool() {
 
   function addFile(file: File) {
     if (processingRef.current) return
+    const queuedBytes = itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + pendingBytesRef.current
+    const blocked = queueLimitMessage(file, itemsRef.current.length + addingCountRef.current, queuedBytes)
+    if (blocked) { message.error(blocked); return }
     addingCountRef.current += 1
+    pendingBytesRef.current += file.size
     setAdding(true)
     addChainRef.current = addChainRef.current.then(async () => {
-      if (itemsRef.current.length >= MAX_FILES) throw new Error('一批最多添加 20 张图片')
-      if (itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + file.size > MAX_BATCH_BYTES) {
-        throw new Error('整批图片不能超过 150 MB')
-      }
       const inspected = await inspectImage(file)
       if (!mountedRef.current) return
       const item: BatchImage = {
@@ -176,6 +180,7 @@ export default function BgRemoveTool() {
       if (mountedRef.current) message.error(`${file.name}：${errorMessage(error)}`)
     }).finally(() => {
       addingCountRef.current -= 1
+      pendingBytesRef.current -= file.size
       if (mountedRef.current && addingCountRef.current === 0) setAdding(false)
     })
   }
@@ -214,6 +219,10 @@ export default function BgRemoveTool() {
   }
 
   async function processImages(onlyIds?: string[]) {
+    if (!serviceReady) {
+      message.warning('智能抠图即将上线，真实抠图服务还没接入')
+      return
+    }
     if (processingRef.current || addingCountRef.current) return
     processingRef.current = true
     cancelledRef.current = false
@@ -291,6 +300,7 @@ export default function BgRemoveTool() {
             </div>
           )}
           <p className="toolbox-hint">白底和纯色导出 JPEG。透明导出 PNG。已抠过的图片换颜色不会重新请求模型。</p>
+          {!serviceReady && <p className="toolbox-hint toolbox-warning">智能抠图即将上线。真实抠图服务还没接入，现在不能开始处理。</p>}
         </section>
       </div>
       <BatchImageQueue
@@ -313,9 +323,9 @@ export default function BgRemoveTool() {
         </div>
         <div className="toolbox-footer-actions">
           <Button icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
-          {failed.length > 0 && !processing && <Button disabled={busy} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>}
+          {failed.length > 0 && !processing && <Button disabled={busy || !serviceReady} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>}
           {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
-            <Button type="primary" disabled={!items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</Button>
+            <Button type="primary" disabled={!serviceReady || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</Button>
           )}
         </div>
       </div>

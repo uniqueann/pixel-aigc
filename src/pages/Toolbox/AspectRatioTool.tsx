@@ -16,7 +16,7 @@ import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from '.
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
 import { detectSubject } from './aspect-ratio/subjectFocus'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
-import { inspectImage, MAX_BATCH_BYTES, MAX_FILES, MAX_ZIP_BYTES } from './shared/inspect'
+import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
 const focuses = [
   { fx: 0, fy: 0, label: '左上' },
@@ -61,6 +61,7 @@ export default function AspectRatioTool() {
   const rendererRef = useRef<AspectRatioRenderer | null>(null)
   const addChainRef = useRef<Promise<void>>(Promise.resolve())
   const addingCountRef = useRef(0)
+  const pendingBytesRef = useRef(0)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
   const [presets, setPresets] = useState<AspectRatioPreset[]>([])
@@ -214,13 +215,13 @@ export default function AspectRatioTool() {
 
   function addFile(file: File) {
     if (processingRef.current) return
+    const queuedBytes = itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + pendingBytesRef.current
+    const blocked = queueLimitMessage(file, itemsRef.current.length + addingCountRef.current, queuedBytes)
+    if (blocked) { message.error(blocked); return }
     addingCountRef.current += 1
+    pendingBytesRef.current += file.size
     setAdding(true)
     addChainRef.current = addChainRef.current.then(async () => {
-      if (itemsRef.current.length >= MAX_FILES) throw new Error('一批最多添加 20 张图片')
-      if (itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + file.size > MAX_BATCH_BYTES) {
-        throw new Error('整批图片不能超过 150 MB')
-      }
       const inspected = await inspectImage(file)
       if (!mountedRef.current) return
       const item: BatchImage = {
@@ -233,6 +234,7 @@ export default function AspectRatioTool() {
       if (mountedRef.current) message.error(`${file.name}：${errorMessage(error)}`)
     }).finally(() => {
       addingCountRef.current -= 1
+      pendingBytesRef.current -= file.size
       if (mountedRef.current && addingCountRef.current === 0) setAdding(false)
     })
   }
@@ -375,11 +377,12 @@ export default function AspectRatioTool() {
               { label: '智能扩展', value: 'outpaint' },
             ]}
           />
-          <p className="toolbox-hint">
-            {settings.strategy === 'outpaint'
-              ? `智能扩展会提交 ${items.filter(item => expansionPlan(item.width, item.height, preset.width, preset.height).mode === 'remote').length} 个扩图任务。比例已经一致的图片只在本机缩放。预览里的深色区域是待补全的留白。`
-              : '智能扩展会把原图完整放进目标尺寸，不足的边缘交给扩图补上。'}
-          </p>
+          {settings.strategy === 'letterbox' && <p className="toolbox-hint">留白会把原图完整放进目标尺寸，空白处用所选颜色填上。</p>}
+          {settings.strategy === 'outpaint' && (
+            <p className="toolbox-hint">
+              智能扩展会提交 {items.filter(item => expansionPlan(item.width, item.height, preset.width, preset.height).mode === 'remote').length} 个扩图任务。比例已经一致的图片只在本机缩放。预览里的深色区域是待补全的留白。
+            </p>
+          )}
           {settings.strategy === 'letterbox' && (
             <>
               <div className="toolbox-field-row">

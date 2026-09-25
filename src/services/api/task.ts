@@ -1,4 +1,4 @@
-import { authEnabled, cloudEnabled } from '@/cloud/client'
+import { cloudEnabled } from '@/cloud/client'
 import { apiClient } from './client'
 import type { Capability, GenerationTask } from '@/types'
 import { cancelMockTask, createMockTask, getMockTask, listMockTasks } from './mockTaskGateway'
@@ -13,8 +13,12 @@ export interface CreateTaskPayload<TParams = Record<string, unknown>> {
 
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
 
+export function liveCapabilityReady(capability: Capability, mockGateway = useMockGateway) {
+  return mockGateway || capability === 'email_assist'
+}
+
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {
-  if (authEnabled && !useMockGateway && payload.capability !== 'email_assist')
+  if (!liveCapabilityReady(payload.capability))
     return Promise.reject(new Error('该生成能力尚未接入真实服务'))
   if (useMockGateway) return createMockTask(payload)
   return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload, { timeout: 55000 })
