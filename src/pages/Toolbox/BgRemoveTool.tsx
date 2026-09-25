@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { App, Button, ColorPicker, Progress, Radio } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
+import { loadBgRemoveConfigured } from '@/services/api/capabilities'
 import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
@@ -41,7 +42,7 @@ export default function BgRemoveTool() {
   const addChainRef = useRef<Promise<void>>(Promise.resolve())
   const addingCountRef = useRef(0)
   const pendingBytesRef = useRef(0)
-  const serviceReady = liveCapabilityReady(Capability.BgRemove)
+  const [serviceReady, setServiceReady] = useState(() => liveCapabilityReady(Capability.BgRemove))
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
 
@@ -63,6 +64,12 @@ export default function BgRemoveTool() {
     previewRef.current = next
     setPreviewUrl(next)
   }
+
+  useEffect(() => {
+    let active = true
+    void loadBgRemoveConfigured().then(ready => { if (active) setServiceReady(ready) })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -220,7 +227,7 @@ export default function BgRemoveTool() {
 
   async function processImages(onlyIds?: string[]) {
     if (!serviceReady) {
-      message.warning('智能抠图即将上线，真实抠图服务还没接入')
+      message.warning('智能抠图即将上线，腾讯云商品抠图的配置还没填好')
       return
     }
     if (processingRef.current || addingCountRef.current) return
@@ -300,7 +307,7 @@ export default function BgRemoveTool() {
             </div>
           )}
           <p className="toolbox-hint">白底和纯色导出 JPEG。透明导出 PNG。已抠过的图片换颜色不会重新请求模型。</p>
-          {!serviceReady && <p className="toolbox-hint toolbox-warning">智能抠图即将上线。真实抠图服务还没接入，现在不能开始处理。</p>}
+          {!serviceReady && <p className="toolbox-hint toolbox-warning">智能抠图即将上线。腾讯云商品抠图的配置还没填好，现在不能开始处理。</p>}
         </section>
       </div>
       <BatchImageQueue

@@ -9,6 +9,7 @@ import { readProject, requireProject, toAsset, validateReferences } from './proj
 import { signRead, signUpload, verifyAndPromote } from './storage.js'
 import { handleModelRoute } from './model-settings.js'
 import { handleEmailTaskRoute } from './email-tasks.js'
+import { goodsMatting, tencentCiConfig } from './tencent-ci.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = randomUUID(), start = Date.now()
@@ -33,10 +34,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json(result)
       return
     }
+    if (path.join('/') === 'capabilities' && method === 'GET') {
+      res.status(200).json({ bgRemove: tencentCiConfig() !== null })
+      return
+    }
+    const maxBytes = path[0] === 'bg-remove' ? 28 * 1024 * 1024 : 3 * 1024 * 1024
     const user = await authenticate(req.headers.authorization)
     userId = user.id
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
-    if (Buffer.byteLength(JSON.stringify(body ?? null)) > 3 * 1024 * 1024) throw new HttpError(413, '项目文档超过 3 MB')
+    if (Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? null)) > maxBytes) throw new HttpError(413, '请求内容过大')
+    if (path.join('/') === 'bg-remove' && method === 'POST') {
+      const input = z.object({
+        mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+        dataBase64: z.string().min(1),
+      }).strict().parse(body)
+      const image = Buffer.from(input.dataBase64, 'base64')
+      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+      const png = await goodsMatting(image)
+      res.setHeader('Content-Type', 'image/png')
+      res.status(200).end(png)
+      return
+    }
     if (path[0] === 'model-settings' || path[0] === 'model-profiles') {
       res.status(200).json(await handleModelRoute(user, method, path, body))
       return
