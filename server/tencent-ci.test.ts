@@ -1,6 +1,7 @@
+import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { HttpError } from './errors'
-import { chooseSubjectBox, detectGoodsSubject, goodsMatting, mattingFailure, mattingOperations, processedObjectKey, subjectFailure, tencentCiConfig, type TencentCiConfig } from './tencent-ci'
+import { chooseSubjectBox, detectGoodsSubject, goodsMatting, mattingFailure, mattingOperations, processedObjectKey, subjectBoxFromMatte, subjectFailure, tencentCiConfig, type TencentCiConfig } from './tencent-ci'
 
 const config: TencentCiConfig = {
   secretId: 'id', secretKey: 'key', bucket: 'example-1250000000', region: 'ap-guangzhou',
@@ -109,6 +110,35 @@ describe('腾讯云抠图配置', () => {
     expect(calls[0]).toMatch(/^put:subject-detect\//)
     expect(calls[1]).toBe('detect:AIObjectDetect')
     expect(calls[2]).toBe(calls[0].replace('put:', 'delete:'))
+  })
+
+  it('主体检测没找到时，用抠图的不透明区域作为商品框', async () => {
+    const png = await sharp({
+      create: { width: 100, height: 50, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).composite([{
+      input: await sharp({ create: { width: 20, height: 10, channels: 4, background: { r: 200, g: 0, b: 0, alpha: 1 } } }).png().toBuffer(),
+      left: 10,
+      top: 5,
+    }]).png().toBuffer()
+    const queries: string[] = []
+    const box = await detectGoodsSubject(Buffer.from('jpeg'), 1000, 500, config, {
+      putObject(_params, callback) { callback(null, {}) },
+      getObject(_params, callback) { callback(null, { Body: Buffer.from('') }) },
+      deleteObject(_params, callback) { callback(null) },
+      request(params, callback) {
+        const query = params.Query as { 'ci-process': string }
+        queries.push(query['ci-process'])
+        if (query['ci-process'] === 'GoodsMatting') callback(null, { Body: png })
+        else callback(null, { RecognitionResult: { Status: 0 } })
+      },
+    })
+    expect(queries).toEqual(['AIObjectDetect', 'GoodsMatting'])
+    expect(box).toEqual({ x: 0.1, y: 0.1, width: 0.2, height: 0.2 })
+    const full = await sharp({ create: { width: 20, height: 20, channels: 4, background: { r: 1, g: 1, b: 1, alpha: 1 } } }).png().toBuffer()
+    const empty = await sharp({ create: { width: 20, height: 20, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer()
+    expect(await subjectBoxFromMatte(full)).toBeNull()
+    expect(await subjectBoxFromMatte(empty)).toBeNull()
+    expect(await subjectBoxFromMatte(Buffer.from('not-a-png'))).toBeNull()
   })
 
   it('检测失败时仍删除临时对象', async () => {

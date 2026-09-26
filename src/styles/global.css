@@ -957,10 +957,12 @@ a {
 .toolbox-queue-error,
 .toolbox-queue-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbox-queue-note { color: var(--color-text-muted); font-size: 12px; }
+.toolbox-queue-note.is-warning { color: var(--color-warning); white-space: normal; overflow: visible; }
 .toolbox-watermark-footer {
   position: sticky;
   bottom: 0;
   z-index: 2;
+  flex-wrap: wrap;
   margin: 0 -20px;
   padding: 10px 20px 16px;
   background: var(--color-bg);
@@ -969,6 +971,7 @@ a {
 .toolbox-progress { display: flex; min-width: 0; max-width: 320px; flex: 1; flex-direction: column; gap: 5px; color: var(--color-text-secondary); font-size: 12px; }
 .toolbox-footer-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .toolbox-warning { color: var(--color-warning); }
+.toolbox-crop-warning { flex: 1 0 100%; margin: 0; }
 
 @media (max-width: 900px) {
   .toolbox-watermark-main { grid-template-columns: 1fr; }

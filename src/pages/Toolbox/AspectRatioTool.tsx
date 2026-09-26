@@ -72,6 +72,7 @@ export default function AspectRatioTool() {
   const selected = items.find(item => item.id === selectedId)
   const completed = items.filter(item => item.status === 'succeeded')
   const failed = items.filter(item => item.status === 'failed')
+  const gridFallbacks = items.filter(item => item.status === 'succeeded' && item.cropFocus?.source === 'grid' && item.cropFocus.note)
   const outputBytes = completed.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
   const busy = processing || adding || packaging
   const controlsLocked = processing || packaging
@@ -412,7 +413,7 @@ export default function AspectRatioTool() {
                   </button>
                 ))}
               </div>
-              <p className="toolbox-hint">处理时识别商品主体并按主体裁剪。识别不到或检测失败时，按当前九宫格裁完，这一张仍算成功。</p>
+              <p className="toolbox-hint">处理时识别商品主体并按主体裁剪。识别不到或检测失败时，按当前九宫格裁完，这一张仍算成功。队列里出现黄色提示时，先把焦点改到商品所在位置，再重新处理。</p>
             </>
           )}
           <div className="toolbox-presets">
@@ -438,7 +439,7 @@ export default function AspectRatioTool() {
       </div>
 
       <BatchImageQueue
-        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error, note: item.cropFocus?.note }))}
+        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error, note: item.cropFocus?.note, noteWarning: item.cropFocus?.source === 'grid' }))}
         selectedId={selectedId}
         disabled={busy}
         onAdd={addFile}
@@ -451,6 +452,7 @@ export default function AspectRatioTool() {
       />
 
       <div className="toolbox-watermark-footer">
+        {settings.strategy === 'crop' && gridFallbacks.length > 0 && <p className="toolbox-hint toolbox-warning toolbox-crop-warning">{gridFallbacks.length} 张没有按商品裁剪，用的是当前九宫格。下载前请把焦点改到商品所在位置，再重新处理。</p>}
         <div className="toolbox-progress">
           <span>{completed.length} / {items.length} 张已完成</span>
           {processing && <Progress size="small" percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}

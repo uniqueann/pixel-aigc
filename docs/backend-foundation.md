@@ -2,7 +2,7 @@
 
 ## 当前交付边界
 
-React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc` schema 保存账号资料、个人工作空间、项目和素材元数据；邮箱密码与 Google 登录共用 Supabase Auth，R2 私有桶保存媒体。注册开放，邮箱需验证。邮件助手使用用户自带 DeepSeek 密钥同步生成。智能抠图在 `TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION` 四项都配置时，经 `POST /api/bg-remove` 调用数据万象 GoodsMatting。转比例的智能裁剪用同一套配置调用 `POST /api/subject-detect`（图像主体检测 AIObjectDetect）。图片工作站、自由画布和转比例扩图的真实生成、额度扣减、视频上传和媒体打包导出仍待接入。
+React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc` schema 保存账号资料、个人工作空间、项目和素材元数据；邮箱密码与 Google 登录共用 Supabase Auth，R2 私有桶保存媒体。注册开放，邮箱需验证。邮件助手使用用户自带 DeepSeek 密钥同步生成。智能抠图在 `TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION` 四项都配置时，经 `POST /api/bg-remove` 调用数据万象 GoodsMatting。转比例的智能裁剪用同一套配置调用 `POST /api/subject-detect`（先 AIObjectDetect，没有框时用 GoodsMatting 的不透明区域）。图片工作站、自由画布和转比例扩图的真实生成、额度扣减、视频上传和媒体打包导出仍待接入。
 
 本地默认关闭账号与云端模式。`VITE_AUTH_MODE=enabled` 可独立启用账号，`VITE_CLOUD_MODE=enabled` 启用项目云同步，且要求账号同步启用。账号开启而云同步关闭时，项目仍按 Auth UUID 保存在本地。`POST /api/tasks` 只接受邮件助手。商品抠图和主体检测是单独接口，共用四项腾讯云配置。缺配置时 `GET /api/capabilities` 返回 `bgRemove: false`，主体检测接口也会拒绝。其余生成能力继续返回未接入提示。
 
