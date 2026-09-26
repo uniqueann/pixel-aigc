@@ -39,11 +39,11 @@ export function detectSubject(_image: Pick<BatchImage, 'width' | 'height'>, miss
 }
 
 export async function cropFocusForImage(
-  image: Pick<BatchImage, 'width' | 'height'>,
+  image: Pick<BatchImage, 'file' | 'width' | 'height'>,
   settings: Pick<AspectRatioSettings, 'strategy' | 'fx' | 'fy'>,
   targetWidth: number,
   targetHeight: number,
-  detect: (image: Pick<BatchImage, 'width' | 'height'>) => Promise<SubjectDetection> = image => detectSubject(image),
+  detect: (image: Pick<BatchImage, 'file' | 'width' | 'height'>) => Promise<SubjectDetection> = image => detectSubject(image),
 ): Promise<CropFocus | undefined> {
   if (settings.strategy !== 'crop' || sameAspect(image.width, image.height, targetWidth, targetHeight)) return undefined
   const grid = { fx: settings.fx, fy: settings.fy, source: 'grid' as const }
