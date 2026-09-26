@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { invalidateBatch, processBatch } from './batch'
-import { SUBJECT_CROP_NOTE, focusFromSubjectBox, gridCropNote, mockDetectSubject } from './subjectFocus'
+import { CROP_CONCURRENCY, invalidateBatch, processBatch } from './batch'
+import { SUBJECT_CROP_NOTE, cropProgressLabel, detectionPixelSize, focusFromSubjectBox, gridCropNote, mockDetectSubject } from './subjectFocus'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, type BatchImage } from './types'
 
 function item(id: string, width = 1000, height = 1000): BatchImage {
@@ -86,6 +86,40 @@ describe('智能裁剪按张检测', () => {
     })
     expect(detect).not.toHaveBeenCalled()
     expect(images.every(image => image.cropFocus === undefined)).toBe(true)
+  })
+
+  it('检测图长边不超过 1280，进度文案带上正在处理的文件名', () => {
+    expect(detectionPixelSize(800, 600)).toEqual({ width: 800, height: 600 })
+    expect(detectionPixelSize(4000, 3000)).toEqual({ width: 1280, height: 960 })
+    expect(detectionPixelSize(3000, 4000)).toEqual({ width: 960, height: 1280 })
+    expect(cropProgressLabel(1, 6, ['香水.jpg', '纸杯.jpg', '耳机.jpg'])).toBe('正在识别商品主体，已完成 1 / 6，当前 香水.jpg、纸杯.jpg 等 3 张')
+  })
+
+  it('同时最多处理 3 张，单张失败不阻断其他图片', async () => {
+    let images = [item('a'), item('b'), item('c'), item('d')]
+    const update = (id: string, patch: Partial<BatchImage>) => {
+      images = images.map(image => image.id === id ? { ...image, ...patch } : image)
+    }
+    let active = 0
+    let peak = 0
+    const detect = vi.fn(async () => {
+      active += 1
+      peak = Math.max(peak, active)
+      await new Promise(resolve => setTimeout(resolve, 30))
+      active -= 1
+      return mockDetectSubject()
+    })
+    await processBatch({
+      images, settings: { ...DEFAULT_ASPECT_RATIO_SETTINGS, strategy: 'crop' },
+      targetWidth: 1000, targetHeight: 500, detect, update, shouldStop: () => false,
+      render: async ({ file }) => {
+        if (file.name === 'b.png') throw new Error('编码失败')
+        return { blob: new Blob(['ok']), mimeType: 'image/jpeg', width: 1000, height: 500 }
+      },
+    })
+    expect(peak).toBe(CROP_CONCURRENCY)
+    expect(images.map(image => image.status)).toEqual(['succeeded', 'failed', 'succeeded', 'succeeded'])
+    expect(images[1].error).toBe('编码失败')
   })
 
   it('修改九宫格后清掉单图焦点和输出', () => {
