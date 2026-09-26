@@ -12,7 +12,7 @@ export interface TencentCiConfig {
 }
 
 interface CosClient {
-  putObject(params: Record<string, unknown>, callback: (error: Error | null) => void): void
+  putObject(params: Record<string, unknown>, callback: (error: Error | null, data?: UploadAck) => void): void
   getObject(params: Record<string, unknown>, callback: (error: Error | null, data: { Body?: Buffer }) => void): void
   deleteObject(params: Record<string, unknown>, callback: (error: Error | null) => void): void
 }
@@ -31,37 +31,72 @@ function clientFor(config: TencentCiConfig) {
   return new COS({ SecretId: config.secretId, SecretKey: config.secretKey })
 }
 
-function call<T>(run: (done: (error: Error | null, value: T) => void) => void) {
-  return new Promise<T>((resolve, reject) => {
+interface UploadAck {
+  UploadResult?: {
+    ProcessResults?: {
+      Object?: { Key?: string } | Array<{ Key?: string }>
+    }
+  }
+}
+
+function call<T>(run: (done: (error: Error | null, value?: T) => void) => void) {
+  return new Promise<T | undefined>((resolve, reject) => {
     run((error, value) => error ? reject(error) : resolve(value))
   })
 }
 
-export async function goodsMatting(image: Buffer, config = tencentCiConfig()) {
-  if (!config) throw new HttpError(503, '智能抠图即将上线，腾讯云配置还没填好', 'BG_REMOVE_UNCONFIGURED')
-  const cos = clientFor(config)
+export function mattingOperations(outputKey: string) {
+  // 不以 / 开头时，数据万象把 fileid 接到原图目录后面。
+  // 原图在 bg-remove/<id>，结果会落到 bg-remove/bg-remove/<id>.png，按预期路径读取就是 404。
+  return {
+    is_pic_info: 1,
+    rules: [{ fileid: `/${outputKey.replace(/^\/+/, '')}`, rule: 'ci-process=GoodsMatting&center-layout=0' }],
+  }
+}
+
+export function processedObjectKey(data: UploadAck | undefined, fallback: string) {
+  const object = data?.UploadResult?.ProcessResults?.Object
+  const raw = Array.isArray(object) ? object[0]?.Key : object?.Key
+  const key = raw?.replace(/^\/+/, '').trim()
+  return key || fallback.replace(/^\/+/, '')
+}
+
+export function mattingFailure(error: unknown) {
+  if (error instanceof HttpError) return error
+  const detail = error as { code?: unknown; error?: { Code?: unknown } }
+  const code = typeof detail.code === 'string' ? detail.code : typeof detail.error?.Code === 'string' ? detail.error.Code : ''
+  const hints: Record<string, string> = {
+    NoSuchKey: '没有找到抠图结果',
+    ImageTooLarge: '图片尺寸不符合商品抠图要求',
+    InvalidImageFormat: '图片格式不受支持',
+    AccessDenied: '存储桶拒绝了抠图请求',
+  }
+  const hint = code ? hints[code] : undefined
+  const message = hint ? `腾讯云商品抠图失败：${hint}` : code ? `腾讯云商品抠图失败（${code}）` : '腾讯云商品抠图失败'
+  const status = code === 'ImageTooLarge' || code === 'InvalidImageFormat' ? 400 : 502
+  return new HttpError(status, message, 'BG_REMOVE_FAILED')
+}
+
+export async function goodsMatting(image: Buffer, config = tencentCiConfig(), cos = config ? clientFor(config) : undefined) {
+  if (!config || !cos) throw new HttpError(503, '智能抠图即将上线，腾讯云配置还没填好', 'BG_REMOVE_UNCONFIGURED')
   const sourceKey = `bg-remove/${randomUUID()}`
   const outputKey = `${sourceKey}.png`
   const bucket = { Bucket: config.bucket, Region: config.region }
+  let resultKey = outputKey
   try {
-    await call<void>(done => cos.putObject({
+    const uploaded = await call<UploadAck>(done => cos.putObject({
       ...bucket,
       Key: sourceKey,
       Body: image,
-      Headers: {
-        'Pic-Operations': JSON.stringify({
-          is_pic_info: 1,
-          rules: [{ fileid: outputKey, rule: 'ci-process=GoodsMatting' }],
-        }),
-      },
-    }, error => done(error, undefined)))
-    const saved = await call<{ Body?: Buffer }>(done => cos.getObject({ ...bucket, Key: outputKey }, done))
-    if (!saved.Body?.length) throw new HttpError(502, '腾讯云没有返回抠图结果', 'BG_REMOVE_EMPTY')
+      Headers: { 'Pic-Operations': JSON.stringify(mattingOperations(outputKey)) },
+    }, done))
+    resultKey = processedObjectKey(uploaded, outputKey)
+    const saved = await call<{ Body?: Buffer }>(done => cos.getObject({ ...bucket, Key: resultKey }, done))
+    if (!saved?.Body?.length) throw new HttpError(502, '腾讯云没有返回抠图结果', 'BG_REMOVE_EMPTY')
     return saved.Body
   } catch (error) {
-    if (error instanceof HttpError) throw error
-    throw new HttpError(502, '腾讯云商品抠图失败', 'BG_REMOVE_FAILED')
+    throw mattingFailure(error)
   } finally {
-    await Promise.all([sourceKey, outputKey].map(key => call<void>(done => cos.deleteObject({ ...bucket, Key: key }, error => done(error, undefined))).catch(() => undefined)))
+    await Promise.all([sourceKey, resultKey].map(key => call<void>(done => cos.deleteObject({ ...bucket, Key: key }, error => done(error, undefined))).catch(() => undefined)))
   }
 }
