@@ -42,11 +42,11 @@
 
 - **不要照搬工作站 preset 几何。** `OutpaintCanvas` 在有 preset 时用 `max(原图, preset)` 放大画布；工具箱目标尺寸永远是 preset
 - 先把原图 contain 进 preset（允许放大），再只对留白条带扩图。四周都没有留白（比例已一致，含取整误差 0）则跳过模型，直接编码
-- 上传给扩图的是缩放后的原图，`targetSize` = preset，`originOffset` / 蒙版里的原图矩形用缩放后的整数宽高，不用文件原始像素
-- 复用 `computeOutpaintMask`、`buildOutpaintRequest`（`Capability.Outpaint`）。无 Fabric 拖框
-- **Outpaint 提示词与参数**：转比例场景下扩图是结构性补全，默认传空或通用背景延续提示词（由后端 capability 处理延伸），不需要向用户暴露复杂画笔与提示词输入，保持批处理工具的轻量
+- 上传给扩图的是缩放后的原图。业务入参是四边像素留白（由 `originOffset` 和缩放后宽高换算），不是供应商的宽高比枚举
+- 服务端走阿里云百炼 `image-out-painting` 的四方向 `*_offset`。输入边长、单次偏移和输出比例超出接口限制时，在适配层放大/缩小或先把短边补足；模型结果再在本地裁成精确的 preset 尺寸
+- 真实模式调用 `POST /api/outpaint`，不走 `/api/tasks`。本地 mock 仍走 `Capability.Outpaint`
 - **失败策略（8.3）**：扩图失败 → 该队列项 `failed`，展示失败原因。用户可单项重试或整批重试失败项
-- **轮询与并发管控**：多张图批量任务避免全部瞬间提交打满限流，设置并发工作池（限制如 2~3 个任务并发执行），采用批量轮询器推进队列状态
+- **并发**：百炼创建任务的账号 QPS 是 2，批量同时最多处理 2 张。单张请求在服务端等到任务完成再返回
 
 ## 4. 状态与持久化
 
@@ -105,7 +105,7 @@ interface AspectRatioBatchItem {
 |------|------|------|
 | M1 | `AspectRatioTool`、单选目标平台 + 记住上次选择、留白 + 智能裁剪（中心/焦点）、本机批量、ZIP | 已落地 |
 | M2 | 常用模板 IndexedDB；从 watermark 抽离 `toolbox/shared` 通用组件（inspect、zip、限额） | 已落地 |
-| M3 | 智能扩展：比例一致时本机缩放；需要补边时提交 `Capability.Outpaint`，同时最多 3 个。真实模式会拒绝该能力。失败项可带到工作站按当前平台尺寸精修 | 前端已落地，真实扩图供应商未接 |
+| M3 | 智能扩展：比例一致时本机缩放；需要补边时按四边留白调用百炼 `image-out-painting`，再本地裁到精确尺寸。同时最多 2 张。失败项可带到工作站按当前平台尺寸精修 | 已接通，需配置 `DASHSCOPE_API_KEY` |
 | M4 | 智能裁剪调用数据万象 `AIObjectDetect`。多个主体取最大框，识别不到或失败时按九宫格裁完。见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md) | 已落地，与抠图共用腾讯云配置 |
 
 ## 7. 与水印串联预留（8.5）
@@ -142,7 +142,7 @@ src/pages/Toolbox/
 - 改焦点/策略/目标平台后已有输出作废
 - 批量轮询与并发限制：并发池不溢出最大限制（2~3 并发）
 - 预览性能：切换单选平台或选中图片时只计算缩放预览尺寸，不生成全尺寸高清大图
-- outpaint（M3）：失败项标记与重试；蒙版矩形用缩放后尺寸
+- outpaint（M3）：四边留白换算；失败项标记与重试；返回图宽高精确等于 preset
 
 ## 10. 实现约定（补充）
 

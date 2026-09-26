@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
+import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
+import { liveCapabilityReady } from '@/services/api/task'
 import { uploadDataUrl } from '@/services/api/upload'
 import { GenerationService } from '@/editor/services/generationService'
 import { useEditorStore } from '@/editor/store'
 import type { AssetId, GenerationId, ImageAsset } from '@/editor/types'
 import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
-import type { GenerationTask, TaskStatus } from '@/types'
+import { Capability, type GenerationTask, type OutpaintTaskParams, type TaskStatus } from '@/types'
 import type {
   WorkstationCanvasHandle,
   WorkstationGenerationRequest,
@@ -102,6 +104,55 @@ export function useImageWorkstationController({
 
   const taskQuery = useTaskPolling(activeTaskId, handlePolledTask)
 
+  const completeOutpaint = useCallback(async (
+    sourceAsset: ImageAsset,
+    targetSize: { width: number; height: number },
+    originOffset: { x: number; y: number },
+    parentGenerationId: GenerationId | undefined,
+  ) => {
+    setSubmitting(true)
+    setSubmissionError(undefined)
+    setProtocolError(undefined)
+    try {
+      const padding = paddingAround(sourceAsset.width, sourceAsset.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
+      const response = await fetch(sourceAsset.url)
+      if (!response.ok) throw new Error('读取原图失败')
+      const result = await requestOutpaint(await response.blob(), 'image/jpeg', padding)
+      const now = new Date().toISOString()
+      const completed: GenerationTask<OutpaintTaskParams> = {
+        id: crypto.randomUUID(),
+        capability: Capability.Outpaint,
+        status: 'succeeded',
+        params: { sourceImageUrl: sourceAsset.url, targetSize, originOffset },
+        resultUrls: [URL.createObjectURL(result)],
+        creditsCost: 0,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const options: SubmissionContext['options'] = {
+        inputAssetIds: [sourceAsset.id],
+        parentGenerationId,
+        outputSize: targetSize,
+      }
+      submissionsRef.current.set(completed.id, {
+        request: { capability: Capability.Outpaint, params: completed.params, outputSize: targetSize },
+        options,
+      })
+      const adapted = service.reconcile(completed, options)
+      setTask(completed)
+      upsertTask(completed)
+      setActiveTaskId(undefined)
+      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
+      return completed
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '扩图失败'
+      setSubmissionError(message)
+      throw error
+    } finally {
+      setSubmitting(false)
+    }
+  }, [applyCompletedTask, service, upsertTask])
+
   const submitRequest = useCallback(async (
     request: WorkstationGenerationRequest,
     sourceAsset: ImageAsset,
@@ -145,6 +196,16 @@ export function useImageWorkstationController({
     const validation = activeTool.validate?.(initialContext)
     if (validation && !validation.valid) throw new Error(validation.message ?? '当前参数不完整')
 
+    if (activeTool.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
+      if (!canvasHandle?.getTargetSize || !canvasHandle.getOriginOffset) throw new Error('扩图画布尚未准备好')
+      return completeOutpaint(
+        inputAsset,
+        canvasHandle.getTargetSize(),
+        canvasHandle.getOriginOffset(),
+        inputAsset.generationId,
+      )
+    }
+
     let canvasContext = {}
     if (activeTool.interactionMode !== 'params-only') {
       if (!canvasHandle) throw new Error('当前工具的画布交互仍在后续迭代中')
@@ -159,7 +220,7 @@ export function useImageWorkstationController({
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
     return submitRequest(request, inputAsset, inputAsset.generationId)
-  }, [activeTool, count, inputAsset, prompt, resolution, submitRequest])
+  }, [activeTool, completeOutpaint, count, inputAsset, prompt, resolution, submitRequest])
 
   const retry = useCallback(async () => {
     if (!task) return
@@ -169,8 +230,13 @@ export function useImageWorkstationController({
       ? useEditorStore.getState().project?.assets[sourceAssetId]
       : undefined
     if (!context || sourceAsset?.type !== 'image') return
+    if (context.request.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
+      const params = context.request.params as OutpaintTaskParams
+      if (!params.targetSize || !params.originOffset) throw new Error('扩图画布尚未准备好')
+      return completeOutpaint(sourceAsset, params.targetSize, params.originOffset, context.options.parentGenerationId)
+    }
     return submitRequest(context.request, sourceAsset, context.options.parentGenerationId)
-  }, [submitRequest, task])
+  }, [completeOutpaint, submitRequest, task])
 
   const modifyParameters = useCallback(() => {
     setTask(undefined)

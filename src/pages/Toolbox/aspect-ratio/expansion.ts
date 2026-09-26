@@ -1,7 +1,15 @@
 import { containRect, sameAspect } from './geometry'
 import type { AspectRatioSettings, BatchImage, RenderResult } from './types'
 
-export const OUTPAINT_CONCURRENCY = 3
+/** 百炼创建任务的账号 QPS 是 2，同时处理中的任务最多 5 个。 */
+export const OUTPAINT_CONCURRENCY = 2
+
+export function outpaintProgressLabel(completed: number, total: number, names: string[]) {
+  const shown = names.slice(0, 2).join('、')
+  const more = names.length > 2 ? ` 等 ${names.length} 张` : ''
+  const current = shown ? `，当前 ${shown}${more}` : ''
+  return `正在智能扩展，已完成 ${completed} / ${total}${current}`
+}
 
 export interface ExpansionPlan {
   mode: 'local' | 'remote'

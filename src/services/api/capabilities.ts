@@ -1,10 +1,23 @@
 import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
 
+interface CapabilityFlags {
+  bgRemove?: boolean
+  outpaint?: boolean
+}
+
+function loadFlags(): Promise<CapabilityFlags> {
+  return fetch('/api/capabilities')
+    .then(response => response.ok ? response.json() as Promise<CapabilityFlags> : {})
+    .catch(() => ({}))
+}
+
 export function loadBgRemoveConfigured() {
   if (liveCapabilityReady(Capability.BgRemove)) return Promise.resolve(true)
-  return fetch('/api/capabilities')
-    .then(response => response.ok ? response.json() as Promise<{ bgRemove?: boolean }> : { bgRemove: false })
-    .then(data => Boolean(data.bgRemove))
-    .catch(() => false)
+  return loadFlags().then(data => Boolean(data.bgRemove))
+}
+
+export function loadOutpaintConfigured() {
+  if (liveCapabilityReady(Capability.Outpaint)) return Promise.resolve(true)
+  return loadFlags().then(data => Boolean(data.outpaint))
 }
