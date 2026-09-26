@@ -11,7 +11,7 @@
 | 单选目标平台 | 一次只能勾选一个目标平台 preset（Radio / Select），每张原图对应输出 1 份结果 |
 | 适配策略 | 留白填充 / **智能裁剪** / 智能扩展（复用扩图 Capability） |
 | 批量 | 与水印一致：最多 20 张、JPG/PNG/WebP、队列预览与逐张/ZIP 下载 |
-| 路由 | `/toolbox/aspect-ratio`，独立 `AspectRatioTool`（lazy），占位见 `Toolbox/index.tsx` |
+| 路由 | `/toolbox/aspect-ratio`，独立 `AspectRatioTool`（lazy），入口在 `Toolbox/index.tsx` |
 
 ## 2. 已锁定产品决策
 
@@ -101,16 +101,16 @@ interface AspectRatioBatchItem {
 
 ## 6. 分阶段
 
-| 阶段 | 内容 | 后端 |
+| 阶段 | 内容 | 状态 |
 |------|------|------|
-| M1 | `AspectRatioTool`、单选目标平台 + 记住上次选择、留白 + 智能裁剪（中心/焦点）、本机批量、ZIP | 无 |
-| M2 | 常用模板 IndexedDB；从 watermark 抽离 `toolbox/shared` 通用组件（inspect、zip、限额） | 无 |
-| M3 | 智能扩展：并发工作池、Outpaint 任务与轮询、整图失败重试 | 任务 API |
-| M4 | 智能裁剪主体检测见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md)。真实接口仍待定；本机焦点换算和模拟检测可以先做。失败项跳转工作站扩图精修已落地 | 模型 |
+| M1 | `AspectRatioTool`、单选目标平台 + 记住上次选择、留白 + 智能裁剪（中心/焦点）、本机批量、ZIP | 已落地 |
+| M2 | 常用模板 IndexedDB；从 watermark 抽离 `toolbox/shared` 通用组件（inspect、zip、限额） | 已落地 |
+| M3 | 智能扩展：比例一致时本机缩放；需要补边时提交 `Capability.Outpaint`，同时最多 3 个。真实模式会拒绝该能力。失败项可带到工作站按当前平台尺寸精修 | 前端已落地，真实扩图供应商未接 |
+| M4 | 焦点换算和固定模拟框已落地，页面保留「模拟未找到主体」。真实检测见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md) | 真实接口未接 |
 
 ## 7. 与水印串联预留（8.5）
 
-不在 M1 实现 UI，但数据结构避免死路：
+流水线入口还没有。数据结构保持可串联：
 
 - 队列项稳定 `id`（UUID），输出 blob 或 object URL 可在内存/IndexedDB 短期持有
 - 导出文件名与水印后缀可组合：`{base}_{presetId}_watermarked.jpg`

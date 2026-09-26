@@ -1,12 +1,12 @@
 # 工具箱 · 智能抠图 — 开发规划
 
-> 转比例主体检测先停在 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md)。下一步开发工具箱里仍是占位的智能抠图（`/toolbox/bg-remove`）。
+> 当前代码：P1 与边缘精修已落地。真实抠图不走 `Capability.BgRemove` 任务。四项 `TENCENT_COS_*` 齐全时，`POST /api/bg-remove` 调用数据万象 GoodsMatting；缺配置时入口显示即将上线。主体检测仍见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md)。
 
 ## 1. 目标
 
-批量去掉商品图背景，再铺上透明、白底或指定纯色。队列、限额、预览和 ZIP 沿用加水印、转比例已经落地的骨架。抠图能力使用已有的 `Capability.BgRemove`，不在工具箱里另接一套模型。
+批量去掉商品图背景，再铺上透明、白底或指定纯色。队列、限额、预览和 ZIP 沿用加水印、转比例已经落地的骨架。真实抠图走腾讯云数据万象，模拟模式才使用 `Capability.BgRemove` 假任务。
 
-边缘精修放到后一阶段：把单张结果带到图片工作站的消除/重绘蒙版，不在第一期做画笔。
+边缘精修把单张透明结果带到图片工作站的消除蒙版，不在抠图页再做一套画笔。这一步已经落地。
 
 ## 2. 第一期行为
 
@@ -18,17 +18,17 @@
 | 批量 | 复用 `shared/inspect`：最多 20 张，JPG/PNG/WebP，ZIP 上限 200MB |
 | 并发 | 同时最多 3 个抠图任务。单张失败只标记该张，可单张重试或重试全部失败项 |
 | 预览 | 当前图的降采样结果。未处理时显示原图 |
-| 模型未接入 | 与扩图相同：模拟模式可走完流程；账号下的真实模式仍由现有接口拒绝未接入的生成能力 |
+| 真实抠图 | 非模拟模式先读 `GET /api/capabilities`。`bgRemove` 为 true 时走 `POST /api/bg-remove`；为 false 时页面显示即将上线，不能开始处理。模拟模式不调用腾讯云 |
 
 抠图结果先得到透明底，再在本机铺白底或纯色。这样换背景色不必重跑模型。换背景色后，已有结果用新的底色重新合成，不重新请求抠图。
 
 ## 3. 分期
 
-| 阶段 | 内容 | 依赖 |
+| 阶段 | 内容 | 状态 |
 |------|------|------|
-| P1 | `BgRemoveTool`、三种背景、记住上次选择、本机批量、预览、逐张和 ZIP 下载。模拟任务返回可合成的透明结果 | 无新模型 |
-| P2 | 真实抠图接口接入 `Capability.BgRemove` | 后端 Provider |
-| P3 | 单张透明结果带到工作站蒙版做边缘精修，见 §7 | P1 的透明结果 |
+| P1 | `BgRemoveTool`、三种背景、记住上次选择、本机批量、预览、逐张和 ZIP 下载。模拟任务返回可合成的透明结果 | 已落地 |
+| P2 | 真实抠图走 `POST /api/bg-remove`，数据万象 GoodsMatting，不经过 `/api/tasks`。结果 `fileid` 使用绝对路径，再按返回的对象 key 读取 | 已落地，依赖四项 `TENCENT_COS_*` |
+| P3 | 单张透明结果带到工作站蒙版做边缘精修，见 §7 | 已落地 |
 
 P1 不做法布画笔，也不做主体检测。
 
@@ -45,7 +45,7 @@ src/pages/Toolbox/
     download.ts
 ```
 
-`Toolbox/index.tsx` 用与转比例相同的 lazy 入口替换占位文案。图片检查和 ZIP 继续用 `shared/`。
+`Toolbox/index.tsx` 已用与转比例相同的 lazy 入口加载 `BgRemoveTool`。图片检查和 ZIP 继续用 `shared/`。
 
 ## 5. 测试
 
@@ -85,15 +85,16 @@ src/pages/Toolbox/
 - 文件名复用去重规则，后缀 `_cutout`
 - 卡片下载 `output`。ZIP 只打包已成功的 `output`
 
-**模拟**
+**模拟与真实调用**
 
-- `bg_remove` 的模拟结果是一张与原图同尺寸、带透明通道的 PNG
-- 账号开启且未走模拟时，现有任务接口仍会拒绝。这张图标记失败，失败原因沿用接口返回的文案
+- `VITE_GENERATION_MODE=mock` 且未启用云同步时，不调用腾讯云。假任务返回一张与原图同尺寸、带透明通道的 PNG
+- 其余情况由 `GET /api/capabilities` 决定。配置齐全时 `POST /api/bg-remove`，请求体为 `mimeType` 与 `dataBase64`，响应为 PNG，单张不超过 20 MB
+- 服务端在 `fileid` 前补上 `/`，避免结果被写到原图目录的下一层。读取时使用数据万象返回的对象 key
 
-**不做**
+**第一期范围**
 
 - 不改比例，不放大
-- 不在第一期做边缘精修和主体检测
+- 第一期不做画笔。边缘精修已按 §7 落地，主体检测不在抠图里做
 - 换背景不重新上传、不重新排队
 
 ## 7. 边缘精修开发步骤
