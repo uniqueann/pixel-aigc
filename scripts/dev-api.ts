@@ -7,7 +7,8 @@ createServer(async (req, res) => {
   let size = 0
   for await (const chunk of req) {
     size += chunk.length
-    if (size > 3 * 1024 * 1024) { res.writeHead(413).end(); return }
+    const limit = (req.url ?? '').includes('bg-remove') ? 28 * 1024 * 1024 : 3 * 1024 * 1024
+    if (size > limit) { res.writeHead(413).end(); return }
     chunks.push(chunk)
   }
   const request = req as VercelRequest

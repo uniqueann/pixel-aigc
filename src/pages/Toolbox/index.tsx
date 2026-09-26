@@ -1,6 +1,7 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Segmented } from 'antd'
+import { loadBgRemoveConfigured } from '@/services/api/capabilities'
 import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
 import { TOOLBOX_TOOLS } from './tools'
@@ -13,12 +14,14 @@ export default function Toolbox() {
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
   const activeSlug = TOOLBOX_TOOLS.find((t) => t.slug === tool)?.slug ?? TOOLBOX_TOOLS[0].slug
+  const [bgRemoveReady, setBgRemoveReady] = useState(() => liveCapabilityReady(Capability.BgRemove))
+  useEffect(() => { void loadBgRemoveConfigured().then(setBgRemoveReady) }, [])
 
   return (
     <div>
       <Segmented
         options={TOOLBOX_TOOLS.map((t) => ({
-          label: t.slug === 'bg-remove' && !liveCapabilityReady(Capability.BgRemove) ? '智能抠图 · 即将上线' : t.label,
+          label: t.slug === 'bg-remove' && !bgRemoveReady ? '智能抠图 · 即将上线' : t.label,
           value: t.slug,
         }))}
         value={activeSlug}
