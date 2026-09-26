@@ -112,7 +112,7 @@ interface AIProvider {
 - **加水印**：水印类型（文字/Logo）、单点位置或平铺、透明度、大小、平铺间距和角度，设置一次应用到全部，建议先出单张预览
 - **转比例**：支持单选目标平台进行批量转规格，适配策略需覆盖智能裁剪 / 智能扩展（复用扩图能力）/ 留白填充。产品约定：单选目标平台并**记住上次选择**；输出**严格 preset 像素**；MVP 智能裁剪为中心/手动焦点仍称智能裁剪；扩图模式**整图失败**（支持整批重试失败项）；与水印流水线串联预留见 [`toolbox-aspect-ratio-plan.md`](./toolbox-aspect-ratio-plan.md)。
 
-智能抠图在 `TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION` 四项齐全时走 `POST /api/bg-remove`（数据万象 GoodsMatting），不走图片工作站的抠图任务。缺任一项时入口显示即将上线。模拟模式仍用本地假任务。转比例需要补边时才提交扩图任务；真实模式会拒绝该能力，比例已经一致时只在本机缩放。分期见 [`toolbox-aspect-ratio-plan.md`](./toolbox-aspect-ratio-plan.md)。智能裁剪的主体检测走数据万象 `AIObjectDetect`，与抠图共用腾讯云配置，见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md)。抠图实现见 [`toolbox-bg-remove-plan.md`](./toolbox-bg-remove-plan.md)。
+智能抠图在 `TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION` 四项齐全时走 `POST /api/bg-remove`（数据万象 GoodsMatting），不走图片工作站的抠图任务。缺任一项时入口显示即将上线。模拟模式仍用本地假任务。转比例需要补边时才提交扩图任务；真实模式会拒绝该能力，比例已经一致时只在本机缩放。分期见 [`toolbox-aspect-ratio-plan.md`](./toolbox-aspect-ratio-plan.md)。智能裁剪的主体检测先走数据万象 `AIObjectDetect`，没有框时用商品抠图的不透明区域定位，与抠图共用腾讯云配置，见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md)。抠图实现见 [`toolbox-bg-remove-plan.md`](./toolbox-bg-remove-plan.md)。
 
 ## 7. 邮件助手 / 自由画布布局
 

@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
+import sharp from 'sharp'
 import { HttpError } from './errors.js'
 
 const require = createRequire(import.meta.url)
@@ -119,6 +120,54 @@ function relativeBox(location: { X?: unknown; Y?: unknown; Width?: unknown; Heig
   return { x: round(left), y: round(top), width: round(right - left), height: round(bottom - top) }
 }
 
+export async function subjectBoxFromMatte(png: Buffer | undefined): Promise<SubjectBox | null> {
+  if (!png || png.length < 8 || png[0] !== 0x89 || png[1] !== 0x50) return null
+  let data: Buffer
+  let width: number
+  let height: number
+  let channels: number
+  try {
+    const decoded = await sharp(png, { failOn: 'none' })
+      .ensureAlpha()
+      .resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true })
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    data = decoded.data
+    width = decoded.info.width
+    height = decoded.info.height
+    channels = decoded.info.channels
+  } catch {
+    return null
+  }
+  if (!width || !height || channels < 4) return null
+  const pixels = width * height
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+  let opaque = 0
+  for (let index = 0; index < pixels; index += 1) {
+    if (data[index * channels + 3] <= 24) continue
+    opaque += 1
+    const x = index % width
+    const y = Math.floor(index / width)
+    if (x < minX) minX = x
+    if (y < minY) minY = y
+    if (x > maxX) maxX = x
+    if (y > maxY) maxY = y
+  }
+  const ratio = opaque / pixels
+  // 几乎全透明是没抠出商品；几乎全不透明是背景没去掉。这两种都不能当主体框。
+  if (ratio < 0.001 || ratio > 0.985 || maxX < minX || maxY < minY) return null
+  const round = (value: number) => Math.round(value * 1e6) / 1e6
+  return {
+    x: round(minX / width),
+    y: round(minY / height),
+    width: round((maxX - minX + 1) / width),
+    height: round((maxY - minY + 1) / height),
+  }
+}
+
 export function chooseSubjectBox(payload: unknown, imageWidth: number, imageHeight: number): SubjectBox | null {
   const result = recognitionResult(payload)
   if (!result || Number(result.Status) !== 1) return null
@@ -162,7 +211,17 @@ export async function detectGoodsSubject(image: Buffer, width: number, height: n
       Key: sourceKey,
       Query: { 'ci-process': 'AIObjectDetect' },
     }, done))
-    return chooseSubjectBox(detected, width, height)
+    const detectedBox = chooseSubjectBox(detected, width, height)
+    if (detectedBox) return detectedBox
+    // 扁平商品图上 AIObjectDetect 经常返回 Status 0。商品抠图仍能把商品和背景分开，用不透明区域反推主体框。
+    const matte = await call<{ Body?: Buffer }>(done => cos.request!({
+      ...bucket,
+      Method: 'GET',
+      Key: sourceKey,
+      Query: { 'ci-process': 'GoodsMatting', 'center-layout': '0' },
+      RawBody: true,
+    }, (error, data) => done(error, data as { Body?: Buffer } | undefined)))
+    return subjectBoxFromMatte(matte?.Body)
   } catch (error) {
     throw subjectFailure(error)
   } finally {

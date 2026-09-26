@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { invalidateBatch, processBatch } from './batch'
-import { DETECT_FAILED_NOTE, GRID_CROP_NOTE, SUBJECT_CROP_NOTE, focusFromSubjectBox, mockDetectSubject } from './subjectFocus'
+import { SUBJECT_CROP_NOTE, focusFromSubjectBox, gridCropNote, mockDetectSubject } from './subjectFocus'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, type BatchImage } from './types'
 
 function item(id: string, width = 1000, height = 1000): BatchImage {
@@ -43,7 +43,7 @@ describe('智能裁剪按张检测', () => {
       targetWidth: 1000, targetHeight: 500, detect, render, update, shouldStop: () => false,
     })
     expect(images.map(image => image.status)).toEqual(['succeeded', 'succeeded'])
-    expect(images[0].cropFocus).toMatchObject({ fx: 1, fy: 1, source: 'grid', note: GRID_CROP_NOTE })
+    expect(images[0].cropFocus).toMatchObject({ fx: 1, fy: 1, source: 'grid', note: gridCropNote(1, 1) })
     expect(images[1].cropFocus).toMatchObject({ fx: 0.5, fy: 0.05, source: 'subject', note: SUBJECT_CROP_NOTE })
     expect(render).toHaveBeenCalledTimes(2)
   })
@@ -63,7 +63,7 @@ describe('智能裁剪按张检测', () => {
       },
       update, shouldStop: () => false,
     })
-    expect(images[0]).toMatchObject({ status: 'succeeded', cropFocus: { fx: 0, fy: 1, source: 'grid', note: DETECT_FAILED_NOTE } })
+    expect(images[0]).toMatchObject({ status: 'succeeded', cropFocus: { fx: 0, fy: 1, source: 'grid', note: gridCropNote(0, 1, true) } })
     expect(images[1].status).toBe('failed')
     expect(images[1].cropFocus).toBeUndefined()
   })
