@@ -20,6 +20,24 @@ export function gridCropNote(fx: number, fy: number, failed = false) {
 
 export const GRID_CROP_NOTE = gridCropNote(0.5, 0.5)
 export const DETECT_FAILED_NOTE = gridCropNote(0.5, 0.5, true)
+export const DETECT_MAX_EDGE = 1280
+
+export function detectionPixelSize(width: number, height: number, maxEdge = DETECT_MAX_EDGE) {
+  const longest = Math.max(width, height)
+  if (!Number.isFinite(longest) || longest <= maxEdge) return { width, height }
+  const scale = maxEdge / longest
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+export function cropProgressLabel(completed: number, total: number, names: string[]) {
+  const shown = names.slice(0, 2).join('、')
+  const more = names.length > 2 ? ` 等 ${names.length} 张` : ''
+  const current = shown ? `，当前 ${shown}${more}` : ''
+  return `正在识别商品主体，已完成 ${completed} / ${total}${current}`
+}
 
 export function focusFromSubjectBox(
   box: SubjectBox | null,

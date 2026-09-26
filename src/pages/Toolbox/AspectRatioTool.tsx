@@ -15,6 +15,7 @@ import { readPrefs, writePrefs } from './aspect-ratio/prefs'
 import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
 import { detectImageSubject } from './aspect-ratio/subjectClient'
+import { cropProgressLabel } from './aspect-ratio/subjectFocus'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
@@ -73,6 +74,8 @@ export default function AspectRatioTool() {
   const completed = items.filter(item => item.status === 'succeeded')
   const failed = items.filter(item => item.status === 'failed')
   const gridFallbacks = items.filter(item => item.status === 'succeeded' && item.cropFocus?.source === 'grid' && item.cropFocus.note)
+  const processingItems = items.filter(item => item.status === 'processing')
+  const donePercent = items.length ? Math.round(completed.length / items.length * 100) : 0
   const outputBytes = completed.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
   const busy = processing || adding || packaging
   const controlsLocked = processing || packaging
@@ -439,7 +442,11 @@ export default function AspectRatioTool() {
       </div>
 
       <BatchImageQueue
-        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error, note: item.cropFocus?.note, noteWarning: item.cropFocus?.source === 'grid' }))}
+        items={items.map(item => ({
+          id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error,
+          note: item.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : item.cropFocus?.note,
+          noteWarning: item.status !== 'processing' && item.cropFocus?.source === 'grid',
+        }))}
         selectedId={selectedId}
         disabled={busy}
         onAdd={addFile}
@@ -454,8 +461,8 @@ export default function AspectRatioTool() {
       <div className="toolbox-watermark-footer">
         {settings.strategy === 'crop' && gridFallbacks.length > 0 && <p className="toolbox-hint toolbox-warning toolbox-crop-warning">{gridFallbacks.length} 张没有按商品裁剪，用的是当前九宫格。下载前请把焦点改到商品所在位置，再重新处理。</p>}
         <div className="toolbox-progress">
-          <span>{completed.length} / {items.length} 张已完成</span>
-          {processing && <Progress size="small" percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
+          <span className="toolbox-progress-status">{processing && settings.strategy === 'crop' ? cropProgressLabel(completed.length, items.length, processingItems.map(item => item.file.name)) : `${completed.length} / ${items.length} 张已完成`}</span>
+          {processing && <Progress size="small" status="active" percent={Math.max(donePercent, 8)} showInfo={false} />}
           {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
         </div>
         <div className="toolbox-footer-actions">

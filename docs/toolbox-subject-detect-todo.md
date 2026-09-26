@@ -30,7 +30,7 @@
 
 ## 真实检测
 
-- `POST /api/subject-detect` 接收已按显示方向编码的 JPEG，以及前端解码后的宽高
+- `POST /api/subject-detect` 接收已按显示方向编码的 JPEG，以及这张 JPEG 的宽高。长边超过 1280 时先缩小再上传，返回的框仍是相对坐标，裁剪按原图计算。一批同时最多识别 3 张。处理时卡片和页脚会写明正在识别哪一张
 - 服务端把图临时放到 `subject-detect/`，先请求 `AIObjectDetect`。没有框时再请求 `GoodsMatting`（`center-layout=0`），用不透明像素的外接框作为主体框。返回相对原图 0 到 1 的框，然后删除临时对象
 - 多个主体先比面积，面积相同再比谁更靠近画面中心。只把这一个框交给 `focusFromSubjectBox`
 - 不进入 `createTask`。模拟模式不调用腾讯云。页面上的「模拟未找到主体」开关已去掉
