@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Button, Checkbox, ColorPicker, Input, Progress, Radio, Select } from 'antd'
+import { App, Button, ColorPicker, Input, Progress, Radio, Select } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { useUserStore } from '@/store/useUserStore'
@@ -14,7 +14,7 @@ import { expandRemoteImage } from './aspect-ratio/outpaintClient'
 import { readPrefs, writePrefs } from './aspect-ratio/prefs'
 import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
-import { detectSubject } from './aspect-ratio/subjectFocus'
+import { detectImageSubject } from './aspect-ratio/subjectClient'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
@@ -67,8 +67,6 @@ export default function AspectRatioTool() {
   const [presets, setPresets] = useState<AspectRatioPreset[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [presetName, setPresetName] = useState('')
-  const [missSubject, setMissSubject] = useState(false)
-  const missSubjectRef = useRef(false)
 
   const preset = PLATFORM_SIZE_PRESETS.find(item => item.id === settings.selectedPresetId) ?? PLATFORM_SIZE_PRESETS[0]
   const selected = items.find(item => item.id === selectedId)
@@ -288,7 +286,7 @@ export default function AspectRatioTool() {
           targetWidth: preset.width,
           targetHeight: preset.height,
           ids: onlyIds,
-          detect: image => detectSubject(image, missSubjectRef.current),
+          detect: image => detectImageSubject(image),
           render: request => renderer().render(request),
           update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
           shouldStop: () => cancelledRef.current || !mountedRef.current,
@@ -414,18 +412,7 @@ export default function AspectRatioTool() {
                   </button>
                 ))}
               </div>
-              <Checkbox
-                checked={missSubject}
-                disabled={controlsLocked}
-                onChange={event => {
-                  missSubjectRef.current = event.target.checked
-                  setMissSubject(event.target.checked)
-                  if (itemsRef.current.some(item => item.status !== 'pending')) commitItems(invalidateBatch(itemsRef.current))
-                }}
-              >
-                模拟未找到主体
-              </Checkbox>
-              <p className="toolbox-hint">打开后这一批按当前九宫格裁剪。关闭时用模拟主体，焦点会偏向上方。</p>
+              <p className="toolbox-hint">处理时识别商品主体并按主体裁剪。识别不到或检测失败时，按当前九宫格裁完，这一张仍算成功。</p>
             </>
           )}
           <div className="toolbox-presets">

@@ -12,7 +12,7 @@ interface BatchRun {
   targetHeight: number
   ids?: string[]
   render: (request: RenderRequest) => Promise<RenderResult>
-  detect?: (image: Pick<BatchImage, 'width' | 'height'>) => Promise<SubjectDetection>
+  detect?: (image: Pick<BatchImage, 'file' | 'width' | 'height'>) => Promise<SubjectDetection>
   update: (id: string, patch: Partial<BatchImage>) => void
   shouldStop: () => boolean
 }

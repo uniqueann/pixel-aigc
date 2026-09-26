@@ -106,7 +106,7 @@ interface AspectRatioBatchItem {
 | M1 | `AspectRatioTool`、单选目标平台 + 记住上次选择、留白 + 智能裁剪（中心/焦点）、本机批量、ZIP | 已落地 |
 | M2 | 常用模板 IndexedDB；从 watermark 抽离 `toolbox/shared` 通用组件（inspect、zip、限额） | 已落地 |
 | M3 | 智能扩展：比例一致时本机缩放；需要补边时提交 `Capability.Outpaint`，同时最多 3 个。真实模式会拒绝该能力。失败项可带到工作站按当前平台尺寸精修 | 前端已落地，真实扩图供应商未接 |
-| M4 | 焦点换算和固定模拟框已落地，页面保留「模拟未找到主体」。真实检测见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md) | 真实接口未接 |
+| M4 | 智能裁剪调用数据万象 `AIObjectDetect`。多个主体取最大框，识别不到或失败时按九宫格裁完。见 [`toolbox-subject-detect-todo.md`](./toolbox-subject-detect-todo.md) | 已落地，与抠图共用腾讯云配置 |
 
 ## 7. 与水印串联预留（8.5）
 
