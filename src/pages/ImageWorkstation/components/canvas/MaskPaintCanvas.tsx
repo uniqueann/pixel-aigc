@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Canvas, FabricImage, PencilBrush } from 'fabric'
 import { smartSelect } from '@/services/api/smartSelect'
-import { exportPaintedMask, type MaskExportResult } from '../../utils/maskExport'
+import { exportEraseMask, exportPaintedMask, type MaskExportResult } from '../../utils/maskExport'
 import type { PaintTool } from './BrushToolbar'
 
 const CANVAS_WIDTH = 640
@@ -10,6 +10,7 @@ const MAX_HISTORY = 20
 
 interface MaskPaintCanvasProps {
   imageUrl: string
+  imageNaturalSize?: { width: number; height: number }
   brushSize: number
   tool: PaintTool
   smartSelectEnabled: boolean
@@ -28,7 +29,7 @@ export interface MaskPaintCanvasHandle {
 }
 
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange },
+  { imageUrl, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange },
   ref,
 ) {
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
@@ -108,6 +109,9 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         const canvasElement = canvasElementRef.current
         if (!canvas || !canvasElement) throw new Error('蒙版画布尚未准备好')
         canvas.renderAll()
+        if (imageNaturalSize && imageNaturalSize.width > 0 && imageNaturalSize.height > 0) {
+          return exportEraseMask(canvasElement, imageNaturalSize)
+        }
         return exportPaintedMask(canvasElement)
       },
       exportRefineMarks: () => {
@@ -125,7 +129,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       canUndo: historyState.canUndo,
       canRedo: historyState.canRedo,
     }),
-    [clear, historyState.canRedo, historyState.canUndo, redo, undo],
+    [clear, historyState.canRedo, historyState.canUndo, imageNaturalSize, redo, undo],
   )
 
   useEffect(() => {

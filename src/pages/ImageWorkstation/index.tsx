@@ -33,6 +33,7 @@ export default function ImageWorkstation() {
   const [smartEditPrompt, setSmartEditPrompt] = useState('')
   const [editCount, setEditCount] = useState(1)
   const [editResolution, setEditResolution] = useState<'2k' | '4k'>('2k')
+  const [erasePrompt, setErasePrompt] = useState('')
   const [repaintPrompt, setRepaintPrompt] = useState('')
   const [outpaintMode, setOutpaintMode] = useState<'free' | 'preset'>('free')
   const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
@@ -41,7 +42,11 @@ export default function ImageWorkstation() {
   const activeTool = getWorkstationTool(tool)
   const toolReady = isWorkstationToolReady(activeTool)
   const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode)
-  const activePrompt = activeTool.capability === Capability.ImageEdit ? smartEditPrompt : repaintPrompt
+  const activePrompt = activeTool.capability === Capability.ImageEdit
+    ? smartEditPrompt
+    : activeTool.slug === 'remove'
+      ? erasePrompt
+      : repaintPrompt
   const controller = useImageWorkstationController({
     activeTool,
     initialAsset: sourceAsset,
@@ -226,6 +231,8 @@ export default function ImageWorkstation() {
               resolution={editResolution}
               onResolutionChange={setEditResolution}
               disabled={controller.formLocked}
+              erasePrompt={erasePrompt}
+              onErasePromptChange={setErasePrompt}
               repaintPrompt={repaintPrompt}
               onRepaintPromptChange={setRepaintPrompt}
               outpaintMode={outpaintMode}

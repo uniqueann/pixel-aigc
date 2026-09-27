@@ -68,7 +68,7 @@ export interface ImageEditTaskParams extends ImageTaskParams {
 /** 消除/重绘任务参数 */
 export interface InpaintTaskParams extends ImageTaskParams {
   mode: 'remove' | 'repaint'
-  /** 重绘模式必填，消除模式不需要 */
+  /** 重绘模式必填；消除模式可选，描述去掉物体后应留下的背景 */
   prompt?: string
 }
 

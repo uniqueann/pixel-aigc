@@ -7,7 +7,10 @@ createServer(async (req, res) => {
   let size = 0
   for await (const chunk of req) {
     size += chunk.length
-    const limit = (req.url ?? '').includes('bg-remove') || (req.url ?? '').includes('subject-detect') ? 28 * 1024 * 1024 : 3 * 1024 * 1024
+    const url = req.url ?? ''
+    const limit = url.includes('bg-remove') || url.includes('subject-detect') || url.includes('outpaint') || url.includes('erase')
+      ? 28 * 1024 * 1024
+      : 3 * 1024 * 1024
     if (size > limit) { res.writeHead(413).end(); return }
     chunks.push(chunk)
   }
