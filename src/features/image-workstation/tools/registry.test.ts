@@ -7,11 +7,11 @@ import {
 } from './registry'
 
 describe('图片工作站工具开关', () => {
-  it('扩图和消除始终可提交，其它工具跟随任务能力开关', () => {
+  it('扩图、消除和重绘始终可提交，其它工具跟随任务能力开关', () => {
     expect(isWorkstationToolReady(getWorkstationTool('outpaint'), () => false)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('remove'), () => false)).toBe(true)
+    expect(isWorkstationToolReady(getWorkstationTool('repaint'), () => false)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('smart-edit'), () => false)).toBe(false)
-    expect(isWorkstationToolReady(getWorkstationTool('repaint'), () => false)).toBe(false)
     expect(isWorkstationToolReady(getWorkstationTool('relight'), () => false)).toBe(false)
     expect(isWorkstationToolReady(getWorkstationTool('fusion'), () => false)).toBe(false)
     expect(isWorkstationToolReady(getWorkstationTool('variation'), () => false)).toBe(false)

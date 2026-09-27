@@ -5,6 +5,7 @@ interface CapabilityFlags {
   bgRemove?: boolean
   outpaint?: boolean
   erase?: boolean
+  repaint?: boolean
 }
 
 function loadFlags(): Promise<CapabilityFlags> {
@@ -26,4 +27,9 @@ export function loadOutpaintConfigured() {
 export function loadEraseConfigured() {
   if (liveCapabilityReady(Capability.Inpaint)) return Promise.resolve(true)
   return loadFlags().then(data => Boolean(data.erase))
+}
+
+export function loadRepaintConfigured() {
+  if (liveCapabilityReady(Capability.Inpaint)) return Promise.resolve(true)
+  return loadFlags().then(data => Boolean(data.repaint))
 }

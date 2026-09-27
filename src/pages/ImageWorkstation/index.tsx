@@ -17,6 +17,8 @@ import {
 import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
 import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
+import { loadRepaintConfigured } from '@/services/api/capabilities'
+import { liveCapabilityReady } from '@/services/api/task'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
@@ -39,6 +41,7 @@ export default function ImageWorkstation() {
   const [outpaintMode, setOutpaintMode] = useState<'free' | 'preset'>('free')
   const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
+  const [repaintReady, setRepaintReady] = useState(() => liveCapabilityReady(Capability.Inpaint))
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
   const toolReady = isWorkstationToolReady(activeTool)
@@ -98,6 +101,12 @@ export default function ImageWorkstation() {
 
   const uploadRef = useRef(handleImageUpload)
   uploadRef.current = handleImageUpload
+
+  useEffect(() => {
+    let active = true
+    void loadRepaintConfigured().then(ready => { if (active) setRepaintReady(ready) })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     if (activeTool.slug !== 'outpaint') return
@@ -245,6 +254,7 @@ export default function ImageWorkstation() {
               onErasePromptChange={setErasePrompt}
               repaintPrompt={repaintPrompt}
               onRepaintPromptChange={setRepaintPrompt}
+              repaintReady={repaintReady}
               outpaintMode={outpaintMode}
               onOutpaintModeChange={setOutpaintMode}
               presetPlatform={presetPlatform}
@@ -285,7 +295,7 @@ export default function ImageWorkstation() {
           <Button
             type="primary"
             loading={controller.submitting}
-            disabled={!toolReady || !controller.inputAsset || controller.formLocked}
+            disabled={!toolReady || !controller.inputAsset || controller.formLocked || (activeTool.slug === 'repaint' && !repaintReady)}
             onClick={handleGenerate}
           >
             生成

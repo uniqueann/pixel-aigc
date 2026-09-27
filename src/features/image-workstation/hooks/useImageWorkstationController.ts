@@ -3,6 +3,7 @@ import { useTaskPolling } from '@/hooks/useTaskPolling'
 import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
 import { requestErase } from '@/services/api/erase'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
+import { requestRepaint } from '@/services/api/repaint'
 import { liveCapabilityReady } from '@/services/api/task'
 import { uploadDataUrl } from '@/services/api/upload'
 import { GenerationService } from '@/editor/services/generationService'
@@ -108,6 +109,55 @@ export function useImageWorkstationController({
   }, [applyCompletedTask, service])
 
   const taskQuery = useTaskPolling(activeTaskId, handlePolledTask)
+
+  const completeRepaint = useCallback(async (
+    sourceAsset: ImageAsset,
+    promptText: string,
+    maskDataUrl: string,
+    parentGenerationId: GenerationId | undefined,
+  ) => {
+    setSubmitting(true)
+    setSubmissionError(undefined)
+    setProtocolError(undefined)
+    try {
+      const response = await fetch(sourceAsset.url)
+      if (!response.ok) throw new Error('读取原图失败')
+      const result = await requestRepaint(await response.blob(), maskDataUrl, promptText)
+      const now = new Date().toISOString()
+      const completed: GenerationTask<InpaintTaskParams> = {
+        id: crypto.randomUUID(),
+        capability: Capability.Inpaint,
+        status: 'succeeded',
+        params: { sourceImageUrl: sourceAsset.url, maskUrl: maskDataUrl, mode: 'repaint', prompt: promptText },
+        resultUrls: [URL.createObjectURL(result)],
+        creditsCost: 0,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const outputSize = { width: sourceAsset.width, height: sourceAsset.height }
+      const options: SubmissionContext['options'] = {
+        inputAssetIds: [sourceAsset.id],
+        parentGenerationId,
+        outputSize,
+      }
+      submissionsRef.current.set(completed.id, {
+        request: { capability: Capability.Inpaint, params: completed.params, outputSize },
+        options,
+      })
+      const adapted = service.reconcile(completed, options)
+      setTask(completed)
+      upsertTask(completed)
+      setActiveTaskId(undefined)
+      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
+      return completed
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '重绘失败'
+      setSubmissionError(message)
+      throw error
+    } finally {
+      setSubmitting(false)
+    }
+  }, [applyCompletedTask, service, upsertTask])
 
   const completeOutpaint = useCallback(async (
     sourceAsset: ImageAsset,
@@ -264,6 +314,20 @@ export function useImageWorkstationController({
     const validation = activeTool.validate?.(initialContext)
     if (validation && !validation.valid) throw new Error(validation.message ?? '当前参数不完整')
 
+    if (activeTool.slug === 'repaint' && !liveCapabilityReady(Capability.Inpaint)) {
+      if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
+      let exported: ReturnType<WorkstationCanvasHandle['exportMask']>
+      try {
+        exported = canvasHandle.exportMask()
+      } catch (error) {
+        if (error instanceof Error && error.message === '请先涂抹要消除的区域') {
+          throw new Error('请先涂抹要重绘的区域')
+        }
+        throw error
+      }
+      return completeRepaint(inputAsset, prompt?.trim() ?? '', exported.maskDataUrl, inputAsset.generationId)
+    }
+
     if (activeTool.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
       if (!canvasHandle?.getTargetSize || !canvasHandle.getOriginOffset) throw new Error('扩图画布尚未准备好')
       return completeOutpaint(
@@ -294,7 +358,7 @@ export function useImageWorkstationController({
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
     return submitRequest(request, inputAsset, inputAsset.generationId)
-  }, [activeTool, completeErase, completeOutpaint, count, inputAsset, prompt, resolution, submitRequest])
+  }, [activeTool, completeErase, completeOutpaint, completeRepaint, count, inputAsset, prompt, resolution, submitRequest])
 
   const retry = useCallback(async () => {
     if (!task) return
@@ -304,12 +368,16 @@ export function useImageWorkstationController({
       ? useEditorStore.getState().project?.assets[sourceAssetId]
       : undefined
     if (!context || sourceAsset?.type !== 'image') return
-    const eraseParams = context.request.capability === Capability.Inpaint
+    const inpaintParams = context.request.capability === Capability.Inpaint
       ? context.request.params as InpaintTaskParams
       : undefined
-    if (eraseParams?.mode === 'remove' && !liveCapabilityReady(Capability.Inpaint)) {
-      if (!eraseParams.maskUrl) throw new Error('请先涂抹要消除的区域')
-      return completeErase(sourceAsset, eraseParams.maskUrl, eraseParams.prompt ?? '', context.options.parentGenerationId)
+    if (inpaintParams?.mode === 'repaint' && !liveCapabilityReady(Capability.Inpaint)) {
+      if (!inpaintParams.maskUrl) throw new Error('请重新涂抹后再试')
+      return completeRepaint(sourceAsset, inpaintParams.prompt ?? '', inpaintParams.maskUrl, context.options.parentGenerationId)
+    }
+    if (inpaintParams?.mode === 'remove' && !liveCapabilityReady(Capability.Inpaint)) {
+      if (!inpaintParams.maskUrl) throw new Error('请先涂抹要消除的区域')
+      return completeErase(sourceAsset, inpaintParams.maskUrl, inpaintParams.prompt ?? '', context.options.parentGenerationId)
     }
     if (context.request.capability !== Capability.Outpaint && !liveCapabilityReady(context.request.capability)) {
       throw new Error(COMING_SOON_SUBMIT_MESSAGE)
@@ -326,7 +394,7 @@ export function useImageWorkstationController({
       )
     }
     return submitRequest(context.request, sourceAsset, context.options.parentGenerationId)
-  }, [completeErase, completeOutpaint, submitRequest, task])
+  }, [completeErase, completeOutpaint, completeRepaint, submitRequest, task])
 
   const modifyParameters = useCallback(() => {
     setTask(undefined)

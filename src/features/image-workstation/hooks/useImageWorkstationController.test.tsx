@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   liveCapabilityReady: vi.fn(() => true),
   uploadDataUrl: vi.fn(async (url: string) => url),
   requestErase: vi.fn(),
+  requestRepaint: vi.fn(),
   polling: { data: undefined as GenerationTask<unknown> | undefined },
 }))
 
@@ -29,6 +30,9 @@ vi.mock('@/services/api/upload', () => ({
 }))
 vi.mock('@/services/api/erase', () => ({
   requestErase: mocks.requestErase,
+}))
+vi.mock('@/services/api/repaint', () => ({
+  requestRepaint: mocks.requestRepaint,
 }))
 vi.mock('@/hooks/useTaskPolling', async () => {
   const { useEffect: useReactEffect } = await import('react')
@@ -97,6 +101,7 @@ describe('useImageWorkstationController 集成流程', () => {
     mocks.uploadDataUrl.mockReset()
     mocks.uploadDataUrl.mockImplementation(async (url: string) => url)
     mocks.requestErase.mockReset()
+    mocks.requestRepaint.mockReset()
     mocks.polling.data = undefined
     useEditorStore.setState({
       project: null,
@@ -289,12 +294,39 @@ describe('useImageWorkstationController 集成流程', () => {
   it('未接入真实服务的工具在上传蒙版前就拒绝提交', async () => {
     mocks.liveCapabilityReady.mockReturnValue(false)
     await act(async () => root.render(
-      <ControllerHarness tool="repaint" prompt="补上木纹" onController={captureController} />,
+      <ControllerHarness tool="relight" onController={captureController} />,
     ))
 
     await expect(currentController.generate(canvasHandle)).rejects.toThrow('该能力即将上线，目前还不能提交生成任务')
     expect(mocks.uploadDataUrl).not.toHaveBeenCalled()
     expect(mocks.createTask).not.toHaveBeenCalled()
+  })
+
+  it('重绘未接入任务网关时走 /api/repaint，不上传蒙版也不创建任务', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const result = new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' })
+    mocks.requestRepaint.mockResolvedValue(result)
+    const fetchMock = vi.fn(async () => new Response(new Blob([new Uint8Array(8)], { type: 'image/jpeg' })))
+    vi.stubGlobal('fetch', fetchMock)
+    if (!URL.createObjectURL) {
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:repaint-result' })
+    }
+    await act(async () => root.render(
+      <ControllerHarness tool="repaint" prompt="桌面上的透明玻璃花瓶" onController={captureController} />,
+    ))
+
+    await act(async () => {
+      await currentController.generate(canvasHandle)
+    })
+
+    expect(mocks.requestRepaint).toHaveBeenCalled()
+    expect(mocks.requestRepaint.mock.calls[0][1]).toBe('data:image/png;base64,mask')
+    expect(mocks.requestRepaint.mock.calls[0][2]).toBe('桌面上的透明玻璃花瓶')
+    expect(mocks.uploadDataUrl).not.toHaveBeenCalled()
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    expect(currentController.activeTask?.capability).toBe(Capability.Inpaint)
+    expect(currentController.activeTask?.status).toBe('succeeded')
+    vi.unstubAllGlobals()
   })
 
   it('消除未接入任务网关时走 /api/erase，不上传蒙版也不创建任务', async () => {
