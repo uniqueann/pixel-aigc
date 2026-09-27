@@ -132,9 +132,20 @@ async function createMockResult(task: GenerationTask<unknown>): Promise<Pick<Gen
     return { resultUrls: [createMockImage({ prompt: '扩图', size: params.targetSize, count: 1 }, 0)] }
   }
 
-  if (task.params && typeof task.params === 'object' && 'sourceImageUrl' in task.params) {
-    const sourceImageUrl = task.params.sourceImageUrl
-    return { resultUrls: typeof sourceImageUrl === 'string' ? [sourceImageUrl] : [] }
+  if (task.params && typeof task.params === 'object') {
+    const params = task.params as { size?: { width?: number; height?: number }; count?: number }
+    const width = Number(params.size?.width)
+    const height = Number(params.size?.height)
+    return {
+      resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockImage({
+        prompt: `${task.capability} 模拟结果`,
+        size: {
+          width: Number.isFinite(width) && width > 0 ? width : 1024,
+          height: Number.isFinite(height) && height > 0 ? height : 1024,
+        },
+        count: 1,
+      }, index)),
+    }
   }
   return { resultUrls: [] }
 }

@@ -14,10 +14,18 @@ import { useImageWorkstationController } from './useImageWorkstationController'
 
 const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
+  liveCapabilityReady: vi.fn(() => true),
+  uploadDataUrl: vi.fn(async (url: string) => url),
   polling: { data: undefined as GenerationTask<unknown> | undefined },
 }))
 
-vi.mock('@/services/api/task', () => ({ createTask: mocks.createTask }))
+vi.mock('@/services/api/task', () => ({
+  createTask: mocks.createTask,
+  liveCapabilityReady: mocks.liveCapabilityReady,
+}))
+vi.mock('@/services/api/upload', () => ({
+  uploadDataUrl: mocks.uploadDataUrl,
+}))
 vi.mock('@/hooks/useTaskPolling', async () => {
   const { useEffect: useReactEffect } = await import('react')
   return {
@@ -80,6 +88,10 @@ describe('useImageWorkstationController 集成流程', () => {
 
   beforeEach(async () => {
     mocks.createTask.mockReset()
+    mocks.liveCapabilityReady.mockReset()
+    mocks.liveCapabilityReady.mockReturnValue(true)
+    mocks.uploadDataUrl.mockReset()
+    mocks.uploadDataUrl.mockImplementation(async (url: string) => url)
     mocks.polling.data = undefined
     useEditorStore.setState({
       project: null,
@@ -267,5 +279,56 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(mocks.createTask).toHaveBeenCalledTimes(2)
     expect(mocks.createTask.mock.calls[1][0].params).toEqual(mocks.createTask.mock.calls[0][0].params)
     expect(currentController.activeTask?.id).toBe('task-edit-retry')
+  })
+
+  it('未接入真实服务的工具在上传蒙版前就拒绝提交', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    await act(async () => root.render(
+      <ControllerHarness tool="remove" onController={captureController} />,
+    ))
+
+    await expect(currentController.generate(canvasHandle)).rejects.toThrow('该能力即将上线，目前还不能提交生成任务')
+    expect(mocks.uploadDataUrl).not.toHaveBeenCalled()
+    expect(mocks.createTask).not.toHaveBeenCalled()
+  })
+
+  it('裂变未接入时不能提交；成功结果若只回传原图则记为异常', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    await act(async () => root.render(
+      <ControllerHarness tool="variation" onController={captureController} />,
+    ))
+    await expect(currentController.generate(null)).rejects.toThrow('该能力即将上线，目前还不能提交生成任务')
+
+    mocks.liveCapabilityReady.mockReturnValue(true)
+    const processingTask: GenerationTask = {
+      id: 'task-variation-echo',
+      capability: Capability.Variation,
+      status: 'processing',
+      params: { sourceImageUrl: initialAsset.url, size: { width: 640, height: 480 }, count: 1 },
+      creditsCost: 1,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValue(processingTask)
+    await act(async () => root.render(
+      <ControllerHarness tool="variation" onController={captureController} />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+
+    mocks.polling.data = {
+      ...processingTask,
+      status: 'succeeded',
+      resultUrls: [initialAsset.url],
+      updatedAt: '2026-09-07T00:01:00.000Z',
+    }
+    await act(async () => root.render(
+      <ControllerHarness tool="variation" onController={captureController} />,
+    ))
+
+    expect(currentController.protocolError).toBe('任务已完成，但没有返回新的生成结果')
+    expect(currentController.outputAssets).toEqual([])
+    expect(currentController.inputAsset?.id).toBe(initialAsset.id)
   })
 })

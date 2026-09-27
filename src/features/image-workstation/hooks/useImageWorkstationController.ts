@@ -10,6 +10,8 @@ import type { AssetId, GenerationId, ImageAsset } from '@/editor/types'
 import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
 import { Capability, type GenerationTask, type OutpaintTaskParams, type TaskStatus } from '@/types'
+import { finalizeWorkstationResults } from '../results'
+import { COMING_SOON_SUBMIT_MESSAGE, isWorkstationToolReady } from '../tools/registry'
 import type {
   WorkstationCanvasHandle,
   WorkstationGenerationRequest,
@@ -80,12 +82,13 @@ export function useImageWorkstationController({
     assets: ImageAsset[],
   ) => {
     if (completedTask.status !== 'succeeded') return
-    if (assets.length === 0) {
-      setProtocolError('任务已完成，但接口没有返回图片结果')
+    const finalized = finalizeWorkstationResults(completedTask, assets)
+    if (finalized.error) {
+      setProtocolError(finalized.error)
       return
     }
-    setOutputAssetIds(assets.map((asset) => asset.id))
-    setInputAssetId(assets[0].id)
+    setOutputAssetIds(finalized.assets.map((asset) => asset.id))
+    setInputAssetId(finalized.assets[0].id)
     setProtocolError(undefined)
   }, [])
 
@@ -199,6 +202,7 @@ export function useImageWorkstationController({
   }, [applyCompletedTask, service, upsertTask])
 
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
+    if (!isWorkstationToolReady(activeTool)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
     if (!inputAsset) throw new Error('请先上传需要编辑的图片')
     const initialContext = { sourceAsset: inputAsset, prompt, count, resolution }
     const validation = activeTool.validate?.(initialContext)
@@ -239,6 +243,9 @@ export function useImageWorkstationController({
       ? useEditorStore.getState().project?.assets[sourceAssetId]
       : undefined
     if (!context || sourceAsset?.type !== 'image') return
+    if (context.request.capability !== Capability.Outpaint && !liveCapabilityReady(context.request.capability)) {
+      throw new Error(COMING_SOON_SUBMIT_MESSAGE)
+    }
     if (context.request.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
       const params = context.request.params as OutpaintTaskParams
       if (!params.targetSize || !params.originOffset) throw new Error('扩图画布尚未准备好')
