@@ -59,7 +59,7 @@ export async function prepareEraseMask(
   targetHeight: number,
   dilateRadius = MASK_DILATE_RADIUS,
 ): Promise<PreparedEraseMask> {
-  let raw: { data: Buffer; info: sharp.OutputInfo }
+  let raw: { data: Buffer; info: { width: number; height: number; channels: number } }
   try {
     raw = await sharp(mask, { failOn: 'none' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   } catch {

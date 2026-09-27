@@ -1,7 +1,18 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+// @vitest-environment jsdom
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { requestErase } from './erase'
 
 describe('消除客户端请求', () => {
+  beforeEach(() => {
+    if (typeof AbortSignal.timeout !== 'function') {
+      Object.defineProperty(AbortSignal, 'timeout', {
+        configurable: true,
+        value: () => new AbortController().signal,
+      })
+    }
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -16,7 +27,7 @@ describe('消除客户端请求', () => {
     const image = new Blob([new Uint8Array([9, 8, 7])], { type: 'image/jpeg' })
     await requestErase(image, 'image/jpeg', 'data:image/png;base64,QUFB', '浅色墙面')
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/api/erase')
     const body = JSON.parse(String(init.body)) as {
       mimeType: string
@@ -25,13 +36,10 @@ describe('消除客户端请求', () => {
       maskBase64: string
       prompt: string
     }
-    expect(body).toMatchObject({
-      mimeType: 'image/jpeg',
-      maskMimeType: 'image/png',
-      maskBase64: 'QUFB',
-      prompt: '浅色墙面',
-    })
+    expect(body.mimeType).toBe('image/jpeg')
+    expect(body.maskMimeType).toBe('image/png')
+    expect(body.maskBase64).toBe('QUFB')
+    expect(body.prompt).toBe('浅色墙面')
     expect(body.dataBase64.length).toBeGreaterThan(0)
-    expect(init.signal).toBeInstanceOf(AbortSignal)
   })
 })

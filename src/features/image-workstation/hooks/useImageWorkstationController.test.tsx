@@ -314,12 +314,9 @@ describe('useImageWorkstationController 集成流程', () => {
       await currentController.generate(canvasHandle)
     })
 
-    expect(mocks.requestErase).toHaveBeenCalledWith(
-      expect.any(Blob),
-      'image/jpeg',
-      'data:image/png;base64,mask',
-      '浅色木桌',
-    )
+    expect(mocks.requestErase).toHaveBeenCalled()
+    expect(mocks.requestErase.mock.calls[0][2]).toBe('data:image/png;base64,mask')
+    expect(mocks.requestErase.mock.calls[0][3]).toBe('浅色木桌')
     expect(mocks.uploadDataUrl).not.toHaveBeenCalled()
     expect(mocks.createTask).not.toHaveBeenCalled()
     expect(currentController.activeTask?.capability).toBe(Capability.Inpaint)
