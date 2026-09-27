@@ -13,12 +13,16 @@ export interface BailianConfig {
   baseUrl: string
 }
 
+export type OutpaintLog = (entry: Record<string, unknown>) => void
+
 interface BailianDeps {
   fetch?: typeof fetch
   env?: NodeJS.ProcessEnv
   sleep?: (ms: number) => Promise<void>
   now?: () => number
   deadlineMs?: number
+  requestId?: string
+  log?: OutpaintLog
 }
 
 interface BailianResult {
@@ -47,6 +51,22 @@ export function bailianConfig(env: NodeJS.ProcessEnv = process.env): BailianConf
   if (!apiKey) return null
   const baseUrl = (env.DASHSCOPE_BASE_URL?.trim() || 'https://dashscope.aliyuncs.com').replace(/\/$/, '')
   return { apiKey, baseUrl }
+}
+
+/** 先密后疏：300ms 起轮询，生成窗口内每 500ms 一次，避免固定 1s/1.5s 空等。 */
+export function outpaintPollDelay(attempt: number): number {
+  if (attempt <= 0) return 300
+  if (attempt < 16) return 500
+  return 800
+}
+
+function defaultLog(entry: Record<string, unknown>) {
+  if (process.env.VITEST) return
+  console.info(JSON.stringify({
+    evt: 'outpaint',
+    region: process.env.VERCEL_REGION ?? null,
+    ...entry,
+  }))
 }
 
 function failureText(code: string, message: string) {
@@ -82,6 +102,16 @@ function resultImageUrl(payload: BailianPayload) {
 }
 
 async function encodeInput(image: Buffer, width: number, height: number) {
+  const meta = await sharp(image, { failOn: 'none' }).metadata()
+  if (
+    (meta.orientation ?? 1) <= 1
+    && meta.format === 'jpeg'
+    && meta.width === width
+    && meta.height === height
+    && image.length <= 9_000_000
+  ) {
+    return image
+  }
   let quality = 90
   let encoded = await sharp(image, { failOn: 'none' }).rotate().resize(width, height, { fit: 'fill' }).jpeg({ quality }).toBuffer()
   while (encoded.length > 9_000_000 && quality > 60) {
@@ -93,6 +123,8 @@ async function encodeInput(image: Buffer, width: number, height: number) {
 }
 
 async function encodePassInput(image: Buffer) {
+  const meta = await sharp(image, { failOn: 'none' }).metadata()
+  if (meta.format === 'jpeg' && image.length <= 9_000_000) return image
   let quality = 90
   let encoded = await sharp(image, { failOn: 'none' }).jpeg({ quality }).toBuffer()
   while (encoded.length > 9_000_000 && quality > 60) {
@@ -125,13 +157,22 @@ async function submitExpand(
   config: BailianConfig,
   image: Buffer,
   scales: BailianExpandScales,
-  deps: { fetch: typeof fetch; sleep: (ms: number) => Promise<void>; now: () => number; deadline: number },
+  deps: {
+    fetch: typeof fetch
+    sleep: (ms: number) => Promise<void>
+    now: () => number
+    deadline: number
+    requestId?: string
+    log: OutpaintLog
+    pass: number
+  },
 ) {
   const headers = {
     Authorization: `Bearer ${config.apiKey}`,
     'Content-Type': 'application/json',
     'X-DashScope-Async': 'enable',
   }
+  const submitStarted = deps.now()
   const created = await deps.fetch(`${config.baseUrl}${SYNTHESIS_PATH}`, {
     method: 'POST',
     headers,
@@ -154,23 +195,36 @@ async function submitExpand(
     signal: AbortSignal.timeout(20_000),
   })
   const createdPayload = await readJson(created)
+  deps.log({
+    requestId: deps.requestId, stage: 'submit', pass: deps.pass, ms: deps.now() - submitStarted,
+    bytes: image.length, status: created.status, taskId: createdPayload.output?.task_id ?? null,
+  })
   if (!created.ok) throw payloadError(createdPayload) ?? new HttpError(502, '扩图任务提交失败', 'OUTPAINT_FAILED')
   const failed = payloadError(createdPayload)
   if (failed && !createdPayload.output?.task_id) throw failed
   const taskId = createdPayload.output?.task_id
   if (!taskId) throw new HttpError(502, '扩图服务没有返回任务编号', 'OUTPAINT_FAILED')
 
+  const waitStarted = deps.now()
   let imageUrl = ''
+  let polls = 0
   for (let attempt = 0; attempt < 30; attempt += 1) {
     if (deps.now() > deps.deadline) break
-    await deps.sleep(attempt === 0 ? 1000 : 1500)
+    const delay = outpaintPollDelay(attempt)
+    await deps.sleep(delay)
+    const pollStarted = deps.now()
     const polled = await deps.fetch(`${config.baseUrl}/api/v1/tasks/${taskId}`, {
       headers: { Authorization: `Bearer ${config.apiKey}` },
       signal: AbortSignal.timeout(20_000),
     })
     const payload = await readJson(polled)
-    if (!polled.ok) throw payloadError(payload) ?? new HttpError(502, '扩图结果查询失败', 'OUTPAINT_FAILED')
     const status = payload.output?.task_status
+    polls += 1
+    deps.log({
+      requestId: deps.requestId, stage: 'poll', pass: deps.pass, attempt, status: status ?? null,
+      ms: deps.now() - pollStarted, waitMs: deps.now() - waitStarted, delayMs: delay,
+    })
+    if (!polled.ok) throw payloadError(payload) ?? new HttpError(502, '扩图结果查询失败', 'OUTPAINT_FAILED')
     if (status === 'SUCCEEDED') {
       imageUrl = resultImageUrl(payload)
       if (!imageUrl) throw payloadError(payload) ?? new HttpError(502, '扩图没有返回图片', 'OUTPAINT_FAILED')
@@ -180,10 +234,18 @@ async function submitExpand(
       throw payloadError(payload) ?? new HttpError(502, '扩图失败', 'OUTPAINT_FAILED')
     }
   }
+  deps.log({
+    requestId: deps.requestId, stage: 'wait', pass: deps.pass, ms: deps.now() - waitStarted, polls, done: Boolean(imageUrl),
+  })
   if (!imageUrl) throw new HttpError(504, '扩图超时，请稍后重试', 'OUTPAINT_TIMEOUT')
+  const downloadStarted = deps.now()
   const downloaded = await deps.fetch(imageUrl, { signal: AbortSignal.timeout(30_000) })
   if (!downloaded.ok) throw new HttpError(502, '扩图结果下载失败', 'OUTPAINT_FAILED')
-  return Buffer.from(await downloaded.arrayBuffer())
+  const buffer = Buffer.from(await downloaded.arrayBuffer())
+  deps.log({
+    requestId: deps.requestId, stage: 'download', pass: deps.pass, ms: deps.now() - downloadStarted, bytes: buffer.length,
+  })
+  return buffer
 }
 
 export async function expandWithBailian(image: Buffer, padding: PixelPadding, deps: BailianDeps = {}) {
@@ -192,6 +254,8 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
   const fetchImpl = deps.fetch ?? fetch
   const sleep = deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)))
   const now = deps.now ?? Date.now
+  const log = deps.log ?? defaultLog
+  const started = now()
   let size: { width?: number; height?: number }
   try {
     size = await sharp(image, { failOn: 'none' }).rotate().metadata()
@@ -205,12 +269,33 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
   } catch (error) {
     throw new HttpError(400, error instanceof Error ? error.message : '扩图参数无效', 'INVALID_OUTPAINT')
   }
+  const encodeStarted = now()
+  const encoded = await encodeInput(image, plan.inputWidth, plan.inputHeight)
+  log({
+    requestId: deps.requestId, stage: 'plan',
+    sourceWidth: size.width, sourceHeight: size.height,
+    inputWidth: plan.inputWidth, inputHeight: plan.inputHeight,
+    targetWidth: plan.targetWidth, targetHeight: plan.targetHeight,
+    passes: plan.passes.length, scales: plan.passes.map(pass => pass.scales),
+    encodeMs: now() - encodeStarted, encodeBytes: encoded.length, reusedJpeg: encoded === image,
+  })
   const deadline = now() + (deps.deadlineMs ?? 80_000)
-  let current = await encodeInput(image, plan.inputWidth, plan.inputHeight)
-  for (const pass of plan.passes) {
+  let current = encoded
+  for (let index = 0; index < plan.passes.length; index += 1) {
     if (now() > deadline) throw new HttpError(504, '扩图超时，请稍后重试', 'OUTPAINT_TIMEOUT')
-    current = await submitExpand(config, current, pass.scales, { fetch: fetchImpl, sleep, now, deadline })
-    if (plan.passes.length > 1) current = await encodePassInput(current)
+    current = await submitExpand(config, current, plan.passes[index].scales, {
+      fetch: fetchImpl, sleep, now, deadline, requestId: deps.requestId, log, pass: index + 1,
+    })
+    if (index < plan.passes.length - 1) current = await encodePassInput(current)
   }
-  return cropOutpaintResult(current, plan)
+  const cropStarted = now()
+  const output = await cropOutpaintResult(current, plan)
+  log({
+    requestId: deps.requestId, stage: 'crop', ms: now() - cropStarted,
+    bytes: output.length, targetWidth: plan.targetWidth, targetHeight: plan.targetHeight,
+  })
+  log({
+    requestId: deps.requestId, stage: 'total', ms: now() - started, passes: plan.passes.length, bytes: output.length,
+  })
+  return output
 }

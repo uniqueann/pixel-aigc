@@ -20,6 +20,13 @@ describe('智能扩展计划', () => {
     expect(plan.sourceSize).toEqual({ width: 1000, height: 500 })
     expect(plan.originOffset).toEqual({ x: 0, y: 250 })
   })
+
+  it('2048×1365 进 Amazon 1600×1600 会先缩到目标宽再只补上下', () => {
+    const plan = expansionPlan(2048, 1365, 1600, 1600)
+    expect(plan.mode).toBe('remote')
+    expect(plan.sourceSize).toEqual({ width: 1600, height: 1066 })
+    expect(plan.originOffset).toEqual({ x: 0, y: 267 })
+  })
 })
 
 describe('扩图批量并发', () => {

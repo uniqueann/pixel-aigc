@@ -82,9 +82,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }).strict().parse(body)
       const image = Buffer.from(input.dataBase64, 'base64')
       if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      const jpeg = await expandWithBailian(image, input.padding)
+      const jpeg = await expandWithBailian(image, input.padding, { requestId })
       res.setHeader('Content-Type', 'image/jpeg')
       res.status(200).end(jpeg)
+      console.info(JSON.stringify({
+        evt: 'outpaint', requestId, userId, status: 200, route: 'outpaint',
+        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
+      }))
       return
     }
     if (path[0] === 'model-settings' || path[0] === 'model-profiles') {
