@@ -11,6 +11,7 @@ import { handleModelRoute } from './model-settings.js'
 import { handleEmailTaskRoute } from './email-tasks.js'
 import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
 import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
+import { repaintWithBailian } from './bailian-repaint.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = randomUUID(), start = Date.now()
@@ -36,10 +37,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
     if (path.join('/') === 'capabilities' && method === 'GET') {
-      res.status(200).json({ bgRemove: tencentCiConfig() !== null, outpaint: bailianConfig() !== null })
+      res.status(200).json({
+        bgRemove: tencentCiConfig() !== null,
+        outpaint: bailianConfig() !== null,
+        repaint: bailianConfig() !== null,
+      })
       return
     }
-    const maxBytes = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' ? 28 * 1024 * 1024 : 3 * 1024 * 1024
+    const heavyRoute = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' || path[0] === 'repaint'
+    const maxBytes = path[0] === 'repaint' ? 48 * 1024 * 1024 : heavyRoute ? 28 * 1024 * 1024 : 3 * 1024 * 1024
     const user = await authenticate(req.headers.authorization)
     userId = user.id
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
@@ -87,6 +93,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).end(jpeg)
       console.info(JSON.stringify({
         evt: 'outpaint', requestId, userId, status: 200, route: 'outpaint',
+        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
+      }))
+      return
+    }
+    if (path.join('/') === 'repaint' && method === 'POST') {
+      if (!bailianConfig()) throw new HttpError(503, '重绘尚未配置阿里云百炼 API Key', 'REPAINT_UNAVAILABLE')
+      const input = z.object({
+        mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+        dataBase64: z.string().min(1),
+        maskBase64: z.string().min(1),
+        prompt: z.string().min(1).max(2000),
+      }).strict().parse(body)
+      const image = Buffer.from(input.dataBase64, 'base64')
+      const mask = Buffer.from(input.maskBase64, 'base64')
+      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+      if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
+      const jpeg = await repaintWithBailian(image, mask, input.prompt, { requestId })
+      res.setHeader('Content-Type', 'image/jpeg')
+      res.status(200).end(jpeg)
+      console.info(JSON.stringify({
+        evt: 'repaint', requestId, userId, status: 200, route: 'repaint',
         region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
       }))
       return

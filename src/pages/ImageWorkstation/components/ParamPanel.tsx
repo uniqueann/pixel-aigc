@@ -14,6 +14,7 @@ interface Props {
   disabled?: boolean
   repaintPrompt: string
   onRepaintPromptChange: (prompt: string) => void
+  repaintReady?: boolean
   outpaintMode: 'free' | 'preset'
   onOutpaintModeChange: (mode: 'free' | 'preset') => void
   presetPlatform: string
@@ -35,6 +36,7 @@ export default function ParamPanel({
   disabled = false,
   repaintPrompt,
   onRepaintPromptChange,
+  repaintReady = true,
   outpaintMode,
   onOutpaintModeChange,
   presetPlatform,
@@ -114,20 +116,30 @@ export default function ParamPanel({
     )
   }
 
-  return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      {mode === 'repaint' ? (
+  if (mode === 'repaint') {
+    return (
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <div>
           <div style={labelStyle}>重绘描述</div>
           <Input.TextArea
             value={repaintPrompt}
+            disabled={disabled}
             onChange={(event) => onRepaintPromptChange(event.target.value)}
-            placeholder="描述希望在选区内生成的内容"
+            placeholder="描述选区里要出现的内容，例如桌面上的透明玻璃花瓶"
             autoSize={{ minRows: 4, maxRows: 8 }}
           />
         </div>
-      ) : null}
+        {!repaintReady && (
+          <p className="toolbox-warning" style={{ margin: 0, fontSize: 12 }}>
+            重绘还不能用。请确认已开通万相 wanx2.1-imageedit，并配置 DASHSCOPE_API_KEY。
+          </p>
+        )}
+      </Space>
+    )
+  }
 
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
       {capability === Capability.Outpaint ? (
         <>
           <div>

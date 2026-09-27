@@ -2,10 +2,9 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { Canvas, FabricImage, PencilBrush } from 'fabric'
 import { smartSelect } from '@/services/api/smartSelect'
 import { exportPaintedMask, type MaskExportResult } from '../../utils/maskExport'
+import { MASK_STAGE_HEIGHT, MASK_STAGE_WIDTH } from '../../utils/mapDisplayMask'
 import type { PaintTool } from './BrushToolbar'
 
-const CANVAS_WIDTH = 640
-const CANVAS_HEIGHT = 420
 const MAX_HISTORY = 20
 
 interface MaskPaintCanvasProps {
@@ -152,8 +151,8 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
 
     let disposed = false
     const canvas = new Canvas(canvasElement, {
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
+      width: MASK_STAGE_WIDTH,
+      height: MASK_STAGE_HEIGHT,
       selection: false,
       isDrawingMode: true,
     })
@@ -189,7 +188,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         const result = await smartSelect({
           imageUrl,
           point: { x: point.x, y: point.y },
-          canvasSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+          canvasSize: { width: MASK_STAGE_WIDTH, height: MASK_STAGE_HEIGHT },
         })
         if (disposed) return
         const selection = await FabricImage.fromURL(result.maskDataUrl)
@@ -213,8 +212,8 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     <div
       style={{
         position: 'relative',
-        width: CANVAS_WIDTH,
-        height: CANVAS_HEIGHT,
+        width: MASK_STAGE_WIDTH,
+        height: MASK_STAGE_HEIGHT,
         maxWidth: '100%',
         background: 'var(--color-surface-2)',
         overflow: 'hidden',
