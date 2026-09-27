@@ -14,10 +14,26 @@ import { useImageWorkstationController } from './useImageWorkstationController'
 
 const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
+  liveCapabilityReady: vi.fn(() => true),
+  uploadDataUrl: vi.fn(async (url: string) => url),
+  requestErase: vi.fn(),
+  requestRepaint: vi.fn(),
   polling: { data: undefined as GenerationTask<unknown> | undefined },
 }))
 
-vi.mock('@/services/api/task', () => ({ createTask: mocks.createTask }))
+vi.mock('@/services/api/task', () => ({
+  createTask: mocks.createTask,
+  liveCapabilityReady: mocks.liveCapabilityReady,
+}))
+vi.mock('@/services/api/upload', () => ({
+  uploadDataUrl: mocks.uploadDataUrl,
+}))
+vi.mock('@/services/api/erase', () => ({
+  requestErase: mocks.requestErase,
+}))
+vi.mock('@/services/api/repaint', () => ({
+  requestRepaint: mocks.requestRepaint,
+}))
 vi.mock('@/hooks/useTaskPolling', async () => {
   const { useEffect: useReactEffect } = await import('react')
   return {
@@ -80,6 +96,12 @@ describe('useImageWorkstationController 集成流程', () => {
 
   beforeEach(async () => {
     mocks.createTask.mockReset()
+    mocks.liveCapabilityReady.mockReset()
+    mocks.liveCapabilityReady.mockReturnValue(true)
+    mocks.uploadDataUrl.mockReset()
+    mocks.uploadDataUrl.mockImplementation(async (url: string) => url)
+    mocks.requestErase.mockReset()
+    mocks.requestRepaint.mockReset()
     mocks.polling.data = undefined
     useEditorStore.setState({
       project: null,
@@ -267,5 +289,110 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(mocks.createTask).toHaveBeenCalledTimes(2)
     expect(mocks.createTask.mock.calls[1][0].params).toEqual(mocks.createTask.mock.calls[0][0].params)
     expect(currentController.activeTask?.id).toBe('task-edit-retry')
+  })
+
+  it('未接入真实服务的工具在上传蒙版前就拒绝提交', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    await act(async () => root.render(
+      <ControllerHarness tool="relight" onController={captureController} />,
+    ))
+
+    await expect(currentController.generate(canvasHandle)).rejects.toThrow('该能力即将上线，目前还不能提交生成任务')
+    expect(mocks.uploadDataUrl).not.toHaveBeenCalled()
+    expect(mocks.createTask).not.toHaveBeenCalled()
+  })
+
+  it('重绘未接入任务网关时走 /api/repaint，不上传蒙版也不创建任务', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const result = new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' })
+    mocks.requestRepaint.mockResolvedValue(result)
+    const fetchMock = vi.fn(async () => new Response(new Blob([new Uint8Array(8)], { type: 'image/jpeg' })))
+    vi.stubGlobal('fetch', fetchMock)
+    if (!URL.createObjectURL) {
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:repaint-result' })
+    }
+    await act(async () => root.render(
+      <ControllerHarness tool="repaint" prompt="桌面上的透明玻璃花瓶" onController={captureController} />,
+    ))
+
+    await act(async () => {
+      await currentController.generate(canvasHandle)
+    })
+
+    expect(mocks.requestRepaint).toHaveBeenCalled()
+    expect(mocks.requestRepaint.mock.calls[0][1]).toBe('data:image/png;base64,mask')
+    expect(mocks.requestRepaint.mock.calls[0][2]).toBe('桌面上的透明玻璃花瓶')
+    expect(mocks.uploadDataUrl).not.toHaveBeenCalled()
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    expect(currentController.activeTask?.capability).toBe(Capability.Inpaint)
+    expect(currentController.activeTask?.status).toBe('succeeded')
+    vi.unstubAllGlobals()
+  })
+
+  it('消除未接入任务网关时走 /api/erase，不上传蒙版也不创建任务', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const result = new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' })
+    mocks.requestErase.mockResolvedValue(result)
+    const fetchMock = vi.fn(async () => new Response(new Blob([new Uint8Array(8)], { type: 'image/jpeg' })))
+    vi.stubGlobal('fetch', fetchMock)
+    if (!URL.createObjectURL) {
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:erase-result' })
+    }
+    await act(async () => root.render(
+      <ControllerHarness tool="remove" prompt="浅色木桌" onController={captureController} />,
+    ))
+
+    await act(async () => {
+      await currentController.generate(canvasHandle)
+    })
+
+    expect(mocks.requestErase).toHaveBeenCalled()
+    expect(mocks.requestErase.mock.calls[0][2]).toBe('data:image/png;base64,mask')
+    expect(mocks.requestErase.mock.calls[0][3]).toBe('浅色木桌')
+    expect(mocks.uploadDataUrl).not.toHaveBeenCalled()
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    expect(currentController.activeTask?.capability).toBe(Capability.Inpaint)
+    expect(currentController.activeTask?.status).toBe('succeeded')
+    vi.unstubAllGlobals()
+  })
+
+  it('裂变未接入时不能提交；成功结果若只回传原图则记为异常', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    await act(async () => root.render(
+      <ControllerHarness tool="variation" onController={captureController} />,
+    ))
+    await expect(currentController.generate(null)).rejects.toThrow('该能力即将上线，目前还不能提交生成任务')
+
+    mocks.liveCapabilityReady.mockReturnValue(true)
+    const processingTask: GenerationTask = {
+      id: 'task-variation-echo',
+      capability: Capability.Variation,
+      status: 'processing',
+      params: { sourceImageUrl: initialAsset.url, size: { width: 640, height: 480 }, count: 1 },
+      creditsCost: 1,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValue(processingTask)
+    await act(async () => root.render(
+      <ControllerHarness tool="variation" onController={captureController} />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+
+    mocks.polling.data = {
+      ...processingTask,
+      status: 'succeeded',
+      resultUrls: [initialAsset.url],
+      updatedAt: '2026-09-07T00:01:00.000Z',
+    }
+    await act(async () => root.render(
+      <ControllerHarness tool="variation" onController={captureController} />,
+    ))
+
+    expect(currentController.protocolError).toBe('任务已完成，但没有返回新的生成结果')
+    expect(currentController.outputAssets).toEqual([])
+    expect(currentController.inputAsset?.id).toBe(initialAsset.id)
   })
 })

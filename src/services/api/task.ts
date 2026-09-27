@@ -1,6 +1,6 @@
 import { cloudEnabled } from '@/cloud/client'
 import { apiClient } from './client'
-import type { Capability, GenerationTask } from '@/types'
+import { Capability, type GenerationTask } from '@/types'
 import { cancelMockTask, createMockTask, getMockTask, listMockTasks } from './mockTaskGateway'
 
 export interface CreateTaskPayload<TParams = Record<string, unknown>> {
@@ -13,8 +13,11 @@ export interface CreateTaskPayload<TParams = Record<string, unknown>> {
 
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
 
+/** 已接入 /tasks 真实链路的能力。接入新服务时加进这个集合，工作站「即将上线」标记会自动消失。 */
+const LIVE_TASK_CAPABILITIES = new Set<Capability>([Capability.EmailAssist])
+
 export function liveCapabilityReady(capability: Capability, mockGateway = useMockGateway) {
-  return mockGateway || capability === 'email_assist'
+  return mockGateway || LIVE_TASK_CAPABILITIES.has(capability)
 }
 
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {

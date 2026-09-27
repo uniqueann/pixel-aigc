@@ -4,6 +4,7 @@ import { Capability } from '@/types'
 interface CapabilityFlags {
   bgRemove?: boolean
   outpaint?: boolean
+  erase?: boolean
   repaint?: boolean
 }
 
@@ -21,6 +22,11 @@ export function loadBgRemoveConfigured() {
 export function loadOutpaintConfigured() {
   if (liveCapabilityReady(Capability.Outpaint)) return Promise.resolve(true)
   return loadFlags().then(data => Boolean(data.outpaint))
+}
+
+export function loadEraseConfigured() {
+  if (liveCapabilityReady(Capability.Inpaint)) return Promise.resolve(true)
+  return loadFlags().then(data => Boolean(data.erase))
 }
 
 export function loadRepaintConfigured() {

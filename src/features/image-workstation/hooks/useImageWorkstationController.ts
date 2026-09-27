@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
-import { maskPngFromExport } from '@/pages/ImageWorkstation/utils/mapDisplayMask'
 import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
+import { requestErase } from '@/services/api/erase'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { requestRepaint } from '@/services/api/repaint'
 import { liveCapabilityReady } from '@/services/api/task'
@@ -12,6 +12,8 @@ import type { AssetId, GenerationId, ImageAsset } from '@/editor/types'
 import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
 import { Capability, type GenerationTask, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
+import { finalizeWorkstationResults } from '../results'
+import { COMING_SOON_SUBMIT_MESSAGE, isWorkstationToolReady } from '../tools/registry'
 import type {
   WorkstationCanvasHandle,
   WorkstationGenerationRequest,
@@ -53,7 +55,6 @@ export function useImageWorkstationController({
   const [submissionError, setSubmissionError] = useState<string>()
   const [protocolError, setProtocolError] = useState<string>()
   const submissionsRef = useRef(new Map<string, SubmissionContext>())
-  const repaintSessionRef = useRef(new Map<string, { prompt: string; mask: Blob }>())
   const handledTaskVersionsRef = useRef(new Set<string>())
 
   useEffect(() => {
@@ -83,12 +84,13 @@ export function useImageWorkstationController({
     assets: ImageAsset[],
   ) => {
     if (completedTask.status !== 'succeeded') return
-    if (assets.length === 0) {
-      setProtocolError('任务已完成，但接口没有返回图片结果')
+    const finalized = finalizeWorkstationResults(completedTask, assets)
+    if (finalized.error) {
+      setProtocolError(finalized.error)
       return
     }
-    setOutputAssetIds(assets.map((asset) => asset.id))
-    setInputAssetId(assets[0].id)
+    setOutputAssetIds(finalized.assets.map((asset) => asset.id))
+    setInputAssetId(finalized.assets[0].id)
     setProtocolError(undefined)
   }, [])
 
@@ -111,7 +113,7 @@ export function useImageWorkstationController({
   const completeRepaint = useCallback(async (
     sourceAsset: ImageAsset,
     promptText: string,
-    mask: Blob,
+    maskDataUrl: string,
     parentGenerationId: GenerationId | undefined,
   ) => {
     setSubmitting(true)
@@ -120,13 +122,13 @@ export function useImageWorkstationController({
     try {
       const response = await fetch(sourceAsset.url)
       if (!response.ok) throw new Error('读取原图失败')
-      const result = await requestRepaint(await response.blob(), mask, promptText)
+      const result = await requestRepaint(await response.blob(), maskDataUrl, promptText)
       const now = new Date().toISOString()
       const completed: GenerationTask<InpaintTaskParams> = {
         id: crypto.randomUUID(),
         capability: Capability.Inpaint,
         status: 'succeeded',
-        params: { sourceImageUrl: sourceAsset.url, mode: 'repaint', prompt: promptText },
+        params: { sourceImageUrl: sourceAsset.url, maskUrl: maskDataUrl, mode: 'repaint', prompt: promptText },
         resultUrls: [URL.createObjectURL(result)],
         creditsCost: 0,
         createdAt: now,
@@ -142,7 +144,6 @@ export function useImageWorkstationController({
         request: { capability: Capability.Inpaint, params: completed.params, outputSize },
         options,
       })
-      repaintSessionRef.current.set(completed.id, { prompt: promptText, mask })
       const adapted = service.reconcile(completed, options)
       setTask(completed)
       upsertTask(completed)
@@ -214,6 +215,61 @@ export function useImageWorkstationController({
     }
   }, [applyCompletedTask, service, upsertTask])
 
+  const completeErase = useCallback(async (
+    sourceAsset: ImageAsset,
+    maskDataUrl: string,
+    prompt: string,
+    parentGenerationId: GenerationId | undefined,
+  ) => {
+    setSubmitting(true)
+    setSubmissionError(undefined)
+    setProtocolError(undefined)
+    try {
+      const response = await fetch(sourceAsset.url)
+      if (!response.ok) throw new Error('读取原图失败')
+      const original = await response.blob()
+      const result = await requestErase(original, original.type || 'image/jpeg', maskDataUrl, prompt)
+      const now = new Date().toISOString()
+      const outputSize = { width: sourceAsset.width, height: sourceAsset.height }
+      const completed: GenerationTask<InpaintTaskParams> = {
+        id: crypto.randomUUID(),
+        capability: Capability.Inpaint,
+        status: 'succeeded',
+        params: {
+          sourceImageUrl: sourceAsset.url,
+          maskUrl: maskDataUrl,
+          mode: 'remove',
+          prompt: prompt || undefined,
+        },
+        resultUrls: [URL.createObjectURL(result)],
+        creditsCost: 0,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const options: SubmissionContext['options'] = {
+        inputAssetIds: [sourceAsset.id],
+        parentGenerationId,
+        outputSize,
+      }
+      submissionsRef.current.set(completed.id, {
+        request: { capability: Capability.Inpaint, params: completed.params, outputSize },
+        options,
+      })
+      const adapted = service.reconcile(completed, options)
+      setTask(completed)
+      upsertTask(completed)
+      setActiveTaskId(undefined)
+      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
+      return completed
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '消除失败'
+      setSubmissionError(message)
+      throw error
+    } finally {
+      setSubmitting(false)
+    }
+  }, [applyCompletedTask, service, upsertTask])
+
   const submitRequest = useCallback(async (
     request: WorkstationGenerationRequest,
     sourceAsset: ImageAsset,
@@ -252,17 +308,24 @@ export function useImageWorkstationController({
   }, [applyCompletedTask, service, upsertTask])
 
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
+    if (!isWorkstationToolReady(activeTool)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
     if (!inputAsset) throw new Error('请先上传需要编辑的图片')
     const initialContext = { sourceAsset: inputAsset, prompt, count, resolution }
     const validation = activeTool.validate?.(initialContext)
     if (validation && !validation.valid) throw new Error(validation.message ?? '当前参数不完整')
 
     if (activeTool.slug === 'repaint' && !liveCapabilityReady(Capability.Inpaint)) {
-      if (!canvasHandle) throw new Error('蒙版画布尚未准备好')
-      const exported = canvasHandle.exportMask()
-      const mask = await maskPngFromExport(exported.maskDataUrl, inputAsset.width, inputAsset.height)
-      if (!mask) throw new Error('请先涂抹要重绘的区域')
-      return completeRepaint(inputAsset, prompt?.trim() ?? '', mask, inputAsset.generationId)
+      if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
+      let exported: ReturnType<WorkstationCanvasHandle['exportMask']>
+      try {
+        exported = canvasHandle.exportMask()
+      } catch (error) {
+        if (error instanceof Error && error.message === '请先涂抹要消除的区域') {
+          throw new Error('请先涂抹要重绘的区域')
+        }
+        throw error
+      }
+      return completeRepaint(inputAsset, prompt?.trim() ?? '', exported.maskDataUrl, inputAsset.generationId)
     }
 
     if (activeTool.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
@@ -274,6 +337,11 @@ export function useImageWorkstationController({
         canvasHandle.getSourceSize?.() ?? { width: inputAsset.width, height: inputAsset.height },
         inputAsset.generationId,
       )
+    }
+
+    if (activeTool.slug === 'remove' && !liveCapabilityReady(Capability.Inpaint)) {
+      if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
+      return completeErase(inputAsset, canvasHandle.exportMask().maskDataUrl, prompt ?? '', inputAsset.generationId)
     }
 
     let canvasContext = {}
@@ -290,7 +358,7 @@ export function useImageWorkstationController({
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
     return submitRequest(request, inputAsset, inputAsset.generationId)
-  }, [activeTool, completeOutpaint, completeRepaint, count, inputAsset, prompt, resolution, submitRequest])
+  }, [activeTool, completeErase, completeOutpaint, completeRepaint, count, inputAsset, prompt, resolution, submitRequest])
 
   const retry = useCallback(async () => {
     if (!task) return
@@ -300,14 +368,19 @@ export function useImageWorkstationController({
       ? useEditorStore.getState().project?.assets[sourceAssetId]
       : undefined
     if (!context || sourceAsset?.type !== 'image') return
-    if (
-      context.request.capability === Capability.Inpaint
-      && (context.request.params as InpaintTaskParams).mode === 'repaint'
-      && !liveCapabilityReady(Capability.Inpaint)
-    ) {
-      const saved = repaintSessionRef.current.get(task.id)
-      if (!saved) throw new Error('请重新涂抹后再试')
-      return completeRepaint(sourceAsset, saved.prompt, saved.mask, context.options.parentGenerationId)
+    const inpaintParams = context.request.capability === Capability.Inpaint
+      ? context.request.params as InpaintTaskParams
+      : undefined
+    if (inpaintParams?.mode === 'repaint' && !liveCapabilityReady(Capability.Inpaint)) {
+      if (!inpaintParams.maskUrl) throw new Error('请重新涂抹后再试')
+      return completeRepaint(sourceAsset, inpaintParams.prompt ?? '', inpaintParams.maskUrl, context.options.parentGenerationId)
+    }
+    if (inpaintParams?.mode === 'remove' && !liveCapabilityReady(Capability.Inpaint)) {
+      if (!inpaintParams.maskUrl) throw new Error('请先涂抹要消除的区域')
+      return completeErase(sourceAsset, inpaintParams.maskUrl, inpaintParams.prompt ?? '', context.options.parentGenerationId)
+    }
+    if (context.request.capability !== Capability.Outpaint && !liveCapabilityReady(context.request.capability)) {
+      throw new Error(COMING_SOON_SUBMIT_MESSAGE)
     }
     if (context.request.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
       const params = context.request.params as OutpaintTaskParams
@@ -321,7 +394,7 @@ export function useImageWorkstationController({
       )
     }
     return submitRequest(context.request, sourceAsset, context.options.parentGenerationId)
-  }, [completeOutpaint, completeRepaint, submitRequest, task])
+  }, [completeErase, completeOutpaint, completeRepaint, submitRequest, task])
 
   const modifyParameters = useCallback(() => {
     setTask(undefined)

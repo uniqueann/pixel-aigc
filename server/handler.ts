@@ -10,6 +10,7 @@ import { signRead, signUpload, verifyAndPromote } from './storage.js'
 import { handleModelRoute } from './model-settings.js'
 import { handleEmailTaskRoute } from './email-tasks.js'
 import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
+import { eraseWithBailian } from './bailian-erase.js'
 import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
 import { repaintWithBailian } from './bailian-repaint.js'
 
@@ -40,11 +41,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json({
         bgRemove: tencentCiConfig() !== null,
         outpaint: bailianConfig() !== null,
+        erase: bailianConfig() !== null,
         repaint: bailianConfig() !== null,
       })
       return
     }
-    const heavyRoute = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' || path[0] === 'repaint'
+    const heavyRoute = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' || path[0] === 'erase' || path[0] === 'repaint'
     const maxBytes = path[0] === 'repaint' ? 48 * 1024 * 1024 : heavyRoute ? 28 * 1024 * 1024 : 3 * 1024 * 1024
     const user = await authenticate(req.headers.authorization)
     userId = user.id
@@ -93,6 +95,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).end(jpeg)
       console.info(JSON.stringify({
         evt: 'outpaint', requestId, userId, status: 200, route: 'outpaint',
+        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
+      }))
+      return
+    }
+    if (path.join('/') === 'erase' && method === 'POST') {
+      if (!bailianConfig()) throw new HttpError(503, '图片消除尚未配置阿里云百炼 API Key', 'ERASE_UNAVAILABLE')
+      const input = z.object({
+        mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+        dataBase64: z.string().min(1),
+        maskMimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
+        maskBase64: z.string().min(1),
+        prompt: z.string().max(800).optional(),
+      }).strict().parse(body)
+      const image = Buffer.from(input.dataBase64, 'base64')
+      const mask = Buffer.from(input.maskBase64, 'base64')
+      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+      if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
+      const jpeg = await eraseWithBailian(image, mask, input.prompt ?? '', { requestId })
+      res.setHeader('Content-Type', 'image/jpeg')
+      res.status(200).end(jpeg)
+      console.info(JSON.stringify({
+        evt: 'erase', requestId, userId, status: 200, route: 'erase',
         region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
       }))
       return

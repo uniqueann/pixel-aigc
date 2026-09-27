@@ -1,14 +1,18 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Canvas, FabricImage, PencilBrush } from 'fabric'
 import { smartSelect } from '@/services/api/smartSelect'
-import { exportPaintedMask, type MaskExportResult } from '../../utils/maskExport'
-import { MASK_STAGE_HEIGHT, MASK_STAGE_WIDTH } from '../../utils/mapDisplayMask'
+import { WORKSTATION_CANVAS_HEIGHT, WORKSTATION_CANVAS_WIDTH } from '../../utils/canvasDisplay'
+import { exportEraseMask, exportPaintedMask, type MaskExportResult } from '../../utils/maskExport'
+import { useCanvasDisplay } from '../../utils/useCanvasDisplay'
 import type { PaintTool } from './BrushToolbar'
 
+const CANVAS_WIDTH = WORKSTATION_CANVAS_WIDTH
+const CANVAS_HEIGHT = WORKSTATION_CANVAS_HEIGHT
 const MAX_HISTORY = 20
 
 interface MaskPaintCanvasProps {
   imageUrl: string
+  imageNaturalSize?: { width: number; height: number }
   brushSize: number
   tool: PaintTool
   smartSelectEnabled: boolean
@@ -27,9 +31,10 @@ export interface MaskPaintCanvasHandle {
 }
 
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange },
+  { imageUrl, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange },
   ref,
 ) {
+  const { hostRef, display } = useCanvasDisplay()
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
   const fabricCanvasRef = useRef<Canvas | null>(null)
   const historyRef = useRef<string[]>([])
@@ -107,6 +112,9 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         const canvasElement = canvasElementRef.current
         if (!canvas || !canvasElement) throw new Error('蒙版画布尚未准备好')
         canvas.renderAll()
+        if (imageNaturalSize && imageNaturalSize.width > 0 && imageNaturalSize.height > 0) {
+          return exportEraseMask(canvasElement, imageNaturalSize)
+        }
         return exportPaintedMask(canvasElement)
       },
       exportRefineMarks: () => {
@@ -124,7 +132,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       canUndo: historyState.canUndo,
       canRedo: historyState.canRedo,
     }),
-    [clear, historyState.canRedo, historyState.canUndo, redo, undo],
+    [clear, historyState.canRedo, historyState.canUndo, imageNaturalSize, redo, undo],
   )
 
   useEffect(() => {
@@ -151,8 +159,8 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
 
     let disposed = false
     const canvas = new Canvas(canvasElement, {
-      width: MASK_STAGE_WIDTH,
-      height: MASK_STAGE_HEIGHT,
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
       selection: false,
       isDrawingMode: true,
     })
@@ -188,7 +196,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         const result = await smartSelect({
           imageUrl,
           point: { x: point.x, y: point.y },
-          canvasSize: { width: MASK_STAGE_WIDTH, height: MASK_STAGE_HEIGHT },
+          canvasSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
         })
         if (disposed) return
         const selection = await FabricImage.fromURL(result.maskDataUrl)
@@ -209,24 +217,25 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   }, [imageUrl, pushSnapshot, updateHistoryState])
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: MASK_STAGE_WIDTH,
-        height: MASK_STAGE_HEIGHT,
-        maxWidth: '100%',
-        background: 'var(--color-surface-2)',
-        overflow: 'hidden',
-        touchAction: 'none',
-      }}
-    >
-      <img
-        src={imageUrl}
-        alt="待处理原图"
-        draggable={false}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
-      />
-      <canvas ref={canvasElementRef} aria-label="蒙版涂抹画布" style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
+    <div ref={hostRef} className="workstation-paint-host">
+      <div className="workstation-paint-frame" style={{ width: display.width, height: display.height }}>
+        <div
+          className="workstation-paint-stage"
+          style={{
+            width: CANVAS_WIDTH,
+            height: CANVAS_HEIGHT,
+            transform: `scale(${display.scale})`,
+          }}
+        >
+          <img
+            src={imageUrl}
+            alt="待处理原图"
+            draggable={false}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
+          />
+          <canvas ref={canvasElementRef} aria-label="蒙版涂抹画布" style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
+        </div>
+      </div>
     </div>
   )
 })

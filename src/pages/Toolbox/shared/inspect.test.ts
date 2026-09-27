@@ -16,9 +16,16 @@ describe('选图限额', () => {
 })
 
 describe('真实抠图是否可开始', () => {
-  it('模拟模式可以处理，真实模式只有邮件助手可用', () => {
+  it('模拟模式可以处理，真实模式只有已接入的任务能力可用', () => {
     expect(liveCapabilityReady(Capability.BgRemove, true)).toBe(true)
     expect(liveCapabilityReady(Capability.BgRemove, false)).toBe(false)
     expect(liveCapabilityReady(Capability.EmailAssist, false)).toBe(true)
+    expect(liveCapabilityReady(Capability.ImageEdit, false)).toBe(false)
+    expect(liveCapabilityReady(Capability.Inpaint, false)).toBe(false)
+    expect(liveCapabilityReady(Capability.Variation, false)).toBe(false)
+    expect(liveCapabilityReady(Capability.Retouch, false)).toBe(false)
+    expect(liveCapabilityReady(Capability.Fusion, false)).toBe(false)
+    expect(liveCapabilityReady(Capability.Relight, false)).toBe(false)
+    expect(liveCapabilityReady(Capability.Outpaint, false)).toBe(false)
   })
 })
