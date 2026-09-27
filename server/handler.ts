@@ -3,7 +3,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { authenticate } from './auth.js'
 import { database, withIdentity } from './db.js'
-import { HttpError } from './errors.js'
+import { describeError, HttpError } from './errors.js'
 import { identifier, projectWriteSchema, uploadSchema } from '../shared/cloud.js'
 import { readProject, requireProject, toAsset, validateReferences } from './projects.js'
 import { signRead, signUpload, verifyAndPromote } from './storage.js'
@@ -196,7 +196,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const message = error instanceof HttpError ? error.message : status === 400 ? '请求参数无效' : '服务暂时不可用，请稍后重试'
     const code = error instanceof HttpError ? error.code : status === 400 ? 'INVALID_REQUEST' : 'SERVER_ERROR'
     res.status(status).json({ error: message, code, requestId })
-    console.error(JSON.stringify({ requestId, userId, status, category: error instanceof Error ? error.name : '未知错误', durationMs: Date.now() - start }))
+    const details = describeError(error)
+    console.error(JSON.stringify({
+      requestId, userId, status, category: details.name, durationMs: Date.now() - start,
+      message: details.message, cause: details.cause ?? null, stage: details.stage ?? null,
+    }))
   }
 }
 

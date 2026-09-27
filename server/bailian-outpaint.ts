@@ -1,5 +1,5 @@
 import sharp from 'sharp'
-import { HttpError } from './errors.js'
+import { describeError, HttpError } from './errors.js'
 import {
   DEFAULT_EXPAND_PROMPT,
   planBailianOutpaint,
@@ -97,6 +97,24 @@ async function readJson(response: Response) {
   return await response.json().catch(() => ({})) as BailianPayload
 }
 
+async function callDashScope(
+  fetchImpl: typeof fetch,
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit | undefined,
+  stage: string,
+  log: OutpaintLog,
+  extra: Record<string, unknown> & { now: () => number; started: number },
+) {
+  try {
+    return await fetchImpl(input, init)
+  } catch (error) {
+    const { now, started, ...rest } = extra
+    const details = describeError(error)
+    log({ stage, error: details.message, cause: details.cause ?? null, ms: now() - started, ...rest })
+    throw new HttpError(502, '无法连接到阿里云百炼扩图服务，请稍后重试', 'OUTPAINT_FAILED', { cause: error, stage })
+  }
+}
+
 function resultImageUrl(payload: BailianPayload) {
   return payload.output?.results?.find(item => item.url)?.url || payload.output?.output_image_url || ''
 }
@@ -173,7 +191,7 @@ async function submitExpand(
     'X-DashScope-Async': 'enable',
   }
   const submitStarted = deps.now()
-  const created = await deps.fetch(`${config.baseUrl}${SYNTHESIS_PATH}`, {
+  const created = await callDashScope(deps.fetch, `${config.baseUrl}${SYNTHESIS_PATH}`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -193,7 +211,7 @@ async function submitExpand(
       },
     }),
     signal: AbortSignal.timeout(20_000),
-  })
+  }, 'submit', deps.log, { requestId: deps.requestId, pass: deps.pass, bytes: image.length, now: deps.now, started: submitStarted })
   const createdPayload = await readJson(created)
   deps.log({
     requestId: deps.requestId, stage: 'submit', pass: deps.pass, ms: deps.now() - submitStarted,
@@ -213,10 +231,10 @@ async function submitExpand(
     const delay = outpaintPollDelay(attempt)
     await deps.sleep(delay)
     const pollStarted = deps.now()
-    const polled = await deps.fetch(`${config.baseUrl}/api/v1/tasks/${taskId}`, {
+    const polled = await callDashScope(deps.fetch, `${config.baseUrl}/api/v1/tasks/${taskId}`, {
       headers: { Authorization: `Bearer ${config.apiKey}` },
       signal: AbortSignal.timeout(20_000),
-    })
+    }, 'poll', deps.log, { requestId: deps.requestId, pass: deps.pass, attempt, now: deps.now, started: pollStarted })
     const payload = await readJson(polled)
     const status = payload.output?.task_status
     polls += 1
@@ -239,7 +257,9 @@ async function submitExpand(
   })
   if (!imageUrl) throw new HttpError(504, '扩图超时，请稍后重试', 'OUTPAINT_TIMEOUT')
   const downloadStarted = deps.now()
-  const downloaded = await deps.fetch(imageUrl, { signal: AbortSignal.timeout(30_000) })
+  const downloaded = await callDashScope(deps.fetch, imageUrl, { signal: AbortSignal.timeout(30_000) }, 'download', deps.log, {
+    requestId: deps.requestId, pass: deps.pass, now: deps.now, started: downloadStarted,
+  })
   if (!downloaded.ok) throw new HttpError(502, '扩图结果下载失败', 'OUTPAINT_FAILED')
   const buffer = Buffer.from(await downloaded.arrayBuffer())
   deps.log({
