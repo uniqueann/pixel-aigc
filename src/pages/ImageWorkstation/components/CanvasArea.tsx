@@ -159,6 +159,14 @@ export default function CanvasArea({
     )
   }
 
+  if (interactionMode === 'multi-source') {
+    return (
+      <div style={canvasShellStyle}>
+        <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>当前工具将在后续迭代中开放</div>
+      </div>
+    )
+  }
+
   if (interactionMode === 'drag-resize') {
     return (
       <div style={canvasShellStyle}>

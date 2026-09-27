@@ -6,7 +6,12 @@ import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { createImageAsset } from '@/editor/services/assetService'
 import type { ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
-import { getWorkstationTool } from '@/features/image-workstation/tools/registry'
+import {
+  COMING_SOON_SUBMIT_MESSAGE,
+  getWorkstationTool,
+  isWorkstationToolReady,
+  workstationDisplaysSourcePreview,
+} from '@/features/image-workstation/tools/registry'
 import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
 import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
@@ -34,6 +39,8 @@ export default function ImageWorkstation() {
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
+  const toolReady = isWorkstationToolReady(activeTool)
+  const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode)
   const activePrompt = activeTool.capability === Capability.ImageEdit ? smartEditPrompt : repaintPrompt
   const controller = useImageWorkstationController({
     activeTool,
@@ -153,6 +160,10 @@ export default function ImageWorkstation() {
   }
 
   const handleGenerate = async () => {
+    if (!toolReady) {
+      message.warning(COMING_SOON_SUBMIT_MESSAGE)
+      return
+    }
     try {
       await controller.generate(canvasHandleRef.current)
       message.success('任务已提交')
@@ -182,8 +193,8 @@ export default function ImageWorkstation() {
         <div className="image-workstation-canvas-column">
           <CanvasArea
             interactionMode={activeTool.interactionMode}
-            imageUrl={controller.inputAsset?.url}
-            originalImageUrl={sourceAsset?.url}
+            imageUrl={showSourcePreview ? controller.inputAsset?.url : undefined}
+            originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}
             imageNaturalSize={inputSize}
             presetTargetSize={presetTargetSize}
             compareMode={compareMode}
@@ -204,23 +215,27 @@ export default function ImageWorkstation() {
           />
         </div>
         <aside className="image-workstation-settings">
-          <ParamPanel
-            capability={activeTool.capability}
-            mode={inpaintMode}
-            smartEditPrompt={smartEditPrompt}
-            onSmartEditPromptChange={setSmartEditPrompt}
-            count={editCount}
-            onCountChange={setEditCount}
-            resolution={editResolution}
-            onResolutionChange={setEditResolution}
-            disabled={controller.formLocked}
-            repaintPrompt={repaintPrompt}
-            onRepaintPromptChange={setRepaintPrompt}
-            outpaintMode={outpaintMode}
-            onOutpaintModeChange={setOutpaintMode}
-            presetPlatform={presetPlatform}
-            onPresetPlatformChange={setPresetPlatform}
-          />
+          {toolReady ? (
+            <ParamPanel
+              capability={activeTool.capability}
+              mode={inpaintMode}
+              smartEditPrompt={smartEditPrompt}
+              onSmartEditPromptChange={setSmartEditPrompt}
+              count={editCount}
+              onCountChange={setEditCount}
+              resolution={editResolution}
+              onResolutionChange={setEditResolution}
+              disabled={controller.formLocked}
+              repaintPrompt={repaintPrompt}
+              onRepaintPromptChange={setRepaintPrompt}
+              outpaintMode={outpaintMode}
+              onOutpaintModeChange={setOutpaintMode}
+              presetPlatform={presetPlatform}
+              onPresetPlatformChange={setPresetPlatform}
+            />
+          ) : (
+            <p className="toolbox-hint toolbox-warning">{COMING_SOON_SUBMIT_MESSAGE}。</p>
+          )}
           <GenerationTaskStatus
             task={controller.activeTask}
             submitting={controller.submitting}
@@ -238,9 +253,11 @@ export default function ImageWorkstation() {
       </div>
       <div className="image-workstation-footer">
         <div>
-          {controller.inputAsset
-            ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
-            : '请先上传需要处理的图片'}
+          {!showSourcePreview
+            ? '当前工具即将上线，不会使用上一工具的图片'
+            : controller.inputAsset
+              ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
+              : '请先上传需要处理的图片'}
         </div>
         {edgeRefine ? (
           <>
@@ -251,7 +268,7 @@ export default function ImageWorkstation() {
           <Button
             type="primary"
             loading={controller.submitting}
-            disabled={!controller.inputAsset || controller.formLocked}
+            disabled={!toolReady || !controller.inputAsset || controller.formLocked}
             onClick={handleGenerate}
           >
             生成

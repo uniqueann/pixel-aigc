@@ -660,6 +660,50 @@ a {
   gap: 16px;
 }
 
+.workstation-tool-rail {
+  display: flex;
+  width: 76px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workstation-tool-button {
+  display: flex;
+  min-height: 48px;
+  padding: 6px 4px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.workstation-tool-button.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.workstation-tool-button.is-coming-soon {
+  min-height: 58px;
+}
+
+.workstation-tool-badge {
+  color: var(--color-warning);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.workstation-tool-button.is-active .workstation-tool-badge {
+  color: var(--color-warning);
+}
+
 .image-workstation-canvas-column {
   display: flex;
   min-width: 0;

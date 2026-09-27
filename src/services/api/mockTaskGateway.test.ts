@@ -62,6 +62,20 @@ describe('mockTaskGateway', () => {
     expect(completed.resultUrls?.every((url) => url.startsWith('data:image/svg+xml'))).toBe(true)
   })
 
+  it('精修等未单独建模的能力也生成新图，绝不回传原图地址', async () => {
+    const created = await createMockTask({
+      capability: Capability.Retouch,
+      requestId: 'retouch-1',
+      params: { sourceImageUrl: 'source.png', size: { width: 800, height: 600 }, count: 1 },
+    })
+    await getMockTask(created.id)
+    const completed = await getMockTask(created.id)
+    expect(completed.status).toBe('succeeded')
+    expect(completed.resultUrls).toHaveLength(1)
+    expect(completed.resultUrls?.[0]).not.toBe('source.png')
+    expect(completed.resultUrls?.[0]?.startsWith('data:image/svg+xml')).toBe(true)
+  })
+
   it('为文生视频返回与时长匹配的本地视频', async () => {
     const params: TextToVideoTaskParams = {
       prompt: '云海日出延时摄影',
