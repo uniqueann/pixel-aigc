@@ -1,11 +1,13 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Canvas, FabricImage, PencilBrush } from 'fabric'
 import { smartSelect } from '@/services/api/smartSelect'
+import { WORKSTATION_CANVAS_HEIGHT, WORKSTATION_CANVAS_WIDTH } from '../../utils/canvasDisplay'
 import { exportEraseMask, exportPaintedMask, type MaskExportResult } from '../../utils/maskExport'
+import { useCanvasDisplay } from '../../utils/useCanvasDisplay'
 import type { PaintTool } from './BrushToolbar'
 
-const CANVAS_WIDTH = 640
-const CANVAS_HEIGHT = 420
+const CANVAS_WIDTH = WORKSTATION_CANVAS_WIDTH
+const CANVAS_HEIGHT = WORKSTATION_CANVAS_HEIGHT
 const MAX_HISTORY = 20
 
 interface MaskPaintCanvasProps {
@@ -32,6 +34,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   { imageUrl, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange },
   ref,
 ) {
+  const { hostRef, display } = useCanvasDisplay()
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
   const fabricCanvasRef = useRef<Canvas | null>(null)
   const historyRef = useRef<string[]>([])
@@ -214,24 +217,25 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   }, [imageUrl, pushSnapshot, updateHistoryState])
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: CANVAS_WIDTH,
-        height: CANVAS_HEIGHT,
-        maxWidth: '100%',
-        background: 'var(--color-surface-2)',
-        overflow: 'hidden',
-        touchAction: 'none',
-      }}
-    >
-      <img
-        src={imageUrl}
-        alt="待处理原图"
-        draggable={false}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
-      />
-      <canvas ref={canvasElementRef} aria-label="蒙版涂抹画布" style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
+    <div ref={hostRef} className="workstation-paint-host">
+      <div className="workstation-paint-frame" style={{ width: display.width, height: display.height }}>
+        <div
+          className="workstation-paint-stage"
+          style={{
+            width: CANVAS_WIDTH,
+            height: CANVAS_HEIGHT,
+            transform: `scale(${display.scale})`,
+          }}
+        >
+          <img
+            src={imageUrl}
+            alt="待处理原图"
+            draggable={false}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
+          />
+          <canvas ref={canvasElementRef} aria-label="蒙版涂抹画布" style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
+        </div>
+      </div>
     </div>
   )
 })

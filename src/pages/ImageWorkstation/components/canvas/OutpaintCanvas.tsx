@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { Canvas, FabricImage, Rect } from 'fabric'
 import { computeOutpaintMask, type MaskExportResult } from '../../utils/maskExport'
+import { useCanvasDisplay } from '../../utils/useCanvasDisplay'
 import {
   freeOutpaintGeometry,
   modelSizeFromDisplay,
@@ -29,6 +30,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
   { imageUrl, imageNaturalSize, presetTargetSize },
   ref,
 ) {
+  const { hostRef, display } = useCanvasDisplay()
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
   const fabricCanvasRef = useRef<Canvas | null>(null)
   const frameRef = useRef<Rect | null>(null)
@@ -173,8 +175,19 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
   }, [imageNaturalSize, imageUrl, presetTargetSize])
 
   return (
-    <div style={{ width: OUTPAINT_VIEW_WIDTH, height: OUTPAINT_VIEW_HEIGHT, maxWidth: '100%', touchAction: 'none' }}>
-      <canvas ref={canvasElementRef} aria-label="扩图边界画布" style={{ touchAction: 'none' }} />
+    <div ref={hostRef} className="workstation-paint-host">
+      <div className="workstation-paint-frame" style={{ width: display.width, height: display.height }}>
+        <div
+          className="workstation-paint-stage"
+          style={{
+            width: OUTPAINT_VIEW_WIDTH,
+            height: OUTPAINT_VIEW_HEIGHT,
+            transform: `scale(${display.scale})`,
+          }}
+        >
+          <canvas ref={canvasElementRef} aria-label="扩图边界画布" style={{ touchAction: 'none' }} />
+        </div>
+      </div>
     </div>
   )
 })
