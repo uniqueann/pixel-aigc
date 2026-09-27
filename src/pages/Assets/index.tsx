@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DownloadOutlined, DeleteOutlined } from '@ant-design/icons'
 import { App, Button, Card, Segmented, Space, Spin } from 'antd'
@@ -167,7 +167,15 @@ export default function Assets() {
             <Card
               key={item.id}
               className="assets-card"
-              cover={item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : undefined}
+              cover={item.previewUrl ? (
+                <img
+                  src={item.previewUrl}
+                  alt={item.title}
+                  onError={(event: SyntheticEvent<HTMLImageElement>) => {
+                    event.currentTarget.style.display = 'none'
+                  }}
+                />
+              ) : undefined}
             >
               <div className="assets-card-title">{item.title}</div>
               <div className="assets-card-meta">{formatTime(item.createdAt)} · {taskStatusLabel(item.status)}</div>
