@@ -1,7 +1,7 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import {
-  bailianConfig, CONNECT_TIMEOUT_MS, connectRetryDelay, cropOutpaintResult, expandWithBailian,
+  bailianConfig, CONNECT_TIMEOUT_MS, connectRetryDelay, cropOutpaintResult, dashScopeHost, expandWithBailian,
   GET_ATTEMPTS, isTransientConnectError, outpaintPollDelay, SUBMIT_ATTEMPTS,
 } from './bailian-outpaint'
 import { HttpError } from './errors'
@@ -16,8 +16,26 @@ describe('百炼扩图配置', () => {
     })
     expect(bailianConfig({
       DASHSCOPE_API_KEY: 'sk-test',
-      DASHSCOPE_BASE_URL: 'https://ws-example.cn-beijing.maas.aliyuncs.com/',
-    })).toMatchObject({ baseUrl: 'https://ws-example.cn-beijing.maas.aliyuncs.com' })
+      DASHSCOPE_BASE_URL: '',
+    })).toEqual({
+      apiKey: 'sk-test',
+      baseUrl: 'https://dashscope.aliyuncs.com',
+    })
+    expect(bailianConfig({
+      DASHSCOPE_API_KEY: 'sk-test',
+      DASHSCOPE_BASE_URL: '   ',
+    })).toEqual({
+      apiKey: 'sk-test',
+      baseUrl: 'https://dashscope.aliyuncs.com',
+    })
+    expect(bailianConfig({
+      DASHSCOPE_API_KEY: 'sk-test',
+      DASHSCOPE_BASE_URL: 'https://llm-xxxx.cn-beijing.maas.aliyuncs.com/',
+    })).toEqual({
+      apiKey: 'sk-test',
+      baseUrl: 'https://llm-xxxx.cn-beijing.maas.aliyuncs.com',
+    })
+    expect(dashScopeHost('https://llm-xxxx.cn-beijing.maas.aliyuncs.com')).toBe('llm-xxxx.cn-beijing.maas.aliyuncs.com')
   })
 })
 
@@ -81,6 +99,49 @@ describe('万相扩图调用', () => {
     expect(meta.width).toBe(1160)
     expect(meta.height).toBe(880)
     expect(meta.format).toBe('jpeg')
+  })
+
+  it('业务空间专属域名只用于提交和查询，结果图仍走绝对地址', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 11, g: 11, b: 11 } },
+    }).jpeg().toBuffer()
+    const padding = { left: 10, right: 0, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(640, 640, padding)
+    const model = await sharp({
+      create: { width: plan.modelWidth, height: plan.modelHeight, channels: 3, background: { r: 12, g: 12, b: 12 } },
+    }).jpeg().toBuffer()
+    const workspace = 'https://llm-xxxx.cn-beijing.maas.aliyuncs.com'
+    const calls: string[] = []
+    const logs: Array<Record<string, unknown>> = []
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      calls.push(url)
+      if (url.endsWith('/image-synthesis')) {
+        return jsonResponse({ output: { task_id: 'task-ws', task_status: 'PENDING' } })
+      }
+      if (url.endsWith('/tasks/task-ws')) {
+        return jsonResponse({
+          output: { task_status: 'SUCCEEDED', results: [{ url: 'https://oss.example.test/out.jpg' }] },
+        })
+      }
+      return new Response(model, { status: 200 })
+    }
+    const output = await expandWithBailian(source, padding, {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-test', DASHSCOPE_BASE_URL: `${workspace}/` },
+      sleep: async () => {},
+      now: () => 0,
+      log: entry => { logs.push(entry) },
+    })
+    expect(calls[0]).toBe(`${workspace}/api/v1/services/aigc/image2image/image-synthesis`)
+    expect(calls[1]).toBe(`${workspace}/api/v1/tasks/task-ws`)
+    expect(calls[2]).toBe('https://oss.example.test/out.jpg')
+    expect(logs.find(entry => entry.stage === 'plan')).toMatchObject({ host: 'llm-xxxx.cn-beijing.maas.aliyuncs.com' })
+    expect(logs.find(entry => entry.stage === 'submit' && entry.status === 200)).toMatchObject({
+      host: 'llm-xxxx.cn-beijing.maas.aliyuncs.com',
+    })
+    const meta = await sharp(output).metadata()
+    expect(meta.width).toBe(650)
   })
 
   it('单边超过 2 倍时会再提交一次 expand', async () => {

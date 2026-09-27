@@ -64,6 +64,15 @@ export function bailianConfig(env: NodeJS.ProcessEnv = process.env): BailianConf
   return { apiKey, baseUrl }
 }
 
+/** 只记 host，不把完整 URL 或 Key 打进日志。 */
+export function dashScopeHost(baseUrl: string) {
+  try {
+    return new URL(baseUrl).host
+  } catch {
+    return null
+  }
+}
+
 /** 先密后疏：300ms 起轮询，生成窗口内每 500ms 一次，避免固定 1s/1.5s 空等。 */
 export function outpaintPollDelay(attempt: number): number {
   if (attempt <= 0) return 300
@@ -287,12 +296,13 @@ async function submitExpand(
       },
     }),
   }, 'submit', SUBMIT_ATTEMPTS, 20_000, deps.sleep, deps.log, {
-    requestId: deps.requestId, pass: deps.pass, bytes: image.length, now: deps.now,
+    requestId: deps.requestId, pass: deps.pass, bytes: image.length, host: dashScopeHost(config.baseUrl), now: deps.now,
   })
   const createdPayload = await readJson(created)
   deps.log({
     requestId: deps.requestId, stage: 'submit', pass: deps.pass, ms: deps.now() - submitStarted,
     bytes: image.length, status: created.status, taskId: createdPayload.output?.task_id ?? null,
+    host: dashScopeHost(config.baseUrl),
   })
   if (!created.ok) throw payloadError(createdPayload) ?? new HttpError(502, '扩图任务提交失败', 'OUTPAINT_FAILED')
   const failed = payloadError(createdPayload)
@@ -376,6 +386,7 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
     targetWidth: plan.targetWidth, targetHeight: plan.targetHeight,
     passes: plan.passes.length, scales: plan.passes.map(pass => pass.scales),
     encodeMs: now() - encodeStarted, encodeBytes: encoded.length, reusedJpeg: encoded === image,
+    host: dashScopeHost(config.baseUrl),
   })
   const deadline = now() + (deps.deadlineMs ?? 100_000)
   let current = encoded
