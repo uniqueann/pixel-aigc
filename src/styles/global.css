@@ -662,8 +662,8 @@ a {
 
 .workstation-tool-rail {
   display: flex;
-  width: 80px;
-  flex: 0 0 80px;
+  width: 92px;
+  flex: 0 0 92px;
   flex-direction: column;
   gap: 6px;
 }
@@ -702,7 +702,12 @@ a {
 
 .workstation-tool-label,
 .workstation-tool-badge {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
   white-space: nowrap;
+  word-break: keep-all;
 }
 
 .workstation-tool-badge {
