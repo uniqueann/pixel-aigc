@@ -70,4 +70,20 @@ describe('API 认证、版本和写入边界', () => {
     expect((await request({ projectId: 'p' },'POST','/api/assets/other/complete')).status).toHaveBeenCalledWith(404)
     expect(mocks.verify).not.toHaveBeenCalled()
   })
+
+  it('未处理异常的日志带上 message、cause，响应仍是通用提示', async () => {
+    mocks.authenticate.mockRejectedValue(new TypeError('fetch failed', { cause: new Error('Connect Timeout Error') }))
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await request(undefined, 'POST', '/api/me')
+    expect(res.status).toHaveBeenCalledWith(500)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: '服务暂时不可用，请稍后重试', code: 'SERVER_ERROR' }))
+    const logged = JSON.parse(String(spy.mock.calls.at(-1)?.[0])) as Record<string, unknown>
+    expect(logged).toMatchObject({
+      category: 'TypeError',
+      message: 'fetch failed',
+      cause: 'Error: Connect Timeout Error',
+      status: 500,
+    })
+    spy.mockRestore()
+  })
 })

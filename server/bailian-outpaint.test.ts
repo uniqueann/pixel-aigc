@@ -212,6 +212,34 @@ describe('万相扩图调用', () => {
     expect(outpaintPollDelay(16)).toBe(800)
   })
 
+  it('提交 DashScope 时 fetch 失败会记在 submit 阶段，并返回可读错误', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 3, g: 3, b: 3 } },
+    }).jpeg().toBuffer()
+    const logs: Array<Record<string, unknown>> = []
+    const failure = new TypeError('fetch failed', { cause: new Error('Connect Timeout Error') })
+    await expect(expandWithBailian(source, { left: 10, right: 0, top: 0, bottom: 0 }, {
+      fetch: async () => { throw failure },
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async () => {},
+      now: () => 0,
+      requestId: 'req-submit-fail',
+      log: entry => { logs.push(entry) },
+    })).rejects.toMatchObject({
+      message: '无法连接到阿里云百炼扩图服务，请稍后重试',
+      status: 502,
+      code: 'OUTPAINT_FAILED',
+      stage: 'submit',
+    })
+    expect(logs[0]).toMatchObject({ stage: 'plan' })
+    expect(logs[1]).toMatchObject({
+      stage: 'submit',
+      error: 'fetch failed',
+      cause: 'Error: Connect Timeout Error',
+      requestId: 'req-submit-fail',
+    })
+  })
+
   it('任务未完成时按新间隔轮询，并记下各阶段耗时', async () => {
     const source = await sharp({
       create: { width: 640, height: 640, channels: 3, background: { r: 8, g: 8, b: 8 } },
