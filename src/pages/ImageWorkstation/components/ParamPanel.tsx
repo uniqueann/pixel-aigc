@@ -12,6 +12,8 @@ interface Props {
   resolution: '2k' | '4k'
   onResolutionChange: (resolution: '2k' | '4k') => void
   disabled?: boolean
+  erasePrompt: string
+  onErasePromptChange: (prompt: string) => void
   repaintPrompt: string
   onRepaintPromptChange: (prompt: string) => void
   outpaintMode: 'free' | 'preset'
@@ -33,6 +35,8 @@ export default function ParamPanel({
   resolution,
   onResolutionChange,
   disabled = false,
+  erasePrompt,
+  onErasePromptChange,
   repaintPrompt,
   onRepaintPromptChange,
   outpaintMode,
@@ -116,6 +120,20 @@ export default function ParamPanel({
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {mode === 'remove' ? (
+        <div>
+          <div style={labelStyle}>背景描述（可选）</div>
+          <Input.TextArea
+            value={erasePrompt}
+            disabled={disabled}
+            onChange={(event) => onErasePromptChange(event.target.value)}
+            placeholder="小物体可留空。大面积消除时描述去掉后应留下的背景，不要写「删除xxx」"
+            autoSize={{ minRows: 3, maxRows: 6 }}
+            maxLength={800}
+          />
+        </div>
+      ) : null}
+
       {mode === 'repaint' ? (
         <div>
           <div style={labelStyle}>重绘描述</div>
@@ -157,13 +175,15 @@ export default function ParamPanel({
             </div>
           ) : null}
         </>
-      ) : (
+      ) : mode === 'remove' ? null : (
         <div>
           <div style={labelStyle}>生成尺寸</div>
           <Select style={{ width: '100%' }} placeholder="选择平台预设" options={[]} />
         </div>
       )}
 
+      {mode === 'remove' ? null : (
+        <>
       <div>
         <div style={labelStyle}>模型</div>
         <Select style={{ width: '100%' }} defaultValue="default" options={[{ value: 'default', label: '默认模型' }]} />
@@ -172,7 +192,9 @@ export default function ParamPanel({
         <div style={labelStyle}>生成数量</div>
         <Slider min={1} max={4} step={1} marks={{ 1: '1', 2: '2', 3: '3', 4: '4' }} />
       </div>
-      {capability !== Capability.Outpaint ? (
+        </>
+      )}
+      {capability !== Capability.Outpaint && mode !== 'remove' ? (
         <div>
           <div style={labelStyle}>渲染分辨率</div>
           <Select

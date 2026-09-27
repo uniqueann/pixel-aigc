@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VercelRequest, VercelResponse } from './http'
-const mocks = vi.hoisted(() => ({ authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn() }))
+const mocks = vi.hoisted(() => ({ authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn() }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
 vi.mock('./db', () => ({ withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
 vi.mock('./storage', () => ({ verifyAndPromote: mocks.verify, signRead: vi.fn(), signUpload: vi.fn() }))
+vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
 import handler from './handler'
 import { HttpError } from './errors'
 const draft = { prompt: '',presetKey: '1:1',count: 1,durationSeconds: 5 }
@@ -17,6 +18,7 @@ async function request(payload: unknown, method='PUT', url='/api/projects/p') {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.eraseWithBailian.mockReset()
   mocks.authenticate.mockResolvedValue({ id: 'owner',email: 'owner@example.com',suggestedName: '测试用户',avatarUrl: null,providers: ['email'] })
   mocks.sql.mockImplementation(async (parts: TemplateStringsArray) => {
     const query=parts.join('?')
@@ -85,5 +87,60 @@ describe('API 认证、版本和写入边界', () => {
       status: 500,
     })
     spy.mockRestore()
+  })
+
+  it('capabilities 在配置百炼 Key 后同时打开扩图和消除', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    process.env.DASHSCOPE_API_KEY = 'sk-test'
+    const res = await request(undefined, 'GET', '/api/capabilities')
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ outpaint: true, erase: true }))
+    if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
+    else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('消除路由把底图、蒙版和背景描述交给百炼模块', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    process.env.DASHSCOPE_API_KEY = 'sk-test'
+    mocks.eraseWithBailian.mockResolvedValue(Buffer.from('jpeg'))
+    const req = {
+      headers: { authorization: 'Bearer test' },
+      method: 'POST',
+      url: '/api/erase',
+      body: {
+        mimeType: 'image/jpeg',
+        dataBase64: Buffer.from('img').toString('base64'),
+        maskMimeType: 'image/png',
+        maskBase64: Buffer.from('mask').toString('base64'),
+        prompt: '浅色木桌',
+      },
+    } as VercelRequest
+    const response = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    response.status.mockReturnValue(response)
+    await handler(req, response as unknown as VercelResponse)
+    expect(mocks.eraseWithBailian).toHaveBeenCalledWith(
+      Buffer.from('img'),
+      Buffer.from('mask'),
+      '浅色木桌',
+      expect.objectContaining({ requestId: expect.any(String) }),
+    )
+    expect(response.status).toHaveBeenCalledWith(200)
+    expect(response.setHeader).toHaveBeenCalledWith('Content-Type', 'image/jpeg')
+    if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
+    else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('消除未配置 Key 时 503，不读库', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    delete process.env.DASHSCOPE_API_KEY
+    const res = await request({
+      mimeType: 'image/jpeg',
+      dataBase64: 'aaaa',
+      maskBase64: 'bbbb',
+    }, 'POST', '/api/erase')
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'ERASE_UNAVAILABLE' }))
+    expect(mocks.sql).not.toHaveBeenCalled()
+    if (previous !== undefined) process.env.DASHSCOPE_API_KEY = previous
   })
 })

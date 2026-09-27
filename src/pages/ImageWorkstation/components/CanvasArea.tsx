@@ -143,6 +143,7 @@ export default function CanvasArea({
           <MaskPaintCanvas
             ref={setMaskHandle}
             imageUrl={imageUrl}
+            imageNaturalSize={imageNaturalSize}
             brushSize={brushSize}
             tool={paintTool}
             smartSelectEnabled={smartSelectEnabled}

@@ -19,12 +19,12 @@ const buildBasicRequest = (capability: Capability): WorkstationToolDefinition['b
   outputSize: { width: context.sourceAsset.width, height: context.sourceAsset.height },
 })
 
-/** 扩图走独立接口，不依赖 /tasks。其余工具是否可提交只看 liveCapabilityReady。 */
+/** 扩图和消除走独立接口，不依赖 /tasks。其余工具是否可提交只看 liveCapabilityReady。 */
 export function isWorkstationToolReady(
   tool: WorkstationToolDefinition,
   capabilityReady: (capability: Capability) => boolean = liveCapabilityReady,
 ) {
-  return tool.capability === Capability.Outpaint || capabilityReady(tool.capability)
+  return tool.capability === Capability.Outpaint || tool.slug === 'remove' || capabilityReady(tool.capability)
 }
 
 /** 融合是多图输入，不能沿用上一工具的单图预览。 */

@@ -1,3 +1,10 @@
+import {
+  binaryMaskToRgba,
+  mapOverlayMaskToImage,
+  maskHasEraseRegion,
+  thresholdPaintedOverlay,
+} from '../../../../shared/erase'
+
 export interface MaskExportResult {
   /** 黑白蒙版：白色表示待生成区域，黑色表示保留区域 */
   maskDataUrl: string
@@ -36,6 +43,38 @@ export function exportPaintedMask(maskCanvasEl: HTMLCanvasElement): MaskExportRe
 
   outputContext.putImageData(outputPixels, 0, 0)
   return { maskDataUrl: outputCanvas.toDataURL('image/png'), width, height }
+}
+
+/**
+ * 消除用：把 640×420 contain 涂抹层映射到原图像素，再收成纯黑白 PNG。
+ * 预览黑边里的笔划不会进蒙版。
+ */
+export function exportEraseMask(
+  maskCanvasEl: HTMLCanvasElement,
+  imageNaturalSize: { width: number; height: number },
+): MaskExportResult {
+  const width = maskCanvasEl.width
+  const height = maskCanvasEl.height
+  const sourceContext = maskCanvasEl.getContext('2d')
+  if (!sourceContext) throw new Error('当前浏览器不支持画布蒙版导出')
+  if (imageNaturalSize.width < 1 || imageNaturalSize.height < 1) throw new Error('无法读取原图尺寸')
+  const sourcePixels = sourceContext.getImageData(0, 0, width, height)
+  const overlay = thresholdPaintedOverlay(sourcePixels.data, width, height)
+  const mapped = mapOverlayMaskToImage(overlay, width, height, imageNaturalSize.width, imageNaturalSize.height)
+  if (!maskHasEraseRegion(mapped)) throw new Error('请先涂抹要消除的区域')
+  const outputCanvas = document.createElement('canvas')
+  outputCanvas.width = imageNaturalSize.width
+  outputCanvas.height = imageNaturalSize.height
+  const outputContext = outputCanvas.getContext('2d')
+  if (!outputContext) throw new Error('当前浏览器不支持画布蒙版导出')
+  const outputPixels = outputContext.createImageData(imageNaturalSize.width, imageNaturalSize.height)
+  outputPixels.data.set(binaryMaskToRgba(mapped))
+  outputContext.putImageData(outputPixels, 0, 0)
+  return {
+    maskDataUrl: outputCanvas.toDataURL('image/png'),
+    width: imageNaturalSize.width,
+    height: imageNaturalSize.height,
+  }
 }
 
 /** 扩图用：根据目标尺寸和原图位置计算黑白蒙版 */

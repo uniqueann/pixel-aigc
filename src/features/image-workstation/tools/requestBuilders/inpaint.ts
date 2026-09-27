@@ -10,7 +10,7 @@ export function buildInpaintRequest(
     sourceImageUrl: context.sourceAsset.url,
     maskUrl: context.maskUrl,
     mode,
-    prompt: mode === 'repaint' ? context.prompt?.trim() : undefined,
+    prompt: context.prompt?.trim() || undefined,
   }
   return {
     capability: Capability.Inpaint,
