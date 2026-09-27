@@ -8,6 +8,8 @@ export const MASK_WHITE_THRESHOLD = 128
 /** 涂抹边缘略膨胀，减少抗锯齿灰边留下的缝。 */
 export const MASK_DILATE_RADIUS = 2
 export const MAX_ERASE_PROMPT_LENGTH = 800
+/** 百炼 prompt 必填；空串会在服务端按字符下标读取并报 string index out of range。描述结果，不要写「删除xxx」。 */
+export const DEFAULT_ERASE_PROMPT = '与周围背景自然融合的干净背景'
 
 export interface FittedImageSize {
   width: number
@@ -189,6 +191,11 @@ export function binaryMaskToRgba(mask: Uint8Array): Uint8Array {
   return rgba
 }
 
-export function normalizeErasePrompt(prompt?: string | null): string {
+export function trimErasePrompt(prompt?: string | null): string {
   return (prompt ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_ERASE_PROMPT_LENGTH)
+}
+
+/** 用户有背景描述就用原文；留空则换成可提交的默认结果描述。 */
+export function normalizeErasePrompt(prompt?: string | null): string {
+  return trimErasePrompt(prompt) || DEFAULT_ERASE_PROMPT
 }

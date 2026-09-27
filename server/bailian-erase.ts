@@ -3,13 +3,13 @@ import { HttpError } from './errors.js'
 import {
   MASK_DILATE_RADIUS,
   MASK_WHITE_THRESHOLD,
-  binaryMaskToRgba,
   dilateMask,
   fitDashScopeImageSize,
   maskHasEraseRegion,
   normalizeErasePrompt,
   scaleMaskNearest,
   thresholdMask,
+  trimErasePrompt,
 } from '../shared/erase.js'
 import {
   DEFAULT_DEADLINE_MS,
@@ -25,6 +25,11 @@ import {
 
 export const ERASE_WAIT_TIMEOUT_MESSAGE = '消除超时：任务仍在阿里云处理中，请稍后重试'
 export const ERASE_CONNECT_MESSAGE = '无法连接到阿里云百炼消除服务，请稍后重试'
+export const ERASE_MASK_DATA_URL_PREFIX = 'data:image/png;base64,'
+
+export function eraseMaskDataUrl(png: Buffer) {
+  return `${ERASE_MASK_DATA_URL_PREFIX}${png.toString('base64')}`
+}
 
 export type EraseLog = DashScopeLog
 
@@ -74,9 +79,9 @@ export async function prepareEraseMask(
   }
   binary = dilateMask(binary, targetWidth, targetHeight, dilateRadius)
   if (!maskHasEraseRegion(binary)) throw new HttpError(400, '请先涂抹要消除的区域', 'EMPTY_MASK')
-  const png = await sharp(Buffer.from(binaryMaskToRgba(binary)), {
-    raw: { width: targetWidth, height: targetHeight, channels: 4 },
-  }).png().toBuffer()
+  const png = await sharp(Buffer.from(binary), {
+    raw: { width: targetWidth, height: targetHeight, channels: 1 },
+  }).toColourspace('b-w').png().toBuffer()
   return { png, width: targetWidth, height: targetHeight, sourceWidth, sourceHeight }
 }
 
@@ -132,6 +137,7 @@ export async function eraseWithBailian(image: Buffer, mask: Buffer, prompt: stri
     maskSourceWidth: prepared.sourceWidth, maskSourceHeight: prepared.sourceHeight,
     maskWidth: prepared.width, maskHeight: prepared.height,
     promptChars: normalizedPrompt.length,
+    promptDefaulted: !trimErasePrompt(prompt),
     encodeMs: now() - encodeStarted, encodeBytes: encoded.length, reusedJpeg: encoded === image,
     host: dashScopeHost(config.baseUrl),
   })
@@ -144,7 +150,7 @@ export async function eraseWithBailian(image: Buffer, mask: Buffer, prompt: stri
         function: 'description_edit_with_mask',
         prompt: normalizedPrompt,
         base_image_url: `data:image/jpeg;base64,${encoded.toString('base64')}`,
-        mask_image_url: `data:image/png;base64,${prepared.png.toString('base64')}`,
+        mask_image_url: eraseMaskDataUrl(prepared.png),
       },
       parameters: {
         n: 1,

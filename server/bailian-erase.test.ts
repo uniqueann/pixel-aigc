@@ -1,7 +1,9 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { fitDashScopeImageSize } from '../shared/erase'
-import { ERASE_WAIT_TIMEOUT_MESSAGE, eraseWithBailian, prepareEraseMask, restoreEraseResult } from './bailian-erase'
+import { DEFAULT_ERASE_PROMPT } from '../shared/erase'
+import { dashScopeFailureText } from './dashscope'
+import { ERASE_MASK_DATA_URL_PREFIX, ERASE_WAIT_TIMEOUT_MESSAGE, eraseWithBailian, prepareEraseMask, restoreEraseResult } from './bailian-erase'
 import { HttpError } from './errors'
 
 function jsonResponse(body: unknown, status = 200) {
@@ -31,6 +33,12 @@ describe('消除蒙版预处理', () => {
     const prepared = await prepareEraseMask(source, 8, 8, 1)
     expect(prepared.width).toBe(8)
     expect(prepared.height).toBe(8)
+    const meta = await sharp(prepared.png).metadata()
+    expect(meta.format).toBe('png')
+    expect(meta.channels).toBe(1)
+    expect(meta.space).toBe('b-w')
+    expect(meta.hasAlpha).toBe(false)
+    expect(prepared.png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true)
     const raw = await sharp(prepared.png).raw().toBuffer({ resolveWithObject: true })
     expect(raw.info.width).toBe(8)
     expect(raw.info.height).toBe(8)
@@ -130,10 +138,22 @@ describe('万相消除调用', () => {
     expect(calls[0].url).toContain('/api/v1/services/aigc/image2image/image-synthesis')
     expect(body.model).toBe('wanx2.1-imageedit')
     expect(body.input.function).toBe('description_edit_with_mask')
-    expect(body.input.prompt).toBe('')
+    expect(body.input.prompt).toBe(DEFAULT_ERASE_PROMPT)
+    expect(body.input.prompt.length).toBeGreaterThan(0)
     expect(body.input.base_image_url.startsWith('data:image/jpeg;base64,')).toBe(true)
-    expect(body.input.mask_image_url.startsWith('data:image/png;base64,')).toBe(true)
+    expect(body.input.mask_image_url.startsWith(ERASE_MASK_DATA_URL_PREFIX)).toBe(true)
+    const maskBytes = Buffer.from(body.input.mask_image_url.slice(ERASE_MASK_DATA_URL_PREFIX.length), 'base64')
+    const maskMeta = await sharp(maskBytes).metadata()
+    expect(maskMeta.format).toBe('png')
+    expect(maskMeta.width).toBe(640)
+    expect(maskMeta.height).toBe(640)
+    expect(maskMeta.channels).toBe(1)
+    expect(maskMeta.space).toBe('b-w')
+    expect(maskMeta.hasAlpha).toBe(false)
     expect(body.parameters).toEqual({ n: 1, watermark: false })
+    expect(logs.find(entry => entry.stage === 'plan')).toMatchObject({
+      promptChars: DEFAULT_ERASE_PROMPT.length, promptDefaulted: true,
+    })
     const meta = await sharp(output).metadata()
     expect(meta.width).toBe(640)
     expect(meta.height).toBe(640)
@@ -142,7 +162,7 @@ describe('万相消除调用', () => {
     })
   })
 
-  it('大物体可带背景描述，默认空串不会被改成删除指令', async () => {
+  it('大物体可带背景描述，有内容时保留用户原文', async () => {
     const source = await solidJpeg(640, 640, { r: 11, g: 11, b: 11 })
     const mask = await maskPng(640, 640, (pixels) => {
       pixels[0] = 255
@@ -169,6 +189,46 @@ describe('万相消除调用', () => {
       now: () => 0,
     })
     expect(prompt).toBe('浅色木桌和白色墙面')
+  })
+
+  it('任务 FAILED 时记下 code/message，并把 string index 译成中文', async () => {
+    const source = await solidJpeg(640, 640, { r: 1, g: 1, b: 1 })
+    const mask = await maskPng(640, 640, (pixels) => {
+      pixels[0] = 255
+      pixels[1] = 255
+      pixels[2] = 255
+    })
+    const logs: Array<Record<string, unknown>> = []
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        return jsonResponse({ output: { task_id: 'erase-fail', task_status: 'PENDING' } })
+      }
+      return jsonResponse({
+        output: {
+          task_id: 'erase-fail',
+          task_status: 'FAILED',
+          code: 'InvalidParameter',
+          message: 'string index out of range',
+        },
+      })
+    }
+    await expect(eraseWithBailian(source, mask, '', {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async () => {},
+      now: () => 0,
+      log: entry => { logs.push(entry) },
+    })).rejects.toMatchObject({
+      status: 502,
+      code: 'ERASE_FAILED',
+      message: '消除服务没有读到有效参数，请重新涂抹后重试',
+    })
+    expect(logs.find(entry => entry.stage === 'poll' && entry.status === 'FAILED')).toMatchObject({
+      taskId: 'erase-fail',
+      code: 'InvalidParameter',
+      message: 'string index out of range',
+    })
   })
 
   it('轮询一直 RUNNING 直到截止则 504，日志带 taskId', async () => {

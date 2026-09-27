@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ERASE_OVERLAY_HEIGHT,
   ERASE_OVERLAY_WIDTH,
+  DEFAULT_ERASE_PROMPT,
   MASK_WHITE_THRESHOLD,
   containRect,
   dilateMask,
@@ -98,10 +99,14 @@ describe('消除蒙版几何', () => {
     expect(scaled.every(value => value === 0 || value === 255)).toBe(true)
   })
 
-  it('背景描述默认空串，超长截到 800', () => {
-    expect(normalizeErasePrompt(undefined)).toBe('')
+  it('背景描述留空用默认结果描述，有内容则保留，超长截到 800', () => {
+    expect(normalizeErasePrompt(undefined)).toBe(DEFAULT_ERASE_PROMPT)
+    expect(normalizeErasePrompt('')).toBe(DEFAULT_ERASE_PROMPT)
+    expect(normalizeErasePrompt('   ')).toBe(DEFAULT_ERASE_PROMPT)
     expect(normalizeErasePrompt('  白墙木地板  ')).toBe('白墙木地板')
     expect(normalizeErasePrompt('x'.repeat(900)).length).toBe(800)
+    expect(DEFAULT_ERASE_PROMPT).toContain('周围背景')
+    expect(DEFAULT_ERASE_PROMPT.includes('删除')).toBe(false)
   })
 
   it('阈值边界：127 为黑，128 为白', () => {

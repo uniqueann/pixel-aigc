@@ -141,6 +141,14 @@ export function createDashScopeLog(evt: string): DashScopeLog {
   }
 }
 
+export function dashScopeErrorFields(payload: BailianPayload) {
+  const result = payload.output?.results?.find(item => item.code || item.message)
+  return {
+    code: payload.code || payload.output?.code || result?.code || null,
+    message: payload.message || payload.output?.message || result?.message || null,
+  }
+}
+
 export function dashScopeFailureText(code: string, message: string, kind: string) {
   const detail = message.replace(/\s+/g, ' ').trim().slice(0, 180)
   const combined = `${code} ${message}`
@@ -152,17 +160,18 @@ export function dashScopeFailureText(code: string, message: string, kind: string
     return '这张图片没有通过内容审核'
   }
   if (code === 'IPInfringementSuspect') return `这张图片可能涉及侵权，无法${kind}`
+  if (/string index out of range|IndexError/i.test(combined)) {
+    return `${kind}服务没有读到有效参数，请重新涂抹后重试`
+  }
   if (code === 'InvalidParameter') return detail ? `${kind}参数超出服务限制：${detail}` : `${kind}参数超出服务限制`
   if (code.startsWith('InternalError')) return `${kind}服务暂时不可用，请稍后重试`
   return detail ? `${kind}失败：${detail}` : `${kind}失败`
 }
 
 export function dashScopePayloadError(payload: BailianPayload, kind: string, errorCode: string) {
-  const result = payload.output?.results?.find(item => item.code || item.message)
-  const code = payload.code || payload.output?.code || result?.code || ''
-  const message = payload.message || payload.output?.message || result?.message || ''
+  const { code, message } = dashScopeErrorFields(payload)
   if (!code && !message) return null
-  return new HttpError(502, dashScopeFailureText(code, message, kind), errorCode)
+  return new HttpError(502, dashScopeFailureText(code ?? '', message ?? '', kind), errorCode)
 }
 
 export async function readJson(response: Response) {
@@ -303,10 +312,14 @@ export async function submitDashScopeImageTask(options: DashScopeImageTaskOption
     }, options.connectMessage, options.errorCode)
     const payload = await readJson(polled)
     const status = payload.output?.task_status
+    const failure = dashScopeErrorFields(payload)
     polls += 1
     options.log({
       requestId: options.requestId, stage: 'poll', pass: options.pass, attempt: polls - 1, status: status ?? null,
       ms: options.now() - pollStarted, waitMs: options.now() - waitStarted, delayMs: delay, taskId,
+      ...(status === 'FAILED' || status === 'CANCELED' || status === 'UNKNOWN'
+        ? { code: failure.code, message: failure.message }
+        : {}),
     })
     if (!polled.ok) throw payloadError(payload) ?? new HttpError(502, `${options.kind}结果查询失败`, options.errorCode)
     if (status === 'SUCCEEDED') {
