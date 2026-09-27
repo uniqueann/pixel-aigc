@@ -1,8 +1,9 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import {
-  bailianConfig, CONNECT_TIMEOUT_MS, connectRetryDelay, cropOutpaintResult, dashScopeHost, expandWithBailian,
-  GET_ATTEMPTS, isTransientConnectError, outpaintPollDelay, SUBMIT_ATTEMPTS,
+  bailianConfig, CONNECT_TIMEOUT_MS, connectRetryDelay, cropOutpaintResult, dashScopeHost, DEFAULT_DEADLINE_MS,
+  expandWithBailian, FINISH_RESERVE_MS, GET_ATTEMPTS, isTransientConnectError, OUTPAINT_WAIT_TIMEOUT_MESSAGE,
+  outpaintPollDelay, passWaitDeadline, SUBMIT_ATTEMPTS,
 } from './bailian-outpaint'
 import { HttpError } from './errors'
 import { DEFAULT_EXPAND_PROMPT, planBailianOutpaint } from '../shared/outpaint'
@@ -269,11 +270,18 @@ describe('万相扩图调用', () => {
       .rejects.toBeInstanceOf(HttpError)
   })
 
-  it('轮询间隔先密后疏，不再固定空等 1s/1.5s', () => {
-    expect(outpaintPollDelay(0)).toBe(300)
-    expect(outpaintPollDelay(1)).toBe(500)
-    expect(outpaintPollDelay(15)).toBe(500)
-    expect(outpaintPollDelay(16)).toBe(800)
+  it('轮询间隔先密后疏，随后回到 1–2s，等待预算按剩余时间均分', () => {
+    expect(outpaintPollDelay(0)).toBe(400)
+    expect(outpaintPollDelay(1)).toBe(800)
+    expect(outpaintPollDelay(7)).toBe(800)
+    expect(outpaintPollDelay(8)).toBe(1_200)
+    expect(outpaintPollDelay(19)).toBe(1_200)
+    expect(outpaintPollDelay(20)).toBe(2_000)
+    expect(DEFAULT_DEADLINE_MS).toBe(90_000)
+    expect(FINISH_RESERVE_MS).toBe(20_000)
+    expect(passWaitDeadline(0, 90_000, 1)).toBe(70_000)
+    expect(passWaitDeadline(10_000, 90_000, 2)).toBe(40_000)
+    expect(passWaitDeadline(80_000, 90_000, 1)).toBe(80_000)
   })
 
   it('只把连接层失败当成可重试，HTTP 响应和 Abort 不重试', () => {
@@ -495,10 +503,76 @@ describe('万相扩图调用', () => {
       requestId: 'req-timing',
       log: entry => { stages.push(String(entry.stage)) },
     })
-    expect(sleeps).toEqual([300, 500, 500])
+    expect(sleeps).toEqual([400, 800, 800])
     expect(stages).toEqual(['plan', 'submit', 'poll', 'poll', 'poll', 'wait', 'download', 'crop', 'total'])
     const meta = await sharp(output).metadata()
     expect(meta.width).toBe(660)
     expect(meta.height).toBe(640)
+  })
+
+  it('超过 30 次轮询只要未到截止时间就继续等', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 10, g: 10, b: 10 } },
+    }).jpeg().toBuffer()
+    const padding = { left: 10, right: 0, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(640, 640, padding)
+    const model = await sharp({
+      create: { width: plan.modelWidth, height: plan.modelHeight, channels: 3, background: { r: 11, g: 11, b: 11 } },
+    }).jpeg().toBuffer()
+    let polls = 0
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        return jsonResponse({ output: { task_id: 'task-long-wait', task_status: 'PENDING' } })
+      }
+      if (url.endsWith('/tasks/task-long-wait')) {
+        polls += 1
+        if (polls < 35) return jsonResponse({ output: { task_status: 'RUNNING' } })
+        return jsonResponse({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://example.test/out.jpg' }] } })
+      }
+      return new Response(model, { status: 200 })
+    }
+    const output = await expandWithBailian(source, padding, {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async () => {},
+      now: () => 0,
+    })
+    expect(polls).toBe(35)
+    const meta = await sharp(output).metadata()
+    expect(meta.width).toBe(650)
+  })
+
+  it('等到截止时间仍在 RUNNING 时带上 taskId 并说明阿里云还在处理', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 12, g: 12, b: 12 } },
+    }).jpeg().toBuffer()
+    const logs: Array<Record<string, unknown>> = []
+    let nowMs = 0
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        return jsonResponse({ output: { task_id: 'task-still-running', task_status: 'PENDING' } })
+      }
+      return jsonResponse({ output: { task_status: 'RUNNING' } })
+    }
+    await expect(expandWithBailian(source, { left: 10, right: 0, top: 0, bottom: 0 }, {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async ms => { nowMs += ms },
+      now: () => nowMs,
+      deadlineMs: 40_000,
+      requestId: 'req-wait-timeout',
+      log: entry => { logs.push(entry) },
+    })).rejects.toMatchObject({
+      message: OUTPAINT_WAIT_TIMEOUT_MESSAGE,
+      status: 504,
+      code: 'OUTPAINT_TIMEOUT',
+      stage: 'wait',
+    })
+    const wait = logs.find(entry => entry.stage === 'wait')
+    expect(wait).toMatchObject({ taskId: 'task-still-running', done: false, requestId: 'req-wait-timeout' })
+    expect(Number(wait?.ms)).toBeGreaterThan(0)
+    expect(Number(wait?.ms)).toBeLessThanOrEqual(40_000)
   })
 })

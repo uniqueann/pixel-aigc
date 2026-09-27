@@ -34,7 +34,8 @@ export async function requestOutpaint(image: Blob, mimeType: string, padding: Pi
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
     body: JSON.stringify({ mimeType: mimeTypeFor(image, mimeType), dataBase64, padding }),
-    signal: AbortSignal.timeout(110000),
+    // 服务端整次预算 90s，函数 maxDuration 120s；浏览器必须比服务端晚断。
+    signal: AbortSignal.timeout(115000),
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null
