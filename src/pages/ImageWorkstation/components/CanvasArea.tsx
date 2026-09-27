@@ -86,6 +86,14 @@ export default function CanvasArea({
     return Upload.LIST_IGNORE
   }
 
+  if (interactionMode === 'multi-source') {
+    return (
+      <div style={canvasShellStyle}>
+        <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>当前工具将在后续迭代中开放</div>
+      </div>
+    )
+  }
+
   if (!imageUrl) {
     return (
       <div style={canvasShellStyle}>
@@ -155,14 +163,6 @@ export default function CanvasArea({
             点击商品主体以创建智能选区
           </div>
         ) : null}
-      </div>
-    )
-  }
-
-  if (interactionMode === 'multi-source') {
-    return (
-      <div style={canvasShellStyle}>
-        <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>当前工具将在后续迭代中开放</div>
       </div>
     )
   }

@@ -662,13 +662,19 @@ a {
 
 .workstation-tool-rail {
   display: flex;
-  width: 76px;
+  width: 80px;
+  flex: 0 0 80px;
   flex-direction: column;
   gap: 6px;
 }
 
+.workstation-tool-slot {
+  width: 100%;
+}
+
 .workstation-tool-button {
   display: flex;
+  width: 100%;
   min-height: 48px;
   padding: 6px 4px;
   flex-direction: column;
@@ -692,6 +698,11 @@ a {
 
 .workstation-tool-button.is-coming-soon {
   min-height: 58px;
+}
+
+.workstation-tool-label,
+.workstation-tool-badge {
+  white-space: nowrap;
 }
 
 .workstation-tool-badge {

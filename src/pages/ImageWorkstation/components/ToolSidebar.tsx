@@ -14,14 +14,16 @@ export default function ToolSidebar({ activeSlug, onChange }: Props) {
         const title = ready ? tool.label : `${tool.label} · ${COMING_SOON_LABEL}`
         return (
           <Tooltip key={tool.slug} title={title} placement="right">
-            <button
-              type="button"
-              className={`workstation-tool-button${tool.slug === activeSlug ? ' is-active' : ''}${ready ? '' : ' is-coming-soon'}`}
-              onClick={() => onChange(tool.slug)}
-            >
-              <span>{tool.label}</span>
-              {ready ? null : <span className="workstation-tool-badge">{COMING_SOON_LABEL}</span>}
-            </button>
+            <div className="workstation-tool-slot">
+              <button
+                type="button"
+                className={`workstation-tool-button${tool.slug === activeSlug ? ' is-active' : ''}${ready ? '' : ' is-coming-soon'}`}
+                onClick={() => onChange(tool.slug)}
+              >
+                <span className="workstation-tool-label">{tool.label}</span>
+                {ready ? null : <span className="workstation-tool-badge">{COMING_SOON_LABEL}</span>}
+              </button>
+            </div>
           </Tooltip>
         )
       })}
