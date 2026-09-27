@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Segmented } from 'antd'
+import ToolSwitcher from '@/components/ToolSwitcher'
 import { loadBgRemoveConfigured } from '@/services/api/capabilities'
 import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
@@ -19,13 +19,14 @@ export default function Toolbox() {
 
   return (
     <div>
-      <Segmented
+      <ToolSwitcher
         options={TOOLBOX_TOOLS.map((t) => ({
-          label: t.slug === 'bg-remove' && !bgRemoveReady ? '智能抠图 · 即将上线' : t.label,
           value: t.slug,
+          label: t.label,
+          ready: t.slug !== 'bg-remove' || bgRemoveReady,
         }))}
         value={activeSlug}
-        onChange={(v) => navigate(`/toolbox/${v}`)}
+        onChange={(slug) => navigate(`/toolbox/${slug}`)}
       />
 
       {activeSlug === 'bg-remove' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载智能抠图…</div>}><BgRemoveTool /></Suspense> : activeSlug === 'watermark' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : activeSlug === 'aspect-ratio' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载转比例工具…</div>}><AspectRatioTool /></Suspense> : null}
