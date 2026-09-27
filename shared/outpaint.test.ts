@@ -123,4 +123,18 @@ describe('万相扩图计划', () => {
   it('没有留白时不调用扩图', () => {
     expect(() => planBailianOutpaint(800, 600, { left: 0, right: 0, top: 0, bottom: 0 })).toThrow(/没有需要扩展/)
   })
+
+  it('2048×1365 居中进 1600×1600 只需一次 expand，且远低于 2 倍', () => {
+    const plan = planBailianOutpaint(1600, 1066, { left: 0, right: 0, top: 267, bottom: 267 })
+    expect(plan.passes).toHaveLength(1)
+    expect(plan.targetWidth).toBe(1600)
+    expect(plan.targetHeight).toBe(1600)
+    expect(plan.crop.width).toBe(1600)
+    expect(plan.crop.height).toBe(1600)
+    const scales = plan.passes[0].scales
+    expect(scales.top).toBeLessThan(1.5)
+    expect(scales.bottom).toBeLessThan(1.5)
+    expect(scales.top).toBe(scales.bottom)
+    expect(Math.max(scales.left, scales.right, scales.top, scales.bottom)).toBeLessThan(2)
+  })
 })

@@ -1,6 +1,6 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
-import { bailianConfig, cropOutpaintResult, expandWithBailian } from './bailian-outpaint'
+import { bailianConfig, cropOutpaintResult, expandWithBailian, outpaintPollDelay } from './bailian-outpaint'
 import { HttpError } from './errors'
 import { DEFAULT_EXPAND_PROMPT, planBailianOutpaint } from '../shared/outpaint'
 
@@ -203,5 +203,51 @@ describe('万相扩图调用', () => {
   it('没有配置时不发起请求', async () => {
     await expect(expandWithBailian(Buffer.from('jpeg'), { left: 1, right: 0, top: 0, bottom: 0 }, { env: {} }))
       .rejects.toBeInstanceOf(HttpError)
+  })
+
+  it('轮询间隔先密后疏，不再固定空等 1s/1.5s', () => {
+    expect(outpaintPollDelay(0)).toBe(300)
+    expect(outpaintPollDelay(1)).toBe(500)
+    expect(outpaintPollDelay(15)).toBe(500)
+    expect(outpaintPollDelay(16)).toBe(800)
+  })
+
+  it('任务未完成时按新间隔轮询，并记下各阶段耗时', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 8, g: 8, b: 8 } },
+    }).jpeg().toBuffer()
+    const padding = { left: 20, right: 0, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(640, 640, padding)
+    const model = await sharp({
+      create: { width: plan.modelWidth, height: plan.modelHeight, channels: 3, background: { r: 9, g: 9, b: 9 } },
+    }).jpeg().toBuffer()
+    let polls = 0
+    const sleeps: number[] = []
+    const stages: string[] = []
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        return jsonResponse({ output: { task_id: 'task-poll', task_status: 'PENDING' } })
+      }
+      if (url.endsWith('/tasks/task-poll')) {
+        polls += 1
+        if (polls < 3) return jsonResponse({ output: { task_status: 'RUNNING' } })
+        return jsonResponse({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://example.test/out.jpg' }] } })
+      }
+      return new Response(model, { status: 200 })
+    }
+    const output = await expandWithBailian(source, padding, {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async ms => { sleeps.push(ms) },
+      now: () => 0,
+      requestId: 'req-timing',
+      log: entry => { stages.push(String(entry.stage)) },
+    })
+    expect(sleeps).toEqual([300, 500, 500])
+    expect(stages).toEqual(['plan', 'submit', 'poll', 'poll', 'poll', 'wait', 'download', 'crop', 'total'])
+    const meta = await sharp(output).metadata()
+    expect(meta.width).toBe(660)
+    expect(meta.height).toBe(640)
   })
 })
