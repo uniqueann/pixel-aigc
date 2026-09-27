@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { App, Button } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
+import ToolSwitcher from '@/components/ToolSwitcher'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { createImageAsset } from '@/editor/services/assetService'
 import type { ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
 import {
   COMING_SOON_SUBMIT_MESSAGE,
+  WORKSTATION_TOOLS,
   getWorkstationTool,
   isWorkstationToolReady,
   workstationDisplaysSourcePreview,
@@ -20,7 +22,6 @@ import { Capability } from '@/types'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import ParamPanel from './components/ParamPanel'
-import ToolSidebar from './components/ToolSidebar'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
@@ -193,8 +194,17 @@ export default function ImageWorkstation() {
 
   return (
     <div className="image-workstation-page">
+      <ToolSwitcher
+        className="image-workstation-tool-switcher"
+        options={WORKSTATION_TOOLS.map((item) => ({
+          value: item.slug,
+          label: item.label,
+          ready: isWorkstationToolReady(item),
+        }))}
+        value={activeTool.slug}
+        onChange={(slug) => navigate(`/image-workstation/${slug}`)}
+      />
       <div className="image-workstation-main">
-        <ToolSidebar activeSlug={activeTool.slug} onChange={(slug) => navigate(`/image-workstation/${slug}`)} />
         <div className="image-workstation-canvas-column">
           <CanvasArea
             interactionMode={activeTool.interactionMode}
