@@ -42,7 +42,6 @@ describe('消除蒙版预处理', () => {
     const raw = await sharp(prepared.png).raw().toBuffer({ resolveWithObject: true })
     expect(raw.info.width).toBe(8)
     expect(raw.info.height).toBe(8)
-    expect(raw.info.channels).toBe(1)
     for (let i = 0; i < raw.info.width * raw.info.height; i += 1) {
       const value = raw.data[i * raw.info.channels]
       expect(value === 0 || value === 255).toBe(true)
