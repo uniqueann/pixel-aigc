@@ -1,13 +1,14 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Segmented, Upload } from 'antd'
 import { InboxOutlined, UploadOutlined } from '@ant-design/icons'
+import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import type { InteractionMode } from '../tools'
 import BrushToolbar, { type PaintTool } from './canvas/BrushToolbar'
 import type { MaskPaintCanvasHandle } from './canvas/MaskPaintCanvas'
 import type { OutpaintCanvasHandle } from './canvas/OutpaintCanvas'
 
-const MaskPaintCanvas = lazy(() => import('./canvas/MaskPaintCanvas'))
-const OutpaintCanvas = lazy(() => import('./canvas/OutpaintCanvas'))
+const MaskPaintCanvas = lazyWithRetry(() => import('./canvas/MaskPaintCanvas'))
+const OutpaintCanvas = lazyWithRetry(() => import('./canvas/OutpaintCanvas'))
 
 export type CanvasHandle = MaskPaintCanvasHandle | OutpaintCanvasHandle
 
@@ -24,6 +25,7 @@ interface Props {
   onCompareModeChange: (mode: 'original' | 'effect') => void
   onImageUpload: (file: File) => void
   onReady: (handle: CanvasHandle | null) => void
+  onMaskChange?: (hasPaint: boolean) => void
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -42,6 +44,7 @@ export default function CanvasArea({
   onCompareModeChange,
   onImageUpload,
   onReady,
+  onMaskChange,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -66,7 +69,8 @@ export default function CanvasArea({
 
   useEffect(() => {
     if (!imageUrl || (interactionMode !== 'mask-paint' && interactionMode !== 'drag-resize')) onReady(null)
-  }, [imageUrl, interactionMode, onReady])
+    if (interactionMode !== 'mask-paint') onMaskChange?.(false)
+  }, [imageUrl, interactionMode, onMaskChange, onReady])
 
   const interceptUpload = (file: File) => {
     onImageUpload(file)
@@ -136,6 +140,7 @@ export default function CanvasArea({
             smartSelectEnabled={smartSelectEnabled}
             refineMode={refineMode}
             onHistoryChange={setHistoryState}
+            onMaskChange={onMaskChange}
           />
         </Suspense>
         {smartSelectEnabled ? (

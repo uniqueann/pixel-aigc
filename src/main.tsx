@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ConfigProvider, App as AntdApp, theme as antdTheme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import RootApp from './App'
+import { clearChunkReloadMark } from '@/utils/chunkLoadError'
 import './styles/global.css'
+
+window.setTimeout(() => clearChunkReloadMark(), 8000)
 
 const queryClient = new QueryClient({
   defaultOptions: {

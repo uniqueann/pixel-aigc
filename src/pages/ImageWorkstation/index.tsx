@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { DownloadOutlined } from '@ant-design/icons'
 import { App, Button } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import ToolSwitcher from '@/components/ToolSwitcher'
@@ -21,6 +22,7 @@ import { loadRepaintConfigured } from '@/services/api/capabilities'
 import { liveCapabilityReady } from '@/services/api/task'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
+import { downloadImageAsset, filenameForWorkstationResult } from '@/features/image-workstation/download'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import ParamPanel from './components/ParamPanel'
@@ -42,6 +44,8 @@ export default function ImageWorkstation() {
   const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
   const [repaintReady, setRepaintReady] = useState(() => liveCapabilityReady(Capability.Inpaint))
+  const [hasMaskPaint, setHasMaskPaint] = useState(false)
+  const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
   const toolReady = isWorkstationToolReady(activeTool)
@@ -68,10 +72,17 @@ export default function ImageWorkstation() {
   const taskSummary = useMemo(() => {
     const task = controller.activeTask
     if (!task) return undefined
-    if (task.status === 'succeeded') return `已生成 ${controller.outputAssets.length} 个图片结果`
+    if (controller.protocolError) return undefined
+    if (task.status === 'succeeded') {
+      if (controller.outputAssets.length === 0) return undefined
+      return `已生成 ${controller.outputAssets.length} 个图片结果`
+    }
     if (task.status === 'failed' || task.status === 'cancelled') return task.errorMessage || '任务没有完成，请重试'
     return '图片正在处理中，可以留在当前页面等待结果'
-  }, [controller.activeTask, controller.outputAssets.length])
+  }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
+  const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
+    ?? controller.outputAssets[0]
+  const maskRequired = Boolean(inpaintMode) && !edgeRefine
 
   const handleCanvasReady = useCallback((handle: CanvasHandle | null) => {
     canvasHandleRef.current = handle
@@ -179,12 +190,36 @@ export default function ImageWorkstation() {
       message.warning(COMING_SOON_SUBMIT_MESSAGE)
       return
     }
+    if (maskRequired && !hasMaskPaint) {
+      message.warning(inpaintMode === 'repaint' ? '请先涂抹要重绘的区域' : '请先涂抹要消除的区域')
+      return
+    }
     try {
       await controller.generate(canvasHandleRef.current)
       message.success('任务已提交')
     } catch (error) {
       const description = error instanceof Error ? error.message : '请检查 API 服务是否已启动'
-      message.error({ content: `任务提交失败：${description}`, duration: 4 })
+      const emptyMask = description.includes('请先涂抹')
+      if (emptyMask) message.warning(description)
+      else message.error({ content: `任务提交失败：${description}`, duration: 4 })
+    }
+  }
+
+  const handleDownload = async (asset = selectedResult, index = 0) => {
+    if (!asset) return
+    setDownloadingAssetId(asset.id)
+    try {
+      await downloadImageAsset(asset, filenameForWorkstationResult({
+        toolLabel: activeTool.label,
+        width: asset.width,
+        height: asset.height,
+        mimeType: asset.mimeType,
+        index: controller.outputAssets.length > 1 ? index + 1 : undefined,
+      }))
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '下载失败')
+    } finally {
+      setDownloadingAssetId(undefined)
     }
   }
 
@@ -228,14 +263,17 @@ export default function ImageWorkstation() {
             onCompareModeChange={setCompareMode}
             onImageUpload={handleImageUpload}
             onReady={handleCanvasReady}
+            onMaskChange={setHasMaskPaint}
           />
           <ImageAssetStrip
             assets={controller.outputAssets}
             selectedAssetId={controller.inputAsset?.id}
+            downloadingAssetId={downloadingAssetId}
             onSelect={(assetId) => {
               controller.selectOutput(assetId)
               setCompareMode('effect')
             }}
+            onDownload={(asset, index) => void handleDownload(asset, index)}
           />
         </div>
         <aside className="image-workstation-settings">
@@ -292,14 +330,24 @@ export default function ImageWorkstation() {
             <Button type="primary" disabled={!controller.inputAsset} onClick={() => void finishEdgeRefine()}>完成精修</Button>
           </>
         ) : (
-          <Button
-            type="primary"
-            loading={controller.submitting}
-            disabled={!toolReady || !controller.inputAsset || controller.formLocked || (activeTool.slug === 'repaint' && !repaintReady)}
-            onClick={handleGenerate}
-          >
-            生成
-          </Button>
+          <div className="image-workstation-footer-actions">
+            <Button
+              icon={<DownloadOutlined />}
+              disabled={!selectedResult || controller.formLocked}
+              loading={Boolean(selectedResult && downloadingAssetId === selectedResult.id)}
+              onClick={() => void handleDownload(selectedResult, Math.max(0, controller.outputAssets.findIndex((asset) => asset.id === selectedResult?.id)))}
+            >
+              下载结果
+            </Button>
+            <Button
+              type="primary"
+              loading={controller.submitting}
+              disabled={!toolReady || !controller.inputAsset || controller.formLocked || (activeTool.slug === 'repaint' && !repaintReady) || (maskRequired && !hasMaskPaint)}
+              onClick={handleGenerate}
+            >
+              生成
+            </Button>
+          </div>
         )}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from 'react'
 import { Button, Result } from 'antd'
+import { clearChunkReloadMark, isChunkLoadError, reloadOnceForChunkError } from '@/utils/chunkLoadError'
 
 interface Props {
   children: ReactNode
@@ -7,6 +8,7 @@ interface Props {
 
 interface State {
   hasError: boolean
+  chunkError: boolean
 }
 
 /**
@@ -14,14 +16,19 @@ interface State {
  * 导航栏依然可用，用户能直接切换到其他模块，而不是整个应用白屏。
  */
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false }
+  state: State = { hasError: false, chunkError: false }
 
-  static getDerivedStateFromError() {
-    return { hasError: true }
+  static getDerivedStateFromError(error: unknown) {
+    return { hasError: true, chunkError: isChunkLoadError(error) }
   }
 
   componentDidCatch(error: unknown) {
+    if (isChunkLoadError(error) && reloadOnceForChunkError()) return
     console.error('页面渲染出错：', error)
+  }
+
+  componentDidUpdate(_prevProps: Props, prevState: State) {
+    if (prevState.hasError && !this.state.hasError) clearChunkReloadMark()
   }
 
   render() {
@@ -30,7 +37,9 @@ export default class ErrorBoundary extends Component<Props, State> {
         <Result
           status="error"
           title="页面出了点问题"
-          subTitle="可以尝试刷新，如果持续出现请反馈给开发同学"
+          subTitle={this.state.chunkError
+            ? '页面资源已更新，刷新后即可继续使用'
+            : '可以尝试刷新，如果持续出现请反馈给开发同学'}
           extra={
             <Button type="primary" onClick={() => window.location.reload()}>
               刷新页面

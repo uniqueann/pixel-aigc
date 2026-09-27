@@ -5,6 +5,22 @@ import {
   thresholdPaintedOverlay,
 } from '../../../../shared/erase'
 
+export const EMPTY_ERASE_MASK_MESSAGE = '请先涂抹要消除的区域'
+export const EMPTY_REPAINT_MASK_MESSAGE = '请先涂抹要重绘的区域'
+/** 排除误触的一两个像素，要求至少有一小段笔划。 */
+export const MIN_MASK_PIXELS = 32
+
+export function emptyMaskMessage(mode?: 'remove' | 'repaint') {
+  return mode === 'repaint' ? EMPTY_REPAINT_MASK_MESSAGE : EMPTY_ERASE_MASK_MESSAGE
+}
+
+export function remapMaskExportError(error: unknown, mode?: 'remove' | 'repaint') {
+  if (error instanceof Error && error.message === EMPTY_ERASE_MASK_MESSAGE) {
+    return new Error(emptyMaskMessage(mode))
+  }
+  return error instanceof Error ? error : new Error('蒙版导出失败')
+}
+
 export interface MaskExportResult {
   /** 黑白蒙版：白色表示待生成区域，黑色表示保留区域 */
   maskDataUrl: string
@@ -30,15 +46,17 @@ export function exportPaintedMask(maskCanvasEl: HTMLCanvasElement): MaskExportRe
   }
 
   const sourcePixels = sourceContext.getImageData(0, 0, width, height)
+  const overlay = thresholdPaintedOverlay(sourcePixels.data, width, height)
+  if (!maskHasEraseRegion(overlay, undefined, MIN_MASK_PIXELS)) throw new Error(EMPTY_ERASE_MASK_MESSAGE)
   const outputPixels = outputContext.createImageData(width, height)
 
-  for (let index = 0; index < sourcePixels.data.length; index += 4) {
-    const isSelected = sourcePixels.data[index + 3] > 0
-    const value = isSelected ? 255 : 0
-    outputPixels.data[index] = value
-    outputPixels.data[index + 1] = value
-    outputPixels.data[index + 2] = value
-    outputPixels.data[index + 3] = 255
+  for (let index = 0; index < overlay.length; index += 1) {
+    const value = overlay[index] >= 128 ? 255 : 0
+    const offset = index * 4
+    outputPixels.data[offset] = value
+    outputPixels.data[offset + 1] = value
+    outputPixels.data[offset + 2] = value
+    outputPixels.data[offset + 3] = 255
   }
 
   outputContext.putImageData(outputPixels, 0, 0)
@@ -60,8 +78,9 @@ export function exportEraseMask(
   if (imageNaturalSize.width < 1 || imageNaturalSize.height < 1) throw new Error('无法读取原图尺寸')
   const sourcePixels = sourceContext.getImageData(0, 0, width, height)
   const overlay = thresholdPaintedOverlay(sourcePixels.data, width, height)
+  if (!maskHasEraseRegion(overlay, undefined, MIN_MASK_PIXELS)) throw new Error(EMPTY_ERASE_MASK_MESSAGE)
   const mapped = mapOverlayMaskToImage(overlay, width, height, imageNaturalSize.width, imageNaturalSize.height)
-  if (!maskHasEraseRegion(mapped)) throw new Error('请先涂抹要消除的区域')
+  if (!maskHasEraseRegion(mapped, undefined, MIN_MASK_PIXELS)) throw new Error(EMPTY_ERASE_MASK_MESSAGE)
   const outputCanvas = document.createElement('canvas')
   outputCanvas.width = imageNaturalSize.width
   outputCanvas.height = imageNaturalSize.height

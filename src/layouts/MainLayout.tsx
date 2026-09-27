@@ -165,7 +165,7 @@ export default function MainLayout() {
           </Space>
         </Header>
         <Content className="app-main-content">
-          <ErrorBoundary>
+          <ErrorBoundary key={location.pathname}>
             <Outlet context={{ openModelSettings: () => { setSettingsSection('models'); setSettingsOpen(true) } }} />
           </ErrorBoundary>
         </Content>

@@ -171,11 +171,20 @@ export function mapOverlayMaskToImage(
   return scaleMaskNearest(region, rect.width, rect.height, imageWidth, imageHeight)
 }
 
-export function maskHasEraseRegion(mask: Uint8Array, threshold = MASK_WHITE_THRESHOLD): boolean {
+export function maskPaintedPixelCount(mask: Uint8Array, threshold = MASK_WHITE_THRESHOLD): number {
+  let count = 0
   for (let i = 0; i < mask.length; i += 1) {
-    if (mask[i] >= threshold) return true
+    if (mask[i] >= threshold) count += 1
   }
-  return false
+  return count
+}
+
+export function maskHasEraseRegion(
+  mask: Uint8Array,
+  threshold = MASK_WHITE_THRESHOLD,
+  minPixels = 1,
+): boolean {
+  return maskPaintedPixelCount(mask, threshold) >= minPixels
 }
 
 export function binaryMaskToRgba(mask: Uint8Array): Uint8Array {

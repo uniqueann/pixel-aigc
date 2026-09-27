@@ -302,6 +302,38 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(mocks.createTask).not.toHaveBeenCalled()
   })
 
+  it('重绘空蒙版时直接拒绝提交', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    await act(async () => root.render(
+      <ControllerHarness tool="repaint" prompt="一盆小型绿色盆栽" onController={captureController} />,
+    ))
+    await expect(currentController.generate({
+      exportMask: () => { throw new Error('请先涂抹要消除的区域') },
+    })).rejects.toThrow('请先涂抹要重绘的区域')
+    expect(mocks.requestRepaint).not.toHaveBeenCalled()
+  })
+
+  it('重绘结果若与原图字节相同则记为异常，不当成功结果', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const bytes = new Uint8Array([255, 216, 255, 1, 2, 3, 4, 5])
+    mocks.requestRepaint.mockImplementation(async (image: Blob) => image)
+    const fetchMock = vi.fn(async () => new Response(new Blob([bytes], { type: 'image/jpeg' })))
+    vi.stubGlobal('fetch', fetchMock)
+    if (!URL.createObjectURL) {
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:repaint-echo' })
+    }
+    await act(async () => root.render(
+      <ControllerHarness tool="repaint" prompt="一盆小型绿色盆栽" onController={captureController} />,
+    ))
+    await act(async () => {
+      await currentController.generate(canvasHandle)
+    })
+    expect(currentController.protocolError).toBe('任务已完成，但没有返回新的生成结果')
+    expect(currentController.outputAssets).toEqual([])
+    expect(currentController.inputAsset?.id).toBe(initialAsset.id)
+    vi.unstubAllGlobals()
+  })
+
   it('重绘未接入任务网关时走 /api/repaint，不上传蒙版也不创建任务', async () => {
     mocks.liveCapabilityReady.mockReturnValue(false)
     const result = new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' })
