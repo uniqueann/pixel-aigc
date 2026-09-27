@@ -1,10 +1,15 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { Canvas, FabricImage, Rect } from 'fabric'
 import { computeOutpaintMask, type MaskExportResult } from '../../utils/maskExport'
-
-const CANVAS_WIDTH = 640
-const CANVAS_HEIGHT = 420
-const SCENE_PADDING = 48
+import {
+  freeOutpaintGeometry,
+  modelSizeFromDisplay,
+  OUTPAINT_VIEW_HEIGHT,
+  OUTPAINT_VIEW_WIDTH,
+  outpaintDisplayScale,
+  presetOutpaintGeometry,
+  type OutpaintModelGeometry,
+} from '../../utils/outpaintGeometry'
 
 interface OutpaintCanvasProps {
   imageUrl: string
@@ -17,6 +22,7 @@ export interface OutpaintCanvasHandle {
   exportMask: () => MaskExportResult
   getTargetSize: () => { width: number; height: number }
   getOriginOffset: () => { x: number; y: number }
+  getSourceSize: () => { width: number; height: number }
 }
 
 const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(function OutpaintCanvas(
@@ -26,40 +32,25 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
   const fabricCanvasRef = useRef<Canvas | null>(null)
   const frameRef = useRef<Rect | null>(null)
-  const imageRef = useRef<FabricImage | null>(null)
-  const displayScaleRef = useRef(1)
+  const modelRef = useRef<OutpaintModelGeometry | null>(null)
 
-  const getGeometry = () => {
-    const frame = frameRef.current
-    const image = imageRef.current
-    const displayScale = displayScaleRef.current
-    if (!frame || !image || !displayScale) throw new Error('扩图画布尚未准备好')
-
-    const frameBounds = frame.getBoundingRect()
-    const imageBounds = image.getBoundingRect()
-    return {
-      targetSize: {
-        width: Math.round(frameBounds.width / displayScale),
-        height: Math.round(frameBounds.height / displayScale),
-      },
-      originOffset: {
-        x: Math.max(0, Math.round((imageBounds.left - frameBounds.left) / displayScale)),
-        y: Math.max(0, Math.round((imageBounds.top - frameBounds.top) / displayScale)),
-      },
-    }
+  const getModel = () => {
+    if (!modelRef.current) throw new Error('扩图画布尚未准备好')
+    return modelRef.current
   }
 
   useImperativeHandle(
     ref,
     () => ({
       exportMask: () => {
-        const geometry = getGeometry()
-        return computeOutpaintMask(geometry.targetSize, geometry.originOffset, imageNaturalSize)
+        const model = getModel()
+        return computeOutpaintMask(model.targetSize, model.originOffset, model.sourceSize)
       },
-      getTargetSize: () => getGeometry().targetSize,
-      getOriginOffset: () => getGeometry().originOffset,
+      getTargetSize: () => getModel().targetSize,
+      getOriginOffset: () => getModel().originOffset,
+      getSourceSize: () => getModel().sourceSize,
     }),
-    [imageNaturalSize],
+    [],
   )
 
   useEffect(() => {
@@ -68,35 +59,39 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
 
     let disposed = false
     const canvas = new Canvas(canvasElement, {
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
+      width: OUTPAINT_VIEW_WIDTH,
+      height: OUTPAINT_VIEW_HEIGHT,
       selection: false,
       centeredScaling: true,
       preserveObjectStacking: true,
     })
     fabricCanvasRef.current = canvas
 
-    const targetNaturalSize = presetTargetSize
-      ? {
-          width: Math.max(presetTargetSize.width, imageNaturalSize.width),
-          height: Math.max(presetTargetSize.height, imageNaturalSize.height),
-        }
-      : imageNaturalSize
-    const displayScale = Math.min(
-      (CANVAS_WIDTH - SCENE_PADDING * 2) / targetNaturalSize.width,
-      (CANVAS_HEIGHT - SCENE_PADDING * 2) / targetNaturalSize.height,
-    )
-    displayScaleRef.current = displayScale
+    const model = presetTargetSize
+      ? presetOutpaintGeometry(
+        imageNaturalSize.width,
+        imageNaturalSize.height,
+        presetTargetSize.width,
+        presetTargetSize.height,
+      )
+      : freeOutpaintGeometry(
+        imageNaturalSize.width,
+        imageNaturalSize.height,
+        imageNaturalSize.width,
+        imageNaturalSize.height,
+      )
+    modelRef.current = model
+    const displayScale = outpaintDisplayScale(model.targetSize.width, model.targetSize.height)
 
-    const centerX = CANVAS_WIDTH / 2
-    const centerY = CANVAS_HEIGHT / 2
+    const centerX = OUTPAINT_VIEW_WIDTH / 2
+    const centerY = OUTPAINT_VIEW_HEIGHT / 2
     const frame = new Rect({
       left: centerX,
       top: centerY,
       originX: 'center',
       originY: 'center',
-      width: targetNaturalSize.width * displayScale,
-      height: targetNaturalSize.height * displayScale,
+      width: model.targetSize.width * displayScale,
+      height: model.targetSize.height * displayScale,
       fill: 'rgba(33, 207, 160, 0.12)',
       stroke: '#21cfa0',
       strokeWidth: 2,
@@ -113,19 +108,33 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
     frame.setControlsVisibility({ mtr: false })
     frameRef.current = frame
 
+    const applyFreeFrame = () => {
+      if (presetTargetSize) return modelRef.current
+      const size = modelSizeFromDisplay(frame.getScaledWidth(), frame.getScaledHeight(), displayScale)
+      const next = freeOutpaintGeometry(
+        imageNaturalSize.width,
+        imageNaturalSize.height,
+        size.width,
+        size.height,
+      )
+      modelRef.current = next
+      return next
+    }
+
     void FabricImage.fromURL(imageUrl).then((image) => {
       if (disposed) return
+      const offsetX = (model.originOffset.x + model.sourceSize.width / 2 - model.targetSize.width / 2) * displayScale
+      const offsetY = (model.originOffset.y + model.sourceSize.height / 2 - model.targetSize.height / 2) * displayScale
       image.set({
-        left: centerX,
-        top: centerY,
+        left: centerX + offsetX,
+        top: centerY + offsetY,
         originX: 'center',
         originY: 'center',
-        scaleX: displayScale,
-        scaleY: displayScale,
+        scaleX: (model.sourceSize.width * displayScale) / imageNaturalSize.width,
+        scaleY: (model.sourceSize.height * displayScale) / imageNaturalSize.height,
         selectable: false,
         evented: false,
       })
-      imageRef.current = image
       canvas.add(image, frame)
       if (!presetTargetSize) canvas.setActiveObject(frame)
       canvas.requestRenderAll()
@@ -135,24 +144,36 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
       if (target !== frame || presetTargetSize) return
       const minimumWidth = imageNaturalSize.width * displayScale
       const minimumHeight = imageNaturalSize.height * displayScale
-      const scaledWidth = frame.getScaledWidth()
-      const scaledHeight = frame.getScaledHeight()
-      if (scaledWidth < minimumWidth) frame.scaleX = minimumWidth / frame.width
-      if (scaledHeight < minimumHeight) frame.scaleY = minimumHeight / frame.height
+      if (frame.getScaledWidth() < minimumWidth) frame.scaleX = minimumWidth / frame.width
+      if (frame.getScaledHeight() < minimumHeight) frame.scaleY = minimumHeight / frame.height
+      applyFreeFrame()
+      frame.setCoords()
+    })
+
+    canvas.on('object:modified', ({ target }) => {
+      if (target !== frame || presetTargetSize) return
+      const next = applyFreeFrame()
+      if (!next) return
+      frame.set({
+        width: next.targetSize.width * displayScale,
+        height: next.targetSize.height * displayScale,
+        scaleX: 1,
+        scaleY: 1,
+      })
       frame.setCoords()
     })
 
     return () => {
       disposed = true
       frameRef.current = null
-      imageRef.current = null
+      modelRef.current = null
       fabricCanvasRef.current = null
       void canvas.dispose()
     }
   }, [imageNaturalSize, imageUrl, presetTargetSize])
 
   return (
-    <div style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, maxWidth: '100%', touchAction: 'none' }}>
+    <div style={{ width: OUTPAINT_VIEW_WIDTH, height: OUTPAINT_VIEW_HEIGHT, maxWidth: '100%', touchAction: 'none' }}>
       <canvas ref={canvasElementRef} aria-label="扩图边界画布" style={{ touchAction: 'none' }} />
     </div>
   )

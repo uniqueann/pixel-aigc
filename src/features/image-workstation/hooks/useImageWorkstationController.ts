@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
+import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { liveCapabilityReady } from '@/services/api/task'
 import { uploadDataUrl } from '@/services/api/upload'
@@ -108,22 +109,29 @@ export function useImageWorkstationController({
     sourceAsset: ImageAsset,
     targetSize: { width: number; height: number },
     originOffset: { x: number; y: number },
+    sourceSize: { width: number; height: number },
     parentGenerationId: GenerationId | undefined,
   ) => {
     setSubmitting(true)
     setSubmissionError(undefined)
     setProtocolError(undefined)
     try {
-      const padding = paddingAround(sourceAsset.width, sourceAsset.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
+      const padding = paddingAround(sourceSize.width, sourceSize.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
       const response = await fetch(sourceAsset.url)
       if (!response.ok) throw new Error('读取原图失败')
-      const result = await requestOutpaint(await response.blob(), 'image/jpeg', padding)
+      const original = await response.blob()
+      const needsScale = sourceSize.width !== sourceAsset.width || sourceSize.height !== sourceAsset.height
+      const input = needsScale
+        ? await renderScaledSource(new File([original], sourceAsset.name || 'source.jpg', { type: original.type || 'image/jpeg' }), sourceSize.width, sourceSize.height)
+        : original
+      const hasPad = padding.left + padding.right + padding.top + padding.bottom > 0
+      const result = hasPad ? await requestOutpaint(input, 'image/jpeg', padding) : input
       const now = new Date().toISOString()
       const completed: GenerationTask<OutpaintTaskParams> = {
         id: crypto.randomUUID(),
         capability: Capability.Outpaint,
         status: 'succeeded',
-        params: { sourceImageUrl: sourceAsset.url, targetSize, originOffset },
+        params: { sourceImageUrl: sourceAsset.url, targetSize, originOffset, sourceSize },
         resultUrls: [URL.createObjectURL(result)],
         creditsCost: 0,
         createdAt: now,
@@ -202,6 +210,7 @@ export function useImageWorkstationController({
         inputAsset,
         canvasHandle.getTargetSize(),
         canvasHandle.getOriginOffset(),
+        canvasHandle.getSourceSize?.() ?? { width: inputAsset.width, height: inputAsset.height },
         inputAsset.generationId,
       )
     }
@@ -233,7 +242,13 @@ export function useImageWorkstationController({
     if (context.request.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
       const params = context.request.params as OutpaintTaskParams
       if (!params.targetSize || !params.originOffset) throw new Error('扩图画布尚未准备好')
-      return completeOutpaint(sourceAsset, params.targetSize, params.originOffset, context.options.parentGenerationId)
+      return completeOutpaint(
+        sourceAsset,
+        params.targetSize,
+        params.originOffset,
+        params.sourceSize ?? { width: sourceAsset.width, height: sourceAsset.height },
+        context.options.parentGenerationId,
+      )
     }
     return submitRequest(context.request, sourceAsset, context.options.parentGenerationId)
   }, [completeOutpaint, submitRequest, task])

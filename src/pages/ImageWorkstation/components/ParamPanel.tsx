@@ -172,17 +172,19 @@ export default function ParamPanel({
         <div style={labelStyle}>生成数量</div>
         <Slider min={1} max={4} step={1} marks={{ 1: '1', 2: '2', 3: '3', 4: '4' }} />
       </div>
-      <div>
-        <div style={labelStyle}>渲染分辨率</div>
-        <Select
-          style={{ width: '100%' }}
-          defaultValue="2k"
-          options={[
-            { value: '2k', label: '2K' },
-            { value: '4k', label: '4K' },
-          ]}
-        />
-      </div>
+      {capability !== Capability.Outpaint ? (
+        <div>
+          <div style={labelStyle}>渲染分辨率</div>
+          <Select
+            style={{ width: '100%' }}
+            defaultValue="2k"
+            options={[
+              { value: '2k', label: '2K' },
+              { value: '4k', label: '4K' },
+            ]}
+          />
+        </div>
+      ) : null}
     </Space>
   )
 }
