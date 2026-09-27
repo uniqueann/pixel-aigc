@@ -12,6 +12,13 @@ import {
 export const CONNECT_TIMEOUT_MS = 4_000
 export const SUBMIT_ATTEMPTS = 3
 export const GET_ATTEMPTS = 3
+/** 整次扩图墙钟预算，给下载/裁切留出 maxDuration 120s 的余量。 */
+export const DEFAULT_DEADLINE_MS = 90_000
+/** 轮询停止后留给下载、裁切和下一 pass 的余量。 */
+export const FINISH_RESERVE_MS = 20_000
+/** 防止 now() 不前进时死循环；正常路径靠截止时间停。 */
+export const MAX_POLLS = 200
+export const OUTPAINT_WAIT_TIMEOUT_MESSAGE = '扩图超时：任务仍在阿里云处理中，请稍后重试'
 
 const dashScopeDispatcher = new Agent({
   connectTimeout: CONNECT_TIMEOUT_MS,
@@ -73,11 +80,24 @@ export function dashScopeHost(baseUrl: string) {
   }
 }
 
-/** 先密后疏：300ms 起轮询，生成窗口内每 500ms 一次，避免固定 1s/1.5s 空等。 */
+/** 先密后疏，随后回到 1–2s，避免固定 30 次就把还在跑的任务掐掉。 */
 export function outpaintPollDelay(attempt: number): number {
-  if (attempt <= 0) return 300
-  if (attempt < 16) return 500
-  return 800
+  if (attempt <= 0) return 400
+  if (attempt < 8) return 800
+  if (attempt < 20) return 1_200
+  return 2_000
+}
+
+/** 本 pass 的等待截止：从剩余墙钟里扣掉收尾余量，再按未完成 pass 均分。 */
+export function passWaitDeadline(
+  now: number,
+  overallDeadline: number,
+  remainingPasses: number,
+  reserveMs = FINISH_RESERVE_MS,
+) {
+  const remaining = overallDeadline - now - reserveMs
+  const slices = Math.max(1, remainingPasses)
+  return now + Math.max(0, Math.floor(remaining / slices))
 }
 
 export function connectRetryDelay(attempt: number): number {
@@ -268,6 +288,7 @@ async function submitExpand(
     requestId?: string
     log: OutpaintLog
     pass: number
+    remainingPasses: number
   },
 ) {
   const headers = {
@@ -311,24 +332,26 @@ async function submitExpand(
   if (!taskId) throw new HttpError(502, '扩图服务没有返回任务编号', 'OUTPAINT_FAILED')
 
   const waitStarted = deps.now()
+  const waitDeadline = passWaitDeadline(waitStarted, deps.deadline, deps.remainingPasses)
   let imageUrl = ''
   let polls = 0
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    if (deps.now() > deps.deadline) break
-    const delay = outpaintPollDelay(attempt)
+  while (polls < MAX_POLLS) {
+    const delay = outpaintPollDelay(polls)
+    if (deps.now() + delay > waitDeadline) break
     await deps.sleep(delay)
+    if (deps.now() > waitDeadline) break
     const pollStarted = deps.now()
     const polled = await callDashScope(deps.fetch, `${config.baseUrl}/api/v1/tasks/${taskId}`, {
       headers: { Authorization: `Bearer ${config.apiKey}` },
     }, 'poll', GET_ATTEMPTS, 20_000, deps.sleep, deps.log, {
-      requestId: deps.requestId, pass: deps.pass, poll: attempt, now: deps.now,
+      requestId: deps.requestId, pass: deps.pass, poll: polls, now: deps.now,
     })
     const payload = await readJson(polled)
     const status = payload.output?.task_status
     polls += 1
     deps.log({
-      requestId: deps.requestId, stage: 'poll', pass: deps.pass, attempt, status: status ?? null,
-      ms: deps.now() - pollStarted, waitMs: deps.now() - waitStarted, delayMs: delay,
+      requestId: deps.requestId, stage: 'poll', pass: deps.pass, attempt: polls - 1, status: status ?? null,
+      ms: deps.now() - pollStarted, waitMs: deps.now() - waitStarted, delayMs: delay, taskId,
     })
     if (!polled.ok) throw payloadError(payload) ?? new HttpError(502, '扩图结果查询失败', 'OUTPAINT_FAILED')
     if (status === 'SUCCEEDED') {
@@ -341,9 +364,12 @@ async function submitExpand(
     }
   }
   deps.log({
-    requestId: deps.requestId, stage: 'wait', pass: deps.pass, ms: deps.now() - waitStarted, polls, done: Boolean(imageUrl),
+    requestId: deps.requestId, stage: 'wait', pass: deps.pass, ms: deps.now() - waitStarted, polls,
+    done: Boolean(imageUrl), taskId, waitDeadline,
   })
-  if (!imageUrl) throw new HttpError(504, '扩图超时，请稍后重试', 'OUTPAINT_TIMEOUT')
+  if (!imageUrl) {
+    throw new HttpError(504, OUTPAINT_WAIT_TIMEOUT_MESSAGE, 'OUTPAINT_TIMEOUT', { stage: 'wait' })
+  }
   const downloadStarted = deps.now()
   const downloaded = await callDashScope(deps.fetch, imageUrl, undefined, 'download', GET_ATTEMPTS, 30_000, deps.sleep, deps.log, {
     requestId: deps.requestId, pass: deps.pass, now: deps.now,
@@ -388,12 +414,13 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
     encodeMs: now() - encodeStarted, encodeBytes: encoded.length, reusedJpeg: encoded === image,
     host: dashScopeHost(config.baseUrl),
   })
-  const deadline = now() + (deps.deadlineMs ?? 100_000)
+  const deadline = now() + (deps.deadlineMs ?? DEFAULT_DEADLINE_MS)
   let current = encoded
   for (let index = 0; index < plan.passes.length; index += 1) {
-    if (now() > deadline) throw new HttpError(504, '扩图超时，请稍后重试', 'OUTPAINT_TIMEOUT')
+    if (now() > deadline) throw new HttpError(504, OUTPAINT_WAIT_TIMEOUT_MESSAGE, 'OUTPAINT_TIMEOUT', { stage: 'wait' })
     current = await submitExpand(config, current, plan.passes[index].scales, {
       fetch: fetchImpl, sleep, now, deadline, requestId: deps.requestId, log, pass: index + 1,
+      remainingPasses: plan.passes.length - index,
     })
     if (index < plan.passes.length - 1) current = await encodePassInput(current)
   }
