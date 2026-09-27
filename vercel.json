@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "regions": ["pdx1"],
-  "functions": { "api/**/*.ts": { "maxDuration": 90 } },
+  "functions": { "api/**/*.ts": { "maxDuration": 120 } },
   "crons": [{ "path": "/api/internal/email-cleanup", "schedule": "0 1 * * *" }],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/entry?__route=:path*" },

@@ -1,6 +1,9 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
-import { bailianConfig, cropOutpaintResult, expandWithBailian, outpaintPollDelay } from './bailian-outpaint'
+import {
+  bailianConfig, CONNECT_TIMEOUT_MS, connectRetryDelay, cropOutpaintResult, expandWithBailian,
+  GET_ATTEMPTS, isTransientConnectError, outpaintPollDelay, SUBMIT_ATTEMPTS,
+} from './bailian-outpaint'
 import { HttpError } from './errors'
 import { DEFAULT_EXPAND_PROMPT, planBailianOutpaint } from '../shared/outpaint'
 
@@ -212,14 +215,30 @@ describe('万相扩图调用', () => {
     expect(outpaintPollDelay(16)).toBe(800)
   })
 
-  it('提交 DashScope 时 fetch 失败会记在 submit 阶段，并返回可读错误', async () => {
+  it('只把连接层失败当成可重试，HTTP 响应和 Abort 不重试', () => {
+    const timedOut = new TypeError('fetch failed', { cause: Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT', name: 'ConnectTimeoutError' }) })
+    expect(CONNECT_TIMEOUT_MS).toBe(4_000)
+    expect(SUBMIT_ATTEMPTS).toBe(3)
+    expect(GET_ATTEMPTS).toBe(3)
+    expect(isTransientConnectError(timedOut)).toBe(true)
+    expect(isTransientConnectError(Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }))).toBe(true)
+    expect(isTransientConnectError(Object.assign(new Error('socket hang up'), { code: 'UND_ERR_SOCKET' }))).toBe(true)
+    expect(isTransientConnectError(new TypeError('fetch failed'))).toBe(true)
+    expect(isTransientConnectError(new DOMException('The operation was aborted', 'AbortError'))).toBe(false)
+    expect(isTransientConnectError(Object.assign(new Error('Headers Timeout Error'), { code: 'UND_ERR_HEADERS_TIMEOUT' }))).toBe(false)
+    expect(connectRetryDelay(0)).toBe(250)
+    expect(connectRetryDelay(1)).toBe(500)
+  })
+
+  it('提交 DashScope 时连接失败会重试，用尽后记在 submit 阶段并返回可读错误', async () => {
     const source = await sharp({
       create: { width: 640, height: 640, channels: 3, background: { r: 3, g: 3, b: 3 } },
     }).jpeg().toBuffer()
     const logs: Array<Record<string, unknown>> = []
     const failure = new TypeError('fetch failed', { cause: new Error('Connect Timeout Error') })
+    let calls = 0
     await expect(expandWithBailian(source, { left: 10, right: 0, top: 0, bottom: 0 }, {
-      fetch: async () => { throw failure },
+      fetch: async () => { calls += 1; throw failure },
       env: { DASHSCOPE_API_KEY: 'sk-test' },
       sleep: async () => {},
       now: () => 0,
@@ -231,13 +250,156 @@ describe('万相扩图调用', () => {
       code: 'OUTPAINT_FAILED',
       stage: 'submit',
     })
+    expect(calls).toBe(SUBMIT_ATTEMPTS)
     expect(logs[0]).toMatchObject({ stage: 'plan' })
-    expect(logs[1]).toMatchObject({
-      stage: 'submit',
-      error: 'fetch failed',
-      cause: 'Error: Connect Timeout Error',
-      requestId: 'req-submit-fail',
+    const submits = logs.filter(entry => entry.stage === 'submit')
+    expect(submits).toHaveLength(3)
+    expect(submits[0]).toMatchObject({ attempt: 1, retry: true, error: 'fetch failed', cause: 'Error: Connect Timeout Error' })
+    expect(submits[2]).toMatchObject({ attempt: 3, retry: false, requestId: 'req-submit-fail' })
+  })
+
+  it('提交时前两次连接超时、第三次成功则继续扩图', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 4, g: 4, b: 4 } },
+    }).jpeg().toBuffer()
+    const padding = { left: 10, right: 0, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(640, 640, padding)
+    const model = await sharp({
+      create: { width: plan.modelWidth, height: plan.modelHeight, channels: 3, background: { r: 5, g: 5, b: 5 } },
+    }).jpeg().toBuffer()
+    let submits = 0
+    const logs: Array<Record<string, unknown>> = []
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        submits += 1
+        if (submits < 3) {
+          throw new TypeError('fetch failed', { cause: Object.assign(new Error('Connect Timeout Error'), { name: 'ConnectTimeoutError' }) })
+        }
+        return jsonResponse({ output: { task_id: 'task-retry', task_status: 'PENDING' } })
+      }
+      if (url.endsWith('/tasks/task-retry')) {
+        return jsonResponse({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://example.test/out.jpg' }] } })
+      }
+      return new Response(model, { status: 200 })
+    }
+    const output = await expandWithBailian(source, padding, {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async () => {},
+      now: () => 0,
+      log: entry => { logs.push(entry) },
     })
+    expect(submits).toBe(3)
+    expect(logs.filter(entry => entry.stage === 'submit' && entry.retry === true)).toHaveLength(2)
+    const meta = await sharp(output).metadata()
+    expect(meta.width).toBe(650)
+    expect(meta.height).toBe(640)
+  })
+
+  it('提交已收到 HTTP 错误响应时不重试', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 1, g: 1, b: 1 } },
+    }).jpeg().toBuffer()
+    let submits = 0
+    const fetchImpl: typeof fetch = async () => {
+      submits += 1
+      return jsonResponse({ code: 'InvalidApiKey', message: 'No API-key provided.' }, 401)
+    }
+    await expect(expandWithBailian(source, { left: 10, right: 0, top: 0, bottom: 0 }, {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-bad' },
+      sleep: async () => {},
+      now: () => 0,
+    })).rejects.toMatchObject({ message: '阿里云百炼 API Key 无效', status: 502 })
+    expect(submits).toBe(1)
+  })
+
+  it('查询结果时连接失败会重试，成功后继续', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 6, g: 6, b: 6 } },
+    }).jpeg().toBuffer()
+    const padding = { left: 10, right: 0, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(640, 640, padding)
+    const model = await sharp({
+      create: { width: plan.modelWidth, height: plan.modelHeight, channels: 3, background: { r: 7, g: 7, b: 7 } },
+    }).jpeg().toBuffer()
+    let polls = 0
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        return jsonResponse({ output: { task_id: 'task-poll-retry', task_status: 'PENDING' } })
+      }
+      if (url.endsWith('/tasks/task-poll-retry')) {
+        polls += 1
+        if (polls === 1) throw Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })
+        return jsonResponse({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://example.test/out.jpg' }] } })
+      }
+      return new Response(model, { status: 200 })
+    }
+    const output = await expandWithBailian(source, padding, {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async () => {},
+      now: () => 0,
+    })
+    expect(polls).toBe(2)
+    const meta = await sharp(output).metadata()
+    expect(meta.width).toBe(650)
+  })
+
+  it('下载结果时连接失败会重试，成功后继续', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 8, g: 8, b: 8 } },
+    }).jpeg().toBuffer()
+    const padding = { left: 10, right: 0, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(640, 640, padding)
+    const model = await sharp({
+      create: { width: plan.modelWidth, height: plan.modelHeight, channels: 3, background: { r: 9, g: 9, b: 9 } },
+    }).jpeg().toBuffer()
+    let downloads = 0
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        return jsonResponse({ output: { task_id: 'task-dl-retry', task_status: 'PENDING' } })
+      }
+      if (url.endsWith('/tasks/task-dl-retry')) {
+        return jsonResponse({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://example.test/out.jpg' }] } })
+      }
+      downloads += 1
+      if (downloads < 2) throw Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' })
+      return new Response(model, { status: 200 })
+    }
+    const output = await expandWithBailian(source, padding, {
+      fetch: fetchImpl,
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async () => {},
+      now: () => 0,
+    })
+    expect(downloads).toBe(2)
+    const meta = await sharp(output).metadata()
+    expect(meta.width).toBe(650)
+  })
+
+  it('提交被 Abort 后不重试，避免重复建任务', async () => {
+    const source = await sharp({
+      create: { width: 640, height: 640, channels: 3, background: { r: 1, g: 1, b: 1 } },
+    }).jpeg().toBuffer()
+    let submits = 0
+    await expect(expandWithBailian(source, { left: 10, right: 0, top: 0, bottom: 0 }, {
+      fetch: async () => {
+        submits += 1
+        throw new DOMException('The operation was aborted', 'AbortError')
+      },
+      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      sleep: async () => {},
+      now: () => 0,
+    })).rejects.toMatchObject({
+      message: '无法连接到阿里云百炼扩图服务，请稍后重试',
+      status: 502,
+      stage: 'submit',
+    })
+    expect(submits).toBe(1)
   })
 
   it('任务未完成时按新间隔轮询，并记下各阶段耗时', async () => {
