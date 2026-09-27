@@ -26,20 +26,7 @@ interface Props {
   onReady: (handle: CanvasHandle | null) => void
 }
 
-const canvasShellStyle = {
-  flex: 1,
-  border: '1px dashed var(--color-border-strong)',
-  borderRadius: 10,
-  background: 'var(--color-canvas)',
-  display: 'flex',
-  flexDirection: 'column' as const,
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 12,
-  position: 'relative' as const,
-  overflow: 'auto',
-  minWidth: 0,
-}
+const canvasShellClass = 'workstation-canvas-shell'
 
 /** 根据交互模式装配真实画布或保留对应占位界面 */
 export default function CanvasArea({
@@ -88,7 +75,7 @@ export default function CanvasArea({
 
   if (!imageUrl) {
     return (
-      <div style={canvasShellStyle}>
+      <div className={canvasShellClass}>
         <Upload.Dragger
           className="workstation-upload"
           accept="image/png,image/jpeg,image/webp"
@@ -122,8 +109,8 @@ export default function CanvasArea({
 
   if (interactionMode === 'mask-paint') {
     return (
-      <div style={canvasShellStyle}>
-        <div style={{ position: 'absolute', top: 12, zIndex: 3 }}>
+      <div className={canvasShellClass}>
+        <div className="workstation-canvas-toolbar">
           <BrushToolbar
             brushSize={brushSize}
             tool={paintTool}
@@ -138,7 +125,7 @@ export default function CanvasArea({
             onClear={() => maskHandleRef.current?.clear()}
           />
         </div>
-        {!refineMode && <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 4 }}>{replaceButton}</div>}
+        {!refineMode && <div className="workstation-canvas-replace">{replaceButton}</div>}
         <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载蒙版画布…</div>}>
           <MaskPaintCanvas
             ref={setMaskHandle}
@@ -152,9 +139,7 @@ export default function CanvasArea({
           />
         </Suspense>
         {smartSelectEnabled ? (
-          <div style={{ position: 'absolute', bottom: 12, color: 'var(--color-text-secondary)', fontSize: 12 }}>
-            点击商品主体以创建智能选区
-          </div>
+          <div className="workstation-canvas-footnote">点击商品主体以创建智能选区</div>
         ) : null}
       </div>
     )
@@ -162,7 +147,7 @@ export default function CanvasArea({
 
   if (interactionMode === 'multi-source') {
     return (
-      <div style={canvasShellStyle}>
+      <div className={canvasShellClass}>
         <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>当前工具将在后续迭代中开放</div>
       </div>
     )
@@ -170,11 +155,11 @@ export default function CanvasArea({
 
   if (interactionMode === 'drag-resize') {
     return (
-      <div style={canvasShellStyle}>
-        <div style={{ position: 'absolute', top: 12, zIndex: 3, color: 'var(--color-text-secondary)', fontSize: 12 }}>
+      <div className={canvasShellClass}>
+        <div className="workstation-canvas-hint">
           {presetTargetSize ? '已按平台预设自动居中' : '拖拽绿色边框的控制点调整扩图范围'}
         </div>
-        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 4 }}>{replaceButton}</div>
+        <div className="workstation-canvas-replace">{replaceButton}</div>
         <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载扩图画布…</div>}>
           <OutpaintCanvas
             ref={setOutpaintHandle}
@@ -188,21 +173,21 @@ export default function CanvasArea({
   }
 
   return (
-    <div style={canvasShellStyle}>
-      <div style={{ position: 'absolute', top: 12 }}>
+    <div className={canvasShellClass}>
+      <div className="workstation-canvas-toolbar">
         <Segmented
           value={compareMode}
           options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
           onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
         />
       </div>
-      <div style={{ position: 'absolute', top: 12, right: 12 }}>{replaceButton}</div>
+      <div className="workstation-canvas-replace">{replaceButton}</div>
       <img
         src={compareMode === 'original' ? originalImageUrl ?? imageUrl : imageUrl}
         alt={compareMode === 'original' ? '原始图片' : '当前编辑效果'}
         style={{ maxWidth: '72%', maxHeight: '72%', objectFit: 'contain' }}
       />
-      <div style={{ position: 'absolute', bottom: 12, color: 'var(--color-text-muted)', fontSize: 12 }}>
+      <div className="workstation-canvas-footnote">
         {interactionMode === 'params-only' ? '选择候选结果后，可基于该结果继续编辑' : '当前工具将在后续迭代中开放'}
       </div>
     </div>
