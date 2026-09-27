@@ -36,6 +36,8 @@ describe('消除蒙版预处理', () => {
     const meta = await sharp(prepared.png).metadata()
     expect(meta.format).toBe('png')
     expect(meta.channels).toBe(1)
+    expect(meta.space).toBe('b-w')
+    expect(meta.hasAlpha).toBe(false)
     expect(prepared.png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true)
     const raw = await sharp(prepared.png).raw().toBuffer({ resolveWithObject: true })
     expect(raw.info.width).toBe(8)
@@ -147,6 +149,8 @@ describe('万相消除调用', () => {
     expect(maskMeta.width).toBe(640)
     expect(maskMeta.height).toBe(640)
     expect(maskMeta.channels).toBe(1)
+    expect(maskMeta.space).toBe('b-w')
+    expect(maskMeta.hasAlpha).toBe(false)
     expect(body.parameters).toEqual({ n: 1, watermark: false })
     expect(logs.find(entry => entry.stage === 'plan')).toMatchObject({
       promptChars: DEFAULT_ERASE_PROMPT.length, promptDefaulted: true,

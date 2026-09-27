@@ -81,7 +81,7 @@ export async function prepareEraseMask(
   if (!maskHasEraseRegion(binary)) throw new HttpError(400, '请先涂抹要消除的区域', 'EMPTY_MASK')
   const png = await sharp(Buffer.from(binary), {
     raw: { width: targetWidth, height: targetHeight, channels: 1 },
-  }).png().toBuffer()
+  }).toColourspace('b-w').png().toBuffer()
   return { png, width: targetWidth, height: targetHeight, sourceWidth, sourceHeight }
 }
 
