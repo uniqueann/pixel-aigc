@@ -10,6 +10,7 @@ import { signRead, signUpload, verifyAndPromote } from './storage.js'
 import { handleModelRoute } from './model-settings.js'
 import { handleEmailTaskRoute } from './email-tasks.js'
 import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
+import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = randomUUID(), start = Date.now()
@@ -35,10 +36,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
     if (path.join('/') === 'capabilities' && method === 'GET') {
-      res.status(200).json({ bgRemove: tencentCiConfig() !== null })
+      res.status(200).json({ bgRemove: tencentCiConfig() !== null, outpaint: bailianConfig() !== null })
       return
     }
-    const maxBytes = path[0] === 'bg-remove' || path[0] === 'subject-detect' ? 28 * 1024 * 1024 : 3 * 1024 * 1024
+    const maxBytes = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' ? 28 * 1024 * 1024 : 3 * 1024 * 1024
     const user = await authenticate(req.headers.authorization)
     userId = user.id
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
@@ -65,6 +66,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const image = Buffer.from(input.dataBase64, 'base64')
       if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
       res.status(200).json({ box: await detectGoodsSubject(image, input.width, input.height) })
+      return
+    }
+    if (path.join('/') === 'outpaint' && method === 'POST') {
+      if (!bailianConfig()) throw new HttpError(503, '智能扩展尚未配置阿里云百炼 API Key', 'OUTPAINT_UNAVAILABLE')
+      const input = z.object({
+        mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+        dataBase64: z.string().min(1),
+        padding: z.object({
+          left: z.number().int().min(0).max(20000),
+          right: z.number().int().min(0).max(20000),
+          top: z.number().int().min(0).max(20000),
+          bottom: z.number().int().min(0).max(20000),
+        }).strict(),
+      }).strict().parse(body)
+      const image = Buffer.from(input.dataBase64, 'base64')
+      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+      const jpeg = await expandWithBailian(image, input.padding)
+      res.setHeader('Content-Type', 'image/jpeg')
+      res.status(200).end(jpeg)
       return
     }
     if (path[0] === 'model-settings' || path[0] === 'model-profiles') {

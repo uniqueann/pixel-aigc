@@ -1,6 +1,7 @@
 import { computeOutpaintMask } from '@/pages/ImageWorkstation/utils/maskExport'
+import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { uploadDataUrl, uploadImage } from '@/services/api/upload'
-import { createTask, getTask } from '@/services/api/task'
+import { createTask, getTask, liveCapabilityReady } from '@/services/api/task'
 import { Capability, type OutpaintTaskParams } from '@/types'
 import type { ExpansionPlan } from './expansion'
 import type { BatchImage, RenderResult } from './types'
@@ -37,8 +38,7 @@ async function readSize(blob: Blob) {
   return size
 }
 
-export async function expandRemoteImage(image: BatchImage, plan: ExpansionPlan, targetWidth: number, targetHeight: number, shouldStop: () => boolean): Promise<RenderResult> {
-  const scaled = await renderScaledSource(image.file, plan.sourceSize.width, plan.sourceSize.height)
+async function expandViaTask(scaled: File, plan: ExpansionPlan, targetWidth: number, targetHeight: number, shouldStop: () => boolean): Promise<RenderResult> {
   const uploaded = await uploadImage(scaled)
   const mask = computeOutpaintMask(
     { width: targetWidth, height: targetHeight },
@@ -68,4 +68,21 @@ export async function expandRemoteImage(image: BatchImage, plan: ExpansionPlan, 
   const blob = await response.blob()
   const size = await readSize(blob)
   return { blob, mimeType: blob.type || 'image/jpeg', width: size.width, height: size.height }
+}
+
+export async function expandRemoteImage(image: BatchImage, plan: ExpansionPlan, targetWidth: number, targetHeight: number, shouldStop: () => boolean): Promise<RenderResult> {
+  const scaled = await renderScaledSource(image.file, plan.sourceSize.width, plan.sourceSize.height)
+  if (liveCapabilityReady(Capability.Outpaint)) return expandViaTask(scaled, plan, targetWidth, targetHeight, shouldStop)
+  const padding = paddingAround(
+    plan.sourceSize.width,
+    plan.sourceSize.height,
+    plan.originOffset.x,
+    plan.originOffset.y,
+    targetWidth,
+    targetHeight,
+  )
+  const blob = await requestOutpaint(scaled, 'image/jpeg', padding)
+  if (shouldStop()) throw new Error('处理已取消')
+  const size = await readSize(blob)
+  return { blob, mimeType: 'image/jpeg', width: size.width, height: size.height }
 }

@@ -3,13 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { App, Button, ColorPicker, Input, Progress, Radio, Select } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import { loadOutpaintConfigured } from '@/services/api/capabilities'
+import { liveCapabilityReady } from '@/services/api/task'
+import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 import BatchImageQueue from './BatchImageQueue'
 import { invalidateBatch, processBatch } from './aspect-ratio/batch'
 import { createAspectRatioZip, downloadBlob, namesForImages } from './aspect-ratio/download'
 import { fitScale } from './aspect-ratio/geometry'
 import { setOutpaintHandoff } from './aspect-ratio/handoff'
-import { expansionPlan, processOutpaintBatch } from './aspect-ratio/expansion'
+import { expansionPlan, outpaintProgressLabel, processOutpaintBatch } from './aspect-ratio/expansion'
 import { expandRemoteImage } from './aspect-ratio/outpaintClient'
 import { readPrefs, writePrefs } from './aspect-ratio/prefs'
 import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
@@ -65,6 +68,7 @@ export default function AspectRatioTool() {
   const pendingBytesRef = useRef(0)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
+  const [outpaintReady, setOutpaintReady] = useState(() => liveCapabilityReady(Capability.Outpaint))
   const [presets, setPresets] = useState<AspectRatioPreset[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [presetName, setPresetName] = useState('')
@@ -97,6 +101,12 @@ export default function AspectRatioTool() {
     if (!rendererRef.current) rendererRef.current = new AspectRatioRenderer()
     return rendererRef.current
   }
+
+  useEffect(() => {
+    let active = true
+    void loadOutpaintConfigured().then(ready => { if (active) setOutpaintReady(ready) })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -262,6 +272,10 @@ export default function AspectRatioTool() {
     if (processingRef.current || addingCountRef.current) return
     const targets = itemsRef.current.filter(item => (onlyIds ? onlyIds.includes(item.id) : item.status !== 'succeeded'))
     if (!targets.length) return
+    if (settings.strategy === 'outpaint' && !outpaintReady) {
+      message.warning('智能扩展还没配好阿里云百炼 API Key')
+      return
+    }
     processingRef.current = true
     cancelledRef.current = false
     setProcessing(true)
@@ -382,8 +396,11 @@ export default function AspectRatioTool() {
           {settings.strategy === 'letterbox' && <p className="toolbox-hint">留白会把原图完整放进目标尺寸，空白处用所选颜色填上。</p>}
           {settings.strategy === 'outpaint' && (
             <p className="toolbox-hint">
-              智能扩展会提交 {items.filter(item => expansionPlan(item.width, item.height, preset.width, preset.height).mode === 'remote').length} 个扩图任务。比例已经一致的图片只在本机缩放。预览里的深色区域是待补全的留白。
+              需要补边的 {items.filter(item => expansionPlan(item.width, item.height, preset.width, preset.height).mode === 'remote').length} 张会先扩图，再裁成精确的目标尺寸。比例已经一致的图片只在本机缩放。预览里的深色区域是待补全的留白。
             </p>
+          )}
+          {settings.strategy === 'outpaint' && !outpaintReady && (
+            <p className="toolbox-hint toolbox-warning">智能扩展还不能用。请在服务端配置阿里云百炼的 DASHSCOPE_API_KEY（华北2北京）。</p>
           )}
           {settings.strategy === 'letterbox' && (
             <>
@@ -461,15 +478,19 @@ export default function AspectRatioTool() {
       <div className="toolbox-watermark-footer">
         {settings.strategy === 'crop' && gridFallbacks.length > 0 && <p className="toolbox-hint toolbox-warning toolbox-crop-warning">{gridFallbacks.length} 张没有按商品裁剪，用的是当前九宫格。下载前请把焦点改到商品所在位置，再重新处理。</p>}
         <div className="toolbox-progress">
-          <span className="toolbox-progress-status">{processing && settings.strategy === 'crop' ? cropProgressLabel(completed.length, items.length, processingItems.map(item => item.file.name)) : `${completed.length} / ${items.length} 张已完成`}</span>
+          <span className="toolbox-progress-status">{processing && settings.strategy === 'crop'
+            ? cropProgressLabel(completed.length, items.length, processingItems.map(item => item.file.name))
+            : processing && settings.strategy === 'outpaint'
+              ? outpaintProgressLabel(completed.length, items.length, processingItems.map(item => item.file.name))
+              : `${completed.length} / ${items.length} 张已完成`}</span>
           {processing && <Progress size="small" status="active" percent={Math.max(donePercent, 8)} showInfo={false} />}
           {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
         </div>
         <div className="toolbox-footer-actions">
           <Button icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
-          {failed.length > 0 && !processing && <Button disabled={busy} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>}
+          {failed.length > 0 && !processing && <Button disabled={busy || (settings.strategy === 'outpaint' && !outpaintReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>}
           {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
-            <Button type="primary" disabled={!items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</Button>
+            <Button type="primary" disabled={(settings.strategy === 'outpaint' && !outpaintReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</Button>
           )}
         </div>
       </div>
