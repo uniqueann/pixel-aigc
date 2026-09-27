@@ -34,7 +34,7 @@ export async function requestOutpaint(image: Blob, mimeType: string, padding: Pi
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
     body: JSON.stringify({ mimeType: mimeTypeFor(image, mimeType), dataBase64, padding }),
-    signal: AbortSignal.timeout(58000),
+    signal: AbortSignal.timeout(85000),
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null

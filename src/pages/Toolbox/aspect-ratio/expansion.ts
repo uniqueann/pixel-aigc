@@ -1,7 +1,7 @@
 import { containRect, sameAspect } from './geometry'
 import type { AspectRatioSettings, BatchImage, RenderResult } from './types'
 
-/** 百炼创建任务的账号 QPS 是 2，同时处理中的任务最多 5 个。 */
+/** 万相 wanx2.1-imageedit 创建任务 RPS 是 2，同时处理中的任务最多 2 个。 */
 export const OUTPAINT_CONCURRENCY = 2
 
 export function outpaintProgressLabel(completed: number, total: number, names: string[]) {

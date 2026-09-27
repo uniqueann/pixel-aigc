@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { paddingAround, planBailianOutpaint } from './outpaint'
+import {
+  addedPixels,
+  expandScale,
+  paddingAround,
+  planBailianOutpaint,
+  sizeAfterExpand,
+} from './outpaint'
 
 describe('四边留白', () => {
   it('用原图在目标画布中的位置算出四边像素', () => {
@@ -11,23 +17,61 @@ describe('四边留白', () => {
   })
 })
 
-describe('百炼扩图计划', () => {
-  it('精确偏移之外再多扩一圈，裁切区域仍是目标画布', () => {
+describe('万相扩图比例', () => {
+  it('按增加的像素换算成 1.0–2.0 的单边比例', () => {
+    expect(expandScale(0, 800)).toBe(1)
+    expect(expandScale(400, 800)).toBe(1.5)
+    expect(expandScale(800, 800)).toBe(2)
+    expect(expandScale(1200, 800)).toBe(2)
+  })
+
+  it('扩展后的宽高等于原图加上各边增加的像素', () => {
+    expect(sizeAfterExpand(1000, 800, { left: 1.1, right: 1.2, top: 1, bottom: 1.25 })).toEqual({
+      width: 1000 + addedPixels(1000, 1.1) + addedPixels(1000, 1.2),
+      height: 800 + addedPixels(800, 1.25),
+    })
+  })
+})
+
+describe('万相扩图计划', () => {
+  it('一次扩图即可时用四边 scale，裁切后仍是精确目标尺寸', () => {
     const plan = planBailianOutpaint(1000, 800, { left: 40, right: 120, top: 10, bottom: 70 })
     expect(plan.inputWidth).toBe(1000)
     expect(plan.inputHeight).toBe(800)
-    expect(plan.offsets.left).toBeGreaterThan(40)
-    expect(plan.offsets.right - plan.offsets.left).toBe(80)
+    expect(plan.passes).toHaveLength(1)
+    const scales = plan.passes[0].scales
+    expect(scales.left).toBeGreaterThan(1)
+    expect(scales.right).toBeGreaterThan(scales.left)
+    expect(scales.top).toBeGreaterThan(1)
+    expect(scales.bottom).toBeGreaterThan(scales.top)
+    expect(scales.left).toBeLessThanOrEqual(2)
+    expect(scales.right).toBeLessThanOrEqual(2)
     expect(plan.crop).toEqual({
-      left: plan.offsets.left - 40,
-      top: plan.offsets.top - 10,
+      left: plan.crop.left,
+      top: plan.crop.top,
       width: 1160,
       height: 880,
     })
+    expect(plan.crop.left).toBeGreaterThan(0)
+    expect(plan.crop.top).toBeGreaterThan(0)
     expect(plan.targetWidth).toBe(1160)
     expect(plan.targetHeight).toBe(880)
-    expect(plan.modelWidth).toBeGreaterThan(plan.crop.width)
-    expect(plan.modelWidth / plan.modelHeight).toBeLessThanOrEqual(4)
+    expect(plan.modelWidth).toBeGreaterThanOrEqual(plan.crop.left + plan.crop.width)
+    expect(plan.modelHeight).toBeGreaterThanOrEqual(plan.crop.top + plan.crop.height)
+    expect(plan.crop.left + plan.crop.width).toBeLessThanOrEqual(plan.modelWidth)
+    expect(plan.crop.top + plan.crop.height).toBeLessThanOrEqual(plan.modelHeight)
+  })
+
+  it('居中补边时左右或上下比例相同', () => {
+    const plan = planBailianOutpaint(1600, 800, { left: 0, right: 0, top: 400, bottom: 400 })
+    expect(plan.passes).toHaveLength(1)
+    expect(plan.passes[0].scales.top).toBe(plan.passes[0].scales.bottom)
+    expect(plan.passes[0].scales.left).toBe(plan.passes[0].scales.right)
+    expect(plan.passes[0].scales.top).toBeGreaterThan(plan.passes[0].scales.left)
+    expect(plan.targetWidth).toBe(1600)
+    expect(plan.targetHeight).toBe(1600)
+    expect(plan.crop.width).toBe(1600)
+    expect(plan.crop.height).toBe(1600)
   })
 
   it('短边不足 512 时连同留白一起放大，最终目标仍是原来的尺寸', () => {
@@ -36,30 +80,44 @@ describe('百炼扩图计划', () => {
     expect(plan.inputWidth).toBeLessThanOrEqual(4096)
     expect(plan.targetWidth).toBe(400)
     expect(plan.targetHeight).toBe(400)
-    expect(plan.offsets.top).toBeGreaterThan(0)
-    expect(plan.offsets.bottom).toBeGreaterThan(0)
+    expect(plan.passes[0].scales.top).toBeGreaterThan(1)
+    expect(plan.passes[0].scales.bottom).toBeGreaterThan(1)
+    expect(plan.crop.width).toBeGreaterThan(0)
+    expect(plan.crop.height).toBeGreaterThan(0)
   })
 
-  it('长边超过 4096 时先缩小再计算偏移', () => {
+  it('长边超过 4096 时先缩小再计算比例', () => {
     const plan = planBailianOutpaint(6000, 4000, { left: 100, right: 100, top: 0, bottom: 0 })
     expect(Math.max(plan.inputWidth, plan.inputHeight)).toBeLessThanOrEqual(4096)
     expect(Math.min(plan.inputWidth, plan.inputHeight)).toBeGreaterThanOrEqual(512)
     expect(plan.targetWidth).toBe(6200)
-    expect(plan.offsets.left).toBeGreaterThan(0)
-    expect(plan.offsets.right).toBeGreaterThan(0)
+    expect(plan.targetHeight).toBe(4000)
+    expect(plan.passes[0].scales.left).toBeGreaterThan(1)
+    expect(plan.passes[0].scales.right).toBeGreaterThan(1)
+    expect(plan.crop.width).toBeGreaterThan(plan.inputWidth)
   })
 
-  it('输出会比 4:1 更宽时，先把短边补足再裁回', () => {
-    const plan = planBailianOutpaint(2000, 512, { left: 1500, right: 1500, top: 0, bottom: 0 })
-    expect(plan.modelWidth / plan.modelHeight).toBeLessThanOrEqual(4)
-    expect(plan.crop.height).toBe(512)
-    expect(plan.crop.top).toBeGreaterThan(0)
-    expect(plan.targetWidth).toBe(5000)
-    expect(plan.targetHeight).toBe(512)
+  it('单边超过 2 倍时拆成第二次 expand，最终仍能裁回目标', () => {
+    const plan = planBailianOutpaint(800, 800, { left: 2000, right: 2000, top: 0, bottom: 0 })
+    expect(plan.passes.length).toBe(2)
+    for (const pass of plan.passes) {
+      expect(pass.scales.left).toBeGreaterThan(1)
+      expect(pass.scales.left).toBeLessThanOrEqual(2)
+      expect(pass.scales.right).toBeGreaterThan(1)
+      expect(pass.scales.right).toBeLessThanOrEqual(2)
+    }
+    expect(plan.passes[0].scales.left).toBe(2)
+    expect(plan.passes[0].modelWidth).toBe(2400)
+    expect(plan.targetWidth).toBe(4800)
+    expect(plan.targetHeight).toBe(800)
+    expect(plan.crop.width).toBe(4800)
+    expect(plan.crop.height).toBe(800)
+    expect(plan.modelWidth).toBeGreaterThanOrEqual(4800)
+    expect(plan.crop.left + plan.crop.width).toBeLessThanOrEqual(plan.modelWidth)
   })
 
-  it('单次偏移盖不住时直接说明，而不是裁掉主体', () => {
-    expect(() => planBailianOutpaint(800, 800, { left: 2000, right: 2000, top: 0, bottom: 0 })).toThrow(/水平方向/)
+  it('两次仍盖不住时直接说明，而不是裁掉主体', () => {
+    expect(() => planBailianOutpaint(800, 800, { left: 4000, right: 4000, top: 0, bottom: 0 })).toThrow(/最多两次/)
   })
 
   it('没有留白时不调用扩图', () => {
