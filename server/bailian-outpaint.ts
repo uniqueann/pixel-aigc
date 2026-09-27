@@ -1,4 +1,5 @@
 import sharp from 'sharp'
+import { Agent, fetch as undiciFetch } from 'undici'
 import { describeError, HttpError } from './errors.js'
 import {
   DEFAULT_EXPAND_PROMPT,
@@ -7,6 +8,16 @@ import {
   type BailianExpandScales,
   type BailianOutpaintPlan,
 } from '../shared/outpaint.js'
+
+export const CONNECT_TIMEOUT_MS = 4_000
+export const SUBMIT_ATTEMPTS = 3
+export const GET_ATTEMPTS = 3
+
+const dashScopeDispatcher = new Agent({
+  connectTimeout: CONNECT_TIMEOUT_MS,
+  headersTimeout: 20_000,
+  bodyTimeout: 30_000,
+})
 
 export interface BailianConfig {
   apiKey: string
@@ -53,11 +64,68 @@ export function bailianConfig(env: NodeJS.ProcessEnv = process.env): BailianConf
   return { apiKey, baseUrl }
 }
 
+/** 只记 host，不把完整 URL 或 Key 打进日志。 */
+export function dashScopeHost(baseUrl: string) {
+  try {
+    return new URL(baseUrl).host
+  } catch {
+    return null
+  }
+}
+
 /** 先密后疏：300ms 起轮询，生成窗口内每 500ms 一次，避免固定 1s/1.5s 空等。 */
 export function outpaintPollDelay(attempt: number): number {
   if (attempt <= 0) return 300
   if (attempt < 16) return 500
   return 800
+}
+
+export function connectRetryDelay(attempt: number): number {
+  return attempt <= 0 ? 250 : 500
+}
+
+/** 仅连接层失败可重试。已收到 HTTP 响应，或请求已被 AbortSignal 取消，都不算。 */
+export function isTransientConnectError(error: unknown): boolean {
+  const codes = new Set<string>()
+  const texts: string[] = []
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    if (current instanceof Error) {
+      const code = 'code' in current && typeof current.code === 'string' ? current.code : ''
+      if (code) codes.add(code)
+      texts.push(current.name, current.message)
+      current = current.cause
+    } else {
+      texts.push(String(current))
+      break
+    }
+  }
+  const text = `${[...codes].join(' ')} ${texts.join(' ')}`
+  if ((codes.has('ABORT_ERR') || /AbortError|TimeoutError|The operation was aborted/i.test(text)
+    || codes.has('UND_ERR_HEADERS_TIMEOUT')
+    || codes.has('UND_ERR_BODY_TIMEOUT')
+    || codes.has('UND_ERR_RESPONSE_TIMEOUT')
+    || /UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT|UND_ERR_RESPONSE_TIMEOUT/i.test(text))
+    && !/ConnectTimeout|UND_ERR_CONNECT_TIMEOUT/i.test(text)) {
+    return false
+  }
+  return codes.has('UND_ERR_CONNECT_TIMEOUT')
+    || codes.has('UND_ERR_SOCKET')
+    || codes.has('ECONNRESET')
+    || codes.has('ETIMEDOUT')
+    || codes.has('ENOTFOUND')
+    || codes.has('EAI_AGAIN')
+    || codes.has('ECONNREFUSED')
+    || codes.has('EPIPE')
+    || codes.has('EHOSTUNREACH')
+    || /ConnectTimeoutError|UND_ERR_CONNECT_TIMEOUT|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/i.test(text)
+}
+
+function defaultFetch(input: Parameters<typeof fetch>[0], init?: RequestInit) {
+  return undiciFetch(
+    input as Parameters<typeof undiciFetch>[0],
+    { ...(init as object), dispatcher: dashScopeDispatcher } as Parameters<typeof undiciFetch>[1],
+  ) as unknown as Promise<Response>
 }
 
 function defaultLog(entry: Record<string, unknown>) {
@@ -102,17 +170,34 @@ async function callDashScope(
   input: Parameters<typeof fetch>[0],
   init: RequestInit | undefined,
   stage: string,
+  attempts: number,
+  abortMs: number,
+  sleep: (ms: number) => Promise<void>,
   log: OutpaintLog,
-  extra: Record<string, unknown> & { now: () => number; started: number },
+  extra: Record<string, unknown> & { now: () => number },
 ) {
-  try {
-    return await fetchImpl(input, init)
-  } catch (error) {
-    const { now, started, ...rest } = extra
-    const details = describeError(error)
-    log({ stage, error: details.message, cause: details.cause ?? null, ms: now() - started, ...rest })
-    throw new HttpError(502, '无法连接到阿里云百炼扩图服务，请稍后重试', 'OUTPAINT_FAILED', { cause: error, stage })
+  const { now, ...rest } = extra
+  let lastError: unknown
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const started = now()
+    try {
+      return await fetchImpl(input, { ...init, signal: AbortSignal.timeout(abortMs) })
+    } catch (error) {
+      lastError = error
+      const details = describeError(error)
+      const retry = isTransientConnectError(error) && attempt < attempts
+      log({
+        stage, attempt, attempts, retry,
+        error: details.message, cause: details.cause ?? null,
+        ms: now() - started, ...rest,
+      })
+      if (!retry) {
+        throw new HttpError(502, '无法连接到阿里云百炼扩图服务，请稍后重试', 'OUTPAINT_FAILED', { cause: error, stage })
+      }
+      await sleep(connectRetryDelay(attempt - 1))
+    }
   }
+  throw new HttpError(502, '无法连接到阿里云百炼扩图服务，请稍后重试', 'OUTPAINT_FAILED', { cause: lastError, stage })
 }
 
 function resultImageUrl(payload: BailianPayload) {
@@ -210,12 +295,14 @@ async function submitExpand(
         watermark: false,
       },
     }),
-    signal: AbortSignal.timeout(20_000),
-  }, 'submit', deps.log, { requestId: deps.requestId, pass: deps.pass, bytes: image.length, now: deps.now, started: submitStarted })
+  }, 'submit', SUBMIT_ATTEMPTS, 20_000, deps.sleep, deps.log, {
+    requestId: deps.requestId, pass: deps.pass, bytes: image.length, host: dashScopeHost(config.baseUrl), now: deps.now,
+  })
   const createdPayload = await readJson(created)
   deps.log({
     requestId: deps.requestId, stage: 'submit', pass: deps.pass, ms: deps.now() - submitStarted,
     bytes: image.length, status: created.status, taskId: createdPayload.output?.task_id ?? null,
+    host: dashScopeHost(config.baseUrl),
   })
   if (!created.ok) throw payloadError(createdPayload) ?? new HttpError(502, '扩图任务提交失败', 'OUTPAINT_FAILED')
   const failed = payloadError(createdPayload)
@@ -233,8 +320,9 @@ async function submitExpand(
     const pollStarted = deps.now()
     const polled = await callDashScope(deps.fetch, `${config.baseUrl}/api/v1/tasks/${taskId}`, {
       headers: { Authorization: `Bearer ${config.apiKey}` },
-      signal: AbortSignal.timeout(20_000),
-    }, 'poll', deps.log, { requestId: deps.requestId, pass: deps.pass, attempt, now: deps.now, started: pollStarted })
+    }, 'poll', GET_ATTEMPTS, 20_000, deps.sleep, deps.log, {
+      requestId: deps.requestId, pass: deps.pass, poll: attempt, now: deps.now,
+    })
     const payload = await readJson(polled)
     const status = payload.output?.task_status
     polls += 1
@@ -257,8 +345,8 @@ async function submitExpand(
   })
   if (!imageUrl) throw new HttpError(504, '扩图超时，请稍后重试', 'OUTPAINT_TIMEOUT')
   const downloadStarted = deps.now()
-  const downloaded = await callDashScope(deps.fetch, imageUrl, { signal: AbortSignal.timeout(30_000) }, 'download', deps.log, {
-    requestId: deps.requestId, pass: deps.pass, now: deps.now, started: downloadStarted,
+  const downloaded = await callDashScope(deps.fetch, imageUrl, undefined, 'download', GET_ATTEMPTS, 30_000, deps.sleep, deps.log, {
+    requestId: deps.requestId, pass: deps.pass, now: deps.now,
   })
   if (!downloaded.ok) throw new HttpError(502, '扩图结果下载失败', 'OUTPAINT_FAILED')
   const buffer = Buffer.from(await downloaded.arrayBuffer())
@@ -271,7 +359,7 @@ async function submitExpand(
 export async function expandWithBailian(image: Buffer, padding: PixelPadding, deps: BailianDeps = {}) {
   const config = bailianConfig(deps.env ?? process.env)
   if (!config) throw new HttpError(503, '智能扩展尚未配置阿里云百炼 API Key', 'OUTPAINT_UNAVAILABLE')
-  const fetchImpl = deps.fetch ?? fetch
+  const fetchImpl = deps.fetch ?? defaultFetch
   const sleep = deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)))
   const now = deps.now ?? Date.now
   const log = deps.log ?? defaultLog
@@ -298,8 +386,9 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
     targetWidth: plan.targetWidth, targetHeight: plan.targetHeight,
     passes: plan.passes.length, scales: plan.passes.map(pass => pass.scales),
     encodeMs: now() - encodeStarted, encodeBytes: encoded.length, reusedJpeg: encoded === image,
+    host: dashScopeHost(config.baseUrl),
   })
-  const deadline = now() + (deps.deadlineMs ?? 80_000)
+  const deadline = now() + (deps.deadlineMs ?? 100_000)
   let current = encoded
   for (let index = 0; index < plan.passes.length; index += 1) {
     if (now() > deadline) throw new HttpError(504, '扩图超时，请稍后重试', 'OUTPAINT_TIMEOUT')
