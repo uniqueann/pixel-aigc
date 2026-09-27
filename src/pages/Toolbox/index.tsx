@@ -1,14 +1,15 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ToolSwitcher from '@/components/ToolSwitcher'
 import { loadBgRemoveConfigured } from '@/services/api/capabilities'
 import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
+import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { TOOLBOX_TOOLS } from './tools'
 
-const WatermarkTool = lazy(() => import('./WatermarkTool'))
-const AspectRatioTool = lazy(() => import('./AspectRatioTool'))
-const BgRemoveTool = lazy(() => import('./BgRemoveTool'))
+const WatermarkTool = lazyWithRetry(() => import('./WatermarkTool'))
+const AspectRatioTool = lazyWithRetry(() => import('./AspectRatioTool'))
+const BgRemoveTool = lazyWithRetry(() => import('./BgRemoveTool'))
 
 export default function Toolbox() {
   const { tool } = useParams<{ tool: string }>()

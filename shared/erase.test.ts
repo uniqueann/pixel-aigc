@@ -63,6 +63,16 @@ describe('消除蒙版几何', () => {
     expect(dilated[0]).toBe(0)
   })
 
+  it('可要求最少涂抹像素，避免误触一个点也过关', () => {
+    const mask = new Uint8Array(100)
+    mask[0] = 255
+    mask[1] = 255
+    expect(maskHasEraseRegion(mask)).toBe(true)
+    expect(maskHasEraseRegion(mask, MASK_WHITE_THRESHOLD, 32)).toBe(false)
+    mask.fill(255, 0, 32)
+    expect(maskHasEraseRegion(mask, MASK_WHITE_THRESHOLD, 32)).toBe(true)
+  })
+
   it('640×420 contain 映射只取图内笔划，忽略左右黑边', () => {
     const overlay = new Uint8Array(ERASE_OVERLAY_WIDTH * ERASE_OVERLAY_HEIGHT)
     const image = { width: 2000, height: 1000 }

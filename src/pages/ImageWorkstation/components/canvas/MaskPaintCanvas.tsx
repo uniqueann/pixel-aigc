@@ -18,6 +18,7 @@ interface MaskPaintCanvasProps {
   smartSelectEnabled: boolean
   refineMode?: boolean
   onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void
+  onMaskChange?: (hasPaint: boolean) => void
 }
 
 export interface MaskPaintCanvasHandle {
@@ -30,8 +31,27 @@ export interface MaskPaintCanvasHandle {
   canRedo: boolean
 }
 
+function paintSurface(canvas: Canvas | null, fallback: HTMLCanvasElement | null) {
+  return (canvas as Canvas & { lowerCanvasEl?: HTMLCanvasElement }).lowerCanvasEl ?? fallback
+}
+
+function overlayHasPaint(canvas: HTMLCanvasElement | null, minPixels = 32) {
+  if (!canvas) return false
+  const context = canvas.getContext('2d')
+  if (!context) return false
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
+  let count = 0
+  for (let index = 3; index < data.length; index += 4) {
+    if (data[index] > 0) {
+      count += 1
+      if (count >= minPixels) return true
+    }
+  }
+  return false
+}
+
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange },
+  { imageUrl, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange, onMaskChange },
   ref,
 ) {
   const { hostRef, display } = useCanvasDisplay()
@@ -67,7 +87,8 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     historyRef.current = nextHistory
     historyIndexRef.current = nextHistory.length - 1
     updateHistoryState(historyIndexRef.current, nextHistory.length)
-  }, [updateHistoryState])
+    onMaskChange?.(overlayHasPaint(paintSurface(canvas, canvasElementRef.current)))
+  }, [onMaskChange, updateHistoryState])
 
   const restoreSnapshot = useCallback(
     async (nextIndex: number) => {
@@ -82,8 +103,9 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       historyIndexRef.current = nextIndex
       restoringRef.current = false
       updateHistoryState(nextIndex, historyRef.current.length)
+      onMaskChange?.(overlayHasPaint(paintSurface(canvas, canvasElementRef.current)))
     },
-    [updateHistoryState],
+    [onMaskChange, updateHistoryState],
   )
 
   const clear = useCallback(() => {
@@ -109,22 +131,24 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     () => ({
       exportMask: () => {
         const canvas = fabricCanvasRef.current
-        const canvasElement = canvasElementRef.current
-        if (!canvas || !canvasElement) throw new Error('蒙版画布尚未准备好')
+        if (!canvas) throw new Error('蒙版画布尚未准备好')
         canvas.renderAll()
+        const surface = paintSurface(canvas, canvasElementRef.current)
+        if (!surface) throw new Error('蒙版画布尚未准备好')
         if (imageNaturalSize && imageNaturalSize.width > 0 && imageNaturalSize.height > 0) {
-          return exportEraseMask(canvasElement, imageNaturalSize)
+          return exportEraseMask(surface, imageNaturalSize)
         }
-        return exportPaintedMask(canvasElement)
+        return exportPaintedMask(surface)
       },
       exportRefineMarks: () => {
         const canvas = fabricCanvasRef.current
-        const canvasElement = canvasElementRef.current
-        if (!canvas || !canvasElement) throw new Error('蒙版画布尚未准备好')
+        if (!canvas) throw new Error('蒙版画布尚未准备好')
         canvas.renderAll()
-        const context = canvasElement.getContext('2d')
+        const surface = paintSurface(canvas, canvasElementRef.current)
+        if (!surface) throw new Error('蒙版画布尚未准备好')
+        const context = surface.getContext('2d')
         if (!context) throw new Error('当前浏览器不支持画布蒙版导出')
-        return context.getImageData(0, 0, canvasElement.width, canvasElement.height)
+        return context.getImageData(0, 0, surface.width, surface.height)
       },
       clear,
       undo,
@@ -163,6 +187,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       height: CANVAS_HEIGHT,
       selection: false,
       isDrawingMode: true,
+      enableRetinaScaling: false,
     })
     fabricCanvasRef.current = canvas
 
@@ -177,6 +202,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     historyRef.current = [JSON.stringify(canvas.toJSON())]
     historyIndexRef.current = 0
     updateHistoryState(0, 1)
+    onMaskChange?.(false)
 
     canvas.on('path:created', ({ path }) => {
       path.set({
@@ -214,7 +240,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       fabricCanvasRef.current = null
       void canvas.dispose()
     }
-  }, [imageUrl, pushSnapshot, updateHistoryState])
+  }, [imageUrl, onMaskChange, pushSnapshot, updateHistoryState])
 
   return (
     <div ref={hostRef} className="workstation-paint-host">

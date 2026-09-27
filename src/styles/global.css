@@ -764,6 +764,12 @@ a {
   font-size: 12px;
 }
 
+.image-workstation-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .workstation-upload {
   width: min(520px, calc(100% - 24px));
   max-width: 100%;
@@ -789,6 +795,7 @@ a {
 }
 
 .workstation-result-item {
+  position: relative;
   width: 58px;
   height: 58px;
   padding: 2px;
@@ -796,7 +803,6 @@ a {
   border: 1px solid var(--color-border-strong);
   border-radius: 7px;
   background: var(--color-surface-2);
-  cursor: pointer;
 }
 
 .workstation-result-item.is-selected {
@@ -804,11 +810,33 @@ a {
   box-shadow: 0 0 0 1px var(--color-accent);
 }
 
+.workstation-result-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
 .workstation-result-item img {
   width: 100%;
   height: 100%;
   border-radius: 4px;
   object-fit: cover;
+}
+
+.workstation-result-download {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  color: #fff;
+  background: #000a;
 }
 
 .field-label {
@@ -1099,6 +1127,56 @@ a {
     flex-wrap: wrap;
     gap: 10px;
   }
+}
+
+.assets-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.assets-page-header h2 {
+  margin: 0;
+}
+
+.assets-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 0;
+  color: var(--color-text-secondary);
+}
+
+.assets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.assets-card .ant-card-cover img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  background: var(--color-surface-2);
+}
+
+.assets-card-title {
+  font-weight: 500;
+}
+
+.assets-card-meta,
+.assets-card-subtitle {
+  margin: 4px 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.assets-card-subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 560px) {

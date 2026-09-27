@@ -12,6 +12,9 @@ import type { AssetId, GenerationId, ImageAsset } from '@/editor/types'
 import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
 import { Capability, type GenerationTask, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
+import { recordWorkstationHistory } from '@/features/assets/workstationHistory'
+import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
+import { isVisuallySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
 import { finalizeWorkstationResults } from '../results'
 import { COMING_SOON_SUBMIT_MESSAGE, isWorkstationToolReady } from '../tools/registry'
 import type {
@@ -79,6 +82,36 @@ export function useImageWorkstationController({
     return asset?.type === 'image' ? [asset] : []
   })
 
+  const persistHistory = useCallback((
+    completedTask: GenerationTask<unknown>,
+    assets: ImageAsset[],
+  ) => {
+    const toolSlug = completedTask.capability === Capability.Inpaint
+      ? ((completedTask.params as InpaintTaskParams).mode === 'repaint' ? 'repaint' : 'remove')
+      : completedTask.capability === Capability.Outpaint
+        ? 'outpaint'
+        : activeTool.slug
+    const prompt = typeof (completedTask.params as { prompt?: unknown })?.prompt === 'string'
+      ? (completedTask.params as { prompt?: string }).prompt
+      : undefined
+    void Promise.all(assets.map(async (asset, index) => {
+      const response = await fetch(asset.url)
+      if (!response.ok) throw new Error('读取结果失败')
+      await recordWorkstationHistory({
+        id: `${completedTask.id}:${index}`,
+        toolSlug,
+        capability: completedTask.capability,
+        prompt,
+        width: asset.width,
+        height: asset.height,
+        mimeType: asset.mimeType || response.headers.get('Content-Type') || 'image/jpeg',
+        result: await response.blob(),
+        createdAt: completedTask.createdAt,
+        updatedAt: completedTask.updatedAt,
+      })
+    })).catch(() => undefined)
+  }, [activeTool.slug])
+
   const applyCompletedTask = useCallback((
     completedTask: GenerationTask<unknown>,
     assets: ImageAsset[],
@@ -92,7 +125,8 @@ export function useImageWorkstationController({
     setOutputAssetIds(finalized.assets.map((asset) => asset.id))
     setInputAssetId(finalized.assets[0].id)
     setProtocolError(undefined)
-  }, [])
+    persistHistory(completedTask, finalized.assets)
+  }, [persistHistory])
 
   const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
     const context = submissionsRef.current.get(nextTask.id)
@@ -122,7 +156,8 @@ export function useImageWorkstationController({
     try {
       const response = await fetch(sourceAsset.url)
       if (!response.ok) throw new Error('读取原图失败')
-      const result = await requestRepaint(await response.blob(), maskDataUrl, promptText)
+      const original = await response.blob()
+      const result = await requestRepaint(original, maskDataUrl, promptText)
       const now = new Date().toISOString()
       const completed: GenerationTask<InpaintTaskParams> = {
         id: crypto.randomUUID(),
@@ -144,10 +179,14 @@ export function useImageWorkstationController({
         request: { capability: Capability.Inpaint, params: completed.params, outputSize },
         options,
       })
-      const adapted = service.reconcile(completed, options)
       setTask(completed)
       upsertTask(completed)
       setActiveTaskId(undefined)
+      if (await isVisuallySameImage(original, result)) {
+        setProtocolError(SOURCE_ECHO_ERROR)
+        return completed
+      }
+      const adapted = service.reconcile(completed, options)
       applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
       return completed
     } catch (error) {
@@ -200,10 +239,14 @@ export function useImageWorkstationController({
         request: { capability: Capability.Outpaint, params: completed.params, outputSize: targetSize },
         options,
       })
-      const adapted = service.reconcile(completed, options)
       setTask(completed)
       upsertTask(completed)
       setActiveTaskId(undefined)
+      if (hasPad && await isVisuallySameImage(input, result)) {
+        setProtocolError(SOURCE_ECHO_ERROR)
+        return completed
+      }
+      const adapted = service.reconcile(completed, options)
       applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
       return completed
     } catch (error) {
@@ -255,10 +298,14 @@ export function useImageWorkstationController({
         request: { capability: Capability.Inpaint, params: completed.params, outputSize },
         options,
       })
-      const adapted = service.reconcile(completed, options)
       setTask(completed)
       upsertTask(completed)
       setActiveTaskId(undefined)
+      if (await isVisuallySameImage(original, result)) {
+        setProtocolError(SOURCE_ECHO_ERROR)
+        return completed
+      }
+      const adapted = service.reconcile(completed, options)
       applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
       return completed
     } catch (error) {
@@ -316,16 +363,11 @@ export function useImageWorkstationController({
 
     if (activeTool.slug === 'repaint' && !liveCapabilityReady(Capability.Inpaint)) {
       if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
-      let exported: ReturnType<WorkstationCanvasHandle['exportMask']>
       try {
-        exported = canvasHandle.exportMask()
+        return completeRepaint(inputAsset, prompt?.trim() ?? '', canvasHandle.exportMask().maskDataUrl, inputAsset.generationId)
       } catch (error) {
-        if (error instanceof Error && error.message === '请先涂抹要消除的区域') {
-          throw new Error('请先涂抹要重绘的区域')
-        }
-        throw error
+        throw remapMaskExportError(error, 'repaint')
       }
-      return completeRepaint(inputAsset, prompt?.trim() ?? '', exported.maskDataUrl, inputAsset.generationId)
     }
 
     if (activeTool.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
@@ -341,7 +383,11 @@ export function useImageWorkstationController({
 
     if (activeTool.slug === 'remove' && !liveCapabilityReady(Capability.Inpaint)) {
       if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
-      return completeErase(inputAsset, canvasHandle.exportMask().maskDataUrl, prompt ?? '', inputAsset.generationId)
+      try {
+        return completeErase(inputAsset, canvasHandle.exportMask().maskDataUrl, prompt ?? '', inputAsset.generationId)
+      } catch (error) {
+        throw remapMaskExportError(error, 'remove')
+      }
     }
 
     let canvasContext = {}
