@@ -77,6 +77,8 @@ export interface OutpaintTaskParams extends ImageTaskParams {
   targetSize: { width: number; height: number }
   /** 原图在目标画布中的偏移量，用于后端还原蒙版位置 */
   originOffset: { x: number; y: number }
+  /** contain 后的原图像素；预设模式可能小于上传原图 */
+  sourceSize?: { width: number; height: number }
 }
 
 /** 自由画布文生图任务参数 */

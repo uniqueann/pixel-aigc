@@ -43,4 +43,5 @@ export interface WorkstationCanvasHandle {
   exportMask: () => { maskDataUrl: string }
   getTargetSize?: () => { width: number; height: number }
   getOriginOffset?: () => { x: number; y: number }
+  getSourceSize?: () => { width: number; height: number }
 }
