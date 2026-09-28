@@ -10,6 +10,25 @@ export const EMPTY_REPAINT_MASK_MESSAGE = '请先涂抹要重绘的区域'
 /** 排除误触的一两个像素，要求至少有一小段笔划。 */
 export const MIN_MASK_PIXELS = 32
 
+/** 涂抹层只要有半透明像素就算已画；智能选区贴图和红笔共用这条规则。 */
+export function overlayDataHasPaint(rgba: Uint8Array | Uint8ClampedArray, minPixels = MIN_MASK_PIXELS) {
+  let count = 0
+  for (let index = 3; index < rgba.length; index += 4) {
+    if (rgba[index] > 0) {
+      count += 1
+      if (count >= minPixels) return true
+    }
+  }
+  return false
+}
+
+export function overlayHasPaint(canvas: HTMLCanvasElement | null, minPixels = MIN_MASK_PIXELS) {
+  if (!canvas) return false
+  const context = canvas.getContext('2d')
+  if (!context) return false
+  return overlayDataHasPaint(context.getImageData(0, 0, canvas.width, canvas.height).data, minPixels)
+}
+
 export function emptyMaskMessage(mode?: 'remove' | 'repaint') {
   return mode === 'repaint' ? EMPTY_REPAINT_MASK_MESSAGE : EMPTY_ERASE_MASK_MESSAGE
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_ERASE_MASK_MESSAGE, emptyMaskMessage, remapMaskExportError } from './maskExport'
+import { EMPTY_ERASE_MASK_MESSAGE, emptyMaskMessage, MIN_MASK_PIXELS, overlayDataHasPaint, remapMaskExportError } from './maskExport'
+import { maskHasEraseRegion, thresholdPaintedOverlay } from '../../../../shared/erase'
+import { workstationGenerateBlockReason } from './generateGate'
 
 describe('蒙版导出提示', () => {
   it('按工具给出空蒙版文案', () => {
@@ -12,5 +14,64 @@ describe('蒙版导出提示', () => {
     expect(remapped).toBeInstanceOf(Error)
     expect((remapped as Error).message).toBe('请先涂抹要重绘的区域')
     expect(remapMaskExportError(new Error('蒙版画布尚未准备好'), 'repaint').message).toBe('蒙版画布尚未准备好')
+  })
+})
+
+describe('智能选区也算已涂抹', () => {
+  it('白色半透明贴图（约 48% 不透明）仍超过最小像素门槛', () => {
+    const rgba = new Uint8Array(40 * 4)
+    for (let index = 0; index < 40; index += 1) {
+      rgba[index * 4] = 255
+      rgba[index * 4 + 1] = 255
+      rgba[index * 4 + 2] = 255
+      rgba[index * 4 + 3] = 122
+    }
+    const overlay = thresholdPaintedOverlay(rgba, 40, 1)
+    expect(overlayDataHasPaint(rgba, MIN_MASK_PIXELS)).toBe(true)
+    expect(maskHasEraseRegion(overlay, undefined, MIN_MASK_PIXELS)).toBe(true)
+  })
+
+  it('画笔同色半透明红也算选区', () => {
+    const rgba = new Uint8Array(40 * 4)
+    for (let index = 0; index < 40; index += 1) {
+      rgba[index * 4] = 220
+      rgba[index * 4 + 1] = 38
+      rgba[index * 4 + 2] = 38
+      rgba[index * 4 + 3] = 128
+    }
+    expect(overlayDataHasPaint(rgba, MIN_MASK_PIXELS)).toBe(true)
+    expect(Array.from(thresholdPaintedOverlay(rgba, 40, 1)).every(value => value === 255)).toBe(true)
+  })
+})
+
+describe('生成按钮禁用原因', () => {
+  it('有蒙版时可点生成，没有蒙版则给出涂抹提示', () => {
+    expect(workstationGenerateBlockReason({
+      toolReady: true,
+      hasInput: true,
+      formLocked: false,
+      maskRequired: true,
+      hasMaskPaint: true,
+      repaintBlocked: false,
+      mode: 'repaint',
+    })).toBeUndefined()
+    expect(workstationGenerateBlockReason({
+      toolReady: true,
+      hasInput: true,
+      formLocked: false,
+      maskRequired: true,
+      hasMaskPaint: false,
+      repaintBlocked: false,
+      mode: 'repaint',
+    })).toBe('请先涂抹要重绘的区域')
+    expect(workstationGenerateBlockReason({
+      toolReady: true,
+      hasInput: true,
+      formLocked: false,
+      maskRequired: true,
+      hasMaskPaint: false,
+      repaintBlocked: false,
+      mode: 'remove',
+    })).toBe(EMPTY_ERASE_MASK_MESSAGE)
   })
 })

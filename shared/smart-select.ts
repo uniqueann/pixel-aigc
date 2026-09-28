@@ -5,6 +5,8 @@ export const GOODS_MATTING_MAX_WIDTH = 7680
 export const GOODS_MATTING_MAX_HEIGHT = 4320
 export const GOODS_MATTING_MIN_EDGE = 32
 export const GOODS_MATTING_MAX_BYTES = 10 * 1024 * 1024
+/** 选区不需要原图像素级精度；缩小后再送腾讯云，缩短 pdx1→COS 传输和抠图时间。 */
+export const GOODS_MATTING_WORKING_MAX_EDGE = 1280
 export const ALPHA_THRESHOLD = 128
 export const SELECT_DILATE_RADIUS = 4
 export const SELECT_FEATHER_RADIUS = 2
@@ -48,6 +50,19 @@ export function fitMattingSize(width: number, height: number) {
   fittedWidth = Math.min(GOODS_MATTING_MAX_WIDTH, Math.max(GOODS_MATTING_MIN_EDGE, fittedWidth))
   fittedHeight = Math.min(GOODS_MATTING_MAX_HEIGHT, Math.max(GOODS_MATTING_MIN_EDGE, fittedHeight))
   return { width: fittedWidth, height: fittedHeight, scale }
+}
+
+/** 硬限制之内再收到工作边长，点击坐标仍是 0–1，蒙版会拉伸回预览框。 */
+export function fitMattingWorkingSize(width: number, height: number) {
+  const fitted = fitMattingSize(width, height)
+  const longest = Math.max(fitted.width, fitted.height)
+  const scale = Math.min(1, GOODS_MATTING_WORKING_MAX_EDGE / longest)
+  if (scale >= 1) return fitted
+  return {
+    width: Math.max(GOODS_MATTING_MIN_EDGE, Math.round(fitted.width * scale)),
+    height: Math.max(GOODS_MATTING_MIN_EDGE, Math.round(fitted.height * scale)),
+    scale: fitted.scale * scale,
+  }
 }
 
 /** 点击换算到原图 0–1。落在 contain 留白上时返回 null，调用方不应请求接口。 */
@@ -306,7 +321,24 @@ export function opaqueCount(rgba: ArrayLike<number>, width: number, height: numb
   return count
 }
 
-/** 只反转图片矩形内的选区，留白保持透明。 */
+/** 涂抹层预览色，与画笔 `rgba(220, 38, 38, 0.5)` 一致。 */
+export const MASK_PAINT_RGB = { r: 220, g: 38, b: 38 }
+export const MASK_PAINT_ALPHA = 128
+export const MASK_PAINT_CSS = 'rgba(220, 38, 38, 0.5)'
+
+/** 把任意颜色的透明蒙版改成和画笔相同的半透明红。 */
+export function tintOverlayAsBrush(rgba: Uint8Array | Uint8ClampedArray) {
+  for (let index = 0; index < rgba.length; index += 4) {
+    const alpha = rgba[index + 3]
+    if (alpha === 0) continue
+    rgba[index] = MASK_PAINT_RGB.r
+    rgba[index + 1] = MASK_PAINT_RGB.g
+    rgba[index + 2] = MASK_PAINT_RGB.b
+    rgba[index + 3] = Math.max(1, Math.round(alpha * MASK_PAINT_ALPHA / 255))
+  }
+}
+
+/** 只反转图片矩形内的选区，留白保持透明。新选区用画笔同色。 */
 export function invertContainedAlpha(rgba: Uint8Array | Uint8ClampedArray, width: number, height: number, rect: PixelRect) {
   const x0 = Math.max(0, rect.x)
   const y0 = Math.max(0, rect.y)
@@ -318,10 +350,10 @@ export function invertContainedAlpha(rgba: Uint8Array | Uint8ClampedArray, width
       if (rgba[offset + 3] > 0) {
         rgba[offset + 3] = 0
       } else {
-        rgba[offset] = 255
-        rgba[offset + 1] = 255
-        rgba[offset + 2] = 255
-        rgba[offset + 3] = 255
+        rgba[offset] = MASK_PAINT_RGB.r
+        rgba[offset + 1] = MASK_PAINT_RGB.g
+        rgba[offset + 2] = MASK_PAINT_RGB.b
+        rgba[offset + 3] = MASK_PAINT_ALPHA
       }
     }
   }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { DownloadOutlined } from '@ant-design/icons'
-import { App, Button } from 'antd'
+import { App, Button, Tooltip } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import ToolSwitcher from '@/components/ToolSwitcher'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
@@ -28,6 +28,7 @@ import { downloadImageAsset, filenameForWorkstationResult } from '@/features/ima
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import ParamPanel from './components/ParamPanel'
+import { workstationGenerateBlockReason } from './utils/generateGate'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
@@ -91,6 +92,16 @@ export default function ImageWorkstation() {
   const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
     ?? controller.outputAssets[0]
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
+  const generateBlockReason = workstationGenerateBlockReason({
+    toolReady,
+    hasInput: Boolean(controller.inputAsset),
+    formLocked: controller.formLocked,
+    submitting: controller.submitting,
+    maskRequired,
+    hasMaskPaint,
+    repaintBlocked: activeTool.slug === 'repaint' && !repaintReady,
+    mode: inpaintMode,
+  })
 
   const handleCanvasReady = useCallback((handle: CanvasHandle | null) => {
     canvasHandleRef.current = handle
@@ -359,14 +370,18 @@ export default function ImageWorkstation() {
             >
               下载结果
             </Button>
-            <Button
-              type="primary"
-              loading={controller.submitting}
-              disabled={!toolReady || !controller.inputAsset || controller.formLocked || (activeTool.slug === 'repaint' && !repaintReady) || (maskRequired && !hasMaskPaint)}
-              onClick={handleGenerate}
-            >
-              生成
-            </Button>
+            <Tooltip title={generateBlockReason}>
+              <span>
+                <Button
+                  type="primary"
+                  loading={controller.submitting}
+                  disabled={Boolean(generateBlockReason)}
+                  onClick={handleGenerate}
+                >
+                  生成
+                </Button>
+              </span>
+            </Tooltip>
           </div>
         )}
       </div>

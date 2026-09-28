@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { HttpError } from '../errors.js'
 import {
@@ -10,6 +11,46 @@ import { segmentProvider } from './providers.js'
 import type { GoodsAlpha, SegmentProvider, SmartSelectRequest, SmartSelectResponse } from './types.js'
 
 const MAX_SESSION_CHARS = 6_000_000
+const MAX_GOODS_CACHE = 8
+
+interface CachedGoods {
+  goods: GoodsAlpha
+  session: SegmentSession | null
+  provider: string
+}
+
+const goodsCache = new Map<string, CachedGoods>()
+
+export function clearSmartSelectGoodsCache() {
+  goodsCache.clear()
+}
+
+function digestKey(kind: 'image' | 'session', value: Buffer | string) {
+  return `${kind}:${createHash('sha256').update(value).digest('hex')}`
+}
+
+function readCached(key: string) {
+  const entry = goodsCache.get(key)
+  if (!entry) return null
+  goodsCache.delete(key)
+  goodsCache.set(key, entry)
+  return entry
+}
+
+function writeCached(key: string, entry: CachedGoods) {
+  if (goodsCache.has(key)) goodsCache.delete(key)
+  goodsCache.set(key, entry)
+  while (goodsCache.size > MAX_GOODS_CACHE) {
+    const oldest = goodsCache.keys().next().value
+    if (oldest === undefined) break
+    goodsCache.delete(oldest)
+  }
+}
+
+function rememberGoods(entry: CachedGoods, image?: Buffer) {
+  if (image?.length) writeCached(digestKey('image', image), entry)
+  if (entry.session) writeCached(digestKey('session', entry.session.payload), entry)
+}
 
 interface GoodsSessionPayload {
   v: 1
@@ -96,24 +137,44 @@ async function encodeSession(providerId: string, goods: GoodsAlpha): Promise<Seg
   return { provider: providerId, payload }
 }
 
+async function loadGoods(
+  input: SmartSelectRequest,
+  provider: SegmentProvider | null,
+): Promise<CachedGoods> {
+  if (input.session) {
+    const cached = readCached(digestKey('session', input.session.payload))
+    if (cached) return cached
+    const decoded = await decodeSession(input.session)
+    if (decoded) {
+      const entry = { goods: decoded, session: input.session, provider: input.session.provider }
+      rememberGoods(entry)
+      return entry
+    }
+    if (!input.image?.length) {
+      throw new HttpError(400, '选区缓存已失效，请再点一次', 'SMART_SELECT_SESSION_INVALID')
+    }
+  }
+  if (!input.image?.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
+  if (input.image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+  const cached = readCached(digestKey('image', input.image))
+  if (cached) return cached
+  if (!provider) throw new HttpError(503, '智能选区尚未配置', 'SMART_SELECT_UNCONFIGURED')
+  const goods = await provider.segmentGoods(input.image)
+  const session = await encodeSession(provider.id, goods)
+  const entry = { goods, session, provider: provider.id }
+  rememberGoods(entry, input.image)
+  return entry
+}
+
 export async function selectSmartMask(
   input: SmartSelectRequest,
   provider: SegmentProvider | null = segmentProvider(),
 ): Promise<SmartSelectResponse> {
-  let goods = input.session ? await decodeSession(input.session) : null
-  let sessionProvider = input.session?.provider ?? provider?.id ?? 'tencent-goods'
-  if (!goods) {
-    if (input.session && !input.image?.length) {
-      throw new HttpError(400, '选区缓存已失效，请再点一次', 'SMART_SELECT_SESSION_INVALID')
-    }
-    if (!input.image?.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
-    if (input.image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-    if (!provider) throw new HttpError(503, '智能选区尚未配置', 'SMART_SELECT_UNCONFIGURED')
-    goods = await provider.segmentGoods(input.image)
-    sessionProvider = provider.id
-  }
+  const loaded = await loadGoods(input, provider)
+  const { goods } = loaded
   const selected = buildSelectionAlpha(goods.alpha, goods.width, goods.height, input.point, input.box)
-  const session = await encodeSession(sessionProvider, goods)
+  const session = loaded.session ?? await encodeSession(loaded.provider, goods)
+  if (session && !loaded.session) rememberGoods({ ...loaded, session }, input.image)
   if ('error' in selected) throw selectionFailure(selected.error, session)
   const bbox = alphaBBox(selected.alpha, goods.width, goods.height)
   if (!bbox) throw selectionFailure('miss', session)
