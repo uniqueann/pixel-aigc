@@ -30,13 +30,16 @@ export function adaptGenerationTask<TParams>(
   const generationId = generationIdForTask(task.id)
   const outputSize = options.outputSize ?? { width: 0, height: 0 }
   const isVideo = task.capability === Capability.TextToVideo
+  const resultImages = task.resultImages ?? []
   const assets = (task.resultUrls ?? []).map((url, index) => {
+    const measured = resultImages[index]
     const common = {
       id: assetIdForTaskResult(task.id, index),
       name: `生成结果 ${index + 1}`,
-      url,
-      width: outputSize.width,
-      height: outputSize.height,
+      url: measured?.url ?? url,
+      width: measured?.width || outputSize.width,
+      height: measured?.height || outputSize.height,
+      mimeType: measured?.mimeType,
       generationId,
       createdAt: task.updatedAt,
     }

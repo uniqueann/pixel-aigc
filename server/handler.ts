@@ -9,6 +9,10 @@ import { readProject, requireProject, toAsset, validateReferences } from './proj
 import { signRead, signUpload, verifyAndPromote } from './storage.js'
 import { handleModelRoute } from './model-settings.js'
 import { handleEmailTaskRoute } from './email-tasks.js'
+import { handleImageTaskRoute, peekImageTask } from './image-jobs/route.js'
+import { IMAGE_TASK_CAPABILITIES } from './image-jobs/service.js'
+import { imageModelsAvailable, publicConfiguredImageModels } from './image-providers/registry.js'
+import { handleTaskInputs } from './task-inputs.js'
 import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
 import { eraseWithBailian } from './bailian-erase.js'
 import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
@@ -24,13 +28,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const route = url.searchParams.get('__route') ?? url.pathname.replace(/^\/api/, '')
     const path = route.split('/').filter(Boolean).map(decodeURIComponent)
     const method = req.method ?? 'GET'
-    if (path.join('/') === 'internal/email-cleanup' && method === 'GET') {
+    if ((path.join('/') === 'internal/email-cleanup' || path.join('/') === 'internal/image-jobs-sweep') && method === 'GET') {
       const secret = process.env.CRON_SECRET
       const supplied = req.headers.authorization?.replace(/^Bearer /, '') ?? ''
       if (!secret || supplied.length !== secret.length || !timingSafeEqual(Buffer.from(supplied), Buffer.from(secret)))
         throw new HttpError(401, '未授权', 'AUTH_REQUIRED')
       const result = await database().begin(async sql => {
         await sql`set local role aigc_api`
+        if (path.join('/') === 'internal/image-jobs-sweep') {
+          const [expired] = await sql`select aigc.expire_overdue_image_jobs() as expired`
+          const [deleted] = await sql`select aigc.purge_expired_image_jobs() as deleted`
+          return { expired: Number(expired.expired), deleted: Number(deleted.deleted) }
+        }
         const [row] = await sql`select aigc.purge_expired_email_tasks() as deleted`
         return { deleted: Number(row.deleted) }
       })
@@ -43,7 +52,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         outpaint: bailianConfig() !== null,
         erase: bailianConfig() !== null,
         repaint: bailianConfig() !== null,
+        imageEdit: imageModelsAvailable('image_edit'),
       })
+      return
+    }
+    if (path[0] === 'image-models' && method === 'GET') {
+      const operation = url.searchParams.get('operation')
+      const parsed = operation
+        ? z.enum(['image_edit', 'text_to_image', 'variation', 'inpaint', 'outpaint']).safeParse(operation)
+        : undefined
+      if (operation && !parsed?.success) throw new HttpError(400, '不支持的图片能力', 'INVALID_REQUEST')
+      res.status(200).json({ items: publicConfiguredImageModels(parsed?.data) })
       return
     }
     const heavyRoute = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' || path[0] === 'erase' || path[0] === 'repaint'
@@ -146,7 +165,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json(await handleModelRoute(user, method, path, body))
       return
     }
+    if (path[0] === 'task-inputs' && path.length === 1) {
+      res.status(200).json(await handleTaskInputs(user, method, body))
+      return
+    }
     if (path[0] === 'tasks') {
+      if (method === 'POST') {
+        const capability = body && typeof body === 'object' && 'capability' in body
+          ? String((body as { capability?: unknown }).capability) : ''
+        if (IMAGE_TASK_CAPABILITIES.has(capability)) {
+          res.status(200).json(await handleImageTaskRoute(user, method, path, body, url.searchParams))
+          return
+        }
+        if (capability && capability !== 'email_assist') {
+          throw new HttpError(501, '该能力尚未接入真实任务', 'CAPABILITY_UNAVAILABLE')
+        }
+        res.status(200).json(await handleEmailTaskRoute(user, method, path, body, url.searchParams))
+        return
+      }
+      if (method === 'GET' && path.length === 1 && IMAGE_TASK_CAPABILITIES.has(url.searchParams.get('capability') ?? '')) {
+        res.status(200).json(await handleImageTaskRoute(user, method, path, body, url.searchParams))
+        return
+      }
+      if (path.length === 2) {
+        const id = z.uuid().safeParse(path[1])
+        if (id.success && await peekImageTask(user, id.data)) {
+          res.status(200).json(await handleImageTaskRoute(user, method, path, body, url.searchParams))
+          return
+        }
+      }
+      if (path[1] === 'by-request' && path.length === 3 && method === 'GET') {
+        const image = await handleImageTaskRoute(user, method, path, body, url.searchParams)
+        if (image) {
+          res.status(200).json(image)
+          return
+        }
+      }
       res.status(200).json(await handleEmailTaskRoute(user, method, path, body, url.searchParams))
       return
     }

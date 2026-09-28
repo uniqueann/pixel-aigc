@@ -18,8 +18,10 @@ import {
 import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
 import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
-import { loadRepaintConfigured } from '@/services/api/capabilities'
+import { loadImageEditConfigured, loadRepaintConfigured } from '@/services/api/capabilities'
+import { listImageModels, type PublicImageModel } from '@/services/api/imageModels'
 import { liveCapabilityReady } from '@/services/api/task'
+import { defaultImageModel, publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
 import { downloadImageAsset, filenameForWorkstationResult } from '@/features/image-workstation/download'
@@ -37,18 +39,23 @@ export default function ImageWorkstation() {
   const [compareMode, setCompareMode] = useState<'original' | 'effect'>('effect')
   const [smartEditPrompt, setSmartEditPrompt] = useState('')
   const [editCount, setEditCount] = useState(1)
-  const [editResolution, setEditResolution] = useState<'2k' | '4k'>('2k')
+  const [editResolution, setEditResolution] = useState<'1k' | '2k' | '4k'>('2k')
+  const [imageModels, setImageModels] = useState<PublicImageModel[]>(() =>
+    IMAGE_MODEL_PROFILES.filter(profile => profile.operations.includes('image_edit')).map(publicImageModel))
+  const [modelProfileId, setModelProfileId] = useState(() => defaultImageModel('image_edit')?.id)
   const [erasePrompt, setErasePrompt] = useState('')
   const [repaintPrompt, setRepaintPrompt] = useState('')
   const [outpaintMode, setOutpaintMode] = useState<'free' | 'preset'>('free')
   const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
   const [repaintReady, setRepaintReady] = useState(() => liveCapabilityReady(Capability.Inpaint))
+  const [imageEditReady, setImageEditReady] = useState(() => liveCapabilityReady(Capability.ImageEdit))
   const [hasMaskPaint, setHasMaskPaint] = useState(false)
   const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
-  const toolReady = isWorkstationToolReady(activeTool)
+  const toolReady = isWorkstationToolReady(activeTool, (capability) =>
+    capability === Capability.ImageEdit ? imageEditReady : liveCapabilityReady(capability))
   const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode)
   const activePrompt = activeTool.capability === Capability.ImageEdit
     ? smartEditPrompt
@@ -61,6 +68,7 @@ export default function ImageWorkstation() {
     prompt: activePrompt,
     count: editCount,
     resolution: editResolution,
+    modelProfileId,
   })
   const replaceSourceAsset = controller.replaceSourceAsset
 
@@ -116,6 +124,14 @@ export default function ImageWorkstation() {
   useEffect(() => {
     let active = true
     void loadRepaintConfigured().then(ready => { if (active) setRepaintReady(ready) })
+    void loadImageEditConfigured().then(ready => { if (active) setImageEditReady(ready) })
+    void listImageModels('image_edit').then(items => {
+      if (!active || !items.length) return
+      setImageModels(items)
+      setModelProfileId(current => items.some(item => item.id === current)
+        ? current
+        : (items.find(item => item.defaultFor?.includes('image_edit')) ?? items[0]).id)
+    }).catch(() => undefined)
     return () => { active = false }
   }, [])
 
@@ -243,7 +259,7 @@ export default function ImageWorkstation() {
         options={WORKSTATION_TOOLS.map((item) => ({
           value: item.slug,
           label: item.label,
-          ready: isWorkstationToolReady(item),
+          ready: item.capability === Capability.ImageEdit ? imageEditReady : isWorkstationToolReady(item),
         }))}
         value={activeTool.slug}
         onChange={(slug) => navigate(`/image-workstation/${slug}`)}
@@ -287,6 +303,10 @@ export default function ImageWorkstation() {
               onCountChange={setEditCount}
               resolution={editResolution}
               onResolutionChange={setEditResolution}
+              models={imageModels}
+              modelProfileId={modelProfileId}
+              onModelProfileIdChange={setModelProfileId}
+              sourceSize={controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined}
               disabled={controller.formLocked}
               erasePrompt={erasePrompt}
               onErasePromptChange={setErasePrompt}

@@ -26,6 +26,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/20260923015953_aigc_accounts.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20260923020155_aigc_project_compat.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20260923102829_aigc_email_byok.sql','utf8'))
+  await db.exec(readFileSync('supabase/migrations/20260928120000_aigc_image_jobs.sql','utf8'))
 }, 30000)
 afterAll(async () => { await db.close() })
 describe('aigc 数据库权限与隔离', () => {
@@ -92,6 +93,29 @@ describe('aigc 数据库权限与隔离', () => {
       expect((await db.query('select * from aigc.email_tasks')).rows).toHaveLength(0)
     }, 'preview')
     const count = await asUser(alice,'alice@example.com', () => db.query<{ used: number }>("select aigc.email_processing_count('production') as used"))
+    expect(Number(count.rows[0].used)).toBe(1)
+  })
+  it('图片任务只对本人及同一环境可见，租约更新互斥', async () => {
+    const jobId = '00000000-0000-4000-8000-000000000301'
+    const requestId = '00000000-0000-4000-8000-000000000302'
+    await asUser(alice,'alice@example.com', async () => {
+      await db.query(
+        "insert into aigc.image_jobs(id,user_id,scope,request_id,request_fingerprint,capability,model_profile_id,provider,params,provider_params,requested_count,status,deadline_at) values($1,$2,'production',$3,'hash','image_edit','dragoncode:gpt-image-2','dragoncode','{}','{}',1,'processing',now()+interval '5 minutes')",
+        [jobId, alice, requestId],
+      )
+      await db.query("insert into aigc.image_job_items(job_id,ordinal,user_id,scope,status) values($1,0,$2,'production','submitted')", [jobId, alice])
+      expect((await db.query('select * from aigc.image_jobs')).rows).toHaveLength(1)
+      const first = await db.query("update aigc.image_jobs set lease_until=now()+interval '30 seconds' where id=$1 and (lease_until is null or lease_until<now()) returning id",[jobId])
+      const second = await db.query("update aigc.image_jobs set lease_until=now()+interval '30 seconds' where id=$1 and (lease_until is null or lease_until<now()) returning id",[jobId])
+      expect(first.rows).toHaveLength(1)
+      expect(second.rows).toHaveLength(0)
+    })
+    await asUser(bob,'bob@example.com', async () => {
+      expect((await db.query('select * from aigc.image_jobs')).rows).toHaveLength(0)
+      expect((await db.query('select * from aigc.image_job_items')).rows).toHaveLength(0)
+      expect((await db.query('update aigc.image_jobs set status=\'failed\' where id=$1 returning id',[jobId])).rows).toHaveLength(0)
+    })
+    const count = await asUser(alice,'alice@example.com', () => db.query<{ used: number }>("select aigc.image_processing_count('production') as used"))
     expect(Number(count.rows[0].used)).toBe(1)
   })
   it('跨所有者素材关联被数据库外键拒绝', async () => {

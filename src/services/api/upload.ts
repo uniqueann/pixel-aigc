@@ -18,6 +18,23 @@ export function uploadDataUrl(dataUrl: string): Promise<string> {
   return Promise.resolve(dataUrl)
 }
 
+export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image/jpeg') {
+  if (!ACCEPTED_IMAGE_TYPES.has(mimeType)) throw new Error('仅支持 PNG、JPEG 和 WebP 图片')
+  if (file.size > MAX_IMAGE_BYTES) throw new Error('图片大小不能超过 20 MB')
+  const signed = await apiClient.post<unknown, { uploadUrl: string; objectKey: string }>('/task-inputs', {
+    mimeType,
+    size: file.size,
+  })
+  if (!signed.uploadUrl || !signed.objectKey) throw new Error('未获得原图上传地址')
+  const uploaded = await fetch(signed.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: file,
+  })
+  if (!uploaded.ok) throw new Error('原图上传失败，请重试')
+  return signed.objectKey
+}
+
 /** 上传图片并返回可注册到 AssetRegistry 的元数据。 */
 export async function uploadImage(file: File): Promise<UploadedImage> {
   validateImageFile(file)

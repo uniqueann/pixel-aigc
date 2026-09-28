@@ -13,8 +13,14 @@ export interface CreateTaskPayload<TParams = Record<string, unknown>> {
 
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
 
-/** 已接入 /tasks 真实链路的能力。接入新服务时加进这个集合，工作站「即将上线」标记会自动消失。 */
+/** 静态已接入集合。智能编辑等能力还会与 GET /api/capabilities 的动态开关求并。 */
 const LIVE_TASK_CAPABILITIES = new Set<Capability>([Capability.EmailAssist])
+
+export function registerLiveCapability(capability: Capability, ready: boolean) {
+  if (capability === Capability.EmailAssist) return
+  if (ready) LIVE_TASK_CAPABILITIES.add(capability)
+  else LIVE_TASK_CAPABILITIES.delete(capability)
+}
 
 export function liveCapabilityReady(capability: Capability, mockGateway = useMockGateway) {
   return mockGateway || LIVE_TASK_CAPABILITIES.has(capability)

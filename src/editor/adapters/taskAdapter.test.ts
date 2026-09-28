@@ -46,6 +46,15 @@ describe('GenerationTask Adapter', () => {
     expect(second.assets[0].id).toBe(first.assets[0].id)
   })
 
+  it('优先使用 resultImages 的实际宽高', () => {
+    const adapted = adaptGenerationTask({
+      ...task,
+      resultUrls: ['https://example.com/result.png'],
+      resultImages: [{ url: 'https://example.com/result.png', width: 1536, height: 1024, mimeType: 'image/png' }],
+    }, { outputSize: { width: 2048, height: 1365 } })
+    expect(adapted.assets[0]).toMatchObject({ width: 1536, height: 1024, mimeType: 'image/png' })
+  })
+
   it('把文生视频结果转换为带时长的 VideoAsset', () => {
     const adapted = adaptGenerationTask({
       ...task,

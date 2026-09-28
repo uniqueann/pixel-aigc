@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from './http'
 const mocks = vi.hoisted(() => ({ authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn() }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
 vi.mock('./db', () => ({ withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
-vi.mock('./storage', () => ({ verifyAndPromote: mocks.verify, signRead: vi.fn(), signUpload: vi.fn() }))
+vi.mock('./storage', () => ({ verifyAndPromote: mocks.verify, signRead: vi.fn(), signUpload: vi.fn(), putObject: vi.fn(), getObject: vi.fn() }))
 vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
 import handler from './handler'
 import { HttpError } from './errors'
@@ -89,12 +89,26 @@ describe('API 认证、版本和写入边界', () => {
     spy.mockRestore()
   })
 
+  it('capabilities 在配置 DragonCode Key 后打开智能编辑', async () => {
+    const previous = process.env.DRAGONCODE_API_KEY
+    process.env.DRAGONCODE_API_KEY = 'sk-test'
+    const res = await request(undefined, 'GET', '/api/capabilities')
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ imageEdit: true }))
+    const models = await request(undefined, 'GET', '/api/image-models?operation=image_edit')
+    expect(models.json).toHaveBeenCalledWith(expect.objectContaining({
+      items: expect.arrayContaining([expect.objectContaining({ id: 'dragoncode:gpt-image-2' })]),
+    }))
+    if (previous === undefined) delete process.env.DRAGONCODE_API_KEY
+    else process.env.DRAGONCODE_API_KEY = previous
+  })
+
   it('capabilities 在配置百炼 Key 后同时打开扩图和消除', async () => {
     const previous = process.env.DASHSCOPE_API_KEY
     process.env.DASHSCOPE_API_KEY = 'sk-test'
     const res = await request(undefined, 'GET', '/api/capabilities')
     expect(res.status).toHaveBeenCalledWith(200)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ outpaint: true, erase: true }))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ outpaint: true, erase: true, imageEdit: false }))
     if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
     else process.env.DASHSCOPE_API_KEY = previous
   })

@@ -4,14 +4,15 @@ import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
 import { requestErase } from '@/services/api/erase'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { requestRepaint } from '@/services/api/repaint'
+import { cloudEnabled } from '@/cloud/client'
 import { liveCapabilityReady } from '@/services/api/task'
-import { uploadDataUrl } from '@/services/api/upload'
+import { uploadDataUrl, uploadTaskInput } from '@/services/api/upload'
 import { GenerationService } from '@/editor/services/generationService'
 import { useEditorStore } from '@/editor/store'
 import type { AssetId, GenerationId, ImageAsset } from '@/editor/types'
 import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
-import { Capability, type GenerationTask, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
+import { Capability, type GenerationTask, type ImageEditTaskParams, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
 import { recordWorkstationHistory } from '@/features/assets/workstationHistory'
 import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
 import { isVisuallySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
@@ -28,7 +29,8 @@ interface ControllerOptions {
   initialAsset?: ImageAsset
   prompt?: string
   count?: number
-  resolution?: '2k' | '4k'
+  resolution?: '1k' | '2k' | '4k'
+  modelProfileId?: string
 }
 
 interface SubmissionContext {
@@ -37,6 +39,28 @@ interface SubmissionContext {
 }
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
+const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
+
+function isInlineUrl(url?: string) {
+  return !!url && (url.startsWith('data:') || url.startsWith('blob:'))
+}
+
+async function prepareImageEditRequest(
+  request: WorkstationGenerationRequest,
+  sourceAsset: ImageAsset,
+): Promise<WorkstationGenerationRequest> {
+  if (request.capability !== Capability.ImageEdit || useMockGateway) return request
+  const params = { ...(request.params as ImageEditTaskParams) }
+  if (!params.sourceImageKey) {
+    const response = await fetch(sourceAsset.url)
+    if (!response.ok) throw new Error('读取原图失败')
+    params.sourceImageKey = await uploadTaskInput(await response.blob(), sourceAsset.mimeType)
+  }
+  params.sourceWidth = sourceAsset.width
+  params.sourceHeight = sourceAsset.height
+  if (isInlineUrl(params.sourceImageUrl)) delete params.sourceImageUrl
+  return { ...request, params }
+}
 
 export function useImageWorkstationController({
   activeTool,
@@ -44,6 +68,7 @@ export function useImageWorkstationController({
   prompt,
   count,
   resolution,
+  modelProfileId,
 }: ControllerOptions) {
   const project = useEditorStore((state) => state.project)
   const createProject = useEditorStore((state) => state.createProject)
@@ -331,12 +356,14 @@ export function useImageWorkstationController({
       outputSize: request.outputSize,
     }
     try {
+      const prepared = await prepareImageEditRequest(request, sourceAsset)
       const result = await service.submit({
-        capability: request.capability,
+        capability: prepared.capability,
         requestId: crypto.randomUUID(),
-        params: request.params,
+        params: prepared.params,
+        modelProfileId: prepared.modelProfileId ?? modelProfileId,
       }, options)
-      submissionsRef.current.set(result.task.id, { request, options })
+      submissionsRef.current.set(result.task.id, { request: prepared, options })
       setTask(result.task as GenerationTask<unknown>)
       upsertTask(result.task as GenerationTask<unknown>)
       setActiveTaskId(result.task.id)
@@ -352,12 +379,12 @@ export function useImageWorkstationController({
     } finally {
       setSubmitting(false)
     }
-  }, [applyCompletedTask, service, upsertTask])
+  }, [applyCompletedTask, modelProfileId, service, upsertTask])
 
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
     if (!isWorkstationToolReady(activeTool)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
     if (!inputAsset) throw new Error('请先上传需要编辑的图片')
-    const initialContext = { sourceAsset: inputAsset, prompt, count, resolution }
+    const initialContext = { sourceAsset: inputAsset, prompt, count, resolution, modelProfileId }
     const validation = activeTool.validate?.(initialContext)
     if (validation && !validation.valid) throw new Error(validation.message ?? '当前参数不完整')
 
@@ -403,8 +430,8 @@ export function useImageWorkstationController({
     }
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
-    return submitRequest(request, inputAsset, inputAsset.generationId)
-  }, [activeTool, completeErase, completeOutpaint, completeRepaint, count, inputAsset, prompt, resolution, submitRequest])
+    return submitRequest({ ...request, modelProfileId }, inputAsset, inputAsset.generationId)
+  }, [activeTool, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, prompt, resolution, submitRequest])
 
   const retry = useCallback(async () => {
     if (!task) return

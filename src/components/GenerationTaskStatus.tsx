@@ -1,6 +1,12 @@
 import { Alert, Button, Spin } from 'antd'
 import type { GenerationTask } from '@/types'
 
+const WARNING_LABELS: Record<string, string> = {
+  RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO: '当前比例不支持 4K，已按 2K 生成',
+  PARTIAL: '部分图片生成成功',
+  LATE_RESULT_NO_CHARGE: '结果在超时后送达，未计入消耗',
+}
+
 const STATUS_LABELS = {
   pending: '准备中',
   queued: '排队中',
@@ -49,6 +55,9 @@ export default function GenerationTaskStatus({
             {(active || polling) ? <Spin size="small" /> : null}
           </div>
           {summary ? <span>{summary}</span> : null}
+          {task?.warnings?.length ? (
+            <span>{task.warnings.map(code => WARNING_LABELS[code] ?? code).join('；')}</span>
+          ) : null}
           {terminalFailure && (onRetry || onModifyParameters) ? (
             <div className="generation-task-status-actions">
               {onRetry ? <Button size="small" type="primary" onClick={onRetry}>按原参数重试</Button> : null}
