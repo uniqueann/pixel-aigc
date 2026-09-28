@@ -1,6 +1,9 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { message } from 'antd'
 import { Canvas, FabricImage, PencilBrush } from 'fabric'
-import { smartSelect } from '@/services/api/smartSelect'
+import { containRect } from '@shared/erase'
+import { invertContainedAlpha, opaqueCount, sourcePoint } from '@shared/smart-select'
+import { requestSmartSelect, SmartSelectRequestError, type SmartSelectResult } from '@/services/api/smartSelect'
 import { WORKSTATION_CANVAS_HEIGHT, WORKSTATION_CANVAS_WIDTH } from '../../utils/canvasDisplay'
 import { exportEraseMask, exportPaintedMask, type MaskExportResult } from '../../utils/maskExport'
 import { useCanvasDisplay } from '../../utils/useCanvasDisplay'
@@ -27,6 +30,7 @@ export interface MaskPaintCanvasHandle {
   clear: () => void
   undo: () => void
   redo: () => void
+  invertSelection: () => Promise<void>
   canUndo: boolean
   canRedo: boolean
 }
@@ -65,6 +69,9 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   const smartSelectRef = useRef(smartSelectEnabled)
   const restoringRef = useRef(false)
   const selectingRef = useRef(false)
+  const naturalRef = useRef(imageNaturalSize)
+  const sessionRef = useRef<{ imageUrl: string; session: SmartSelectResult['session'] } | null>(null)
+  naturalRef.current = imageNaturalSize
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false })
 
   const updateHistoryState = useCallback(
@@ -126,6 +133,55 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     }
   }, [restoreSnapshot])
 
+  const paintSelection = useCallback(async (result: SmartSelectResult, natural: { width: number; height: number }) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const rect = containRect(natural.width, natural.height, CANVAS_WIDTH, CANVAS_HEIGHT)
+    const selection = await FabricImage.fromURL(result.maskDataUrl)
+    selection.set({
+      left: rect.x,
+      top: rect.y,
+      originX: 'left',
+      originY: 'top',
+      scaleX: rect.width / result.width,
+      scaleY: rect.height / result.height,
+      opacity: 0.48,
+      selectable: false,
+      evented: false,
+    })
+    canvas.add(selection)
+    canvas.requestRenderAll()
+  }, [])
+
+  const invertSelection = useCallback(async () => {
+    const canvas = fabricCanvasRef.current
+    const natural = naturalRef.current
+    if (!canvas || !natural?.width || !natural.height) throw new Error('蒙版画布尚未准备好')
+    canvas.renderAll()
+    const surface = paintSurface(canvas, canvasElementRef.current)
+    const context = surface?.getContext('2d')
+    if (!surface || !context) throw new Error('蒙版画布尚未准备好')
+    const pixels = context.getImageData(0, 0, surface.width, surface.height)
+    const rect = containRect(natural.width, natural.height, surface.width, surface.height)
+    if (opaqueCount(pixels.data, surface.width, surface.height, rect) === 0) {
+      throw new Error('请先创建选区后再反选')
+    }
+    const inverted = new Uint8ClampedArray(pixels.data)
+    invertContainedAlpha(inverted, surface.width, surface.height, rect)
+    const snapshot = document.createElement('canvas')
+    snapshot.width = surface.width
+    snapshot.height = surface.height
+    const snapshotContext = snapshot.getContext('2d')
+    if (!snapshotContext) throw new Error('当前浏览器不支持画布蒙版导出')
+    snapshotContext.putImageData(new ImageData(inverted, surface.width, surface.height), 0, 0)
+    canvas.clear()
+    const image = await FabricImage.fromURL(snapshot.toDataURL('image/png'))
+    image.set({ left: 0, top: 0, selectable: false, evented: false })
+    canvas.add(image)
+    canvas.requestRenderAll()
+    pushSnapshot()
+  }, [pushSnapshot])
+
   useImperativeHandle(
     ref,
     () => ({
@@ -153,10 +209,11 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       clear,
       undo,
       redo,
+      invertSelection,
       canUndo: historyState.canUndo,
       canRedo: historyState.canRedo,
     }),
-    [clear, historyState.canRedo, historyState.canUndo, imageNaturalSize, redo, undo],
+    [clear, historyState.canRedo, historyState.canUndo, imageNaturalSize, invertSelection, redo, undo],
   )
 
   useEffect(() => {
@@ -201,6 +258,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
 
     historyRef.current = [JSON.stringify(canvas.toJSON())]
     historyIndexRef.current = 0
+    sessionRef.current = null
     updateHistoryState(0, 1)
     onMaskChange?.(false)
 
@@ -215,22 +273,40 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     })
 
     canvas.on('mouse:down', async ({ e }) => {
-      if (!smartSelectRef.current || selectingRef.current) return
+      if (!smartSelectRef.current || selectingRef.current || refineModeRef.current) return
+      const natural = naturalRef.current
+      if (!natural?.width || !natural.height) {
+        message.warning('无法读取原图尺寸')
+        return
+      }
+      const scene = canvas.getScenePoint(e)
+      const point = sourcePoint(scene.x, scene.y, natural.width, natural.height, CANVAS_WIDTH, CANVAS_HEIGHT)
+      if (!point) {
+        message.warning('请点在图片上')
+        return
+      }
       selectingRef.current = true
+      const hide = message.loading('正在识别商品轮廓…', 0)
       try {
-        const point = canvas.getScenePoint(e)
-        const result = await smartSelect({
+        const cached = sessionRef.current?.imageUrl === imageUrl ? sessionRef.current.session : null
+        const result = await requestSmartSelect({
           imageUrl,
-          point: { x: point.x, y: point.y },
-          canvasSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+          naturalSize: natural,
+          point,
+          session: cached,
         })
         if (disposed) return
-        const selection = await FabricImage.fromURL(result.maskDataUrl)
-        selection.set({ left: 0, top: 0, opacity: 0.48, selectable: false, evented: false })
-        canvas.add(selection)
-        canvas.requestRenderAll()
+        sessionRef.current = { imageUrl, session: result.session }
+        await paintSelection(result, natural)
+        if (disposed) return
         pushSnapshot()
+      } catch (error) {
+        if (error instanceof SmartSelectRequestError && error.session) {
+          sessionRef.current = { imageUrl, session: error.session }
+        }
+        if (!disposed) message.error(error instanceof Error ? error.message : '智能选区失败')
       } finally {
+        hide()
         selectingRef.current = false
       }
     })
@@ -240,7 +316,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       fabricCanvasRef.current = null
       void canvas.dispose()
     }
-  }, [imageUrl, onMaskChange, pushSnapshot, updateHistoryState])
+  }, [imageUrl, onMaskChange, paintSelection, pushSnapshot, updateHistoryState])
 
   return (
     <div ref={hostRef} className="workstation-paint-host">

@@ -1,7 +1,8 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Segmented, Upload } from 'antd'
+import { Button, Segmented, Upload, message } from 'antd'
 import { InboxOutlined, UploadOutlined } from '@ant-design/icons'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
+import { loadSmartSelectConfigured } from '@/services/api/capabilities'
 import type { InteractionMode } from '../tools'
 import BrushToolbar, { type PaintTool } from './canvas/BrushToolbar'
 import type { MaskPaintCanvasHandle } from './canvas/MaskPaintCanvas'
@@ -50,6 +51,7 @@ export default function CanvasArea({
   const [brushSize, setBrushSize] = useState(28)
   const [paintTool, setPaintTool] = useState<PaintTool>('brush')
   const [smartSelectEnabled, setSmartSelectEnabled] = useState(false)
+  const [smartSelectReady, setSmartSelectReady] = useState(false)
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false })
 
   const setMaskHandle = useCallback(
@@ -66,6 +68,12 @@ export default function CanvasArea({
     },
     [onReady],
   )
+
+  useEffect(() => {
+    let active = true
+    void loadSmartSelectConfigured().then(ready => { if (active) setSmartSelectReady(ready) })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     if (!imageUrl || (interactionMode !== 'mask-paint' && interactionMode !== 'drag-resize')) onReady(null)
@@ -119,11 +127,18 @@ export default function CanvasArea({
             brushSize={brushSize}
             tool={paintTool}
             smartSelectEnabled={smartSelectEnabled}
+            smartSelectReady={smartSelectReady}
+            refineMode={refineMode}
             canUndo={historyState.canUndo}
             canRedo={historyState.canRedo}
             onBrushSizeChange={setBrushSize}
             onToolChange={selectPaintTool}
             onSmartSelectToggle={() => setSmartSelectEnabled((enabled) => !enabled)}
+            onInvert={() => {
+              void maskHandleRef.current?.invertSelection().catch(error => {
+                message.error(error instanceof Error ? error.message : '反选失败')
+              })
+            }}
             onUndo={() => maskHandleRef.current?.undo()}
             onRedo={() => maskHandleRef.current?.redo()}
             onClear={() => maskHandleRef.current?.clear()}
@@ -144,7 +159,7 @@ export default function CanvasArea({
           />
         </Suspense>
         {smartSelectEnabled ? (
-          <div className="workstation-canvas-footnote">点击商品主体以创建智能选区</div>
+          <div className="workstation-canvas-footnote">点击商品以选中轮廓。水印、文字和道具请用画笔。</div>
         ) : null}
       </div>
     )
