@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DRAGONCODE_RATIOS,
+  DRAGONCODE_SIZES,
   RESOLUTION_DOWNGRADED_4K,
   mapDragonCodeSize,
   nearestRatio,
@@ -52,5 +53,9 @@ describe('nearestRatio / mapDragonCodeSize', () => {
   it('可限制候选比例集合', () => {
     expect(nearestRatio(1000, 1000, ['16:9', '9:16'])).toBe('16:9')
     expect(DRAGONCODE_RATIOS).toHaveLength(13)
+    expect(DRAGONCODE_SIZES).toEqual([
+      'auto', '1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5',
+      '16:9', '9:16', '2:1', '1:2', '21:9', '9:21',
+    ])
   })
 })

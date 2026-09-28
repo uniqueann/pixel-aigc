@@ -42,10 +42,17 @@ export function mapHttpStatus(status: number, message: string): ProviderError {
   if (status === 408 || status === 504) {
     return new ProviderError('TIMEOUT', message || '图片服务请求超时，请稍后重试', true, 504)
   }
+  if (status === 404) {
+    return new ProviderError('BAD_RESPONSE', message || '图片任务不存在或已过期', false, 404)
+  }
   if (status >= 500) {
     return new ProviderError('UPSTREAM_UNAVAILABLE', message || '图片服务暂时不可用，请稍后重试', true, 502)
   }
   return new ProviderError('INVALID_PARAMS', message || '图片服务拒绝了当前请求', false, status >= 400 ? status : 400)
+}
+
+function headerRequestId(headers: Headers) {
+  return headers.get('x-request-id') ?? headers.get('X-Request-Id') ?? undefined
 }
 
 export async function fetchJson(
@@ -53,7 +60,7 @@ export async function fetchJson(
   init: RequestInit,
   ctx: ProviderContext,
   options: { timeoutMs: number; retryCount: number; label: string },
-): Promise<{ status: number; payload: unknown }> {
+): Promise<{ status: number; payload: unknown; upstreamRequestId?: string }> {
   let lastError: unknown
   for (let attempt = 0; attempt <= options.retryCount; attempt += 1) {
     const started = ctx.now()
@@ -63,17 +70,26 @@ export async function fetchJson(
         signal: ctx.signal ?? AbortSignal.timeout(options.timeoutMs),
       })
       const payload: unknown = await response.json().catch(() => null)
+      const upstreamRequestId = headerRequestId(response.headers)
       const retry = RETRYABLE_STATUS.has(response.status) && attempt < options.retryCount
+      const authAlert = response.status === 401 || response.status === 403
       ctx.log({
         stage: options.label, attempt, status: response.status, retry,
         host: requestHost(url), ms: ctx.now() - started, requestId: ctx.requestId,
+        upstreamRequestId, ...(authAlert ? { alert: true, kind: 'provider-auth' } : {}),
       })
+      if (authAlert && !process.env.VITEST) {
+        console.error(JSON.stringify({
+          evt: 'dragoncode', alert: true, kind: 'provider-auth',
+          stage: options.label, status: response.status, upstreamRequestId,
+        }))
+      }
       if (retry) {
         await ctx.sleep(retryBackoffMs(attempt))
         continue
       }
       if (!response.ok) throw mapHttpStatus(response.status, readMessage(payload))
-      return { status: response.status, payload }
+      return { status: response.status, payload, upstreamRequestId }
     } catch (error) {
       lastError = error
       if (error instanceof ProviderError) {
@@ -114,6 +130,7 @@ export async function fetchImageBytes(
   const started = ctx.now()
   let response: Response
   try {
+    // DragonCode media: token 必填；HEAD 返回 404；Range 被忽略。只用普通 GET。
     response = await ctx.fetch(url, { signal: ctx.signal ?? AbortSignal.timeout(timeoutMs) })
   } catch (error) {
     const timeout = isAbortOrTimeout(error)
@@ -127,6 +144,7 @@ export async function fetchImageBytes(
   ctx.log({
     stage: 'download', status: response.status, host: requestHost(url),
     ms: ctx.now() - started, requestId: ctx.requestId,
+    upstreamRequestId: headerRequestId(response.headers),
   })
   if (!response.ok) throw new ProviderError('BAD_RESPONSE', '结果图片下载失败', response.status >= 500, 502)
   const mimeType = response.headers.get('content-type')?.split(';')[0]?.trim() ?? ''

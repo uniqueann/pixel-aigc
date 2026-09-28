@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import { HttpError } from '../errors.js'
 
+/** DragonCode 4K 16:9 实测 3840x2161（不是 2160）。对数比例差约 4.6e-4，0.01 足够吞掉 off-by-one。 */
 const RATIO_EPSILON = 0.01
 
 export function cropRect(width: number, height: number, targetRatio: number) {

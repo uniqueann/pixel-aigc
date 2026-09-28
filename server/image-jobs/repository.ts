@@ -81,6 +81,7 @@ export function createSqlStore(sql: Transaction, userId: string): ImageJobStore 
         error_message=${patch.error_message === undefined ? sql`error_message` : patch.error_message},
         credits_charged=${patch.credits_charged ?? sql`credits_charged`},
         billing_state=${patch.billing_state ?? sql`billing_state`},
+        provider_params=${patch.provider_params === undefined ? sql`provider_params` : sql.json(patch.provider_params as never)},
         lease_until=${patch.lease_until === undefined ? sql`lease_until` : patch.lease_until},
         next_poll_at=${patch.next_poll_at ?? sql`next_poll_at`},
         completed_at=${patch.completed_at === undefined ? sql`completed_at` : patch.completed_at},

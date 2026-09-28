@@ -9,60 +9,46 @@ import type {
 } from '../types.js'
 import { ProviderError } from '../types.js'
 import { dragonCodeConfig, isDragonCodeConfigured, type DragonCodeConfig } from './config.js'
-import { dragonCodeFailure, missingTaskError, sanitizePayload } from './errors.js'
+import {
+  asString,
+  dragonCodeFailure,
+  mapDragonCodeHttpError,
+  missingTaskError,
+  readNumericCode,
+  readResultUrls,
+  readStatusData,
+  readSubmitTaskId,
+  readVendorUsage,
+  redactSensitive,
+  sanitizePayload,
+  sanitizeProviderError,
+} from './errors.js'
+import { assertReferenceImageUrl, describeReferenceUrl } from './images.js'
 import { DRAGONCODE_CAPABILITIES, mapDragonCodeRequest } from './mapping.js'
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-function asString(value: unknown) {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
-}
-
-function readCode(payload: unknown) {
-  return isRecord(payload) && typeof payload.code === 'number' ? payload.code : undefined
-}
-
-function readSubmitTaskId(payload: unknown) {
-  if (!isRecord(payload)) return undefined
-  const data = payload.data
-  if (Array.isArray(data) && isRecord(data[0])) return asString(data[0].task_id)
-  if (isRecord(data)) return asString(data.task_id)
-  return undefined
-}
-
-function readStatusPayload(payload: unknown) {
-  if (!isRecord(payload)) return undefined
-  return isRecord(payload.data) ? payload.data : payload
-}
-
-function readErrorMessage(payload: unknown, data?: Record<string, unknown>) {
-  const error = data?.error ?? (isRecord(payload) ? payload.error : undefined)
-  if (isRecord(error) && typeof error.message === 'string') return error.message
-  if (isRecord(payload) && typeof payload.message === 'string') return payload.message
-  return ''
-}
-
-function readResultUrls(data: Record<string, unknown>) {
-  const result = isRecord(data.result) ? data.result : undefined
-  const images = Array.isArray(result?.images) ? result.images : []
-  const urls: string[] = []
-  for (const image of images) {
-    if (!isRecord(image)) continue
-    if (Array.isArray(image.url)) {
-      for (const url of image.url) if (typeof url === 'string' && url) urls.push(url)
-    } else if (typeof image.url === 'string' && image.url) {
-      urls.push(image.url)
-    }
-  }
-  return urls
-}
 
 function headers(apiKey: string) {
   return {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
+  }
+}
+
+async function dragonCodeJson(
+  url: string,
+  init: RequestInit,
+  ctx: ProviderContext,
+  config: DragonCodeConfig,
+  label: string,
+) {
+  try {
+    return await fetchJson(url, init, ctx, {
+      timeoutMs: config.requestTimeoutMs,
+      retryCount: config.retryCount,
+      label,
+    })
+  } catch (error) {
+    if (error instanceof ProviderError) throw sanitizeProviderError(error)
+    throw error
   }
 }
 
@@ -93,6 +79,10 @@ export function createDragonCodeProvider(
     },
     async submit(input: ProviderSubmitInput, ctx: ProviderContext) {
       const config = configOf()
+      for (const image of input.images) {
+        assertReferenceImageUrl(image.url)
+        ctx.log({ stage: 'dragoncode-source', ...describeReferenceUrl(image.url) })
+      }
       const body = {
         model: input.model || config.model,
         prompt: input.prompt,
@@ -101,49 +91,80 @@ export function createDragonCodeProvider(
         resolution: input.providerParams.resolution,
         ...(input.images.length ? { image_urls: input.images.map(image => image.url) } : {}),
       }
-      const { payload } = await fetchJson(`${config.baseUrl}/images/generations`, {
-        method: 'POST',
-        headers: headers(config.apiKey),
-        body: JSON.stringify(body),
-      }, ctx, { timeoutMs: config.requestTimeoutMs, retryCount: config.retryCount, label: 'dragoncode-submit' })
-      if (readCode(payload) !== 200) {
-        throw dragonCodeFailure(readErrorMessage(payload), payload)
+      const { payload, upstreamRequestId } = await dragonCodeJson(
+        `${config.baseUrl}/images/generations`,
+        { method: 'POST', headers: headers(config.apiKey), body: JSON.stringify(body) },
+        ctx,
+        config,
+        'dragoncode-submit',
+      )
+      ctx.log({
+        stage: 'dragoncode-submit-body',
+        host: requestHost(config.baseUrl),
+        upstreamRequestId,
+        payload: sanitizePayload(payload),
+      })
+      const numericCode = readNumericCode(payload)
+      if (numericCode !== undefined && numericCode !== 200) {
+        throw mapDragonCodeHttpError(numericCode, payload)
       }
       const taskId = readSubmitTaskId(payload)
       if (!taskId) {
-        ctx.log({ stage: 'dragoncode-submit', host: requestHost(config.baseUrl), payload: sanitizePayload(payload) })
         throw missingTaskError()
       }
       return { providerTaskId: taskId }
     },
     async getStatus(providerTaskId: string, ctx: ProviderContext): Promise<ProviderTaskState> {
       const config = configOf()
-      const { payload } = await fetchJson(
+      const { payload, upstreamRequestId } = await dragonCodeJson(
         `${config.baseUrl}/tasks/${encodeURIComponent(providerTaskId)}`,
         { headers: headers(config.apiKey) },
         ctx,
-        { timeoutMs: config.requestTimeoutMs, retryCount: config.retryCount, label: 'dragoncode-status' },
+        config,
+        'dragoncode-status',
       )
-      if (readCode(payload) !== 200) {
-        throw dragonCodeFailure(readErrorMessage(payload), payload)
+      const numericCode = readNumericCode(payload)
+      if (numericCode !== undefined && numericCode !== 200) {
+        throw mapDragonCodeHttpError(numericCode, payload)
       }
-      const data = readStatusPayload(payload)
+      const data = readStatusData(payload)
       const status = asString(data?.status) ?? 'unknown'
       const progress = typeof data?.progress === 'number' ? data.progress : undefined
+      const vendor = readVendorUsage(data)
+      // estimated_time 实测恒为 100，忽略。
       if (status === 'completed' || status === 'succeeded') {
         const resultUrls = data ? readResultUrls(data) : []
         if (!resultUrls.length) {
-          ctx.log({ stage: 'dragoncode-status', raw: status, payload: sanitizePayload(payload) })
+          ctx.log({ stage: 'dragoncode-status', raw: status, upstreamRequestId, payload: sanitizePayload(payload) })
           throw dragonCodeFailure('图片服务没有返回结果地址', payload)
         }
-        return { state: 'succeeded', resultUrls }
+        ctx.log({
+          stage: 'dragoncode-status',
+          raw: status,
+          progress,
+          upstreamRequestId,
+          vendor,
+          resultCount: resultUrls.length,
+          payload: sanitizePayload(payload),
+        })
+        return { state: 'succeeded', resultUrls, vendor }
       }
       if (status === 'failed' || status === 'error' || status === 'cancelled') {
-        ctx.log({ stage: 'dragoncode-status', raw: status, payload: sanitizePayload(payload) })
-        const failure = dragonCodeFailure(readErrorMessage(payload, data), payload)
-        return { state: 'failed', code: failure.code, message: failure.message, retryable: failure.retryable }
+        const rawMessage = data && typeof data.error === 'object' && data.error
+          ? asString((data.error as { message?: unknown }).message) ?? ''
+          : ''
+        ctx.log({
+          stage: 'dragoncode-status',
+          raw: status,
+          upstreamRequestId,
+          vendor,
+          rawMessage: rawMessage ? redactSensitive(rawMessage).slice(0, 800) : rawMessage,
+          payload: sanitizePayload(payload),
+        })
+        const failure = dragonCodeFailure(rawMessage, payload, { taskFailed: true })
+        return { state: 'failed', code: failure.code, message: failure.message, retryable: failure.retryable, vendor }
       }
-      return { state: 'processing', progress, raw: status }
+      return { state: 'processing', progress, raw: status, vendor }
     },
     fetchResult(url: string, ctx: ProviderContext) {
       return fetchImageBytes(url, ctx, readConfig()?.requestTimeoutMs ?? 30_000)

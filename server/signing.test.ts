@@ -6,4 +6,5 @@ it('浏览器直传签名绑定类型和大小，不携带空请求体的 CRC32 
   expect(url.searchParams.get('X-Amz-SignedHeaders')).toBe('content-length;content-type;host')
   expect(url.searchParams.get('X-Amz-Expires')).toBe('600')
   expect(url.searchParams.has('x-amz-checksum-crc32')).toBe(false)
+  expect([...url.searchParams.keys()].filter(name => /^x-amz-checksum/i.test(name))).toEqual([])
 })

@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { RESOLUTION_DOWNGRADED_4K } from '../../../shared/image-models.js'
-import { mapDragonCodeRequest } from './mapping.js'
+import { DRAGONCODE_SIZES, RESOLUTION_DOWNGRADED_4K } from '../../../shared/image-models.js'
+import { DRAGONCODE_CAPABILITIES, mapDragonCodeRequest } from './mapping.js'
 
 describe('mapDragonCodeRequest', () => {
+  it('能力声明与实测 size 列表一致', () => {
+    expect(DRAGONCODE_CAPABILITIES.ratios).toEqual([...DRAGONCODE_SIZES])
+    expect(DRAGONCODE_CAPABILITIES.maxInputBytes).toBe(20_971_520)
+    expect(DRAGONCODE_CAPABILITIES.maxN).toBe(1)
+    expect(DRAGONCODE_CAPABILITIES.resolutionRatioConstraints).toEqual({
+      '4k': ['16:9', '9:16', '2:1', '1:2', '21:9', '9:21'],
+    })
+  })
+
   it('按原图像素映射比例并扇出 count', () => {
     const mapped = mapDragonCodeRequest({
       operation: 'image_edit',
@@ -52,6 +61,28 @@ describe('mapDragonCodeRequest', () => {
     }, 'gpt-image-2')
     expect(mapped.providerParams).toMatchObject({ size: '1:1', resolution: '2k' })
     expect(mapped.warnings).toContain(RESOLUTION_DOWNGRADED_4K)
+  })
+
+  it('显式 auto 原样提交，4k + auto 先降为 2k', () => {
+    const mapped = mapDragonCodeRequest({
+      operation: 'image_edit',
+      prompt: 'x',
+      images: [{ source: { kind: 'r2', objectKey: 'k' }, width: 1280, height: 853 }],
+      target: { aspectRatio: 'auto', resolution: '1k' },
+      count: 1,
+    }, 'gpt-image-2')
+    expect(mapped.providerParams).toMatchObject({ size: 'auto', resolution: '1k', n: 1 })
+    expect(mapped.expectedAspect).toBeCloseTo(1280 / 853)
+
+    const downgraded = mapDragonCodeRequest({
+      operation: 'image_edit',
+      prompt: 'x',
+      images: [{ source: { kind: 'r2', objectKey: 'k' }, width: 1280, height: 853 }],
+      target: { aspectRatio: 'auto', resolution: '4k' },
+      count: 1,
+    }, 'gpt-image-2')
+    expect(downgraded.providerParams).toMatchObject({ size: 'auto', resolution: '2k' })
+    expect(downgraded.warnings).toEqual([RESOLUTION_DOWNGRADED_4K])
   })
 
   it('把 count 限制在 1..4', () => {

@@ -50,10 +50,16 @@ export type ProviderErrorCode =
   | 'BAD_RESPONSE'
   | 'UNKNOWN'
 
+export interface ProviderVendorUsage {
+  cost?: number
+  creditsCost?: number
+  expiresAt?: string | number
+}
+
 export type ProviderTaskState =
-  | { state: 'queued' | 'processing'; progress?: number; raw?: string }
-  | { state: 'succeeded'; resultUrls: string[] }
-  | { state: 'failed'; code: ProviderErrorCode; message: string; retryable: boolean }
+  | { state: 'queued' | 'processing'; progress?: number; raw?: string; vendor?: ProviderVendorUsage }
+  | { state: 'succeeded'; resultUrls: string[]; vendor?: ProviderVendorUsage }
+  | { state: 'failed'; code: ProviderErrorCode; message: string; retryable: boolean; vendor?: ProviderVendorUsage }
 
 export interface MappedImageRequest {
   providerParams: Record<string, unknown>

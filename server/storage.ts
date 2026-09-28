@@ -8,6 +8,8 @@ const s3 = () => client ??= new S3Client({ region: 'auto', requestChecksumCalcul
   credentials: { accessKeyId: env('R2_ACCESS_KEY_ID'), secretAccessKey: env('R2_SECRET_ACCESS_KEY') } })
 const bucket = () => env('R2_BUCKET')
 export async function signUpload(key: string, mimeType: string, size: number) {
+  // 浏览器直传只允许带 Content-Type。x-amz-* 全部放进签名 query，避免触发
+  // aigc.contentup.cc 那条只放行 Content-Type 的 CORS 规则。
   return getSignedUrl(s3(), new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: mimeType, ContentLength: size }), { expiresIn: 600, signableHeaders: new Set(['content-type']) })
 }
 export async function signRead(key: string, expiresIn = 900) {

@@ -8,7 +8,14 @@ import { getObject, putObject, signRead } from '../storage.js'
 import type { NormalizedImageRequest } from '../../shared/image-generation.js'
 import { configuredImageModels, imageProviderById } from '../image-providers/registry.js'
 import { ProviderError, type ImageProvider, type ProviderContext } from '../image-providers/types.js'
-import { dragonCodeConfig } from '../image-providers/dragoncode/config.js'
+import {
+  DEFAULT_INITIAL_POLL_DELAY_MS,
+  DEFAULT_POLL_INTERVAL_MS,
+  DRAGONCODE_MAX_DATA_URI_BYTES,
+  SOURCE_PRESIGN_TTL_SECONDS,
+  dragonCodeConfig,
+} from '../image-providers/dragoncode/config.js'
+import { describeReferenceUrl } from '../image-providers/dragoncode/images.js'
 import { sleep as defaultSleep } from '../image-providers/http.js'
 import { cropToSourceAspect } from './aspect-crop.js'
 import { noopBilling, type BillingPort } from './billing.js'
@@ -71,7 +78,42 @@ export interface ImageJobRuntime {
 }
 
 type ItemPatch = Partial<ImageJobItemRow>
-type SubmitOutcome = { ordinal: number; patch: ItemPatch }
+type SubmitOutcome = {
+  ordinal: number
+  patch: ItemPatch
+  vendor?: { cost?: number; creditsCost?: number; expiresAt?: string | number }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function mergeVendorUsage(
+  providerParams: Record<string, unknown>,
+  outcomes: SubmitOutcome[],
+) {
+  const previous = isRecord(providerParams.vendor) ? providerParams.vendor : {}
+  const items = isRecord(previous.items) ? { ...previous.items } : {}
+  for (const outcome of outcomes) {
+    if (!outcome.vendor) continue
+    items[String(outcome.ordinal)] = {
+      cost: outcome.vendor.cost,
+      credits_cost: outcome.vendor.creditsCost,
+      expires_at: outcome.vendor.expiresAt,
+    }
+  }
+  let cost = 0
+  let creditsCost = 0
+  for (const value of Object.values(items)) {
+    if (!isRecord(value)) continue
+    if (typeof value.cost === 'number') cost += value.cost
+    if (typeof value.credits_cost === 'number') creditsCost += value.credits_cost
+  }
+  return {
+    ...providerParams,
+    vendor: { cost, credits_cost: creditsCost, items },
+  }
+}
 
 export function defaultImageJobRuntime(): ImageJobRuntime {
   return {
@@ -131,11 +173,21 @@ function resolveModel(modelProfileId: string | undefined, env = process.env) {
 
 async function resolveInputUrl(objectKey: string, runtime: ImageJobRuntime) {
   try {
-    return (await runtime.signRead(objectKey, 3600)).url
+    const signed = await runtime.signRead(objectKey, SOURCE_PRESIGN_TTL_SECONDS)
+    runtime.log({
+      stage: 'source-url',
+      expiresIn: SOURCE_PRESIGN_TTL_SECONDS,
+      ...describeReferenceUrl(signed.url),
+    })
+    return signed.url
   } catch (error) {
     runtime.log({ stage: 'source-sign-failed', error: error instanceof Error ? error.message : String(error) })
     const object = await runtime.getObject(objectKey)
-    const mime = object.contentType?.startsWith('image/') ? object.contentType : 'image/jpeg'
+    if (object.bytes.byteLength > DRAGONCODE_MAX_DATA_URI_BYTES) {
+      throw new ProviderError('INVALID_PARAMS', '参考图超过 20MB 限制', false, 400)
+    }
+    const mime = object.contentType?.startsWith('image/') ? object.contentType : ''
+    if (!mime) throw new ProviderError('INVALID_PARAMS', '参考图必须是图片格式', false, 400)
     return `data:${mime};base64,${Buffer.from(object.bytes).toString('base64')}`
   }
 }
@@ -228,7 +280,12 @@ export async function createImageJobInStore(
     creditsReserved: reserved,
     billingState: 'reserved',
     deadlineAt: new Date(runtime.now() + timeoutMs),
-    nextPollAt: nextPollAt(runtime.now(), config?.pollIntervalMs ?? 5000, true, config?.initialPollDelayMs ?? 10_000),
+    nextPollAt: nextPollAt(
+      runtime.now(),
+      config?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+      true,
+      config?.initialPollDelayMs ?? DEFAULT_INITIAL_POLL_DELAY_MS,
+    ),
   }
   const job = await store.insertJob(input)
   const items = await store.insertItems(job, mapped.fanOut)
@@ -291,6 +348,7 @@ export async function finalizeJob(
   items: ImageJobItemRow[],
   runtime: ImageJobRuntime,
   lateDelivery: boolean,
+  outcomes: SubmitOutcome[] = [],
 ) {
   const reduced = reduceJobStatus(items, runtime.now(), new Date(job.deadline_at).getTime())
   const warnings = mergeWarnings(job.warnings, reduced.warnings, lateDelivery && reduced.status === 'succeeded' ? [LATE_RESULT_WARNING] : [])
@@ -310,6 +368,9 @@ export async function finalizeJob(
       creditsCharged = 0
     }
   }
+  const providerParams = outcomes.some(outcome => outcome.vendor)
+    ? mergeVendorUsage(job.provider_params, outcomes)
+    : job.provider_params
   const next = await store.updateJob(job.id, {
     status: reduced.status,
     warnings,
@@ -324,8 +385,9 @@ export async function finalizeJob(
     credits_charged: creditsCharged,
     billing_state: billingState,
     completed_at: terminal ? new Date(runtime.now()) : job.completed_at,
-    next_poll_at: nextPollAt(runtime.now(), dragonCodeConfig()?.pollIntervalMs ?? 5000),
+    next_poll_at: nextPollAt(runtime.now(), dragonCodeConfig()?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS),
     lease_until: null,
+    provider_params: providerParams,
   })
   return { job: next, items }
 }
@@ -376,23 +438,34 @@ export async function collectAdvancePatches(
     try {
       const state = await provider.getStatus(item.provider_task_id, ctx)
       if (state.state === 'queued' || state.state === 'processing') {
-        outcomes.push({ ordinal: item.ordinal, patch: { status: 'processing', progress: state.progress ?? item.progress } })
+        if (state.vendor) {
+          runtime.log({ stage: 'dragoncode-usage', jobId: job.id, ordinal: item.ordinal, ...state.vendor })
+        }
+        outcomes.push({
+          ordinal: item.ordinal,
+          patch: { status: 'processing', progress: state.progress ?? item.progress },
+          vendor: state.vendor,
+        })
         continue
       }
       if (state.state === 'failed') {
+        runtime.log({ stage: 'dragoncode-usage', jobId: job.id, ordinal: item.ordinal, ...state.vendor })
         outcomes.push({
           ordinal: item.ordinal,
           patch: { status: 'failed', error_code: state.code, error_message: state.message },
+          vendor: state.vendor,
         })
         continue
       }
       if (state.state !== 'succeeded') continue
       const resultUrl = state.resultUrls[0]
       if (!resultUrl) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回结果地址')
+      runtime.log({ stage: 'dragoncode-usage', jobId: job.id, ordinal: item.ordinal, ...state.vendor })
       const downloaded = await provider.fetchResult(resultUrl, ctx)
       outcomes.push({
         ordinal: item.ordinal,
         patch: await persistDownloadedResult(job, item, downloaded.bytes, downloaded.mimeType, runtime),
+        vendor: state.vendor,
       })
     } catch (error) {
       const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN', '查询图片任务失败')
@@ -428,7 +501,7 @@ export async function advanceJobInStore(
   const outcomes = options?.outcomes ?? await collectAdvancePatches(job, bundle.items, runtime)
   const items = await applyItemPatches(store, job.id, bundle.items, outcomes)
   const late = overdue || job.status === 'expired'
-  return finalizeJob(store, job, items, runtime, late && items.some(item => item.status === 'succeeded'))
+  return finalizeJob(store, job, items, runtime, late && items.some(item => item.status === 'succeeded'), outcomes)
 }
 
 export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJobRuntime) {
@@ -476,7 +549,7 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
     await requireActive(sql, user.id)
     const store = createSqlStore(sql, user.id)
     const items = await applyItemPatches(store, created.bundle.job.id, created.bundle.items, outcomes)
-    const finalized = await finalizeJob(store, created.bundle.job, items, runtime, false)
+    const finalized = await finalizeJob(store, created.bundle.job, items, runtime, false, outcomes)
     return toClientImageTask(finalized, runtime)
   })
 }

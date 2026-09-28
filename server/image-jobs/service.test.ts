@@ -8,7 +8,7 @@ import {
   finalizeJob,
   runProviderSubmits,
 } from './service.js'
-import { LATE_RESULT_WARNING, PARTIAL_WARNING, reduceJobStatus, toClientTaskStatus } from './state.js'
+import { LATE_RESULT_WARNING, PARTIAL_WARNING, nextPollAt, reduceJobStatus, toClientTaskStatus } from './state.js'
 import type { ImageJobRuntime } from './service.js'
 
 const user = { id: '00000000-0000-4000-8000-000000000001', email: 'alice@example.com', suggestedName: 'A', avatarUrl: null, providers: ['email'] }
@@ -85,6 +85,12 @@ describe('图片任务状态机', () => {
     expect(toClientTaskStatus('expired')).toEqual({
       status: 'failed', errorCode: 'TASK_TIMEOUT', errorMessage: '任务处理超时，请重试',
     })
+  })
+
+  it('首次轮询 5s，之后至少 3s', () => {
+    expect(nextPollAt(0, 5_000, true).getTime()).toBe(5_000)
+    expect(nextPollAt(0, 5_000).getTime()).toBe(5_000)
+    expect(nextPollAt(0, 2_000).getTime()).toBe(3_000)
   })
 })
 
@@ -204,5 +210,32 @@ describe('图片任务存储状态机', () => {
     expect(winners).toHaveLength(1)
     expect(fetchResult).toHaveBeenCalledTimes(1)
     expect(IMAGE_LEASE_MS).toBe(30_000)
+  })
+
+  it('把上游 cost / credits_cost 写入已有 provider_params JSON', async () => {
+    const store = createMemoryStore(user.id)
+    const rt = runtime(createMockImageProvider({
+      async getStatus() {
+        return {
+          state: 'succeeded',
+          resultUrls: ['https://mock.local/a.png'],
+          vendor: { cost: 0.0085, creditsCost: 1, expiresAt: 1_759_116_436 },
+        }
+      },
+    }))
+    const created = await createImageJobInStore(store, user, params(), rt)
+    await store.updateItem(created.bundle.job.id, 0, { status: 'submitted', provider_task_id: 't-cost' })
+    const advanced = await advanceJobInStore(store, {
+      job: { ...created.bundle.job, next_poll_at: new Date(0) },
+      items: await store.listItems(created.bundle.job.id),
+    }, rt, { alreadyLeased: true })
+    expect(advanced.job.provider_params.vendor).toEqual({
+      cost: 0.0085,
+      credits_cost: 1,
+      items: { '0': { cost: 0.0085, credits_cost: 1, expires_at: 1_759_116_436 } },
+    })
+    expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'dragoncode-usage', cost: 0.0085, creditsCost: 1,
+    }))
   })
 })

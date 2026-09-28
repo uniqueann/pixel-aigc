@@ -5,7 +5,12 @@ export const DRAGONCODE_RATIOS = [
   '16:9', '9:16', '2:1', '1:2', '21:9', '9:21',
 ] as const
 
+/** DragonCode 实测接受的 size 值，含 auto。nearest-ratio 映射仍只用 DRAGONCODE_RATIOS。 */
+export const DRAGONCODE_SIZES = ['auto', ...DRAGONCODE_RATIOS] as const
+
 export const DRAGONCODE_FOUR_K_RATIOS = ['16:9', '9:16', '2:1', '1:2', '21:9', '9:21'] as const
+
+export const DRAGONCODE_MAX_INPUT_BYTES = 20_971_520
 
 export const RESOLUTION_DOWNGRADED_4K = 'RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO'
 
@@ -51,12 +56,16 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       maxCount: 4,
       resolutions: ['1k', '2k', '4k'],
       sizeMode: 'ratio',
-      ratios: [...DRAGONCODE_RATIOS],
+      ratios: [...DRAGONCODE_SIZES],
       resolutionRatioConstraints: { '4k': [...DRAGONCODE_FOUR_K_RATIOS] },
       maxRefImages: 16,
       promptMaxLength: 4000,
     },
-    pricing: { unit: 'image', creditsPerImage: {} },
+    pricing: {
+      unit: 'image',
+      creditsPerImage: {},
+      vendorCost: { '1k': '0.0085', '2k': '0.014', '4k': '0.021' },
+    },
     defaultFor: ['image_edit'],
     enabled: true,
   },

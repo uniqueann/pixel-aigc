@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import sharp from 'sharp'
+import { observedPixels } from '../image-providers/dragoncode/fixtures.js'
 import { cropRect, cropToSourceAspect } from './aspect-crop.js'
 
 describe('cropToSourceAspect', () => {
@@ -21,5 +22,22 @@ describe('cropToSourceAspect', () => {
 
   it('输出更高时裁切上下', () => {
     expect(cropRect(100, 200, 1)).toEqual({ left: 0, top: 50, width: 100, height: 100, cropped: true })
+  })
+
+  it('DragonCode 实测 off-by-one 像素与官方比例视为已对齐', () => {
+    expect(cropRect(observedPixels['1k:1:1'].width, observedPixels['1k:1:1'].height, 1).cropped).toBe(false)
+    expect(cropRect(observedPixels['1k:3:2'].width, observedPixels['1k:3:2'].height, 3 / 2).cropped).toBe(false)
+    expect(cropRect(observedPixels['1k:3:4'].width, observedPixels['1k:3:4'].height, 3 / 4).cropped).toBe(false)
+    expect(cropRect(observedPixels['2k:16:9'].width, observedPixels['2k:16:9'].height, 16 / 9).cropped).toBe(false)
+    expect(cropRect(observedPixels['4k:16:9'].width, observedPixels['4k:16:9'].height, 16 / 9).cropped).toBe(false)
+    expect(cropRect(observedPixels['4k:16:9'].width, observedPixels['4k:16:9'].height, 1920 / 1080).cropped).toBe(false)
+  })
+
+  it('4K 16:9 的 3840x2161 仍可按原图比例居中裁切', () => {
+    const square = cropRect(3840, 2161, 1)
+    expect(square).toMatchObject({ cropped: true, height: 2161, width: 2161 })
+    const threeTwo = cropRect(3840, 2161, 3 / 2)
+    expect(threeTwo.cropped).toBe(true)
+    expect(threeTwo.width).toBe(Math.round(2161 * 1.5))
   })
 })

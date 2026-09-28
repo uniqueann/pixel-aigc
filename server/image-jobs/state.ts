@@ -69,7 +69,7 @@ export function canSalvage(job: { status: string; deadline_at: Date | string }, 
   return now >= deadline
 }
 
-export function nextPollAt(now: number, intervalMs: number, initial?: boolean, initialDelayMs = 10_000) {
+export function nextPollAt(now: number, intervalMs: number, initial?: boolean, initialDelayMs = 5_000) {
   const delay = initial ? initialDelayMs : Math.max(3_000, intervalMs)
   return new Date(now + delay)
 }
