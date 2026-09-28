@@ -1,5 +1,6 @@
 import { downloadBlob } from '@/pages/Toolbox/shared/zip'
 import type { ImageAsset } from '@/editor/types'
+import { fetchOwnedObject } from '@/services/api/objects'
 
 const MIME_EXTENSION: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -25,15 +26,40 @@ export function filenameForWorkstationResult(input: {
   return `${safeLabel}_${input.width}x${input.height}${suffix}.${extensionForMime(input.mimeType)}`
 }
 
-export async function blobFromImageSource(source: Blob | string) {
-  if (typeof source !== 'string') return source
+export function downloadFailureMessage(error: unknown) {
+  const raw = error instanceof Error ? error.message.trim() : ''
+  if (!raw || /failed to fetch|networkerror|load failed|err_failed/i.test(raw)) {
+    return '下载失败：无法读取结果图片'
+  }
+  return raw.includes('下载失败') ? raw : `下载失败：${raw}`
+}
+
+function isInlineSource(source: string) {
+  return source.startsWith('blob:')
+    || source.startsWith('data:')
+    || source.startsWith('/')
+    || !/^[a-z][a-z0-9+.-]*:/i.test(source)
+}
+
+async function fetchSourceBlob(source: string) {
   const response = await fetch(source)
   if (!response.ok) throw new Error('读取图片失败')
   return response.blob()
 }
 
-export async function downloadImageSource(source: Blob | string, filename: string) {
-  downloadBlob(await blobFromImageSource(source), filename)
+export async function blobFromImageSource(source: Blob | string, objectKey?: string) {
+  if (typeof source !== 'string') return source
+  if (objectKey) return fetchOwnedObject(objectKey)
+  if (isInlineSource(source)) return fetchSourceBlob(source)
+  throw new Error('读取图片失败')
+}
+
+export async function downloadImageSource(source: Blob | string, filename: string, objectKey?: string) {
+  try {
+    downloadBlob(await blobFromImageSource(source, objectKey), filename)
+  } catch (error) {
+    throw new Error(downloadFailureMessage(error))
+  }
 }
 
 export async function downloadImageAsset(asset: ImageAsset, filename?: string) {
@@ -45,5 +71,6 @@ export async function downloadImageAsset(asset: ImageAsset, filename?: string) {
       height: asset.height,
       mimeType: asset.mimeType,
     }),
+    asset.objectKey,
   )
 }

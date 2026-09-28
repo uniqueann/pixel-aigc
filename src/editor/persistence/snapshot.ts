@@ -60,6 +60,7 @@ function validateProject(value: unknown): asserts value is PixelProject {
     object(asset)
     if (id !== asset.id) throw new Error('素材 ID 不一致')
     string(asset.id); string(asset.name); string(asset.mimeType); string(asset.createdAt); mediaUrl(asset.url)
+    if (asset.objectKey !== undefined) string(asset.objectKey)
     if (asset.storage !== undefined) {
       object(asset.storage)
       if (asset.storage.provider !== 'r2') throw new Error('素材存储类型无效')

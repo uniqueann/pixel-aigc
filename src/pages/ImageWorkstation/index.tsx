@@ -24,7 +24,7 @@ import { liveCapabilityReady } from '@/services/api/task'
 import { defaultImageModel, publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
-import { downloadImageAsset, filenameForWorkstationResult } from '@/features/image-workstation/download'
+import { downloadFailureMessage, downloadImageAsset, filenameForWorkstationResult } from '@/features/image-workstation/download'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import ParamPanel from './components/ParamPanel'
@@ -269,7 +269,7 @@ export default function ImageWorkstation() {
         index: controller.outputAssets.length > 1 ? index + 1 : undefined,
       }))
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '下载失败')
+      message.error({ content: downloadFailureMessage(error), duration: 4 })
     } finally {
       setDownloadingAssetId(undefined)
     }

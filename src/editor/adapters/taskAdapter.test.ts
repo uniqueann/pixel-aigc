@@ -50,9 +50,20 @@ describe('GenerationTask Adapter', () => {
     const adapted = adaptGenerationTask({
       ...task,
       resultUrls: ['https://example.com/result.png'],
-      resultImages: [{ url: 'https://example.com/result.png', width: 1536, height: 1024, mimeType: 'image/png' }],
+      resultImages: [{
+        url: 'https://example.com/result.png',
+        width: 1536,
+        height: 1024,
+        mimeType: 'image/png',
+        objectKey: 'generated/user/job/0.png',
+      }],
     }, { outputSize: { width: 2048, height: 1365 } })
-    expect(adapted.assets[0]).toMatchObject({ width: 1536, height: 1024, mimeType: 'image/png' })
+    expect(adapted.assets[0]).toMatchObject({
+      width: 1536,
+      height: 1024,
+      mimeType: 'image/png',
+      objectKey: 'generated/user/job/0.png',
+    })
   })
 
   it('把文生视频结果转换为带时长的 VideoAsset', () => {
