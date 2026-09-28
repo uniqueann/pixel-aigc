@@ -55,6 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         erase: bailianConfig() !== null,
         repaint: bailianConfig() !== null,
         imageEdit: imageModelsAvailable('image_edit'),
+        variation: imageModelsAvailable('variation'),
         smartSelect: segmentConfigured(),
       })
       return

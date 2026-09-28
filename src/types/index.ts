@@ -101,12 +101,16 @@ export interface TextToVideoTaskParams {
   count: 1
 }
 
-/** 自由画布图片裂变任务参数 */
+/** 裂变任务参数。自由画布填原图地址；工作站还会带上对象 key 和分辨率。 */
 export interface VariationTaskParams {
   sourceImageUrl: string
+  sourceImageKey?: string
   prompt?: string
   size: { width: number; height: number }
   count: number
+  resolution?: '1k' | '2k' | '4k'
+  sourceWidth?: number
+  sourceHeight?: number
 }
 
 /** 自由画布图生视频任务参数，复用文生视频能力路由 */

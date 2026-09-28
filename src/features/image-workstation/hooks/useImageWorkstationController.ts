@@ -31,6 +31,8 @@ interface ControllerOptions {
   count?: number
   resolution?: '1k' | '2k' | '4k'
   modelProfileId?: string
+  /** 工作站自己的能力开关。裂变不写入全局 live capability。 */
+  capabilityReady?: (capability: Capability) => boolean
 }
 
 interface SubmissionContext {
@@ -49,7 +51,8 @@ async function prepareImageEditRequest(
   request: WorkstationGenerationRequest,
   sourceAsset: ImageAsset,
 ): Promise<WorkstationGenerationRequest> {
-  if (request.capability !== Capability.ImageEdit || useMockGateway) return request
+  const uploadsSource = request.capability === Capability.ImageEdit || request.capability === Capability.Variation
+  if (!uploadsSource || useMockGateway) return request
   const params = { ...(request.params as ImageEditTaskParams) }
   if (!params.sourceImageKey) {
     const response = await fetch(sourceAsset.url)
@@ -69,6 +72,7 @@ export function useImageWorkstationController({
   count,
   resolution,
   modelProfileId,
+  capabilityReady = liveCapabilityReady,
 }: ControllerOptions) {
   const project = useEditorStore((state) => state.project)
   const createProject = useEditorStore((state) => state.createProject)
@@ -382,7 +386,7 @@ export function useImageWorkstationController({
   }, [applyCompletedTask, modelProfileId, service, upsertTask])
 
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
-    if (!isWorkstationToolReady(activeTool)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
+    if (!isWorkstationToolReady(activeTool, capabilityReady)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
     if (!inputAsset) throw new Error('请先上传需要编辑的图片')
     const initialContext = { sourceAsset: inputAsset, prompt, count, resolution, modelProfileId }
     const validation = activeTool.validate?.(initialContext)
@@ -431,7 +435,7 @@ export function useImageWorkstationController({
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
     return submitRequest({ ...request, modelProfileId }, inputAsset, inputAsset.generationId)
-  }, [activeTool, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, prompt, resolution, submitRequest])
+  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, prompt, resolution, submitRequest])
 
   const retry = useCallback(async () => {
     if (!task) return
@@ -452,7 +456,7 @@ export function useImageWorkstationController({
       if (!inpaintParams.maskUrl) throw new Error('请先涂抹要消除的区域')
       return completeErase(sourceAsset, inpaintParams.maskUrl, inpaintParams.prompt ?? '', context.options.parentGenerationId)
     }
-    if (context.request.capability !== Capability.Outpaint && !liveCapabilityReady(context.request.capability)) {
+    if (context.request.capability !== Capability.Outpaint && !capabilityReady(context.request.capability)) {
       throw new Error(COMING_SOON_SUBMIT_MESSAGE)
     }
     if (context.request.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
@@ -467,7 +471,7 @@ export function useImageWorkstationController({
       )
     }
     return submitRequest(context.request, sourceAsset, context.options.parentGenerationId)
-  }, [completeErase, completeOutpaint, completeRepaint, submitRequest, task])
+  }, [capabilityReady, completeErase, completeOutpaint, completeRepaint, submitRequest, task])
 
   const modifyParameters = useCallback(() => {
     setTask(undefined)

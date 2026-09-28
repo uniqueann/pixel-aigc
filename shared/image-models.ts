@@ -66,7 +66,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       creditsPerImage: {},
       vendorCost: { '1k': '0.0085', '2k': '0.014', '4k': '0.021' },
     },
-    defaultFor: ['image_edit'],
+    defaultFor: ['image_edit', 'variation'],
     enabled: true,
   },
 ]

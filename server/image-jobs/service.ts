@@ -6,6 +6,11 @@ import { HttpError } from '../errors.js'
 import { requireActive } from '../model-settings.js'
 import { getObject, putObject, signRead } from '../storage.js'
 import type { NormalizedImageRequest } from '../../shared/image-generation.js'
+import {
+  VARIATION_USER_PROMPT_MAX,
+  composeVariationPrompt,
+  variationPromptLimitMessage,
+} from '../../shared/variation.js'
 import { configuredImageModels, imageProviderById } from '../image-providers/registry.js'
 import { ProviderError, type ImageProvider, type ProviderContext } from '../image-providers/types.js'
 import {
@@ -39,13 +44,12 @@ export const IMAGE_HOURLY_LIMIT = 20
 export const IMAGE_USER_CONCURRENCY = 2
 export const IMAGE_GLOBAL_CONCURRENCY = 20
 export const IMAGE_LEASE_MS = 30_000
-export const IMAGE_TASK_CAPABILITIES = new Set(['image_edit'])
+export const IMAGE_TASK_CAPABILITIES = new Set(['image_edit', 'variation'])
 
 const uuid = z.uuid()
-const imageEditParams = z.object({
+const imageSourceParams = {
   sourceImageKey: z.string().trim().min(1).max(512),
   sourceImageUrl: z.string().max(4000).optional(),
-  prompt: z.string().trim().min(1).max(4000),
   count: z.number().int().min(1).max(4),
   resolution: z.enum(['1k', '2k', '4k']),
   size: z.object({
@@ -55,14 +59,48 @@ const imageEditParams = z.object({
   sourceWidth: z.number().int().positive().max(20000).optional(),
   sourceHeight: z.number().int().positive().max(20000).optional(),
   extra: z.record(z.string(), z.unknown()).optional(),
+}
+const imageEditParams = z.object({
+  ...imageSourceParams,
+  prompt: z.string().trim().min(1).max(4000),
+}).strict()
+const variationParams = z.object({
+  ...imageSourceParams,
+  prompt: z.string().trim().max(VARIATION_USER_PROMPT_MAX).optional(),
 }).strict()
 
-export const createImageTaskSchema = z.object({
-  capability: z.literal('image_edit'),
-  requestId: uuid,
-  params: imageEditParams,
-  modelProfileId: z.string().optional(),
-}).strict()
+export const createImageTaskSchema = z.discriminatedUnion('capability', [
+  z.object({
+    capability: z.literal('image_edit'),
+    requestId: uuid,
+    params: imageEditParams,
+    modelProfileId: z.string().optional(),
+  }).strict(),
+  z.object({
+    capability: z.literal('variation'),
+    requestId: uuid,
+    params: variationParams,
+    modelProfileId: z.string().optional(),
+  }).strict(),
+])
+
+type ImageTaskCapability = 'image_edit' | 'variation'
+type StoredImageParams = {
+  prompt?: string
+  sourceImageKey: string
+  sourceWidth?: number
+  sourceHeight?: number
+  size?: { width: number; height: number }
+}
+
+export function assertVariationSteerLimit(body: unknown) {
+  if (!isRecord(body) || body.capability !== 'variation' || !isRecord(body.params)) return
+  const prompt = body.params.prompt
+  if (typeof prompt !== 'string') return
+  if (prompt.trim().length > VARIATION_USER_PROMPT_MAX) {
+    throw new HttpError(400, variationPromptLimitMessage(), 'INVALID_PARAMS')
+  }
+}
 
 export interface ImageJobRuntime {
   now: () => number
@@ -152,23 +190,34 @@ function iso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString()
 }
 
-function sourceDimensions(params: z.infer<typeof imageEditParams>) {
+function sourceDimensions(params: StoredImageParams) {
   if (params.sourceWidth && params.sourceHeight) return { width: params.sourceWidth, height: params.sourceHeight }
   if (params.size) return params.size
   return { width: 1, height: 1 }
+}
+
+function imageModelUnavailable(operation: ImageTaskCapability) {
+  const label = operation === 'variation' ? '裂变' : '智能编辑'
+  return new HttpError(503, `${label}尚未配置可用的图片模型`, operation === 'variation' ? 'VARIATION_UNAVAILABLE' : 'IMAGE_EDIT_UNAVAILABLE')
 }
 
 function providerContext(runtime: ImageJobRuntime, requestId?: string): ProviderContext {
   return { fetch: runtime.fetch, sleep: runtime.sleep, now: runtime.now, log: runtime.log, requestId }
 }
 
-function resolveModel(modelProfileId: string | undefined, env = process.env) {
-  const available = configuredImageModels('image_edit', env)
+function resolveModel(operation: ImageTaskCapability, modelProfileId: string | undefined, env = process.env) {
+  const available = configuredImageModels(operation, env)
   const profile = modelProfileId
     ? available.find(item => item.id === modelProfileId)
-    : available.find(item => item.defaultFor?.includes('image_edit')) ?? available[0]
-  if (!profile) throw new HttpError(503, '智能编辑尚未配置可用的图片模型', 'IMAGE_EDIT_UNAVAILABLE')
+    : available.find(item => item.defaultFor?.includes(operation)) ?? available[0]
+  if (!profile) throw imageModelUnavailable(operation)
   return profile
+}
+
+function submittedPrompt(providerParams: Record<string, unknown>, params: StoredImageParams) {
+  const composed = providerParams.prompt
+  if (typeof composed === 'string' && composed.trim()) return composed
+  return params.prompt ?? ''
 }
 
 async function resolveInputUrl(objectKey: string, runtime: ImageJobRuntime) {
@@ -213,12 +262,17 @@ export async function createImageJobInStore(
   runtime: ImageJobRuntime,
 ): Promise<{ bundle: ImageJobBundle; created: boolean; provider: ImageProvider }> {
   await store.expireUserOverdue(new Date(runtime.now()))
-  const profile = resolveModel(parsed.modelProfileId)
+  const profile = resolveModel(parsed.capability, parsed.modelProfileId)
   const provider = runtime.providerFor(profile.provider)
-  if (!provider) throw new HttpError(503, '智能编辑尚未配置可用的图片模型', 'IMAGE_EDIT_UNAVAILABLE')
-  if (parsed.params.prompt.length > (profile.ui.promptMaxLength ?? 4000)) {
+  if (!provider) throw imageModelUnavailable(parsed.capability)
+  const userPrompt = parsed.params.prompt?.trim() ?? ''
+  if (parsed.capability === 'variation' && userPrompt.length > VARIATION_USER_PROMPT_MAX) {
+    throw new HttpError(400, variationPromptLimitMessage(), 'INVALID_PARAMS')
+  }
+  if (parsed.capability === 'image_edit' && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
     throw new HttpError(400, '编辑要求过长', 'INVALID_PARAMS')
   }
+  const prompt = parsed.capability === 'variation' ? composeVariationPrompt(userPrompt) : parsed.params.prompt
   if (parsed.params.count > profile.ui.maxCount) {
     throw new HttpError(400, `最多生成 ${profile.ui.maxCount} 张`, 'INVALID_PARAMS')
   }
@@ -227,8 +281,8 @@ export async function createImageJobInStore(
   }
   const dimensions = sourceDimensions(parsed.params)
   const normalized: NormalizedImageRequest = {
-    operation: 'image_edit',
-    prompt: parsed.params.prompt,
+    operation: parsed.capability,
+    prompt,
     images: [{
       source: { kind: 'r2', objectKey: parsed.params.sourceImageKey },
       width: dimensions.width,
@@ -239,6 +293,9 @@ export async function createImageJobInStore(
     extra: parsed.params.extra,
   }
   const mapped = provider.mapRequest(normalized, profile.model)
+  if (parsed.capability === 'variation') {
+    mapped.providerParams = { ...mapped.providerParams, prompt }
+  }
   const fingerprint = createHash('sha256').update(JSON.stringify({
     params: parsed.params, modelProfileId: profile.id,
   })).digest('hex')
@@ -298,11 +355,12 @@ export async function runProviderSubmits(
   userId: string,
   runtime: ImageJobRuntime,
 ): Promise<SubmitOutcome[]> {
-  const params = bundle.job.params as z.infer<typeof imageEditParams>
+  const params = bundle.job.params as StoredImageParams
   if (!isSafeObjectKey(userId, params.sourceImageKey)) {
     throw new HttpError(400, '原图对象无效或无权访问', 'INVALID_SOURCE')
   }
   const sourceUrl = await resolveInputUrl(params.sourceImageKey, runtime)
+  const prompt = submittedPrompt(bundle.job.provider_params, params)
   const parallel = dragonCodeConfig()?.maxParallel ?? 4
   const ctx = providerContext(runtime, bundle.job.request_id)
   return mapPool(bundle.items.length, parallel, async (index) => {
@@ -312,7 +370,7 @@ export async function runProviderSubmits(
       if (!provider.submit) throw new ProviderError('UNKNOWN', '当前模型不支持异步提交', false, 500)
       const submitted = await provider.submit({
         model: String(bundle.job.provider_params.model ?? ''),
-        prompt: params.prompt,
+        prompt,
         images: [{ url: sourceUrl }],
         providerParams: bundle.job.provider_params,
       }, ctx)
@@ -399,7 +457,7 @@ async function persistDownloadedResult(
   mimeType: string,
   runtime: ImageJobRuntime,
 ) {
-  const params = job.params as z.infer<typeof imageEditParams>
+  const params = job.params as StoredImageParams
   const source = sourceDimensions(params)
   const cropped = await runtime.crop(bytes, source.width, source.height)
   const objectKey = `generated/${job.user_id}/${job.id}/${item.ordinal}.${extensionFor(cropped.mimeType || mimeType)}`
@@ -537,6 +595,7 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
 }
 
 export async function submitImageTask(user: User, body: unknown, runtime = defaultImageJobRuntime()) {
+  assertVariationSteerLimit(body)
   const parsed = createImageTaskSchema.parse(body)
   const created = await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)

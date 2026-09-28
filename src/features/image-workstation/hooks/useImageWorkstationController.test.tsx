@@ -73,12 +73,14 @@ function ControllerHarness({
   prompt,
   count,
   resolution,
+  capabilityReady,
   onController,
 }: {
   tool?: string
   prompt?: string
   count?: number
   resolution?: '2k' | '4k'
+  capabilityReady?: (capability: Capability) => boolean
   onController: (controller: Controller) => void
 }) {
   const controller = useImageWorkstationController({
@@ -87,6 +89,7 @@ function ControllerHarness({
     prompt,
     count,
     resolution,
+    capabilityReady,
   })
   useEffect(() => onController(controller), [controller, onController])
   return null
@@ -437,5 +440,89 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(currentController.protocolError).toBe('任务已完成，但没有返回新的生成结果')
     expect(currentController.outputAssets).toEqual([])
     expect(currentController.inputAsset?.id).toBe(initialAsset.id)
+  })
+
+  it('工作站本地开关打开时提交裂变，不依赖全局能力注册', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const processingTask: GenerationTask = {
+      id: 'task-variation-local',
+      capability: Capability.Variation,
+      status: 'processing',
+      params: { count: 2, resolution: '2k' },
+      creditsCost: 2,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValue(processingTask)
+    await act(async () => root.render(
+      <ControllerHarness
+        tool="variation"
+        prompt="  只换背景  "
+        count={2}
+        resolution="2k"
+        capabilityReady={(capability) => capability === Capability.Variation}
+        onController={captureController}
+      />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+    expect(mocks.uploadTaskInput).toHaveBeenCalled()
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      capability: Capability.Variation,
+      params: expect.objectContaining({
+        prompt: '只换背景',
+        count: 2,
+        resolution: '2k',
+        sourceImageKey: 'temporary/task-inputs/user/source-1',
+      }),
+    }))
+  })
+
+  it('两张里成功一张时留下结果，并保留部分成功警告', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const processingTask: GenerationTask = {
+      id: 'task-variation-partial',
+      capability: Capability.Variation,
+      status: 'processing',
+      params: { sourceImageUrl: initialAsset.url, count: 2, resolution: '2k' },
+      creditsCost: 2,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValue(processingTask)
+    await act(async () => root.render(
+      <ControllerHarness
+        tool="variation"
+        count={2}
+        capabilityReady={(capability) => capability === Capability.Variation}
+        onController={captureController}
+      />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+    const submitted = mocks.createTask.mock.calls[mocks.createTask.mock.calls.length - 1]?.[0]
+    expect(submitted?.params).not.toHaveProperty('prompt')
+
+    mocks.polling.data = {
+      ...processingTask,
+      status: 'succeeded',
+      resultUrls: ['candidate-only.png'],
+      warnings: ['PARTIAL'],
+      updatedAt: '2026-09-07T00:01:00.000Z',
+    }
+    await act(async () => root.render(
+      <ControllerHarness
+        tool="variation"
+        count={2}
+        capabilityReady={(capability) => capability === Capability.Variation}
+        onController={captureController}
+      />,
+    ))
+    expect(currentController.activeTask?.status).toBe('succeeded')
+    expect(currentController.activeTask?.warnings).toEqual(['PARTIAL'])
+    expect(currentController.outputAssets.map((asset) => asset.url)).toEqual(['candidate-only.png'])
+    expect(currentController.protocolError).toBeUndefined()
   })
 })
