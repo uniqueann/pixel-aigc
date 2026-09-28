@@ -16,6 +16,12 @@ const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloud
 /** 静态已接入集合。智能编辑等能力还会与 GET /api/capabilities 的动态开关求并。 */
 const LIVE_TASK_CAPABILITIES = new Set<Capability>([Capability.EmailAssist])
 
+/**
+ * 工作站已接通、服务端 /tasks 会转到 image_jobs 的能力。
+ * 不写入 LIVE_TASK_CAPABILITIES，自由画布裂变入口仍由 availability 开关单独禁用。
+ */
+const WORKSTATION_TASK_CAPABILITIES = new Set<Capability>([Capability.Variation])
+
 export function registerLiveCapability(capability: Capability, ready: boolean) {
   if (capability === Capability.EmailAssist) return
   if (ready) LIVE_TASK_CAPABILITIES.add(capability)
@@ -26,8 +32,12 @@ export function liveCapabilityReady(capability: Capability, mockGateway = useMoc
   return mockGateway || LIVE_TASK_CAPABILITIES.has(capability)
 }
 
+export function canCreateLiveTask(capability: Capability, mockGateway = useMockGateway) {
+  return liveCapabilityReady(capability, mockGateway) || WORKSTATION_TASK_CAPABILITIES.has(capability)
+}
+
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {
-  if (!liveCapabilityReady(payload.capability))
+  if (!canCreateLiveTask(payload.capability))
     return Promise.reject(new Error('该生成能力尚未接入真实服务'))
   if (useMockGateway) return createMockTask(payload)
   return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload, { timeout: 55000 })
