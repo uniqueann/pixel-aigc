@@ -18,6 +18,8 @@ describe('buildImageEditRequest', () => {
       count: 4,
       resolution: '2k',
       size: { width: 2048, height: 1365 },
+      sourceWidth: 1200,
+      sourceHeight: 800,
     })
     expect(request.outputSize).toEqual({ width: 2048, height: 1365 })
   })

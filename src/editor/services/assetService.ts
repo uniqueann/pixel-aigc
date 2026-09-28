@@ -9,6 +9,7 @@ interface ImageAssetInput {
   source?: ImageAsset['source']
   generationId?: GenerationId
   createdAt?: string
+  mimeType?: string
 }
 
 export function createImageAsset(input: ImageAssetInput): ImageAsset {
@@ -17,7 +18,7 @@ export function createImageAsset(input: ImageAssetInput): ImageAsset {
     type: 'image',
     name: input.name,
     url: input.url,
-    mimeType: inferMimeType(input.url, 'image/png'),
+    mimeType: input.mimeType || inferMimeType(input.url, 'image/png'),
     width: input.width,
     height: input.height,
     source: input.source ?? 'upload',

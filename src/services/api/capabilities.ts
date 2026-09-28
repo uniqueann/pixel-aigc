@@ -1,4 +1,4 @@
-import { liveCapabilityReady } from '@/services/api/task'
+import { liveCapabilityReady, registerLiveCapability } from '@/services/api/task'
 import { Capability } from '@/types'
 
 interface CapabilityFlags {
@@ -6,6 +6,7 @@ interface CapabilityFlags {
   outpaint?: boolean
   erase?: boolean
   repaint?: boolean
+  imageEdit?: boolean
 }
 
 function loadFlags(): Promise<CapabilityFlags> {
@@ -32,4 +33,13 @@ export function loadEraseConfigured() {
 export function loadRepaintConfigured() {
   if (liveCapabilityReady(Capability.Inpaint)) return Promise.resolve(true)
   return loadFlags().then(data => Boolean(data.repaint))
+}
+
+export function loadImageEditConfigured() {
+  if (liveCapabilityReady(Capability.ImageEdit)) return Promise.resolve(true)
+  return loadFlags().then(data => {
+    const ready = Boolean(data.imageEdit)
+    registerLiveCapability(Capability.ImageEdit, ready)
+    return ready
+  })
 }

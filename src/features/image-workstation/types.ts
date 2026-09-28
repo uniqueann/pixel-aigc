@@ -18,7 +18,8 @@ export interface WorkstationContext {
   sourceAsset: ImageAsset
   prompt?: string
   count?: number
-  resolution?: '2k' | '4k'
+  resolution?: '1k' | '2k' | '4k'
+  modelProfileId?: string
   maskUrl?: string
   targetSize?: { width: number; height: number }
   originOffset?: { x: number; y: number }
@@ -28,6 +29,7 @@ export interface WorkstationGenerationRequest {
   capability: Capability
   params: ImageTaskParams | ImageEditTaskParams | InpaintTaskParams | OutpaintTaskParams
   outputSize: { width: number; height: number }
+  modelProfileId?: string
 }
 
 export interface WorkstationToolDefinition {

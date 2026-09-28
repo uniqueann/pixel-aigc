@@ -1,6 +1,8 @@
 import { Input, Segmented, Select, Slider, Space } from 'antd'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
+import { mapDragonCodeSize } from '@shared/image-models'
 
 interface Props {
   capability: Capability
@@ -9,8 +11,12 @@ interface Props {
   onSmartEditPromptChange: (prompt: string) => void
   count: number
   onCountChange: (count: number) => void
-  resolution: '2k' | '4k'
-  onResolutionChange: (resolution: '2k' | '4k') => void
+  resolution: '1k' | '2k' | '4k'
+  onResolutionChange: (resolution: '1k' | '2k' | '4k') => void
+  models?: PublicImageModel[]
+  modelProfileId?: string
+  onModelProfileIdChange?: (id: string) => void
+  sourceSize?: { width: number; height: number }
   disabled?: boolean
   erasePrompt: string
   onErasePromptChange: (prompt: string) => void
@@ -35,6 +41,10 @@ export default function ParamPanel({
   onCountChange,
   resolution,
   onResolutionChange,
+  models = [],
+  modelProfileId,
+  onModelProfileIdChange,
+  sourceSize,
   disabled = false,
   erasePrompt,
   onErasePromptChange,
@@ -47,8 +57,28 @@ export default function ParamPanel({
   onPresetPlatformChange,
 }: Props) {
   if (capability === Capability.ImageEdit) {
+    const model = models.find(item => item.id === modelProfileId) ?? models[0]
+    const maxCount = model?.ui.maxCount ?? 4
+    const resolutions = model?.ui.resolutions ?? ['2k', '4k']
+    const mapped = sourceSize
+      ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution)
+      : undefined
+    const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
+      || model.ui.resolutionRatioConstraints['4k'].includes(mapped?.size ?? '')
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        {models.length > 1 ? (
+          <div>
+            <div style={labelStyle}>模型</div>
+            <Select
+              style={{ width: '100%' }}
+              value={model?.id}
+              disabled={disabled}
+              onChange={onModelProfileIdChange}
+              options={models.map(item => ({ value: item.id, label: item.label }))}
+            />
+          </div>
+        ) : null}
         <div>
           <div style={labelStyle}>编辑要求</div>
           <Input.TextArea
@@ -57,16 +87,17 @@ export default function ParamPanel({
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
             placeholder="例如：换成纯白电商背景，保留商品细节"
             autoSize={{ minRows: 5, maxRows: 10 }}
+            maxLength={model?.ui.promptMaxLength}
           />
         </div>
         <div>
           <div style={labelStyle}>生成数量</div>
           <Slider
             min={1}
-            max={4}
+            max={maxCount}
             step={1}
-            marks={{ 1: '1', 2: '2', 3: '3', 4: '4' }}
-            value={count}
+            marks={Object.fromEntries(Array.from({ length: maxCount }, (_, index) => [index + 1, String(index + 1)]))}
+            value={Math.min(count, maxCount)}
             disabled={disabled}
             onChange={onCountChange}
           />
@@ -78,11 +109,18 @@ export default function ParamPanel({
             value={resolution}
             disabled={disabled}
             onChange={onResolutionChange}
-            options={[
-              { value: '2k', label: '2K' },
-              { value: '4k', label: '4K' },
-            ]}
+            options={resolutions.map(value => ({
+              value,
+              label: value.toUpperCase(),
+              disabled: value === '4k' && !fourKAllowed,
+            }))}
           />
+          {mapped ? (
+            <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
+              预计输出比例 {mapped.size} · {mapped.resolution.toUpperCase()}
+              {!fourKAllowed ? '。当前比例不支持 4K，将以 2K 生成' : ''}
+            </p>
+          ) : null}
         </div>
       </Space>
     )

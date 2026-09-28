@@ -2,7 +2,7 @@ import type { ImageEditTaskParams } from '@/types'
 import { Capability } from '@/types'
 import type { WorkstationContext, WorkstationGenerationRequest } from '../../types'
 
-const TARGET_LONG_EDGE = { '2k': 2048, '4k': 4096 } as const
+const TARGET_LONG_EDGE = { '1k': 1024, '2k': 2048, '4k': 4096 } as const
 
 export function buildImageEditRequest(context: WorkstationContext): WorkstationGenerationRequest {
   const prompt = context.prompt?.trim() ?? ''
@@ -19,6 +19,8 @@ export function buildImageEditRequest(context: WorkstationContext): WorkstationG
     count,
     resolution,
     size: outputSize,
+    sourceWidth: context.sourceAsset.width,
+    sourceHeight: context.sourceAsset.height,
   }
 
   return { capability: Capability.ImageEdit, params, outputSize }

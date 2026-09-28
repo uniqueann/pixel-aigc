@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
   liveCapabilityReady: vi.fn(() => true),
   uploadDataUrl: vi.fn(async (url: string) => url),
+  uploadTaskInput: vi.fn(async () => 'temporary/task-inputs/user/source-1'),
   requestErase: vi.fn(),
   requestRepaint: vi.fn(),
   polling: { data: undefined as GenerationTask<unknown> | undefined },
@@ -27,6 +28,7 @@ vi.mock('@/services/api/task', () => ({
 }))
 vi.mock('@/services/api/upload', () => ({
   uploadDataUrl: mocks.uploadDataUrl,
+  uploadTaskInput: mocks.uploadTaskInput,
 }))
 vi.mock('@/services/api/erase', () => ({
   requestErase: mocks.requestErase,
@@ -100,6 +102,9 @@ describe('useImageWorkstationController 集成流程', () => {
     mocks.liveCapabilityReady.mockReturnValue(true)
     mocks.uploadDataUrl.mockReset()
     mocks.uploadDataUrl.mockImplementation(async (url: string) => url)
+    mocks.uploadTaskInput.mockReset()
+    mocks.uploadTaskInput.mockResolvedValue('temporary/task-inputs/user/source-1')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }))))
     mocks.requestErase.mockReset()
     mocks.requestRepaint.mockReset()
     mocks.polling.data = undefined
@@ -229,9 +234,15 @@ describe('useImageWorkstationController 集成流程', () => {
     await act(async () => {
       await currentController.generate(null)
     })
+    expect(mocks.uploadTaskInput).toHaveBeenCalled()
     expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({
       capability: Capability.ImageEdit,
-      params: expect.objectContaining({ prompt: '换成白色背景', count: 2, resolution: '2k' }),
+      params: expect.objectContaining({
+        prompt: '换成白色背景',
+        count: 2,
+        resolution: '2k',
+        sourceImageKey: 'temporary/task-inputs/user/source-1',
+      }),
     }))
 
     mocks.polling.data = {

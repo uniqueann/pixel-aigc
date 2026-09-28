@@ -8,10 +8,22 @@ const s3 = () => client ??= new S3Client({ region: 'auto', requestChecksumCalcul
   credentials: { accessKeyId: env('R2_ACCESS_KEY_ID'), secretAccessKey: env('R2_SECRET_ACCESS_KEY') } })
 const bucket = () => env('R2_BUCKET')
 export async function signUpload(key: string, mimeType: string, size: number) {
+  // 浏览器直传只允许带 Content-Type。x-amz-* 全部放进签名 query，避免触发
+  // aigc.contentup.cc 那条只放行 Content-Type 的 CORS 规则。
   return getSignedUrl(s3(), new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: mimeType, ContentLength: size }), { expiresIn: 600, signableHeaders: new Set(['content-type']) })
 }
-export async function signRead(key: string) {
-  return { url: await getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket(), Key: key }), { expiresIn: 900 }), expiresAt: Date.now() + 900000 }
+export async function signRead(key: string, expiresIn = 900) {
+  return { url: await getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket(), Key: key }), { expiresIn }), expiresAt: Date.now() + expiresIn * 1000 }
+}
+
+export async function putObject(key: string, bytes: Uint8Array, contentType: string) {
+  await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: contentType }))
+}
+
+export async function getObject(key: string) {
+  const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }))
+  if (!result.Body) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
+  return { bytes: await result.Body.transformToByteArray(), contentType: result.ContentType }
 }
 export async function verifyAndPromote(tempKey: string, key: string, expectedSize: number, mimeType: string) {
   const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: tempKey }))

@@ -31,6 +31,8 @@ export interface GenerationTask<TParams = Record<string, unknown>> {
   status: TaskStatus
   params: TParams
   resultUrls?: string[]
+  resultImages?: Array<{ url: string; width: number; height: number; mimeType: string }>
+  warnings?: string[]
   /** 文本生成类任务的单条结果 */
   resultText?: string
   /** 用户修改稿与 AI 原始结果分别保存。 */
@@ -53,16 +55,19 @@ export interface ImageTaskParams {
   count?: number
   strength?: number
   enhance?: 'high' | 'medium' | 'low' | 'off'
-  resolution?: '2k' | '4k'
+  resolution?: '1k' | '2k' | '4k'
   extra?: Record<string, unknown>
 }
 
 /** 智能编辑任务参数 */
 export interface ImageEditTaskParams extends ImageTaskParams {
-  sourceImageUrl: string
+  sourceImageUrl?: string
+  sourceImageKey?: string
+  sourceWidth?: number
+  sourceHeight?: number
   prompt: string
   count: number
-  resolution: '2k' | '4k'
+  resolution: '1k' | '2k' | '4k'
 }
 
 /** 消除/重绘任务参数 */
