@@ -8,6 +8,7 @@ describe('资产列表文案', () => {
     expect(workstationToolLabel('remove')).toBe('消除')
     expect(workstationToolLabel('outpaint')).toBe('扩图')
     expect(capabilityLabel(Capability.Inpaint, 'repaint')).toBe('重绘')
+    expect(capabilityLabel(Capability.Variation)).toBe('裂变')
     expect(emailOperationLabel('summarize')).toBe('总结')
     expect(taskStatusLabel('succeeded')).toBe('已完成')
   })

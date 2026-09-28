@@ -17,6 +17,7 @@ export interface FreeCanvasStageProps {
   canUndo: boolean
   canRedo: boolean
   generationActive: boolean
+  variationEnabled?: boolean
   onSelectNode: (nodeId?: NodeId) => void
   onTransformNode: (nodeId: NodeId, transform: NodeTransform) => void
   onViewportChange: (viewport: ViewportState) => void

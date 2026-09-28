@@ -4,6 +4,7 @@ import type { InteractionMode, WorkstationToolDefinition } from '../types'
 import { buildInpaintRequest } from './requestBuilders/inpaint'
 import { buildImageEditRequest } from './requestBuilders/imageEdit'
 import { buildOutpaintRequest } from './requestBuilders/outpaint'
+import { buildVariationRequest } from './requestBuilders/variation'
 
 export const COMING_SOON_LABEL = '即将上线'
 export const COMING_SOON_SUBMIT_MESSAGE = '该能力即将上线，目前还不能提交生成任务'
@@ -53,7 +54,7 @@ export const WORKSTATION_TOOLS: WorkstationToolDefinition[] = [
     validate: (ctx) => ctx.prompt?.trim() ? { valid: true } : { valid: false, message: '请先填写重绘描述' },
     buildRequest: (ctx) => buildInpaintRequest(ctx, 'repaint'),
   },
-  { slug: 'variation', capability: Capability.Variation, label: '裂变', interactionMode: 'params-only', buildRequest: buildBasicRequest(Capability.Variation) },
+  { slug: 'variation', capability: Capability.Variation, label: '裂变', interactionMode: 'params-only', buildRequest: buildVariationRequest },
   { slug: 'fusion', capability: Capability.Fusion, label: '融合', interactionMode: 'multi-source', validate: unsupported, buildRequest: buildBasicRequest(Capability.Fusion) },
   { slug: 'outpaint', capability: Capability.Outpaint, label: '扩图', interactionMode: 'drag-resize', buildRequest: buildOutpaintRequest },
   { slug: 'retouch', capability: Capability.Retouch, label: '精修', interactionMode: 'params-only', buildRequest: buildBasicRequest(Capability.Retouch) },

@@ -248,6 +248,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   canUndo,
   canRedo,
   generationActive,
+  variationEnabled = false,
   onSelectNode,
   onTransformNode,
   onViewportChange,
@@ -743,15 +744,19 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       </div>}
       {selectedImage && nodeActionPosition && (
         <div className="free-canvas-node-actions" style={nodeActionPosition} aria-label="图片派生操作">
-          <Button
-            size="small"
-            type="text"
-            icon={<BranchesOutlined />}
-            disabled={generationActive}
-            onClick={() => onNodeGenerationAction('variation', selectedImage.id)}
-          >
-            裂变
-          </Button>
+          <Tooltip title={variationEnabled ? '基于这张图再生成一版' : '即将上线'}>
+            <span>
+              <Button
+                size="small"
+                type="text"
+                icon={<BranchesOutlined />}
+                disabled={generationActive || !variationEnabled}
+                onClick={() => onNodeGenerationAction('variation', selectedImage.id)}
+              >
+                裂变
+              </Button>
+            </span>
+          </Tooltip>
           <span className="free-canvas-node-actions-divider" />
           <Button
             size="small"

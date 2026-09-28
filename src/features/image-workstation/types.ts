@@ -5,6 +5,7 @@ import type {
   ImageTaskParams,
   InpaintTaskParams,
   OutpaintTaskParams,
+  VariationTaskParams,
 } from '@/types'
 
 export type InteractionMode = 'params-only' | 'mask-paint' | 'drag-resize' | 'multi-source' | 'light-control'
@@ -27,7 +28,7 @@ export interface WorkstationContext {
 
 export interface WorkstationGenerationRequest {
   capability: Capability
-  params: ImageTaskParams | ImageEditTaskParams | InpaintTaskParams | OutpaintTaskParams
+  params: ImageTaskParams | ImageEditTaskParams | InpaintTaskParams | OutpaintTaskParams | VariationTaskParams
   outputSize: { width: number; height: number }
   modelProfileId?: string
 }

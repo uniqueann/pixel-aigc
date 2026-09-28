@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { VARIATION_FIXED_PROMPT, VARIATION_USER_PROMPT_MAX, composeVariationPrompt, variationPromptLimitMessage } from '../../shared/variation.js'
+import { mapDragonCodeRequest } from '../image-providers/dragoncode/mapping.js'
 import { MOCK_PNG_1X1, createMockImageProvider } from '../image-providers/mock.js'
 import { createMemoryStore } from './memory-store.js'
 import {
   IMAGE_LEASE_MS,
   advanceJobInStore,
+  assertVariationSteerLimit,
   createImageJobInStore,
+  createImageTaskSchema,
   finalizeJob,
   runProviderSubmits,
 } from './service.js'
@@ -237,5 +241,73 @@ describe('图片任务存储状态机', () => {
     expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'dragoncode-usage', cost: 0.0085, creditsCost: 1,
     }))
+  })
+})
+
+function variationParams(overrides: Record<string, unknown> = {}) {
+  return {
+    capability: 'variation' as const,
+    requestId: '00000000-0000-4000-8000-000000000202',
+    params: {
+      sourceImageKey: sourceKey,
+      count: 2,
+      resolution: '2k' as const,
+      sourceWidth: 1200,
+      sourceHeight: 800,
+      ...overrides,
+    },
+  }
+}
+
+describe('裂变任务', () => {
+  it('智能编辑仍拒绝空提示词，裂变允许省略提示词', () => {
+    expect(() => createImageTaskSchema.parse(params({ prompt: '  ' }))).toThrow()
+    expect(createImageTaskSchema.parse(variationParams()).capability).toBe('variation')
+  })
+
+  it('空补充要求使用固定句，用户原文仍留在任务参数里', async () => {
+    const store = createMemoryStore(user.id)
+    const submit = vi.fn(async () => ({ providerTaskId: 'variation-1' }))
+    const provider = createMockImageProvider({ submit })
+    const rt = runtime(provider)
+    const created = await createImageJobInStore(store, user, variationParams({ prompt: '只换背景' }), rt)
+    expect(created.bundle.job.capability).toBe('variation')
+    expect(created.bundle.job.params).toMatchObject({ prompt: '只换背景', count: 2 })
+    expect(created.bundle.job.provider_params.prompt).toBe(composeVariationPrompt('只换背景'))
+    expect(String(created.bundle.job.provider_params.prompt).startsWith(VARIATION_FIXED_PROMPT)).toBe(true)
+    await runProviderSubmits(created.bundle, provider, user.id, rt)
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: composeVariationPrompt('只换背景'),
+    }), expect.anything())
+
+    const plain = await createImageJobInStore(createMemoryStore(user.id), user, variationParams(), rt)
+    expect(plain.bundle.job.provider_params.prompt).toBe(VARIATION_FIXED_PROMPT)
+    expect(plain.bundle.job.params).not.toHaveProperty('prompt')
+  })
+
+  it('超过用户字数上限时返回明确上限', () => {
+    const prompt = '景'.repeat(VARIATION_USER_PROMPT_MAX + 1)
+    expect(() => assertVariationSteerLimit(variationParams({ prompt }))).toThrow(variationPromptLimitMessage())
+    expect(() => createImageTaskSchema.parse(variationParams({ prompt }))).toThrow()
+  })
+
+  it('不支持 4K 的比例仍降到 2K', async () => {
+    const store = createMemoryStore(user.id)
+    const mock = createMockImageProvider()
+    const provider = { ...mock, mapRequest: mapDragonCodeRequest }
+    const rt = runtime(provider)
+    const created = await createImageJobInStore(store, user, variationParams({
+      resolution: '4k',
+      sourceWidth: 1000,
+      sourceHeight: 1000,
+    }), rt)
+    expect(created.bundle.job.provider_params.resolution).toBe('2k')
+    expect(created.bundle.job.warnings).toContain('RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO')
+  })
+
+  it('未配置模型时拒绝裂变', async () => {
+    delete process.env.DRAGONCODE_API_KEY
+    await expect(createImageJobInStore(createMemoryStore(user.id), user, variationParams(), runtime()))
+      .rejects.toMatchObject({ status: 503, message: '裂变尚未配置可用的图片模型', code: 'VARIATION_UNAVAILABLE' })
   })
 })

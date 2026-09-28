@@ -13,6 +13,7 @@ import DerivedGenerationPanel, {
   type DerivedGenerationMode,
 } from '@/features/free-canvas/generation/DerivedGenerationPanel'
 import GenerationPanel from '@/features/free-canvas/generation/GenerationPanel'
+import { isFreeCanvasVariationEntryEnabled } from '@/features/free-canvas/generation/availability'
 import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
 import {
   buildImageToVideoRequest,
@@ -121,6 +122,10 @@ export default function FreeCanvas() {
   }
 
   const handleNodeGenerationAction = useCallback((action: DerivedGenerationMode, nodeId: string) => {
+    if (action === 'variation' && !isFreeCanvasVariationEntryEnabled()) {
+      message.warning('自由画布裂变即将上线')
+      return
+    }
     const state = useEditorStore.getState()
     const currentScene = state.project?.document.scenes.find((item) => item.id === state.activeSceneId)
     const node = currentScene?.nodes.find((item) => item.id === nodeId)
@@ -134,8 +139,13 @@ export default function FreeCanvas() {
     persistence.setDrafts({ ...persistence.drafts, derived: { mode: action, sourceNode: { ...node }, sourceAssetId: asset.id, prompt: '', count: 4, durationSeconds: 5 } })
   }, [generation, message])
 
+  const variationEntryEnabled = isFreeCanvasVariationEntryEnabled()
   const handleDerivedGenerate = () => {
     if (!derivedContext) return
+    if (derivedContext.mode === 'variation' && !variationEntryEnabled) {
+      message.warning('自由画布裂变即将上线')
+      return
+    }
     const request = derivedContext.mode === 'variation'
       ? buildVariationRequest(derivedContext.source.asset, derivedPrompt, variationCount)
       : buildImageToVideoRequest(derivedContext.source.asset, derivedPrompt, derivedDurationSeconds)
@@ -214,6 +224,7 @@ export default function FreeCanvas() {
           onUndo={undo}
           onRedo={redo}
           onDelete={handleDelete}
+          variationEnabled={variationEntryEnabled}
           onNodeGenerationAction={handleNodeGenerationAction}
           onAssetLoadError={handleAssetLoadError}
         />
@@ -237,6 +248,7 @@ export default function FreeCanvas() {
             onPromptChange={(prompt) => updateDerived({ prompt })}
             onCountChange={(count) => updateDerived({ count })}
             onDurationChange={(durationSeconds) => updateDerived({ durationSeconds })}
+            generateDisabled={derivedContext.mode === 'variation' && !variationEntryEnabled}
             onGenerate={handleDerivedGenerate}
             onRetry={() => { void generation.retry() }}
             onModifyParameters={generation.modifyParameters}

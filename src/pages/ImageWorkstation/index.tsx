@@ -18,7 +18,7 @@ import {
 import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
 import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
-import { loadImageEditConfigured, loadRepaintConfigured } from '@/services/api/capabilities'
+import { loadImageEditConfigured, loadRepaintConfigured, loadVariationConfigured } from '@/services/api/capabilities'
 import { listImageModels, type PublicImageModel } from '@/services/api/imageModels'
 import { liveCapabilityReady } from '@/services/api/task'
 import { defaultImageModel, publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
@@ -39,11 +39,16 @@ export default function ImageWorkstation() {
   const [uploading, setUploading] = useState(false)
   const [compareMode, setCompareMode] = useState<'original' | 'effect'>('effect')
   const [smartEditPrompt, setSmartEditPrompt] = useState('')
+  const [variationPrompt, setVariationPrompt] = useState('')
   const [editCount, setEditCount] = useState(1)
+  const [variationCount, setVariationCount] = useState(2)
   const [editResolution, setEditResolution] = useState<'1k' | '2k' | '4k'>('2k')
   const [imageModels, setImageModels] = useState<PublicImageModel[]>(() =>
     IMAGE_MODEL_PROFILES.filter(profile => profile.operations.includes('image_edit')).map(publicImageModel))
+  const [variationModels, setVariationModels] = useState<PublicImageModel[]>(() =>
+    IMAGE_MODEL_PROFILES.filter(profile => profile.operations.includes('variation')).map(publicImageModel))
   const [modelProfileId, setModelProfileId] = useState(() => defaultImageModel('image_edit')?.id)
+  const [variationModelId, setVariationModelId] = useState(() => defaultImageModel('variation')?.id)
   const [erasePrompt, setErasePrompt] = useState('')
   const [repaintPrompt, setRepaintPrompt] = useState('')
   const [outpaintMode, setOutpaintMode] = useState<'free' | 'preset'>('free')
@@ -51,25 +56,37 @@ export default function ImageWorkstation() {
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
   const [repaintReady, setRepaintReady] = useState(() => liveCapabilityReady(Capability.Inpaint))
   const [imageEditReady, setImageEditReady] = useState(() => liveCapabilityReady(Capability.ImageEdit))
+  const [variationReady, setVariationReady] = useState(() => liveCapabilityReady(Capability.Variation))
   const [hasMaskPaint, setHasMaskPaint] = useState(false)
   const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
-  const toolReady = isWorkstationToolReady(activeTool, (capability) =>
-    capability === Capability.ImageEdit ? imageEditReady : liveCapabilityReady(capability))
+  const capabilityReady = useCallback((capability: Capability) => {
+    if (capability === Capability.ImageEdit) return imageEditReady
+    if (capability === Capability.Variation) return variationReady
+    return liveCapabilityReady(capability)
+  }, [imageEditReady, variationReady])
+  const toolReady = isWorkstationToolReady(activeTool, capabilityReady)
   const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode)
+  const variationTool = activeTool.capability === Capability.Variation
   const activePrompt = activeTool.capability === Capability.ImageEdit
     ? smartEditPrompt
-    : activeTool.slug === 'remove'
-      ? erasePrompt
-      : repaintPrompt
+    : variationTool
+      ? variationPrompt
+      : activeTool.slug === 'remove'
+        ? erasePrompt
+        : repaintPrompt
+  const activeCount = variationTool ? variationCount : editCount
+  const activeModelId = variationTool ? variationModelId : modelProfileId
+  const activeModels = variationTool ? variationModels : imageModels
   const controller = useImageWorkstationController({
     activeTool,
     initialAsset: sourceAsset,
     prompt: activePrompt,
-    count: editCount,
+    count: activeCount,
     resolution: editResolution,
-    modelProfileId,
+    modelProfileId: activeModelId,
+    capabilityReady,
   })
   const replaceSourceAsset = controller.replaceSourceAsset
 
@@ -136,12 +153,20 @@ export default function ImageWorkstation() {
     let active = true
     void loadRepaintConfigured().then(ready => { if (active) setRepaintReady(ready) })
     void loadImageEditConfigured().then(ready => { if (active) setImageEditReady(ready) })
+    void loadVariationConfigured().then(ready => { if (active) setVariationReady(ready) })
     void listImageModels('image_edit').then(items => {
       if (!active || !items.length) return
       setImageModels(items)
       setModelProfileId(current => items.some(item => item.id === current)
         ? current
         : (items.find(item => item.defaultFor?.includes('image_edit')) ?? items[0]).id)
+    }).catch(() => undefined)
+    void listImageModels('variation').then(items => {
+      if (!active || !items.length) return
+      setVariationModels(items)
+      setVariationModelId(current => items.some(item => item.id === current)
+        ? current
+        : (items.find(item => item.defaultFor?.includes('variation')) ?? items[0]).id)
     }).catch(() => undefined)
     return () => { active = false }
   }, [])
@@ -270,7 +295,7 @@ export default function ImageWorkstation() {
         options={WORKSTATION_TOOLS.map((item) => ({
           value: item.slug,
           label: item.label,
-          ready: item.capability === Capability.ImageEdit ? imageEditReady : isWorkstationToolReady(item),
+          ready: isWorkstationToolReady(item, capabilityReady),
         }))}
         value={activeTool.slug}
         onChange={(slug) => navigate(`/image-workstation/${slug}`)}
@@ -308,15 +333,15 @@ export default function ImageWorkstation() {
             <ParamPanel
               capability={activeTool.capability}
               mode={inpaintMode}
-              smartEditPrompt={smartEditPrompt}
-              onSmartEditPromptChange={setSmartEditPrompt}
-              count={editCount}
-              onCountChange={setEditCount}
+              smartEditPrompt={variationTool ? variationPrompt : smartEditPrompt}
+              onSmartEditPromptChange={variationTool ? setVariationPrompt : setSmartEditPrompt}
+              count={activeCount}
+              onCountChange={variationTool ? setVariationCount : setEditCount}
               resolution={editResolution}
               onResolutionChange={setEditResolution}
-              models={imageModels}
-              modelProfileId={modelProfileId}
-              onModelProfileIdChange={setModelProfileId}
+              models={activeModels}
+              modelProfileId={activeModelId}
+              onModelProfileIdChange={variationTool ? setVariationModelId : setModelProfileId}
               sourceSize={controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined}
               disabled={controller.formLocked}
               erasePrompt={erasePrompt}

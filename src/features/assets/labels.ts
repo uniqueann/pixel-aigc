@@ -12,6 +12,7 @@ const CAPABILITY_LABELS: Partial<Record<Capability, string>> = {
   [Capability.Inpaint]: '图片工作站',
   [Capability.Outpaint]: '扩图',
   [Capability.ImageEdit]: '智能编辑',
+  [Capability.Variation]: '裂变',
   [Capability.EmailAssist]: '邮件助手',
 }
 

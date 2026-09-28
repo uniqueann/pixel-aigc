@@ -27,6 +27,7 @@ interface DerivedGenerationPanelProps {
   onCountChange: (count: number) => void
   onDurationChange: (durationSeconds: number) => void
   onGenerate: () => void
+  generateDisabled?: boolean
   onRetry: () => void
   onModifyParameters: () => void
   onRefetch: () => void
@@ -52,6 +53,7 @@ export default function DerivedGenerationPanel({
   onCountChange,
   onDurationChange,
   onGenerate,
+  generateDisabled = false,
   onRetry,
   onModifyParameters,
   onRefetch,
@@ -134,11 +136,14 @@ export default function DerivedGenerationPanel({
         </label>
       )}
 
+      {generateDisabled && !imageToVideo ? (
+        <p className="toolbox-hint">自由画布裂变即将上线。</p>
+      ) : null}
       <Button
         type="primary"
         block
         loading={submitting || autoRetrying}
-        disabled={formLocked || (imageToVideo && !prompt.trim())}
+        disabled={formLocked || generateDisabled || (imageToVideo && !prompt.trim())}
         onClick={onGenerate}
       >
         {active ? '正在生成' : imageToVideo ? '生成视频' : '开始裂变'}

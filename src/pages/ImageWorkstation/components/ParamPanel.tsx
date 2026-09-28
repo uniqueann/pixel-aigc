@@ -3,6 +3,7 @@ import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
 import { mapDragonCodeSize } from '@shared/image-models'
+import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 
 interface Props {
   capability: Capability
@@ -56,7 +57,8 @@ export default function ParamPanel({
   presetPlatform,
   onPresetPlatformChange,
 }: Props) {
-  if (capability === Capability.ImageEdit) {
+  if (capability === Capability.ImageEdit || capability === Capability.Variation) {
+    const variation = capability === Capability.Variation
     const model = models.find(item => item.id === modelProfileId) ?? models[0]
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
@@ -80,14 +82,15 @@ export default function ParamPanel({
           </div>
         ) : null}
         <div>
-          <div style={labelStyle}>编辑要求</div>
+          <div style={labelStyle}>{variation ? '补充要求（可选）' : '编辑要求'}</div>
           <Input.TextArea
             value={smartEditPrompt}
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
-            placeholder="例如：换成纯白电商背景，保留商品细节"
+            placeholder={variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
             autoSize={{ minRows: 5, maxRows: 10 }}
-            maxLength={model?.ui.promptMaxLength}
+            maxLength={variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength}
+            showCount={variation}
           />
         </div>
         <div>

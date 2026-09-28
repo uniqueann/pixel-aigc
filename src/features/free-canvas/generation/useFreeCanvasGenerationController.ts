@@ -30,6 +30,7 @@ import {
 } from '@/types'
 import type { CanvasPoint, GenerationPlacement } from '../geometry'
 import { calculateDerivedPlacements, calculateGenerationPlacements } from '../geometry'
+import { canSubmitFreeCanvasVariation } from './availability'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
@@ -265,6 +266,10 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     initialContext: SubmissionContext = { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
   ) => {
     if (!sceneId || !isCurrent() || !usePersistenceStore.getState().writable) return
+    if (initialRequest.capability === Capability.Variation && !canSubmitFreeCanvasVariation()) {
+      setSubmissionError('自由画布裂变即将上线')
+      return
+    }
     if (!initialContext.automaticRetry) setAutoRetrying(false)
     setSubmitting(true)
     setSubmissionError(undefined)

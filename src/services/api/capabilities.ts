@@ -8,6 +8,7 @@ interface CapabilityFlags {
   erase?: boolean
   repaint?: boolean
   imageEdit?: boolean
+  variation?: boolean
   smartSelect?: boolean
 }
 
@@ -44,6 +45,12 @@ export function loadImageEditConfigured() {
     registerLiveCapability(Capability.ImageEdit, ready)
     return ready
   })
+}
+
+/** 只返回开关，不注册到全局任务能力，避免自由画布跟着变成可提交。 */
+export function loadVariationConfigured() {
+  if (import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled) return Promise.resolve(true)
+  return loadFlags().then(data => Boolean(data.variation))
 }
 
 export function loadSmartSelectConfigured() {

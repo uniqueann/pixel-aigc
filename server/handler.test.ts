@@ -94,7 +94,7 @@ describe('API 认证、版本和写入边界', () => {
     process.env.DRAGONCODE_API_KEY = 'sk-test'
     const res = await request(undefined, 'GET', '/api/capabilities')
     expect(res.status).toHaveBeenCalledWith(200)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ imageEdit: true }))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ imageEdit: true, variation: true }))
     const models = await request(undefined, 'GET', '/api/image-models?operation=image_edit')
     expect(models.json).toHaveBeenCalledWith(expect.objectContaining({
       items: expect.arrayContaining([expect.objectContaining({ id: 'dragoncode:gpt-image-2' })]),
