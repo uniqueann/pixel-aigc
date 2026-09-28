@@ -1,7 +1,7 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { HttpError } from './errors'
-import { chooseSubjectBox, detectGoodsSubject, goodsMatting, mattingFailure, mattingOperations, processedObjectKey, subjectBoxFromMatte, subjectFailure, tencentCiConfig, type TencentCiConfig } from './tencent-ci'
+import { chooseSubjectBox, detectGoodsSubject, goodsMatting, goodsMattingInline, mattingFailure, mattingOperations, processedObjectKey, subjectBoxFromMatte, subjectFailure, tencentCiConfig, type TencentCiConfig } from './tencent-ci'
 
 const config: TencentCiConfig = {
   secretId: 'id', secretKey: 'key', bucket: 'example-1250000000', region: 'ap-guangzhou',
@@ -159,5 +159,29 @@ describe('腾讯云抠图配置', () => {
     expect(mattingFailure({ error: { Code: 'NoSuchKey' } }).message).toBe('腾讯云商品抠图失败：没有找到抠图结果')
     expect(mattingFailure({ code: 'InternalError' }).message).toBe('腾讯云商品抠图失败（InternalError）')
     expect(mattingFailure(new Error('network')).message).toBe('腾讯云商品抠图失败')
+  })
+
+  it('智能选区走 GET 抠图，不落结果对象', async () => {
+    const calls: string[] = []
+    const png = await goodsMattingInline(Buffer.from('jpeg'), config, {
+      putObject(params, callback) {
+        calls.push(`put:${params.Key}`)
+        callback(null, {})
+      },
+      getObject(_params, callback) { callback(null, { Body: Buffer.from('') }) },
+      deleteObject(params, callback) {
+        calls.push(`delete:${params.Key}`)
+        callback(null)
+      },
+      request(params, callback) {
+        calls.push(`matt:${(params.Query as { 'ci-process': string })['ci-process']}`)
+        callback(null, { Body: Buffer.from('png') })
+      },
+    })
+    expect(png.toString()).toBe('png')
+    expect(calls[0]).toMatch(/^put:smart-select\//)
+    expect(calls[1]).toBe('matt:GoodsMatting')
+    expect(calls[2]).toBe(calls[0].replace('put:', 'delete:'))
+    expect(calls).toHaveLength(3)
   })
 })

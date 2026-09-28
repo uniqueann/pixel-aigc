@@ -1,12 +1,12 @@
 import sharp from 'sharp'
 import { HttpError } from '../errors.js'
-import { goodsMatting } from '../tencent-ci.js'
+import { goodsMattingInline } from '../tencent-ci.js'
 import {
   ALPHA_THRESHOLD,
   GOODS_MATTING_MAX_BYTES,
   GOODS_MATTING_MIN_EDGE,
   binarizeAlpha,
-  fitMattingSize,
+  fitMattingWorkingSize,
   scaleAlphaNearest,
 } from '../../shared/smart-select.js'
 import type { GoodsAlpha, SegmentProvider } from './types.js'
@@ -23,7 +23,7 @@ export async function prepareGoodsMattingInput(image: Buffer, maxBytes = GOODS_M
   if (originWidth < 1 || originHeight < 1) throw new HttpError(400, '无法读取图片', 'SMART_SELECT_IMAGE_INVALID')
   let fitted: { width: number; height: number }
   try {
-    fitted = fitMattingSize(originWidth, originHeight)
+    fitted = fitMattingWorkingSize(originWidth, originHeight)
   } catch {
     throw new HttpError(400, '图片太小，商品抠图至少需要 32×32', 'SMART_SELECT_IMAGE_TOO_SMALL')
   }
@@ -64,7 +64,7 @@ export const tencentGoodsProvider: SegmentProvider = {
   id: 'tencent-goods',
   async segmentGoods(image): Promise<GoodsAlpha> {
     const prepared = await prepareGoodsMattingInput(image)
-    const png = await goodsMatting(prepared.jpeg)
+    const png = await goodsMattingInline(prepared.jpeg)
     return {
       alpha: await alphaFromMatting(png, prepared.width, prepared.height),
       width: prepared.width,

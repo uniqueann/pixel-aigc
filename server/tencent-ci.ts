@@ -229,6 +229,30 @@ export async function detectGoodsSubject(image: Buffer, width: number, height: n
   }
 }
 
+/** 智能选区：只上传原图，用 GET ci-process 直接拿抠图，少一次结果对象读写。不改工具箱抠图路径。 */
+export async function goodsMattingInline(image: Buffer, config = tencentCiConfig(), cos = config ? clientFor(config) : undefined) {
+  if (!config || !cos) throw new HttpError(503, '智能抠图即将上线，腾讯云配置还没填好', 'BG_REMOVE_UNCONFIGURED')
+  if (!cos.request) return goodsMatting(image, config, cos)
+  const sourceKey = `smart-select/${randomUUID()}`
+  const bucket = { Bucket: config.bucket, Region: config.region }
+  try {
+    await call<UploadAck>(done => cos.putObject({ ...bucket, Key: sourceKey, Body: image }, done))
+    const matte = await call<{ Body?: Buffer }>(done => cos.request!({
+      ...bucket,
+      Method: 'GET',
+      Key: sourceKey,
+      Query: { 'ci-process': 'GoodsMatting', 'center-layout': '0' },
+      RawBody: true,
+    }, (error, data) => done(error, data as { Body?: Buffer } | undefined)))
+    if (!matte?.Body?.length) throw new HttpError(502, '腾讯云没有返回抠图结果', 'BG_REMOVE_EMPTY')
+    return matte.Body
+  } catch (error) {
+    throw mattingFailure(error)
+  } finally {
+    await call<void>(done => cos.deleteObject({ ...bucket, Key: sourceKey }, error => done(error, undefined))).catch(() => undefined)
+  }
+}
+
 export async function goodsMatting(image: Buffer, config = tencentCiConfig(), cos = config ? clientFor(config) : undefined) {
   if (!config || !cos) throw new HttpError(503, '智能抠图即将上线，腾讯云配置还没填好', 'BG_REMOVE_UNCONFIGURED')
   const sourceKey = `bg-remove/${randomUUID()}`

@@ -1,19 +1,22 @@
 import sharp from 'sharp'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HttpError } from '../errors.js'
 import {
   ALPHA_THRESHOLD,
+  GOODS_MATTING_WORKING_MAX_EDGE,
   SELECT_DILATE_RADIUS,
   binarizeAlpha,
   buildSelectionAlpha,
   featherAlpha,
   fitMattingSize,
+  fitMattingWorkingSize,
   invertContainedAlpha,
   opaqueCount,
   sourcePoint,
+  tintOverlayAsBrush,
 } from '../../shared/smart-select.js'
 import { prepareGoodsMattingInput } from './tencent-goods.js'
-import { selectSmartMask } from './select.js'
+import { clearSmartSelectGoodsCache, selectSmartMask } from './select.js'
 import type { GoodsAlpha, SegmentProvider } from './types.js'
 
 function fill(width: number, height: number, paint: (x: number, y: number) => boolean) {
@@ -34,6 +37,15 @@ describe('smart select geometry', () => {
     expect(fitMattingSize(8000, 1000).height).toBeLessThanOrEqual(4320)
     expect(fitMattingSize(400, 300)).toEqual({ width: 400, height: 300, scale: 1 })
     expect(() => fitMattingSize(20, 20)).toThrow('IMAGE_TOO_SMALL')
+  })
+
+  it('caps working size so smart-select does not send 4K originals to Tencent', () => {
+    expect(fitMattingWorkingSize(1280, 1280)).toEqual({ width: 1280, height: 1280, scale: 1 })
+    const portrait = fitMattingWorkingSize(1280, 2014)
+    expect(Math.max(portrait.width, portrait.height)).toBe(GOODS_MATTING_WORKING_MAX_EDGE)
+    expect(portrait.width / portrait.height).toBeCloseTo(1280 / 2014, 2)
+    const huge = fitMattingWorkingSize(8000, 1000)
+    expect(Math.max(huge.width, huge.height)).toBe(GOODS_MATTING_WORKING_MAX_EDGE)
   })
 
   it('ignores letterbox clicks and maps image clicks to 0-1', () => {
@@ -77,13 +89,25 @@ describe('smart select geometry', () => {
     rgba[3] = 255
     invertContainedAlpha(rgba, 4, 1, { x: 0, y: 0, width: 2, height: 1 })
     expect(rgba[3]).toBe(0)
-    expect(rgba[7]).toBe(255)
+    expect(rgba[4]).toBe(220)
+    expect(rgba[5]).toBe(38)
+    expect(rgba[6]).toBe(38)
+    expect(rgba[7]).toBe(128)
     expect(rgba[11]).toBe(0)
     expect(opaqueCount(rgba, 4, 1, { x: 0, y: 0, width: 2, height: 1 })).toBe(1)
+
+    const tint = new Uint8ClampedArray([255, 255, 255, 255, 0, 0, 0, 0])
+    tintOverlayAsBrush(tint)
+    expect(Array.from(tint.slice(0, 4))).toEqual([220, 38, 38, 128])
+    expect(Array.from(tint.slice(4))).toEqual([0, 0, 0, 0])
   })
 })
 
 describe('selectSmartMask', () => {
+  beforeEach(() => {
+    clearSmartSelectGoodsCache()
+  })
+
   it('reuses the goods alpha session and does not call the provider again', async () => {
     const alpha = fill(32, 32, (x, y) => x >= 8 && x <= 20 && y >= 8 && y <= 22)
     const segmentGoods = vi.fn(async (): Promise<GoodsAlpha> => goods(alpha, 32, 32))
@@ -123,6 +147,16 @@ describe('selectSmartMask', () => {
     }, provider)).rejects.toBeInstanceOf(HttpError)
     expect(provider.segmentGoods).not.toHaveBeenCalled()
   })
+
+  it('caches matting by image bytes so a second click without session skips Tencent', async () => {
+    const alpha = fill(32, 32, (x, y) => x >= 8 && x <= 20 && y >= 8 && y <= 22)
+    const segmentGoods = vi.fn(async (): Promise<GoodsAlpha> => goods(alpha, 32, 32))
+    const provider: SegmentProvider = { id: 'tencent-goods', segmentGoods }
+    const image = Buffer.from('same-product-bytes')
+    await selectSmartMask({ image, point: { x: 0.4, y: 0.4 } }, provider)
+    await selectSmartMask({ image: Buffer.from(image), point: { x: 0.45, y: 0.4 } }, provider)
+    expect(segmentGoods).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('prepareGoodsMattingInput', () => {
@@ -131,7 +165,7 @@ describe('prepareGoodsMattingInput', () => {
       create: { width: 8000, height: 64, channels: 3, background: { r: 30, g: 80, b: 40 } },
     }).jpeg().toBuffer()
     const fitted = await prepareGoodsMattingInput(wide)
-    expect(fitted.width).toBeLessThanOrEqual(7680)
+    expect(Math.max(fitted.width, fitted.height)).toBeLessThanOrEqual(GOODS_MATTING_WORKING_MAX_EDGE)
     expect(fitted.height).toBeGreaterThanOrEqual(32)
     expect(fitted.originWidth).toBe(8000)
 
