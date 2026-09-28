@@ -1,4 +1,5 @@
 import { liveCapabilityReady, registerLiveCapability } from '@/services/api/task'
+import { cloudEnabled } from '@/cloud/client'
 import { Capability } from '@/types'
 
 interface CapabilityFlags {
@@ -7,6 +8,7 @@ interface CapabilityFlags {
   erase?: boolean
   repaint?: boolean
   imageEdit?: boolean
+  smartSelect?: boolean
 }
 
 function loadFlags(): Promise<CapabilityFlags> {
@@ -42,4 +44,9 @@ export function loadImageEditConfigured() {
     registerLiveCapability(Capability.ImageEdit, ready)
     return ready
   })
+}
+
+export function loadSmartSelectConfigured() {
+  if (import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled) return Promise.resolve(true)
+  return loadFlags().then(data => Boolean(data.smartSelect))
 }

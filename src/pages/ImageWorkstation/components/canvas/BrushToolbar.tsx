@@ -5,6 +5,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   RedoOutlined,
+  SwapOutlined,
   UndoOutlined,
 } from '@ant-design/icons'
 
@@ -14,11 +15,14 @@ interface Props {
   brushSize: number
   tool: PaintTool
   smartSelectEnabled: boolean
+  smartSelectReady: boolean
+  refineMode?: boolean
   canUndo: boolean
   canRedo: boolean
   onBrushSizeChange: (size: number) => void
   onToolChange: (tool: PaintTool) => void
   onSmartSelectToggle: () => void
+  onInvert: () => void
   onUndo: () => void
   onRedo: () => void
   onClear: () => void
@@ -28,11 +32,14 @@ export default function BrushToolbar({
   brushSize,
   tool,
   smartSelectEnabled,
+  smartSelectReady,
+  refineMode = false,
   canUndo,
   canRedo,
   onBrushSizeChange,
   onToolChange,
   onSmartSelectToggle,
+  onInvert,
   onUndo,
   onRedo,
   onClear,
@@ -59,13 +66,27 @@ export default function BrushToolbar({
           onClick={() => onToolChange('eraser')}
         />
       </Tooltip>
-      <Tooltip title="点击画布创建智能选区">
-        <Button
-          aria-label="智能选区"
-          type={smartSelectEnabled ? 'primary' : 'text'}
-          icon={<AimOutlined />}
-          onClick={onSmartSelectToggle}
-        />
+      <Tooltip title={refineMode ? '边缘精修请用画笔' : smartSelectReady ? '点击商品以选中轮廓' : '智能选区即将上线'}>
+        <span>
+          <Button
+            aria-label="智能选区"
+            type={smartSelectEnabled ? 'primary' : 'text'}
+            icon={<AimOutlined />}
+            disabled={refineMode || !smartSelectReady}
+            onClick={onSmartSelectToggle}
+          />
+        </span>
+      </Tooltip>
+      <Tooltip title={refineMode ? '边缘精修请用画笔' : '反选商品以外的区域'}>
+        <span>
+          <Button
+            aria-label="反选"
+            type="text"
+            icon={<SwapOutlined />}
+            disabled={refineMode}
+            onClick={onInvert}
+          />
+        </span>
       </Tooltip>
       <span style={{ width: 84, padding: '0 8px' }}>
         <Slider

@@ -17,6 +17,8 @@ import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.
 import { eraseWithBailian } from './bailian-erase.js'
 import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
 import { repaintWithBailian } from './bailian-repaint.js'
+import { segmentConfigured } from './segment/providers.js'
+import { selectSmartMask, SmartSelectFailure } from './segment/select.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = randomUUID(), start = Date.now()
@@ -53,6 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         erase: bailianConfig() !== null,
         repaint: bailianConfig() !== null,
         imageEdit: imageModelsAvailable('image_edit'),
+        smartSelect: segmentConfigured(),
       })
       return
     }
@@ -65,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json({ items: publicConfiguredImageModels(parsed?.data) })
       return
     }
-    const heavyRoute = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' || path[0] === 'erase' || path[0] === 'repaint'
+    const heavyRoute = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' || path[0] === 'erase' || path[0] === 'repaint' || path[0] === 'smart-select'
     const maxBytes = path[0] === 'repaint' ? 48 * 1024 * 1024 : heavyRoute ? 28 * 1024 * 1024 : 3 * 1024 * 1024
     const user = await authenticate(req.headers.authorization)
     userId = user.id
@@ -158,6 +161,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.info(JSON.stringify({
         evt: 'repaint', requestId, userId, status: 200, route: 'repaint',
         region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
+      }))
+      return
+    }
+    if (path.join('/') === 'smart-select' && method === 'POST') {
+      const norm = z.number().min(0).max(1)
+      const input = z.object({
+        mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']).optional(),
+        dataBase64: z.string().min(1).optional(),
+        point: z.object({ x: norm, y: norm }).strict(),
+        box: z.object({ x: norm, y: norm, width: z.number().positive().max(1), height: z.number().positive().max(1) }).strict().optional(),
+        session: z.object({ provider: z.string().min(1).max(64), payload: z.string().min(1).max(6_000_000) }).strict().optional(),
+      }).strict().parse(body)
+      if (!input.dataBase64 && !input.session) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
+      const image = input.dataBase64 ? Buffer.from(input.dataBase64, 'base64') : undefined
+      if (image && !image.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
+      const result = await selectSmartMask({
+        image,
+        point: input.point,
+        box: input.box,
+        session: input.session,
+      })
+      res.status(200).json(result)
+      console.info(JSON.stringify({
+        evt: 'smart-select', requestId, userId, status: 200, route: 'smart-select',
+        provider: result.session?.provider ?? null, durationMs: Date.now() - start,
       }))
       return
     }
@@ -300,7 +328,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const status = error instanceof HttpError ? error.status : error instanceof z.ZodError || error instanceof SyntaxError ? 400 : 500
     const message = error instanceof HttpError ? error.message : status === 400 ? '请求参数无效' : '服务暂时不可用，请稍后重试'
     const code = error instanceof HttpError ? error.code : status === 400 ? 'INVALID_REQUEST' : 'SERVER_ERROR'
-    res.status(status).json({ error: message, code, requestId })
+    const session = error instanceof SmartSelectFailure ? error.session : null
+    res.status(status).json({ error: message, code, requestId, ...(session ? { session } : {}) })
     const details = describeError(error)
     console.error(JSON.stringify({
       requestId, userId, status, category: details.name, durationMs: Date.now() - start,

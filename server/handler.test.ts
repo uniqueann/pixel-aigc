@@ -113,6 +113,19 @@ describe('API 认证、版本和写入边界', () => {
     else process.env.DASHSCOPE_API_KEY = previous
   })
 
+  it('capabilities 在配置腾讯云后打开智能选区', async () => {
+    const keys = ['TENCENT_COS_SECRET_ID', 'TENCENT_COS_SECRET_KEY', 'TENCENT_COS_BUCKET', 'TENCENT_COS_REGION'] as const
+    const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]))
+    for (const key of keys) process.env[key] = 'set'
+    const res = await request(undefined, 'GET', '/api/capabilities')
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ bgRemove: true, smartSelect: true }))
+    for (const key of keys) {
+      if (previous[key] === undefined) delete process.env[key]
+      else process.env[key] = previous[key]
+    }
+  })
+
   it('消除路由把底图、蒙版和背景描述交给百炼模块', async () => {
     const previous = process.env.DASHSCOPE_API_KEY
     process.env.DASHSCOPE_API_KEY = 'sk-test'
