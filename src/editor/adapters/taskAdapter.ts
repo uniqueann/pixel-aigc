@@ -40,6 +40,7 @@ export function adaptGenerationTask<TParams>(
       width: measured?.width || outputSize.width,
       height: measured?.height || outputSize.height,
       mimeType: measured?.mimeType,
+      objectKey: measured?.objectKey,
       generationId,
       createdAt: task.updatedAt,
     }

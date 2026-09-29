@@ -13,6 +13,7 @@ import { handleImageTaskRoute, peekImageTask } from './image-jobs/route.js'
 import { IMAGE_TASK_CAPABILITIES } from './image-jobs/service.js'
 import { imageModelsAvailable, publicConfiguredImageModels } from './image-providers/registry.js'
 import { handleTaskInputs } from './task-inputs.js'
+import { loadOwnedObject, objectContentDisposition } from './objects.js'
 import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
 import { eraseWithBailian } from './bailian-erase.js'
 import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
@@ -196,6 +197,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (path[0] === 'task-inputs' && path.length === 1) {
       res.status(200).json(await handleTaskInputs(user, method, body))
+      return
+    }
+    if (path[0] === 'objects' && path.length === 1 && method === 'GET') {
+      const key = url.searchParams.get('key') ?? ''
+      const downloaded = await loadOwnedObject(user, key)
+      const filename = url.searchParams.get('filename')?.trim()
+      res.setHeader('Content-Type', downloaded.contentType)
+      res.setHeader('Cache-Control', 'private, no-store')
+      if (url.searchParams.get('download') === '1' && filename) {
+        res.setHeader('Content-Disposition', objectContentDisposition(filename))
+      }
+      res.status(200).end(Buffer.from(downloaded.bytes))
       return
     }
     if (path[0] === 'tasks') {

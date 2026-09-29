@@ -14,6 +14,7 @@ import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
 import { Capability, type GenerationTask, type ImageEditTaskParams, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
 import { recordWorkstationHistory } from '@/features/assets/workstationHistory'
+import { blobFromImageSource } from '../download'
 import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
 import { isVisuallySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
 import { finalizeWorkstationResults } from '../results'
@@ -124,8 +125,8 @@ export function useImageWorkstationController({
       ? (completedTask.params as { prompt?: string }).prompt
       : undefined
     void Promise.all(assets.map(async (asset, index) => {
-      const response = await fetch(asset.url)
-      if (!response.ok) throw new Error('读取结果失败')
+      const objectKey = asset.objectKey ?? completedTask.resultImages?.[index]?.objectKey
+      const result = await blobFromImageSource(asset.url, objectKey)
       await recordWorkstationHistory({
         id: `${completedTask.id}:${index}`,
         toolSlug,
@@ -133,8 +134,8 @@ export function useImageWorkstationController({
         prompt,
         width: asset.width,
         height: asset.height,
-        mimeType: asset.mimeType || response.headers.get('Content-Type') || 'image/jpeg',
-        result: await response.blob(),
+        mimeType: asset.mimeType || result.type || 'image/jpeg',
+        result,
         createdAt: completedTask.createdAt,
         updatedAt: completedTask.updatedAt,
       })

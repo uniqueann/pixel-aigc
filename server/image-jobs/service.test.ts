@@ -11,6 +11,7 @@ import {
   createImageTaskSchema,
   finalizeJob,
   runProviderSubmits,
+  toClientImageTask,
 } from './service.js'
 import { LATE_RESULT_WARNING, PARTIAL_WARNING, nextPollAt, reduceJobStatus, toClientTaskStatus } from './state.js'
 import type { ImageJobRuntime } from './service.js'
@@ -241,6 +242,22 @@ describe('图片任务存储状态机', () => {
     expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'dragoncode-usage', cost: 0.0085, creditsCost: 1,
     }))
+  })
+
+  it('客户端任务带上 resultImages.objectKey，供同域下载', async () => {
+    const store = createMemoryStore(user.id)
+    const rt = runtime(createMockImageProvider({
+      async getStatus() { return { state: 'succeeded', resultUrls: ['https://mock.local/a.png'] } },
+    }))
+    const created = await createImageJobInStore(store, user, params(), rt)
+    await store.updateItem(created.bundle.job.id, 0, { status: 'submitted', provider_task_id: 't-1' })
+    const advanced = await advanceJobInStore(store, {
+      job: { ...created.bundle.job, next_poll_at: new Date(0) },
+      items: await store.listItems(created.bundle.job.id),
+    }, rt)
+    const client = await toClientImageTask(advanced, rt)
+    expect(client.resultImages?.[0]?.objectKey).toMatch(/^generated\//)
+    expect(client.resultImages?.[0]?.objectKey).toBe(advanced.items[0].result_object_key)
   })
 })
 

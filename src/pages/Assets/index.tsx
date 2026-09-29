@@ -10,12 +10,13 @@ import {
   taskStatusLabel,
   workstationToolLabel,
 } from '@/features/assets/labels'
+import { hydrateWorkstationHistoryFromImageJobs } from '@/features/assets/hydrateImageJobs'
 import {
   deleteWorkstationHistory,
   listWorkstationHistory,
   type WorkstationHistoryRecord,
 } from '@/features/assets/workstationHistory'
-import { downloadImageSource, filenameForWorkstationResult } from '@/features/image-workstation/download'
+import { downloadFailureMessage, downloadImageSource, filenameForWorkstationResult } from '@/features/image-workstation/download'
 import { listTasks, type TaskSummary } from '@/services/api/task'
 import { Capability } from '@/types'
 
@@ -52,6 +53,13 @@ export default function Assets() {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
+      if (authEnabled) {
+        try {
+          await hydrateWorkstationHistoryFromImageJobs()
+        } catch {
+          /* 补记失败不挡住已有本地历史 */
+        }
+      }
       const local = await listWorkstationHistory()
       const nextUrls: Record<string, string> = {}
       for (const item of local) nextUrls[item.id] = URL.createObjectURL(item.result)
@@ -123,7 +131,7 @@ export default function Assets() {
         mimeType: record.mimeType,
       }))
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '下载失败')
+      message.error({ content: downloadFailureMessage(error), duration: 4 })
     } finally {
       setDownloadingId(undefined)
     }

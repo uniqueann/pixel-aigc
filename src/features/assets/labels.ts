@@ -20,6 +20,13 @@ export function workstationToolLabel(slug?: string) {
   return WORKSTATION_TOOLS.find((tool) => tool.slug === slug)?.label ?? '图片工作站'
 }
 
+export function workstationSlugForCapability(capability: Capability) {
+  if (capability === Capability.ImageEdit) return 'smart-edit'
+  if (capability === Capability.Variation) return 'variation'
+  if (capability === Capability.Outpaint) return 'outpaint'
+  return WORKSTATION_TOOLS.find((tool) => tool.capability === capability)?.slug
+}
+
 export function capabilityLabel(capability: Capability, slug?: string) {
   if (slug) return workstationToolLabel(slug)
   return CAPABILITY_LABELS[capability] ?? '生成任务'

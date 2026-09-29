@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VercelRequest, VercelResponse } from './http'
-const mocks = vi.hoisted(() => ({ authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn() }))
+const mocks = vi.hoisted(() => ({ authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn(), getObject: vi.fn() }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
 vi.mock('./db', () => ({ withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
-vi.mock('./storage', () => ({ verifyAndPromote: mocks.verify, signRead: vi.fn(), signUpload: vi.fn(), putObject: vi.fn(), getObject: vi.fn() }))
+vi.mock('./storage', () => ({
+  verifyAndPromote: mocks.verify,
+  signRead: vi.fn(),
+  signUpload: vi.fn(),
+  putObject: vi.fn(),
+  getObject: mocks.getObject,
+}))
 vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
 import handler from './handler'
 import { HttpError } from './errors'
@@ -169,5 +175,18 @@ describe('API 认证、版本和写入边界', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'ERASE_UNAVAILABLE' }))
     expect(mocks.sql).not.toHaveBeenCalled()
     if (previous !== undefined) process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('GET /api/objects 按当前用户读私有对象，不走浏览器直连 R2', async () => {
+    mocks.getObject.mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), contentType: 'image/png' })
+    const req = { headers: { authorization: 'Bearer test' }, method: 'GET', url: '/api/objects?key=generated/owner/job/0.png&download=1&filename=裂变_1.png' }
+    const response = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    response.status.mockReturnValue(response)
+    await handler(req as never, response as never)
+    expect(mocks.getObject).toHaveBeenCalledWith('generated/owner/job/0.png')
+    expect(response.setHeader).toHaveBeenCalledWith('Content-Type', 'image/png')
+    expect(response.setHeader).toHaveBeenCalledWith('Content-Disposition', expect.stringContaining('filename*=UTF-8'))
+    expect(response.status).toHaveBeenCalledWith(200)
+    expect(response.end).toHaveBeenCalledWith(Buffer.from([1, 2, 3]))
   })
 })

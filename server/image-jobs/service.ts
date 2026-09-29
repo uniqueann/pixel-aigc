@@ -570,6 +570,7 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
     const signed = await runtime.signRead(item.result_object_key, 900)
     images.push({
       url: signed.url,
+      objectKey: item.result_object_key,
       width: item.result_width ?? 0,
       height: item.result_height ?? 0,
       mimeType: item.result_mime_type ?? 'image/png',

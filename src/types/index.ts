@@ -31,7 +31,7 @@ export interface GenerationTask<TParams = Record<string, unknown>> {
   status: TaskStatus
   params: TParams
   resultUrls?: string[]
-  resultImages?: Array<{ url: string; width: number; height: number; mimeType: string }>
+  resultImages?: Array<{ url: string; width: number; height: number; mimeType: string; objectKey?: string }>
   warnings?: string[]
   /** 文本生成类任务的单条结果 */
   resultText?: string
