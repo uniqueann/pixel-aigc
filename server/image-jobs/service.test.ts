@@ -456,8 +456,12 @@ describe('重新打光任务', () => {
     expect(created.bundle.job.capability).toBe('image_edit')
     expect(created.bundle.job.params).toMatchObject({ relight, prompt: '略提亮背景', count: 2 })
     expect(created.bundle.job.provider_params.prompt).toBe(composed)
-    expect(String(created.bundle.job.provider_params.prompt)).toContain('不改变商品固有颜色')
+    expect(String(created.bundle.job.provider_params.prompt)).toContain('不要改变商品本体的固有颜色')
+    expect(String(created.bundle.job.provider_params.prompt)).toContain('投影落向右侧')
+    expect(String(created.bundle.job.provider_params.prompt)).toContain('包括单复数和空格')
     expect(String(created.bundle.job.provider_params.prompt).endsWith(RELIGHT_FIXED_PROMPT)).toBe(true)
+    expect(String(created.bundle.job.provider_params.prompt).indexOf('略提亮背景'))
+      .toBeLessThan(String(created.bundle.job.provider_params.prompt).indexOf(RELIGHT_FIXED_PROMPT))
     await runProviderSubmits(created.bundle, provider, user.id, rt)
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ prompt: composed }), expect.anything())
 
