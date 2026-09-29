@@ -21,6 +21,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { NAV_META, SUB_ROUTE_LABELS } from '@/router/meta'
 import { useUserStore } from '@/store/useUserStore'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import CreditsLedgerDrawer from '@/features/credits/CreditsLedgerDrawer'
 import ModelSettingsPanel from '@/features/model-settings/ModelSettingsPanel'
 
 const { Sider, Content, Header } = Layout
@@ -55,6 +56,7 @@ export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia('(max-width: 720px)').matches)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
+  const [creditsOpen, setCreditsOpen] = useState(false)
   const account = useUserStore((s) => s.account)
   const credits = useUserStore((s) => s.credits)
 
@@ -163,7 +165,16 @@ export default function MainLayout() {
         <Header className="app-header">
           <Space size={14}>
             <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />
-            {account && <span aria-label={`积分余额 ${credits}`}>积分 {credits}</span>}
+            {account && (
+              <button
+                type="button"
+                className="credits-trigger"
+                aria-label={`积分余额 ${credits}`}
+                onClick={() => setCreditsOpen(true)}
+              >
+                积分 {credits}
+              </button>
+            )}
           </Space>
         </Header>
         <Content className="app-main-content">
@@ -172,6 +183,7 @@ export default function MainLayout() {
           </ErrorBoundary>
         </Content>
       </Layout>
+      <CreditsLedgerDrawer open={creditsOpen} onClose={() => setCreditsOpen(false)} />
       <Modal
         open={settingsOpen}
         onCancel={() => setSettingsOpen(false)}

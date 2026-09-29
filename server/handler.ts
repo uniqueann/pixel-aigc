@@ -21,6 +21,7 @@ import { repaintWithBailian } from './bailian-repaint.js'
 import { segmentConfigured } from './segment/providers.js'
 import { selectSmartMask, SmartSelectFailure } from './segment/select.js'
 import { withSyncLimit } from './sync-limits.js'
+import { listCreditLedger } from './credits.js'
 import { ensureCreditAccount } from './image-jobs/billing.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -259,6 +260,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!member) throw new HttpError(403, '当前账号尚未初始化', 'MEMBER_UNAVAILABLE')
       if (member.status !== 'active') throw new HttpError(403, '当前账号已被停用，请联系管理员', 'MEMBER_DISABLED')
       if (path.join('/') === 'me' && method === 'GET') return accountContext(sql, user)
+      if (path.join('/') === 'credits/ledger' && method === 'GET') {
+        await ensureCreditAccount(sql, user.id)
+        return listCreditLedger(sql, url.searchParams.get('cursor'))
+      }
       if (path.join('/') === 'me' && method === 'PATCH') {
         const { displayName } = z.object({ displayName: z.string().trim().min(1).max(80) }).strict().parse(body)
         await sql`update aigc.members set display_name=${displayName},updated_at=now() where user_id=${user.id}`
@@ -346,7 +351,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const message = error instanceof HttpError ? error.message : status === 400 ? '请求参数无效' : '服务暂时不可用，请稍后重试'
     const code = error instanceof HttpError ? error.code : status === 400 ? 'INVALID_REQUEST' : 'SERVER_ERROR'
     const session = error instanceof SmartSelectFailure ? error.session : null
-    res.status(status).json({ error: message, code, requestId, ...(session ? { session } : {}) })
+    const extra = error instanceof HttpError ? error.extra : undefined
+    res.status(status).json({ error: message, code, requestId, ...(extra ?? {}), ...(session ? { session } : {}) })
     const details = describeError(error)
     console.error(JSON.stringify({
       requestId, userId, status, category: details.name, durationMs: Date.now() - start,

@@ -487,7 +487,11 @@ export async function createImageJobInStore(
     userId: user.id, jobId, amount: reserved,
     meta: { capability: parsed.capability, modelProfileId: profile.id, resolution: effectiveResolution, unitPrice },
   })
-  if (!reservedOk.ok) throw new HttpError(402, reservedOk.message, reservedOk.code)
+  if (!reservedOk.ok) {
+    throw new HttpError(402, reservedOk.message, reservedOk.code, {
+      extra: { required: reservedOk.required, balance: reservedOk.balance },
+    })
+  }
   const input: InsertImageJobInput = {
     id: jobId,
     requestId: parsed.requestId,

@@ -57,7 +57,7 @@ src/
 - Mock Gateway 可完整演示文生图、文生视频、图片裂变、图生视频、智能编辑和邮件助手异步任务流程。
 - 工具箱加水印、转比例（留白、智能裁剪、本机模板）和智能抠图（三种背景、边缘精修）已可用。四项腾讯云配置齐全时，抠图走数据万象 GoodsMatting，智能裁剪走图像主体检测。
 - 图片工作站的智能编辑、裂变、精修、融合和重新打光走 `image_jobs`；按实际分辨率预扣积分，并按截止前成功张数结算。消除、重绘、扩图、抠图、智能选区和主体检测走独立接口，使用服务端限流。
-- 登录账号按运行环境独立维护积分余额与流水，首次进入赠送 100 分；头部显示余额，管理员可用 `npm run aigc:credits` 补发。
+- 登录账号按运行环境独立维护积分余额与流水，首次进入赠送 100 分；头部显示余额，点击可查看积分明细。管理员可用 `npm run aigc:credits` 补发或调整余额。
 
 当前待补充：
 
@@ -66,11 +66,18 @@ src/
 
 ## 积分与同步接口限流
 
-图片任务每张按供应商实际分辨率扣分：1K 为 2 分、2K 为 3 分、4K 为 5 分。提交时预扣全部请求张数，成功后只保留成功张数的费用；失败和超时退款，超时后交付的结果免费。积分账户按 `local`、`preview`、`production` 分开。管理补发示例：
+图片任务每张按供应商实际分辨率扣分：1K 为 2 分、2K 为 3 分、4K 为 5 分。提交时预扣全部请求张数，成功后只保留成功张数的费用；失败和超时退款，超时后交付的结果免费。积分账户按 `local`、`preview`、`production` 分开。登录后点击头部「积分 {n}」可查看本人流水。
+
+管理补发、把余额设为 0（测 402）以及恢复示例：
 
 ```bash
 AIGC_ADMIN_OPERATOR=管理员 npm run aigc:credits -- 用户UUID production 100 补发单号 补发原因
+AIGC_ADMIN_OPERATOR=管理员 npm run aigc:credits -- --set 0 用户UUID production set-zero-1 测试余额不足
+AIGC_ADMIN_OPERATOR=管理员 npm run aigc:credits -- --set 100 用户UUID production restore-100-1 恢复测试余额
+AIGC_ADMIN_OPERATOR=管理员 npm run aigc:credits -- --amount -20 用户UUID production deduct-20-1 压低余额
 ```
+
+`--set` / `--amount` 走 `aigc.adjust_credits`，写入 `adjust` 流水，余额不会低于 0；同一幂等键重复执行不会再改余额。查看用法：`npm run aigc:credits -- --help`。
 
 消除、重绘和扩图共用每人每小时 20 次、同时 2 次的服务端额度；抠图、智能选区和主体检测共用每人每小时 60 次、同时 3 次的额度。超额返回 429。
 

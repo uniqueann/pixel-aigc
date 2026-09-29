@@ -1,9 +1,11 @@
 export class HttpError extends Error {
   stage?: string
-  constructor(public status: number, message: string, public code = 'REQUEST_FAILED', options?: { cause?: unknown; stage?: string }) {
+  extra?: Record<string, unknown>
+  constructor(public status: number, message: string, public code = 'REQUEST_FAILED', options?: { cause?: unknown; stage?: string; extra?: Record<string, unknown> }) {
     super(message, options?.cause !== undefined ? { cause: options.cause } : undefined)
     this.name = 'HttpError'
     this.stage = options?.stage
+    this.extra = options?.extra
   }
 }
 

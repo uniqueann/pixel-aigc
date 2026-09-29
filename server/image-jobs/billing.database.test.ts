@@ -53,6 +53,7 @@ beforeAll(async () => {
     '20260923102829_aigc_email_byok.sql',
     '20260928120000_aigc_image_jobs.sql',
     '20260929100000_aigc_credits_and_sync_limits.sql',
+    '20260929233436_aigc_credit_adjust.sql',
   ]) await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
   await db.query('insert into aigc.members(user_id) values($1)', [userId])
 }, 30000)
@@ -100,7 +101,13 @@ describe('积分账本与同步请求限流', () => {
 
   it('余额不足不创建预扣流水，事务失败会回滚预扣', async () => {
     const short = await asUser(sql => createSqlBilling(sql).reserve({ userId, jobId: randomUUID(), amount: 101, meta: {} }))
-    expect(short).toMatchObject({ ok: false, code: 'INSUFFICIENT_CREDITS' })
+    expect(short).toMatchObject({
+      ok: false,
+      code: 'INSUFFICIENT_CREDITS',
+      required: 101,
+      balance: 97,
+      message: '积分余额不足：本次需要 101 积分，当前余额 97',
+    })
     await expect(asUser(async sql => {
       await createSqlBilling(sql).reserve({ userId, jobId: randomUUID(), amount: 2, meta: {} })
       throw new Error('模拟任务创建失败')
@@ -180,5 +187,40 @@ describe('积分账本与同步请求限流', () => {
       await expect(acquireSyncRequest(sql, userId, 'production', 'detection', randomUUID()))
         .rejects.toMatchObject({ status: 429, code: 'RATE_LIMIT' })
     })
+  })
+
+  it('管理员调整可把余额设为 0，且不会低于 0，同一幂等键不再改', async () => {
+    const first = await db.query<{ balance: number }>(
+      "select aigc.adjust_credits($1,'production','set',0,'管理员','测 402','set-zero-1') as balance",
+      [userId],
+    )
+    expect(Number(first.rows[0].balance)).toBe(0)
+    const again = await db.query<{ balance: number }>(
+      "select aigc.adjust_credits($1,'production','set',0,'管理员','测 402','set-zero-1') as balance",
+      [userId],
+    )
+    expect(Number(again.rows[0].balance)).toBe(0)
+    await db.query(
+      "select aigc.adjust_credits($1,'production','delta',-20,'管理员','再扣','deduct-1') as balance",
+      [userId],
+    )
+    const account = await db.query<{ balance: number }>("select balance from aigc.credit_accounts where user_id=$1 and scope='production'", [userId])
+    expect(account.rows[0].balance).toBe(0)
+    const restored = await db.query<{ balance: number }>(
+      "select aigc.adjust_credits($1,'production','set',100,'管理员','恢复','restore-100-1') as balance",
+      [userId],
+    )
+    expect(Number(restored.rows[0].balance)).toBe(100)
+    await expect(asUser(sql => sql`select aigc.adjust_credits(${userId},'production','set',0,'管理员','越权','x')`))
+      .rejects.toThrow()
+    const ledger = await db.query<{ kind: string; delta: number }>(
+      "select kind,delta from aigc.credit_ledger where idempotency_key like 'admin:%' and user_id=$1 order by created_at",
+      [userId],
+    )
+    expect(ledger.rows).toEqual([
+      { kind: 'adjust', delta: -94 },
+      { kind: 'adjust', delta: 0 },
+      { kind: 'adjust', delta: 100 },
+    ])
   })
 })
