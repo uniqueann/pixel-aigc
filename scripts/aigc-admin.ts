@@ -42,5 +42,33 @@ try {
         values(${value},${member.status},${status},${operator},${reason})`
     })
     console.log('应用成员状态已更新；共享 Auth 账号未改变。')
+  } else if (command === 'credits') {
+    const scope = status
+    const [amountText, key, ...reasonParts] = process.argv.slice(5)
+    const reason = reasonParts.join(' ').trim()
+    const operator = process.env.AIGC_ADMIN_OPERATOR?.trim()
+    const amount = Number(amountText)
+    if (!value || !['local','preview','production'].includes(scope ?? '') || !Number.isSafeInteger(amount)
+      || amount <= 0 || amount > 1_000_000 || !key || key.length > 128 || !reason || !operator)
+      throw new Error('用法：AIGC_ADMIN_OPERATOR=姓名 npm run aigc:credits -- 用户UUID 环境 正整数积分 幂等键 发放原因')
+    await sql.begin(async tx => {
+      const [member] = await tx`select user_id from aigc.members where user_id=${value} for update`
+      if (!member) throw new Error('成员不存在')
+      const [created] = await tx`insert into aigc.credit_accounts(user_id,scope,balance)
+        values(${value},${scope},100) on conflict do nothing returning balance`
+      if (created) await tx`insert into aigc.credit_ledger(user_id,scope,kind,delta,balance_after,idempotency_key,reason)
+        values(${value},${scope},'grant',100,100,'initial','首次赠送')`
+      const [prior] = await tx`select delta from aigc.credit_ledger
+        where user_id=${value} and scope=${scope} and idempotency_key=${`admin:${key}`}`
+      if (prior) {
+        if (Number(prior.delta) !== amount) throw new Error('幂等键已用于不同金额')
+        return
+      }
+      const [account] = await tx`update aigc.credit_accounts set balance=balance+${amount},updated_at=now()
+        where user_id=${value} and scope=${scope} returning balance`
+      await tx`insert into aigc.credit_ledger(user_id,scope,kind,delta,balance_after,idempotency_key,operator,reason)
+        values(${value},${scope},'grant',${amount},${account.balance},${`admin:${key}`},${operator},${reason})`
+    })
+    console.log('积分已发放或此前已用同一幂等键发放。')
   } else throw new Error('不支持的管理命令')
 } finally { await sql.end() }

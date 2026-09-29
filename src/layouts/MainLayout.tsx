@@ -56,6 +56,7 @@ export default function MainLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
   const account = useUserStore((s) => s.account)
+  const credits = useUserStore((s) => s.credits)
 
   const segments = location.pathname.split('/').filter(Boolean)
   const topKey = getActiveTopKey(location.pathname)
@@ -162,6 +163,7 @@ export default function MainLayout() {
         <Header className="app-header">
           <Space size={14}>
             <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />
+            {account && <span aria-label={`积分余额 ${credits}`}>积分 {credits}</span>}
           </Space>
         </Header>
         <Content className="app-main-content">

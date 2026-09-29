@@ -44,7 +44,7 @@ import {
 import { describeReferenceUrl } from '../image-providers/dragoncode/images.js'
 import { sleep as defaultSleep } from '../image-providers/http.js'
 import { cropToSourceAspect } from './aspect-crop.js'
-import { noopBilling, type BillingPort } from './billing.js'
+import { createSqlBilling, noopBilling, type BillingPort } from './billing.js'
 import { createSqlStore } from './repository.js'
 import {
   ACTIVE_JOB_STATUSES,
@@ -477,9 +477,15 @@ export async function createImageJobInStore(
   const config = dragonCodeConfig()
   const timeoutMs = config?.taskTimeoutMs ?? 300_000
   const jobId = randomUUID()
-  const reserved = parsed.params.count * (profile.pricing.creditsPerImage[mapped.providerParams.resolution as '1k' | '2k' | '4k'] ?? 0)
+  const effectiveResolution = mapped.providerParams.resolution as '1k' | '2k' | '4k'
+  const unitPrice = profile.pricing.creditsPerImage[effectiveResolution]
+  if (!Number.isSafeInteger(unitPrice) || !unitPrice || unitPrice <= 0) {
+    throw new HttpError(503, '图片积分单价尚未配置', 'IMAGE_PRICE_UNAVAILABLE')
+  }
+  const reserved = mapped.fanOut * unitPrice
   const reservedOk = await runtime.billing.reserve({
-    userId: user.id, jobId, amount: reserved, meta: { capability: parsed.capability, modelProfileId: profile.id },
+    userId: user.id, jobId, amount: reserved,
+    meta: { capability: parsed.capability, modelProfileId: profile.id, resolution: effectiveResolution, unitPrice },
   })
   if (!reservedOk.ok) throw new HttpError(402, reservedOk.message, reservedOk.code)
   const input: InsertImageJobInput = {
@@ -567,6 +573,16 @@ async function applyItemPatches(store: ImageJobStore, jobId: string, items: Imag
   return next
 }
 
+export async function failImageJobBeforeSubmit(store: ImageJobStore, bundle: ImageJobBundle, runtime: ImageJobRuntime, message: string) {
+  const items: ImageJobItemRow[] = []
+  for (const item of bundle.items) {
+    items.push(await store.updateItem(bundle.job.id, item.ordinal, {
+      status: 'failed', error_code: 'INPUT_UNAVAILABLE', error_message: message,
+    }))
+  }
+  return finalizeJob(store, bundle.job, items, runtime, false)
+}
+
 export async function finalizeJob(
   store: ImageJobStore,
   job: ImageJobRow,
@@ -591,6 +607,12 @@ export async function finalizeJob(
       await runtime.billing.release(job.id)
       billingState = 'released'
       creditsCharged = 0
+    }
+    const persisted = await store.findById(job.id)
+    if (!persisted) throw new Error('图片任务结算后丢失')
+    if (persisted.billing_state !== 'reserved') {
+      billingState = persisted.billing_state
+      creditsCharged = persisted.credits_charged
     }
   }
   const providerParams = outcomes.some(outcome => outcome.vendor)
@@ -771,15 +793,30 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
   const created = await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     await sql`select pg_advisory_xact_lock(91517002)`
-    return createImageJobInStore(createSqlStore(sql, user.id), user, parsed, runtime)
+    const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
+    return createImageJobInStore(createSqlStore(sql, user.id), user, parsed, billingRuntime)
   })
   if (!created.created) return toClientImageTask(created.bundle, runtime)
-  const outcomes = await runProviderSubmits(created.bundle, created.provider, user.id, runtime)
+  let outcomes: SubmitOutcome[]
+  try {
+    outcomes = await runProviderSubmits(created.bundle, created.provider, user.id, runtime)
+  } catch (error) {
+    runtime.log({ stage: 'submit-input', jobId: created.bundle.job.id, message: error instanceof Error ? error.message : String(error) })
+    return withIdentity(user.id, user.email, async sql => {
+      await requireActive(sql, user.id)
+      const store = createSqlStore(sql, user.id)
+      const message = error instanceof ProviderError ? error.message : '图片源文件读取失败'
+      const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
+      const finalized = await failImageJobBeforeSubmit(store, created.bundle, billingRuntime, message)
+      return toClientImageTask(finalized, runtime)
+    })
+  }
   return withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     const store = createSqlStore(sql, user.id)
     const items = await applyItemPatches(store, created.bundle.job.id, created.bundle.items, outcomes)
-    const finalized = await finalizeJob(store, created.bundle.job, items, runtime, false, outcomes)
+    const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
+    const finalized = await finalizeJob(store, created.bundle.job, items, billingRuntime, false, outcomes)
     return toClientImageTask(finalized, runtime)
   })
 }
@@ -808,7 +845,8 @@ export async function loadImageTask(user: User, id: string, runtime = defaultIma
   return withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     const store = createSqlStore(sql, user.id)
-    const advanced = await advanceJobInStore(store, prepared, runtime, { alreadyLeased: true, outcomes })
+    const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
+    const advanced = await advanceJobInStore(store, prepared, billingRuntime, { alreadyLeased: true, outcomes })
     return toClientImageTask(advanced, runtime)
   })
 }

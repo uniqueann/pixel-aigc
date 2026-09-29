@@ -5,6 +5,7 @@ import { RETOUCH_FIXED_PROMPT, RETOUCH_NOTE_MAX, composeRetouchPrompt, retouchNo
 import { VARIATION_FIXED_PROMPT, VARIATION_USER_PROMPT_MAX, composeVariationPrompt, variationPromptLimitMessage } from '../../shared/variation.js'
 import { mapDragonCodeRequest } from '../image-providers/dragoncode/mapping.js'
 import { MOCK_PNG_1X1, createMockImageProvider } from '../image-providers/mock.js'
+import { dragonCodeProvider } from '../image-providers/dragoncode/index.js'
 import { createMemoryStore } from './memory-store.js'
 import {
   IMAGE_LEASE_MS,
@@ -14,6 +15,7 @@ import {
   assertRetouchNoteLimit,
   assertVariationSteerLimit,
   createImageJobInStore,
+  failImageJobBeforeSubmit,
   createImageTaskSchema,
   finalizeJob,
   runProviderSubmits,
@@ -105,6 +107,37 @@ describe('图片任务状态机', () => {
   })
 })
 
+describe('图片积分价格', () => {
+  it('4K 请求降到 2K 时按实际分辨率预扣', async () => {
+    const billing = billingSpy()
+    const rt = runtime(dragonCodeProvider, billing)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, params({ resolution: '4k', count: 2 }), rt)
+    expect(created.bundle.job.credits_reserved).toBe(6)
+    expect(billing.reserve).toHaveBeenCalledWith(expect.objectContaining({ amount: 6 }))
+  })
+
+  it('积分不足返回 402，且不创建任务', async () => {
+    const billing = billingSpy()
+    billing.reserve.mockResolvedValue({ ok: false, code: 'INSUFFICIENT_CREDITS', message: '积分余额不足' } as never)
+    const store = createMemoryStore(user.id)
+    await expect(createImageJobInStore(store, user, params(), runtime(createMockImageProvider(), billing)))
+      .rejects.toMatchObject({ status: 402, code: 'INSUFFICIENT_CREDITS' })
+    expect(await store.findByRequestId(requestId)).toBeUndefined()
+  })
+
+  it('源图读取失败时立即失败并退还预扣', async () => {
+    const billing = billingSpy()
+    const rt = runtime(createMockImageProvider(), billing)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, params({ count: 2 }), rt)
+    const result = await failImageJobBeforeSubmit(store, created.bundle, rt, '图片源文件读取失败')
+    expect(result.job.status).toBe('failed')
+    expect(result.job.billing_state).toBe('released')
+    expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+  })
+})
+
 describe('图片任务存储状态机', () => {
   it('同一 requestId 幂等，fingerprint 不同则 409', async () => {
     const store = createMemoryStore(user.id)
@@ -142,7 +175,7 @@ describe('图片任务存储状态机', () => {
     expect(advanced.job.status).toBe('succeeded')
     expect(advanced.job.warnings).toContain(PARTIAL_WARNING)
     expect(advanced.items.filter(item => item.status === 'succeeded')).toHaveLength(3)
-    expect(billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 0 })
+    expect(billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 9 })
     expect(billing.release).not.toHaveBeenCalled()
   })
 

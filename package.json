@@ -13,6 +13,7 @@
     "typecheck:server": "tsc -p tsconfig.server.json",
     "aigc:invite": "tsx --env-file-if-exists=.env.local scripts/aigc-admin.ts invite",
     "aigc:member": "tsx --env-file-if-exists=.env.local scripts/aigc-admin.ts member",
+    "aigc:credits": "tsx --env-file-if-exists=.env.local scripts/aigc-admin.ts credits",
     "aigc:bootstrap": "tsx --env-file-if-exists=.env.local scripts/aigc-admin.ts bootstrap"
   },
   "dependencies": {

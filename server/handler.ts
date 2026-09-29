@@ -20,6 +20,8 @@ import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
 import { repaintWithBailian } from './bailian-repaint.js'
 import { segmentConfigured } from './segment/providers.js'
 import { selectSmartMask, SmartSelectFailure } from './segment/select.js'
+import { withSyncLimit } from './sync-limits.js'
+import { ensureCreditAccount } from './image-jobs/billing.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = randomUUID(), start = Date.now()
@@ -41,7 +43,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (path.join('/') === 'internal/image-jobs-sweep') {
           const [expired] = await sql`select aigc.expire_overdue_image_jobs() as expired`
           const [deleted] = await sql`select aigc.purge_expired_image_jobs() as deleted`
-          return { expired: Number(expired.expired), deleted: Number(deleted.deleted) }
+          const [limited] = await sql`select aigc.purge_expired_sync_requests() as deleted`
+          return { expired: Number(expired.expired), deleted: Number(deleted.deleted), limited: Number(limited.deleted) }
         }
         const [row] = await sql`select aigc.purge_expired_email_tasks() as deleted`
         return { deleted: Number(row.deleted) }
@@ -83,7 +86,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }).strict().parse(body)
       const image = Buffer.from(input.dataBase64, 'base64')
       if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      const png = await goodsMatting(image)
+      const png = await withSyncLimit(user, 'detection', () => goodsMatting(image))
       res.setHeader('Content-Type', 'image/png')
       res.status(200).end(png)
       return
@@ -97,7 +100,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }).strict().parse(body)
       const image = Buffer.from(input.dataBase64, 'base64')
       if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      res.status(200).json({ box: await detectGoodsSubject(image, input.width, input.height) })
+      res.status(200).json({ box: await withSyncLimit(user, 'detection', () => detectGoodsSubject(image, input.width, input.height)) })
       return
     }
     if (path.join('/') === 'outpaint' && method === 'POST') {
@@ -114,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }).strict().parse(body)
       const image = Buffer.from(input.dataBase64, 'base64')
       if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      const jpeg = await expandWithBailian(image, input.padding, { requestId })
+      const jpeg = await withSyncLimit(user, 'generation', () => expandWithBailian(image, input.padding, { requestId }))
       res.setHeader('Content-Type', 'image/jpeg')
       res.status(200).end(jpeg)
       console.info(JSON.stringify({
@@ -136,7 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const mask = Buffer.from(input.maskBase64, 'base64')
       if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
       if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
-      const jpeg = await eraseWithBailian(image, mask, input.prompt ?? '', { requestId })
+      const jpeg = await withSyncLimit(user, 'generation', () => eraseWithBailian(image, mask, input.prompt ?? '', { requestId }))
       res.setHeader('Content-Type', 'image/jpeg')
       res.status(200).end(jpeg)
       console.info(JSON.stringify({
@@ -157,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const mask = Buffer.from(input.maskBase64, 'base64')
       if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
       if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
-      const jpeg = await repaintWithBailian(image, mask, input.prompt, { requestId })
+      const jpeg = await withSyncLimit(user, 'generation', () => repaintWithBailian(image, mask, input.prompt, { requestId }))
       res.setHeader('Content-Type', 'image/jpeg')
       res.status(200).end(jpeg)
       console.info(JSON.stringify({
@@ -178,12 +181,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!input.dataBase64 && !input.session) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
       const image = input.dataBase64 ? Buffer.from(input.dataBase64, 'base64') : undefined
       if (image && !image.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
-      const result = await selectSmartMask({
+      const result = await withSyncLimit(user, 'detection', () => selectSmartMask({
         image,
         point: input.point,
         box: input.box,
         session: input.session,
-      })
+      }))
       res.status(200).json(result)
       console.info(JSON.stringify({
         evt: 'smart-select', requestId, userId, status: 200, route: 'smart-select',
@@ -353,12 +356,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 async function accountContext(sql: import('./db.js').Transaction, user: Awaited<ReturnType<typeof authenticate>>) {
+  await sql`select aigc.expire_overdue_image_jobs(${user.id})`
+  const balance = await ensureCreditAccount(sql, user.id)
   const [row] = await sql`select m.display_name as "displayName", w.id as "workspaceId",w.name as "workspaceName",wm.role
     from aigc.members m join aigc.workspaces w on w.owner_id=m.user_id
     join aigc.workspace_members wm on wm.workspace_id=w.id and wm.user_id=m.user_id and wm.status='active'
     where m.user_id=${user.id} and m.status='active'`
   if (!row) throw new HttpError(403, '账号资料不可用', 'PROFILE_UNAVAILABLE')
-  return { userId: user.id, email: user.email, emailVerified: true, displayName: row.displayName,
+  return { userId: user.id, email: user.email, emailVerified: true, displayName: row.displayName, credits: balance,
     avatarUrl: user.avatarUrl, providers: user.providers, status: 'active',
     workspace: { id: row.workspaceId, name: row.workspaceName, type: 'personal', role: row.role } }
 }

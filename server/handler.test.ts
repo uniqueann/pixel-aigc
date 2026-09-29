@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VercelRequest, VercelResponse } from './http'
 const mocks = vi.hoisted(() => ({ authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn(), getObject: vi.fn() }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
-vi.mock('./db', () => ({ withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
+vi.mock('./db', () => ({ runtimeScope: () => 'local', withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
 vi.mock('./storage', () => ({
   verifyAndPromote: mocks.verify,
   signRead: vi.fn(),
@@ -11,6 +11,7 @@ vi.mock('./storage', () => ({
   getObject: mocks.getObject,
 }))
 vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
+vi.mock('./sync-limits', () => ({ withSyncLimit: (_user: unknown, _bucket: string, action: () => Promise<unknown>) => action() }))
 import handler from './handler'
 import { HttpError } from './errors'
 const draft = { prompt: '',presetKey: '1:1',count: 1,durationSeconds: 5 }
@@ -29,7 +30,9 @@ beforeEach(() => {
   mocks.sql.mockImplementation(async (parts: TemplateStringsArray) => {
     const query=parts.join('?')
     if (query.includes('initialize_member')) return [{ allowed: true }]
+    if (query.includes('ensure_credit_account')) return [{ balance: 100 }]
     if (query.includes('from aigc.members m join')) return [{ displayName: '测试用户',workspaceId: '00000000-0000-4000-8000-000000000001',workspaceName: '我的工作空间',role: 'admin' }]
+    if (query.includes('from aigc.credit_accounts')) return [{ balance: 100 }]
     if (query.includes('select status')) return [{ status: 'active' }]
     if (query.includes('select * from aigc.projects')) return [{ id: 'p',revision: 3 }]
     if (query.includes('update aigc.projects')) return [{ revision: 4 }]
@@ -41,7 +44,7 @@ describe('API 认证、版本和写入边界', () => {
     const first = await request(undefined,'POST','/api/me')
     const second = await request(undefined,'POST','/api/me')
     expect(first.status).toHaveBeenCalledWith(200)
-    expect(first.json).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner',workspace: expect.objectContaining({ id: '00000000-0000-4000-8000-000000000001' }) }))
+    expect(first.json).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner', credits: 100, workspace: expect.objectContaining({ id: '00000000-0000-4000-8000-000000000001' }) }))
     expect(second.json).toHaveBeenCalledWith(first.json.mock.calls[0][0])
   })
   it('停用成员初始化返回可识别的错误码', async () => {

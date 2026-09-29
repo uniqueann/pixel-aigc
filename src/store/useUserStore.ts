@@ -12,6 +12,7 @@ interface UserStoreState {
 
 export interface AccountContext {
   userId: string
+  credits: number
   email: string
   emailVerified: boolean
   displayName: string
@@ -28,5 +29,5 @@ export const useUserStore = create<UserStoreState>((set) => ({
   tier: 'free',
   setCredits: (credits) => set({ credits }),
   setUser: (userId, tier) => set({ userId, tier }),
-  setAccount: (account) => set({ account, userId: account?.userId ?? null }),
+  setAccount: (account) => set({ account, userId: account?.userId ?? null, credits: account?.credits ?? 0 }),
 }))

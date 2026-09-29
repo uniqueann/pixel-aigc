@@ -120,26 +120,8 @@ export function createSqlStore(sql: Transaction, userId: string): ImageJobStore 
       return Number(row.used)
     },
     async expireUserOverdue(now) {
-      const jobs = await sql`select * from aigc.image_jobs
-        where user_id=${userId} and scope=${scope} and status in ('queued','processing') and deadline_at<=${now}`
-      for (const job of jobs) {
-        await sql`update aigc.image_job_items set status='expired', updated_at=now()
-          where job_id=${job.id} and status in ('pending','submitted','processing')`
-        const items = await sql`select status from aigc.image_job_items where job_id=${job.id}`
-        const succeeded = items.some(item => item.status === 'succeeded')
-        const warnings = succeeded && items.some(item => item.status !== 'succeeded')
-          ? [...new Set([...(Array.isArray(job.warnings) ? job.warnings as string[] : []), 'PARTIAL'])]
-          : job.warnings
-        await sql`update aigc.image_jobs set
-          status=${succeeded ? 'succeeded' : 'expired'},
-          warnings=${warnings},
-          error_code=${succeeded ? job.error_code : 'TASK_TIMEOUT'},
-          error_message=${succeeded ? job.error_message : '任务处理超时，请重试'},
-          billing_state=${job.billing_state === 'reserved' ? 'released' : job.billing_state},
-          completed_at=coalesce(completed_at, now()),
-          updated_at=now()
-          where id=${job.id}`
-      }
+      void now
+      await sql`select aigc.expire_overdue_image_jobs(${userId})`
     },
   }
 }
