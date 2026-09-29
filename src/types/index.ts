@@ -59,15 +59,16 @@ export interface ImageTaskParams {
   extra?: Record<string, unknown>
 }
 
-/** 智能编辑任务参数 */
+/** 智能编辑任务参数。精修复用这条任务，用方向代替必填提示词。 */
 export interface ImageEditTaskParams extends ImageTaskParams {
   sourceImageUrl?: string
   sourceImageKey?: string
   sourceWidth?: number
   sourceHeight?: number
-  prompt: string
+  prompt?: string
   count: number
   resolution: '1k' | '2k' | '4k'
+  retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
 }
 
 /** 消除/重绘任务参数 */

@@ -1,8 +1,9 @@
-import { Input, Segmented, Select, Slider, Space } from 'antd'
+import { Checkbox, Input, Segmented, Select, Slider, Space } from 'antd'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
 import { mapDragonCodeSize } from '@shared/image-models'
+import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 
 interface Props {
@@ -28,6 +29,8 @@ interface Props {
   onOutpaintModeChange: (mode: 'free' | 'preset') => void
   presetPlatform: string
   onPresetPlatformChange: (platform: string) => void
+  retouchDirections?: RetouchDirection[]
+  onRetouchDirectionsChange?: (directions: RetouchDirection[]) => void
 }
 
 const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
@@ -56,9 +59,12 @@ export default function ParamPanel({
   onOutpaintModeChange,
   presetPlatform,
   onPresetPlatformChange,
+  retouchDirections = [],
+  onRetouchDirectionsChange,
 }: Props) {
-  if (capability === Capability.ImageEdit || capability === Capability.Variation) {
+  if (capability === Capability.ImageEdit || capability === Capability.Variation || capability === Capability.Retouch) {
     const variation = capability === Capability.Variation
+    const retouch = capability === Capability.Retouch
     const model = models.find(item => item.id === modelProfileId) ?? models[0]
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
@@ -81,16 +87,28 @@ export default function ParamPanel({
             />
           </div>
         ) : null}
+        {retouch ? (
+          <div>
+            <div style={labelStyle}>精修方向</div>
+            <Checkbox.Group
+              style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+              disabled={disabled}
+              value={retouchDirections}
+              onChange={(values) => onRetouchDirectionsChange?.(normalizeRetouchDirections(values.map(String)))}
+              options={RETOUCH_DIRECTIONS.map(item => ({ label: item.label, value: item.id }))}
+            />
+          </div>
+        ) : null}
         <div>
-          <div style={labelStyle}>{variation ? '补充要求（可选）' : '编辑要求'}</div>
+          <div style={labelStyle}>{retouch ? '补充说明（可选）' : variation ? '补充要求（可选）' : '编辑要求'}</div>
           <Input.TextArea
             value={smartEditPrompt}
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
-            placeholder={variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
-            autoSize={{ minRows: 5, maxRows: 10 }}
-            maxLength={variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength}
-            showCount={variation}
+            placeholder={retouch ? '例如：保留吊牌文字' : variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
+            autoSize={{ minRows: retouch ? 3 : 5, maxRows: 10 }}
+            maxLength={retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength}
+            showCount={retouch || variation}
           />
         </div>
         <div>

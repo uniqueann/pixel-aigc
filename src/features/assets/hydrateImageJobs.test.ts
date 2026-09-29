@@ -52,6 +52,20 @@ describe('从图片任务补记我的资产', () => {
     mocks.recordWorkstationHistory.mockResolvedValue(undefined)
   })
 
+  it('精修按方向记成精修，不把固定句写进资产说明', async () => {
+    const records = await historyRecordsFromImageTask({
+      ...variationTask,
+      id: '22222222-2222-4222-8222-222222222222',
+      capability: Capability.ImageEdit,
+      params: { retouchDirections: ['sharpen', 'blemish'], prompt: '保留吊牌' },
+    })
+    expect(records[0]).toMatchObject({
+      toolSlug: 'retouch',
+      capability: Capability.ImageEdit,
+      prompt: '去瑕疵、边缘锐化。保留吊牌',
+    })
+  })
+
   it('裂变和智能编辑都写成对应中文工具名的历史记录', async () => {
     const records = await historyRecordsFromImageTask(variationTask)
     expect(records).toEqual([expect.objectContaining({

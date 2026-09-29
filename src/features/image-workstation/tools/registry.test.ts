@@ -18,6 +18,7 @@ describe('图片工作站工具开关', () => {
     expect(isWorkstationToolReady(getWorkstationTool('retouch'), () => false)).toBe(false)
     expect(isWorkstationToolReady(getWorkstationTool('smart-edit'), () => true)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('variation'), (capability) => capability === Capability.Variation)).toBe(true)
+    expect(isWorkstationToolReady(getWorkstationTool('retouch'), (capability) => capability === Capability.Retouch)).toBe(true)
   })
 
   it('融合不展示上一工具的单图预览', () => {

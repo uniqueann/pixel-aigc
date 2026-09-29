@@ -1,6 +1,7 @@
 import { Capability, type GenerationTask } from '@/types'
 import { getTask, listTasks } from '@/services/api/task'
 import { blobFromImageSource } from '@/features/image-workstation/download'
+import { readRetouchDirections, retouchHistoryText } from '@shared/retouch'
 import { workstationSlugForCapability } from './labels'
 import { listWorkstationHistory, recordWorkstationHistory } from './workstationHistory'
 
@@ -14,8 +15,11 @@ function readPrompt(params: unknown) {
 
 export async function historyRecordsFromImageTask(task: GenerationTask<unknown>) {
   if (task.status !== 'succeeded') return []
-  const slug = workstationSlugForCapability(task.capability)
+  const directions = readRetouchDirections(task.params)
+  const slug = directions.length ? 'retouch' : workstationSlugForCapability(task.capability)
   if (!slug) return []
+  const note = readPrompt(task.params)
+  const prompt = directions.length ? retouchHistoryText(directions, note) : note
   const images = task.resultImages?.length
     ? task.resultImages
     : (task.resultUrls ?? []).map((url) => ({ url, width: 0, height: 0, mimeType: 'image/png', objectKey: undefined }))
@@ -26,7 +30,7 @@ export async function historyRecordsFromImageTask(task: GenerationTask<unknown>)
       id: `${task.id}:${index}`,
       toolSlug: slug,
       capability: task.capability,
-      prompt: readPrompt(task.params),
+      prompt,
       width: image.width || 0,
       height: image.height || 0,
       mimeType: image.mimeType || result.type || 'image/jpeg',

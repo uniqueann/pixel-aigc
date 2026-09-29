@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
 import { publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
+import { RETOUCH_NOTE_MAX } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import ParamPanel from './ParamPanel'
 
@@ -66,5 +67,38 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByPlaceholderText('例如：户外露营场景，俯拍')).toHaveProperty('maxLength', VARIATION_USER_PROMPT_MAX)
     expect(screen.queryByText('生成尺寸')).toBeNull()
     expect(screen.getByText(/预计输出比例 3:2/)).toBeTruthy()
+  })
+
+  it('精修展示四个方向，补充说明单独计数', () => {
+    render(
+      <ParamPanel
+        capability={Capability.Retouch}
+        smartEditPrompt=""
+        onSmartEditPromptChange={() => undefined}
+        count={1}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1000, height: 1000 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+        retouchDirections={['blemish']}
+      />,
+    )
+    for (const label of ['去瑕疵', '提亮', '边缘锐化', '统一质感']) {
+      expect(screen.getByText(label)).toBeTruthy()
+    }
+    expect(screen.getByText('补充说明（可选）')).toBeTruthy()
+    expect(screen.getByPlaceholderText('例如：保留吊牌文字')).toHaveProperty('maxLength', RETOUCH_NOTE_MAX)
+    expect(screen.queryByText('生成尺寸')).toBeNull()
+    expect(screen.queryByText('编辑要求')).toBeNull()
   })
 })

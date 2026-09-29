@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { RETOUCH_FIXED_PROMPT, RETOUCH_NOTE_MAX, composeRetouchPrompt, retouchNoteLimitMessage } from '../../shared/retouch.js'
 import { VARIATION_FIXED_PROMPT, VARIATION_USER_PROMPT_MAX, composeVariationPrompt, variationPromptLimitMessage } from '../../shared/variation.js'
 import { mapDragonCodeRequest } from '../image-providers/dragoncode/mapping.js'
 import { MOCK_PNG_1X1, createMockImageProvider } from '../image-providers/mock.js'
@@ -6,6 +7,7 @@ import { createMemoryStore } from './memory-store.js'
 import {
   IMAGE_LEASE_MS,
   advanceJobInStore,
+  assertRetouchNoteLimit,
   assertVariationSteerLimit,
   createImageJobInStore,
   createImageTaskSchema,
@@ -326,5 +328,55 @@ describe('裂变任务', () => {
     delete process.env.DRAGONCODE_API_KEY
     await expect(createImageJobInStore(createMemoryStore(user.id), user, variationParams(), runtime()))
       .rejects.toMatchObject({ status: 503, message: '裂变尚未配置可用的图片模型', code: 'VARIATION_UNAVAILABLE' })
+  })
+})
+
+describe('精修任务', () => {
+  it('不选方向时智能编辑仍拒绝空提示词', () => {
+    expect(() => createImageTaskSchema.parse(params({ prompt: '  ' }))).toThrow()
+    expect(createImageTaskSchema.parse(params()).params).toMatchObject({ prompt: '换成白底' })
+  })
+
+  it('选中方向后拼固定句，未选方向不出现，补充说明不能盖掉约束', async () => {
+    const store = createMemoryStore(user.id)
+    const submit = vi.fn(async () => ({ providerTaskId: 'retouch-1' }))
+    const provider = createMockImageProvider({ submit })
+    const rt = runtime(provider)
+    const created = await createImageJobInStore(store, user, params({
+      prompt: '保留金属拉丝',
+      retouchDirections: ['sharpen', 'blemish', 'sharpen'],
+      count: 1,
+    }), rt)
+    const composed = composeRetouchPrompt(['blemish', 'sharpen'], '保留金属拉丝')
+    expect(created.bundle.job.capability).toBe('image_edit')
+    expect(created.bundle.job.params).toMatchObject({
+      prompt: '保留金属拉丝',
+      retouchDirections: ['blemish', 'sharpen'],
+      count: 1,
+    })
+    expect(created.bundle.job.provider_params.prompt).toBe(composed)
+    expect(String(created.bundle.job.provider_params.prompt).startsWith(RETOUCH_FIXED_PROMPT)).toBe(true)
+    expect(String(created.bundle.job.provider_params.prompt)).not.toContain('提亮：')
+    await runProviderSubmits(created.bundle, provider, user.id, rt)
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ prompt: composed }), expect.anything())
+
+    const plain = await createImageJobInStore(createMemoryStore(user.id), user, params({
+      prompt: undefined,
+      retouchDirections: ['brighten'],
+    }), rt)
+    expect(plain.bundle.job.provider_params.prompt).toBe(composeRetouchPrompt(['brighten']))
+    expect(plain.bundle.job.params).not.toHaveProperty('prompt')
+    const parsed = createImageTaskSchema.parse(params({
+      prompt: undefined,
+      retouchDirections: ['texture'],
+    }))
+    expect(parsed.capability === 'image_edit' && parsed.params.retouchDirections).toEqual(['texture'])
+  })
+
+  it('补充说明超过上限时返回明确字数', () => {
+    const prompt = '字'.repeat(RETOUCH_NOTE_MAX + 1)
+    const body = params({ prompt, retouchDirections: ['blemish'] })
+    expect(() => assertRetouchNoteLimit(body)).toThrow(retouchNoteLimitMessage())
+    expect(() => createImageTaskSchema.parse(body)).toThrow()
   })
 })
