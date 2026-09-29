@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FUSION_FIXED_PROMPT, FUSION_NOTE_MAX, composeFusionPrompt, fusionNoteLimitMessage } from '../../shared/fusion.js'
 import { RETOUCH_FIXED_PROMPT, RETOUCH_NOTE_MAX, composeRetouchPrompt, retouchNoteLimitMessage } from '../../shared/retouch.js'
 import { VARIATION_FIXED_PROMPT, VARIATION_USER_PROMPT_MAX, composeVariationPrompt, variationPromptLimitMessage } from '../../shared/variation.js'
 import { mapDragonCodeRequest } from '../image-providers/dragoncode/mapping.js'
@@ -7,6 +8,7 @@ import { createMemoryStore } from './memory-store.js'
 import {
   IMAGE_LEASE_MS,
   advanceJobInStore,
+  assertFusionRequest,
   assertRetouchNoteLimit,
   assertVariationSteerLimit,
   createImageJobInStore,
@@ -380,5 +382,57 @@ describe('精修任务', () => {
     const body = params({ prompt, retouchDirections: ['blemish'] })
     expect(() => assertRetouchNoteLimit(body)).toThrow(retouchNoteLimitMessage())
     expect(() => createImageTaskSchema.parse(body)).toThrow()
+  })
+})
+
+describe('融合任务', () => {
+  const sceneKey = `temporary/task-inputs/${user.id}/scene-1`
+
+  it('场景图按商品图在前的顺序提交，裁切尺寸仍是商品图', async () => {
+    const store = createMemoryStore(user.id)
+    const submit = vi.fn(async () => ({ providerTaskId: 'fusion-1' }))
+    const provider = createMockImageProvider({ submit })
+    const rt = runtime(provider)
+    const created = await createImageJobInStore(store, user, params({
+      prompt: '放在桌面中央',
+      referenceImageKey: sceneKey,
+      sourceWidth: 1200,
+      sourceHeight: 800,
+      count: 1,
+    }), rt)
+    const composed = composeFusionPrompt('放在桌面中央')
+    expect(created.bundle.job.capability).toBe('image_edit')
+    expect(created.bundle.job.params).toMatchObject({
+      sourceImageKey: sourceKey,
+      referenceImageKey: sceneKey,
+      sourceWidth: 1200,
+      sourceHeight: 800,
+      prompt: '放在桌面中央',
+    })
+    expect(created.bundle.job.provider_params.prompt).toBe(composed)
+    expect(String(created.bundle.job.provider_params.prompt).startsWith(FUSION_FIXED_PROMPT)).toBe(true)
+    await runProviderSubmits(created.bundle, provider, user.id, rt)
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: composed,
+      images: [
+        { url: `https://r2.test/${sourceKey}` },
+        { url: `https://r2.test/${sceneKey}` },
+      ],
+    }), expect.anything())
+  })
+
+  it('拒绝同一张图、别人的对象，以及过长的补充说明', async () => {
+    const rt = runtime()
+    await expect(createImageJobInStore(createMemoryStore(user.id), user, params({
+      referenceImageKey: sourceKey,
+    }), rt)).rejects.toMatchObject({ code: 'INVALID_SOURCE', message: '商品图和场景图不能是同一张' })
+    await expect(createImageJobInStore(createMemoryStore(user.id), user, params({
+      referenceImageKey: 'temporary/task-inputs/other-user/scene',
+    }), rt)).rejects.toMatchObject({ code: 'INVALID_SOURCE', message: '场景图对象无效或无权访问' })
+    const prompt = '字'.repeat(FUSION_NOTE_MAX + 1)
+    const body = params({ prompt, referenceImageKey: sceneKey })
+    expect(() => assertFusionRequest(body)).toThrow(fusionNoteLimitMessage())
+    expect(createImageTaskSchema.parse(params({ prompt: '  ', referenceImageKey: sceneKey })).capability).toBe('image_edit')
+    expect(() => createImageTaskSchema.parse(params({ prompt: '  ' }))).toThrow()
   })
 })

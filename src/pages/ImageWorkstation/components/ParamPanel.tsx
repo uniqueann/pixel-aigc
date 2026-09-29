@@ -3,6 +3,7 @@ import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
 import { mapDragonCodeSize } from '@shared/image-models'
+import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 
@@ -62,9 +63,10 @@ export default function ParamPanel({
   retouchDirections = [],
   onRetouchDirectionsChange,
 }: Props) {
-  if (capability === Capability.ImageEdit || capability === Capability.Variation || capability === Capability.Retouch) {
+  if (capability === Capability.ImageEdit || capability === Capability.Variation || capability === Capability.Retouch || capability === Capability.Fusion) {
     const variation = capability === Capability.Variation
     const retouch = capability === Capability.Retouch
+    const fusion = capability === Capability.Fusion
     const model = models.find(item => item.id === modelProfileId) ?? models[0]
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
@@ -100,15 +102,15 @@ export default function ParamPanel({
           </div>
         ) : null}
         <div>
-          <div style={labelStyle}>{retouch ? '补充说明（可选）' : variation ? '补充要求（可选）' : '编辑要求'}</div>
+          <div style={labelStyle}>{retouch || fusion ? '补充说明（可选）' : variation ? '补充要求（可选）' : '编辑要求'}</div>
           <Input.TextArea
             value={smartEditPrompt}
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
-            placeholder={retouch ? '例如：保留吊牌文字' : variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
-            autoSize={{ minRows: retouch ? 3 : 5, maxRows: 10 }}
-            maxLength={retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength}
-            showCount={retouch || variation}
+            placeholder={fusion ? '例如：把商品放在桌面中央' : retouch ? '例如：保留吊牌文字' : variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
+            autoSize={{ minRows: retouch || fusion ? 3 : 5, maxRows: 10 }}
+            maxLength={fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength}
+            showCount={retouch || variation || fusion}
           />
         </div>
         <div>

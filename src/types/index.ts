@@ -69,6 +69,8 @@ export interface ImageEditTaskParams extends ImageTaskParams {
   count: number
   resolution: '1k' | '2k' | '4k'
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
+  referenceImageKey?: string
+  referenceImageUrl?: string
 }
 
 /** 消除/重绘任务参数 */

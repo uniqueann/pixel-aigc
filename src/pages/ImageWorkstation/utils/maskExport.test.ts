@@ -86,4 +86,16 @@ describe('生成按钮禁用原因', () => {
       retouchBlocked: true,
     })).toBe('请先选择精修方向')
   })
+
+  it('融合缺图时不能生成', () => {
+    expect(workstationGenerateBlockReason({
+      toolReady: true,
+      hasInput: false,
+      formLocked: false,
+      maskRequired: false,
+      hasMaskPaint: false,
+      repaintBlocked: false,
+      fusionBlocked: true,
+    })).toBe('请先上传商品图和场景图')
+  })
 })

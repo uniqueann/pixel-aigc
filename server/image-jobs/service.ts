@@ -7,6 +7,11 @@ import { requireActive } from '../model-settings.js'
 import { getObject, putObject, signRead } from '../storage.js'
 import type { NormalizedImageRequest } from '../../shared/image-generation.js'
 import {
+  FUSION_NOTE_MAX,
+  composeFusionPrompt,
+  fusionNoteLimitMessage,
+} from '../../shared/fusion.js'
+import {
   RETOUCH_DIRECTION_IDS,
   RETOUCH_NOTE_MAX,
   composeRetouchPrompt,
@@ -71,9 +76,25 @@ const imageEditParams = z.object({
   ...imageSourceParams,
   prompt: z.string().trim().max(4000).optional(),
   retouchDirections: z.array(z.enum(RETOUCH_DIRECTION_IDS)).max(4).optional(),
+  referenceImageKey: z.string().trim().min(1).max(512).optional(),
+  referenceImageUrl: z.string().max(4000).optional(),
 }).strict().superRefine((value, ctx) => {
   const directions = normalizeRetouchDirections(value.retouchDirections)
   const note = value.prompt?.trim() ?? ''
+  const referenceKey = value.referenceImageKey?.trim() ?? ''
+  if (referenceKey && directions.length > 0) {
+    ctx.addIssue({ code: 'custom', message: '不能同时提交精修和融合', path: ['referenceImageKey'] })
+    return
+  }
+  if (referenceKey) {
+    if (note.length > FUSION_NOTE_MAX) {
+      ctx.addIssue({ code: 'custom', message: fusionNoteLimitMessage(), path: ['prompt'] })
+    }
+    if (referenceKey === value.sourceImageKey) {
+      ctx.addIssue({ code: 'custom', message: '商品图和场景图不能是同一张', path: ['referenceImageKey'] })
+    }
+    return
+  }
   if (directions.length > 0) {
     if (note.length > RETOUCH_NOTE_MAX) {
       ctx.addIssue({ code: 'custom', message: retouchNoteLimitMessage(), path: ['prompt'] })
@@ -106,6 +127,7 @@ type ImageTaskCapability = 'image_edit' | 'variation'
 type StoredImageParams = {
   prompt?: string
   sourceImageKey: string
+  referenceImageKey?: string
   sourceWidth?: number
   sourceHeight?: number
   size?: { width: number; height: number }
@@ -117,6 +139,20 @@ export function assertVariationSteerLimit(body: unknown) {
   if (typeof prompt !== 'string') return
   if (prompt.trim().length > VARIATION_USER_PROMPT_MAX) {
     throw new HttpError(400, variationPromptLimitMessage(), 'INVALID_PARAMS')
+  }
+}
+
+export function assertFusionRequest(body: unknown) {
+  if (!isRecord(body) || body.capability !== 'image_edit' || !isRecord(body.params)) return
+  const reference = typeof body.params.referenceImageKey === 'string' ? body.params.referenceImageKey.trim() : ''
+  if (!reference) return
+  const source = typeof body.params.sourceImageKey === 'string' ? body.params.sourceImageKey.trim() : ''
+  const prompt = typeof body.params.prompt === 'string' ? body.params.prompt.trim() : ''
+  if (prompt.length > FUSION_NOTE_MAX) {
+    throw new HttpError(400, fusionNoteLimitMessage(), 'INVALID_PARAMS')
+  }
+  if (source && reference === source) {
+    throw new HttpError(400, '商品图和场景图不能是同一张', 'INVALID_SOURCE')
   }
 }
 
@@ -299,31 +335,51 @@ export async function createImageJobInStore(
     ? normalizeRetouchDirections(parsed.params.retouchDirections)
     : []
   const isRetouch = retouchDirections.length > 0
+  const referenceKey = parsed.capability === 'image_edit' ? parsed.params.referenceImageKey?.trim() ?? '' : ''
+  const isFusion = referenceKey.length > 0
+  if (isFusion && isRetouch) throw new HttpError(400, '不能同时提交精修和融合', 'INVALID_PARAMS')
   if (parsed.capability === 'variation' && userPrompt.length > VARIATION_USER_PROMPT_MAX) {
     throw new HttpError(400, variationPromptLimitMessage(), 'INVALID_PARAMS')
+  }
+  if (isFusion && userPrompt.length > FUSION_NOTE_MAX) {
+    throw new HttpError(400, fusionNoteLimitMessage(), 'INVALID_PARAMS')
   }
   if (isRetouch && userPrompt.length > RETOUCH_NOTE_MAX) {
     throw new HttpError(400, retouchNoteLimitMessage(), 'INVALID_PARAMS')
   }
-  if (parsed.capability === 'image_edit' && !isRetouch && !userPrompt) {
+  if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && !userPrompt) {
     throw new HttpError(400, '请填写编辑要求', 'INVALID_PARAMS')
   }
-  if (parsed.capability === 'image_edit' && !isRetouch && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
+  if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
     throw new HttpError(400, '编辑要求过长', 'INVALID_PARAMS')
+  }
+  if (isFusion && referenceKey === parsed.params.sourceImageKey) {
+    throw new HttpError(400, '商品图和场景图不能是同一张', 'INVALID_SOURCE')
+  }
+  if (isFusion && !isSafeObjectKey(user.id, referenceKey)) {
+    throw new HttpError(400, '场景图对象无效或无权访问', 'INVALID_SOURCE')
   }
   const prompt = parsed.capability === 'variation'
     ? composeVariationPrompt(userPrompt)
-    : isRetouch
-      ? composeRetouchPrompt(retouchDirections, userPrompt)
-      : parsed.params.prompt ?? ''
+    : isFusion
+      ? composeFusionPrompt(userPrompt)
+      : isRetouch
+        ? composeRetouchPrompt(retouchDirections, userPrompt)
+        : parsed.params.prompt ?? ''
   const storedParams = isRetouch
     ? {
         ...parsed.params,
         retouchDirections,
         ...(userPrompt ? { prompt: userPrompt } : {}),
       }
-    : parsed.params
-  if (isRetouch && !userPrompt) delete storedParams.prompt
+    : isFusion
+      ? {
+          ...parsed.params,
+          referenceImageKey: referenceKey,
+          ...(userPrompt ? { prompt: userPrompt } : {}),
+        }
+      : parsed.params
+  if ((isRetouch || isFusion) && !userPrompt) delete storedParams.prompt
   if (parsed.params.count > profile.ui.maxCount) {
     throw new HttpError(400, `最多生成 ${profile.ui.maxCount} 张`, 'INVALID_PARAMS')
   }
@@ -334,17 +390,20 @@ export async function createImageJobInStore(
   const normalized: NormalizedImageRequest = {
     operation: parsed.capability,
     prompt,
-    images: [{
-      source: { kind: 'r2', objectKey: parsed.params.sourceImageKey },
-      width: dimensions.width,
-      height: dimensions.height,
-    }],
+    images: [
+      {
+        source: { kind: 'r2', objectKey: parsed.params.sourceImageKey },
+        width: dimensions.width,
+        height: dimensions.height,
+      },
+      ...(isFusion ? [{ source: { kind: 'r2' as const, objectKey: referenceKey } }] : []),
+    ],
     target: { size: parsed.params.size, resolution: parsed.params.resolution },
     count: parsed.params.count,
     extra: parsed.params.extra,
   }
   const mapped = provider.mapRequest(normalized, profile.model)
-  if (parsed.capability === 'variation' || isRetouch) {
+  if (parsed.capability === 'variation' || isRetouch || isFusion) {
     mapped.providerParams = { ...mapped.providerParams, prompt }
   }
   const fingerprint = createHash('sha256').update(JSON.stringify({
@@ -410,7 +469,15 @@ export async function runProviderSubmits(
   if (!isSafeObjectKey(userId, params.sourceImageKey)) {
     throw new HttpError(400, '原图对象无效或无权访问', 'INVALID_SOURCE')
   }
+  const referenceKey = params.referenceImageKey?.trim() ?? ''
+  if (referenceKey && referenceKey === params.sourceImageKey) {
+    throw new HttpError(400, '商品图和场景图不能是同一张', 'INVALID_SOURCE')
+  }
+  if (referenceKey && !isSafeObjectKey(userId, referenceKey)) {
+    throw new HttpError(400, '场景图对象无效或无权访问', 'INVALID_SOURCE')
+  }
   const sourceUrl = await resolveInputUrl(params.sourceImageKey, runtime)
+  const referenceUrl = referenceKey ? await resolveInputUrl(referenceKey, runtime) : undefined
   const prompt = submittedPrompt(bundle.job.provider_params, params)
   const parallel = dragonCodeConfig()?.maxParallel ?? 4
   const ctx = providerContext(runtime, bundle.job.request_id)
@@ -422,7 +489,7 @@ export async function runProviderSubmits(
       const submitted = await provider.submit({
         model: String(bundle.job.provider_params.model ?? ''),
         prompt,
-        images: [{ url: sourceUrl }],
+        images: referenceUrl ? [{ url: sourceUrl }, { url: referenceUrl }] : [{ url: sourceUrl }],
         providerParams: bundle.job.provider_params,
       }, ctx)
       return {
@@ -648,6 +715,7 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
 
 export async function submitImageTask(user: User, body: unknown, runtime = defaultImageJobRuntime()) {
   assertVariationSteerLimit(body)
+  assertFusionRequest(body)
   assertRetouchNoteLimit(body)
   const parsed = createImageTaskSchema.parse(body)
   const created = await withIdentity(user.id, user.email, async sql => {

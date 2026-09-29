@@ -42,10 +42,14 @@ export default function ImageWorkstation() {
   const [smartEditPrompt, setSmartEditPrompt] = useState('')
   const [variationPrompt, setVariationPrompt] = useState('')
   const [retouchNote, setRetouchNote] = useState('')
+  const [fusionNote, setFusionNote] = useState('')
   const [retouchDirections, setRetouchDirections] = useState<RetouchDirection[]>([])
+  const [fusionProduct, setFusionProduct] = useState<ImageAsset>()
+  const [fusionReference, setFusionReference] = useState<ImageAsset>()
   const [editCount, setEditCount] = useState(1)
   const [variationCount, setVariationCount] = useState(2)
   const [retouchCount, setRetouchCount] = useState(1)
+  const [fusionCount, setFusionCount] = useState(1)
   const [editResolution, setEditResolution] = useState<'1k' | '2k' | '4k'>('2k')
   const [imageModels, setImageModels] = useState<PublicImageModel[]>(() =>
     IMAGE_MODEL_PROFILES.filter(profile => profile.operations.includes('image_edit')).map(publicImageModel))
@@ -66,7 +70,7 @@ export default function ImageWorkstation() {
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
   const capabilityReady = useCallback((capability: Capability) => {
-    if (capability === Capability.ImageEdit || capability === Capability.Retouch) return imageEditReady
+    if (capability === Capability.ImageEdit || capability === Capability.Retouch || capability === Capability.Fusion) return imageEditReady
     if (capability === Capability.Variation) return variationReady
     return liveCapabilityReady(capability)
   }, [imageEditReady, variationReady])
@@ -74,27 +78,33 @@ export default function ImageWorkstation() {
   const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode)
   const variationTool = activeTool.capability === Capability.Variation
   const retouchTool = activeTool.slug === 'retouch'
-  const activePrompt = retouchTool
-    ? retouchNote
-    : activeTool.capability === Capability.ImageEdit
+  const fusionTool = activeTool.slug === 'fusion'
+  const activePrompt = fusionTool
+    ? fusionNote
+    : retouchTool
+      ? retouchNote
+      : activeTool.capability === Capability.ImageEdit
       ? smartEditPrompt
       : variationTool
         ? variationPrompt
         : activeTool.slug === 'remove'
           ? erasePrompt
           : repaintPrompt
-  const activeCount = retouchTool ? retouchCount : variationTool ? variationCount : editCount
+  const activeCount = fusionTool ? fusionCount : retouchTool ? retouchCount : variationTool ? variationCount : editCount
   const activeModelId = variationTool ? variationModelId : modelProfileId
   const activeModels = variationTool ? variationModels : imageModels
   const controller = useImageWorkstationController({
     activeTool,
-    initialAsset: sourceAsset,
+    initialAsset: fusionTool ? fusionProduct : sourceAsset,
     prompt: activePrompt,
     count: activeCount,
     resolution: editResolution,
     modelProfileId: activeModelId,
     capabilityReady,
     retouchDirections,
+    productAsset: fusionProduct,
+    referenceAsset: fusionReference,
+    useProductAsset: fusionTool,
   })
   const replaceSourceAsset = controller.replaceSourceAsset
 
@@ -119,19 +129,41 @@ export default function ImageWorkstation() {
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
   const generateBlockReason = workstationGenerateBlockReason({
     toolReady,
-    hasInput: Boolean(controller.inputAsset),
+    hasInput: fusionTool ? Boolean(fusionProduct && fusionReference) : Boolean(controller.inputAsset),
     formLocked: controller.formLocked,
     submitting: controller.submitting,
     maskRequired,
     hasMaskPaint,
     repaintBlocked: activeTool.slug === 'repaint' && !repaintReady,
     retouchBlocked: retouchTool && normalizeRetouchDirections(retouchDirections).length === 0,
+    fusionBlocked: fusionTool && (!fusionProduct || !fusionReference),
     mode: inpaintMode,
   })
 
   const handleCanvasReady = useCallback((handle: CanvasHandle | null) => {
     canvasHandleRef.current = handle
   }, [])
+
+  const handleFusionUpload = useCallback(async (slot: 'product' | 'reference', file: File) => {
+    setUploading(true)
+    try {
+      const uploaded = await uploadImage(file)
+      const asset = createImageAsset({
+        name: uploaded.name,
+        url: uploaded.url,
+        width: uploaded.width,
+        height: uploaded.height,
+        source: 'upload',
+      })
+      if (slot === 'product') setFusionProduct(asset)
+      else setFusionReference(asset)
+      message.success(slot === 'product' ? '商品图已上传' : '场景图已上传')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '图片上传失败')
+    } finally {
+      setUploading(false)
+    }
+  }, [message])
 
   const handleImageUpload = useCallback(async (file: File) => {
     setUploading(true)
@@ -313,7 +345,8 @@ export default function ImageWorkstation() {
         <div className="image-workstation-canvas-column">
           <CanvasArea
             interactionMode={activeTool.interactionMode}
-            imageUrl={showSourcePreview ? controller.inputAsset?.url : undefined}
+            imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
+            referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
             originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}
             imageNaturalSize={inputSize}
             presetTargetSize={presetTargetSize}
@@ -322,7 +355,8 @@ export default function ImageWorkstation() {
             uploadDisabled={controller.formLocked || Boolean(edgeRefine)}
             refineMode={Boolean(edgeRefine)}
             onCompareModeChange={setCompareMode}
-            onImageUpload={handleImageUpload}
+            onImageUpload={fusionTool ? (file) => { void handleFusionUpload('product', file) } : handleImageUpload}
+            onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
             onReady={handleCanvasReady}
             onMaskChange={setHasMaskPaint}
           />
@@ -342,10 +376,10 @@ export default function ImageWorkstation() {
             <ParamPanel
               capability={activeTool.capability}
               mode={inpaintMode}
-              smartEditPrompt={retouchTool ? retouchNote : variationTool ? variationPrompt : smartEditPrompt}
-              onSmartEditPromptChange={retouchTool ? setRetouchNote : variationTool ? setVariationPrompt : setSmartEditPrompt}
+              smartEditPrompt={fusionTool ? fusionNote : retouchTool ? retouchNote : variationTool ? variationPrompt : smartEditPrompt}
+              onSmartEditPromptChange={fusionTool ? setFusionNote : retouchTool ? setRetouchNote : variationTool ? setVariationPrompt : setSmartEditPrompt}
               count={activeCount}
-              onCountChange={retouchTool ? setRetouchCount : variationTool ? setVariationCount : setEditCount}
+              onCountChange={fusionTool ? setFusionCount : retouchTool ? setRetouchCount : variationTool ? setVariationCount : setEditCount}
               retouchDirections={retouchDirections}
               onRetouchDirectionsChange={setRetouchDirections}
               resolution={editResolution}
@@ -385,7 +419,9 @@ export default function ImageWorkstation() {
       </div>
       <div className="image-workstation-footer">
         <div>
-          {!showSourcePreview
+          {fusionTool
+            ? `${fusionProduct ? `商品 ${fusionProduct.width}×${fusionProduct.height}` : '请上传商品图'} · ${fusionReference ? `场景 ${fusionReference.width}×${fusionReference.height}` : '请上传场景图'}`
+            : !showSourcePreview
             ? '当前工具即将上线，不会使用上一工具的图片'
             : controller.inputAsset
               ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`

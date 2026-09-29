@@ -16,6 +16,7 @@ export type CanvasHandle = MaskPaintCanvasHandle | OutpaintCanvasHandle
 interface Props {
   interactionMode: InteractionMode
   imageUrl?: string
+  referenceImageUrl?: string
   originalImageUrl?: string
   imageNaturalSize: { width: number; height: number }
   presetTargetSize?: { width: number; height: number }
@@ -25,16 +26,64 @@ interface Props {
   refineMode?: boolean
   onCompareModeChange: (mode: 'original' | 'effect') => void
   onImageUpload: (file: File) => void
+  onReferenceImageUpload?: (file: File) => void
   onReady: (handle: CanvasHandle | null) => void
   onMaskChange?: (hasPaint: boolean) => void
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
 
+function FusionSlot({
+  label,
+  hint,
+  imageUrl,
+  uploading,
+  disabled,
+  onUpload,
+}: {
+  label: string
+  hint: string
+  imageUrl?: string
+  uploading: boolean
+  disabled: boolean
+  onUpload: (file: File) => void
+}) {
+  const beforeUpload = (file: File) => {
+    onUpload(file)
+    return Upload.LIST_IGNORE
+  }
+  return (
+    <div className="workstation-fusion-slot">
+      <div className="workstation-fusion-slot-label">{label}</div>
+      {imageUrl ? (
+        <>
+          <img src={imageUrl} alt={label} />
+          <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} disabled={uploading || disabled} beforeUpload={beforeUpload}>
+            <Button size="small" icon={<UploadOutlined />} loading={uploading}>替换</Button>
+          </Upload>
+        </>
+      ) : (
+        <Upload.Dragger
+          className="workstation-upload"
+          accept="image/png,image/jpeg,image/webp"
+          showUploadList={false}
+          disabled={uploading || disabled}
+          beforeUpload={beforeUpload}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">上传{label}</p>
+          <p className="ant-upload-hint">{hint}。支持 PNG、JPEG、WebP，单张不超过 20 MB</p>
+        </Upload.Dragger>
+      )}
+    </div>
+  )
+}
+
 /** 根据交互模式装配真实画布或保留对应占位界面 */
 export default function CanvasArea({
   interactionMode,
   imageUrl,
+  referenceImageUrl,
   originalImageUrl,
   imageNaturalSize,
   presetTargetSize,
@@ -44,6 +93,7 @@ export default function CanvasArea({
   refineMode = false,
   onCompareModeChange,
   onImageUpload,
+  onReferenceImageUpload,
   onReady,
   onMaskChange,
 }: Props) {
@@ -83,6 +133,31 @@ export default function CanvasArea({
   const interceptUpload = (file: File) => {
     onImageUpload(file)
     return Upload.LIST_IGNORE
+  }
+
+  if (interactionMode === 'multi-source') {
+    return (
+      <div className={canvasShellClass}>
+        <div className="workstation-fusion-sources">
+          <FusionSlot
+            label="商品"
+            hint="要保留的商品图"
+            imageUrl={imageUrl}
+            uploading={uploading}
+            disabled={uploadDisabled}
+            onUpload={onImageUpload}
+          />
+          <FusionSlot
+            label="场景或参考"
+            hint="提供背景或参考的图"
+            imageUrl={referenceImageUrl}
+            uploading={uploading}
+            disabled={uploadDisabled}
+            onUpload={onReferenceImageUpload ?? onImageUpload}
+          />
+        </div>
+      </div>
+    )
   }
 
   if (!imageUrl) {
@@ -161,14 +236,6 @@ export default function CanvasArea({
         {smartSelectEnabled ? (
           <div className="workstation-canvas-footnote">点击商品以选中轮廓。水印、文字和道具请用画笔。</div>
         ) : null}
-      </div>
-    )
-  }
-
-  if (interactionMode === 'multi-source') {
-    return (
-      <div className={canvasShellClass}>
-        <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>当前工具将在后续迭代中开放</div>
       </div>
     )
   }

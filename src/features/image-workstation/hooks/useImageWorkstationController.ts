@@ -14,6 +14,7 @@ import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
 import { Capability, type GenerationTask, type ImageEditTaskParams, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
 import { recordWorkstationHistory } from '@/features/assets/workstationHistory'
+import { fusionHistoryText, readReferenceImageKey } from '@shared/fusion'
 import { readRetouchDirections, retouchHistoryText } from '@shared/retouch'
 import { blobFromImageSource } from '../download'
 import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
@@ -34,6 +35,10 @@ interface ControllerOptions {
   resolution?: '1k' | '2k' | '4k'
   modelProfileId?: string
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
+  /** 融合使用独立的商品图，不沿用其他工具当前的原图。 */
+  productAsset?: ImageAsset
+  referenceAsset?: ImageAsset
+  useProductAsset?: boolean
   /** 工作站自己的能力开关。裂变不写入全局 live capability。 */
   capabilityReady?: (capability: Capability) => boolean
 }
@@ -53,6 +58,7 @@ function isInlineUrl(url?: string) {
 async function prepareImageEditRequest(
   request: WorkstationGenerationRequest,
   sourceAsset: ImageAsset,
+  referenceAsset?: ImageAsset,
 ): Promise<WorkstationGenerationRequest> {
   const uploadsSource = request.capability === Capability.ImageEdit || request.capability === Capability.Variation
   if (!uploadsSource || useMockGateway) return request
@@ -65,6 +71,12 @@ async function prepareImageEditRequest(
   params.sourceWidth = sourceAsset.width
   params.sourceHeight = sourceAsset.height
   if (isInlineUrl(params.sourceImageUrl)) delete params.sourceImageUrl
+  if (referenceAsset && !params.referenceImageKey) {
+    const response = await fetch(referenceAsset.url)
+    if (!response.ok) throw new Error('读取场景图失败')
+    params.referenceImageKey = await uploadTaskInput(await response.blob(), referenceAsset.mimeType)
+  }
+  if (isInlineUrl(params.referenceImageUrl)) delete params.referenceImageUrl
   return { ...request, params }
 }
 
@@ -76,6 +88,9 @@ export function useImageWorkstationController({
   resolution,
   modelProfileId,
   retouchDirections,
+  productAsset,
+  referenceAsset,
+  useProductAsset = false,
   capabilityReady = liveCapabilityReady,
 }: ControllerOptions) {
   const project = useEditorStore((state) => state.project)
@@ -120,9 +135,12 @@ export function useImageWorkstationController({
     assets: ImageAsset[],
   ) => {
     const retouchDirections = readRetouchDirections(completedTask.params)
-    const toolSlug = retouchDirections.length
-      ? 'retouch'
-      : completedTask.capability === Capability.Inpaint
+    const referenceKey = readReferenceImageKey(completedTask.params)
+    const toolSlug = referenceKey
+      ? 'fusion'
+      : retouchDirections.length
+        ? 'retouch'
+        : completedTask.capability === Capability.Inpaint
         ? ((completedTask.params as InpaintTaskParams).mode === 'repaint' ? 'repaint' : 'remove')
         : completedTask.capability === Capability.Outpaint
           ? 'outpaint'
@@ -130,7 +148,11 @@ export function useImageWorkstationController({
     const note = typeof (completedTask.params as { prompt?: unknown })?.prompt === 'string'
       ? (completedTask.params as { prompt?: string }).prompt
       : undefined
-    const prompt = retouchDirections.length ? retouchHistoryText(retouchDirections, note) : note
+    const prompt = referenceKey
+      ? fusionHistoryText(note)
+      : retouchDirections.length
+        ? retouchHistoryText(retouchDirections, note)
+        : note
     void Promise.all(assets.map(async (asset, index) => {
       const objectKey = asset.objectKey ?? completedTask.resultImages?.[index]?.objectKey
       const result = await blobFromImageSource(asset.url, objectKey)
@@ -368,7 +390,7 @@ export function useImageWorkstationController({
       outputSize: request.outputSize,
     }
     try {
-      const prepared = await prepareImageEditRequest(request, sourceAsset)
+      const prepared = await prepareImageEditRequest(request, sourceAsset, referenceAsset)
       const result = await service.submit({
         capability: prepared.capability,
         requestId: crypto.randomUUID(),
@@ -391,19 +413,33 @@ export function useImageWorkstationController({
     } finally {
       setSubmitting(false)
     }
-  }, [applyCompletedTask, modelProfileId, service, upsertTask])
+  }, [applyCompletedTask, modelProfileId, referenceAsset, service, upsertTask])
 
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
     if (!isWorkstationToolReady(activeTool, capabilityReady)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
-    if (!inputAsset) throw new Error('请先上传需要编辑的图片')
-    const initialContext = { sourceAsset: inputAsset, prompt, count, resolution, modelProfileId, retouchDirections }
+    const product = useProductAsset ? productAsset : inputAsset
+    if (activeTool.slug === 'fusion' && (!product || !referenceAsset?.url)) {
+      throw new Error('请先上传商品图和场景图')
+    }
+    if (!product) throw new Error('请先上传需要编辑的图片')
+    registerAsset(product)
+    if (referenceAsset) registerAsset(referenceAsset)
+    const initialContext = {
+      sourceAsset: product,
+      referenceAsset,
+      prompt,
+      count,
+      resolution,
+      modelProfileId,
+      retouchDirections,
+    }
     const validation = activeTool.validate?.(initialContext)
     if (validation && !validation.valid) throw new Error(validation.message ?? '当前参数不完整')
 
     if (activeTool.slug === 'repaint' && !liveCapabilityReady(Capability.Inpaint)) {
       if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
       try {
-        return completeRepaint(inputAsset, prompt?.trim() ?? '', canvasHandle.exportMask().maskDataUrl, inputAsset.generationId)
+        return completeRepaint(product, prompt?.trim() ?? '', canvasHandle.exportMask().maskDataUrl, product.generationId)
       } catch (error) {
         throw remapMaskExportError(error, 'repaint')
       }
@@ -412,25 +448,25 @@ export function useImageWorkstationController({
     if (activeTool.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
       if (!canvasHandle?.getTargetSize || !canvasHandle.getOriginOffset) throw new Error('扩图画布尚未准备好')
       return completeOutpaint(
-        inputAsset,
+        product,
         canvasHandle.getTargetSize(),
         canvasHandle.getOriginOffset(),
-        canvasHandle.getSourceSize?.() ?? { width: inputAsset.width, height: inputAsset.height },
-        inputAsset.generationId,
+        canvasHandle.getSourceSize?.() ?? { width: product.width, height: product.height },
+        product.generationId,
       )
     }
 
     if (activeTool.slug === 'remove' && !liveCapabilityReady(Capability.Inpaint)) {
       if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
       try {
-        return completeErase(inputAsset, canvasHandle.exportMask().maskDataUrl, prompt ?? '', inputAsset.generationId)
+        return completeErase(product, canvasHandle.exportMask().maskDataUrl, prompt ?? '', product.generationId)
       } catch (error) {
         throw remapMaskExportError(error, 'remove')
       }
     }
 
     let canvasContext = {}
-    if (activeTool.interactionMode !== 'params-only') {
+    if (activeTool.interactionMode !== 'params-only' && activeTool.interactionMode !== 'multi-source') {
       if (!canvasHandle) throw new Error('当前工具的画布交互仍在后续迭代中')
       const mask = canvasHandle.exportMask()
       const maskUrl = await uploadDataUrl(mask.maskDataUrl)
@@ -442,8 +478,8 @@ export function useImageWorkstationController({
     }
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
-    return submitRequest({ ...request, modelProfileId }, inputAsset, inputAsset.generationId)
-  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, prompt, resolution, retouchDirections, submitRequest])
+    return submitRequest({ ...request, modelProfileId }, product, product.generationId)
+  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, productAsset, prompt, referenceAsset, registerAsset, resolution, retouchDirections, submitRequest, useProductAsset])
 
   const retry = useCallback(async () => {
     if (!task) return

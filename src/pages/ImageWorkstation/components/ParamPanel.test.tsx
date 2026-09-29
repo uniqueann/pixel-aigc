@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
 import { publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
+import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { RETOUCH_NOTE_MAX } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import ParamPanel from './ParamPanel'
@@ -100,5 +101,34 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByPlaceholderText('例如：保留吊牌文字')).toHaveProperty('maxLength', RETOUCH_NOTE_MAX)
     expect(screen.queryByText('生成尺寸')).toBeNull()
     expect(screen.queryByText('编辑要求')).toBeNull()
+  })
+
+  it('融合只保留可选补充说明', () => {
+    render(
+      <ParamPanel
+        capability={Capability.Fusion}
+        smartEditPrompt=""
+        onSmartEditPromptChange={() => undefined}
+        count={1}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1200, height: 800 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('补充说明（可选）')).toBeTruthy()
+    expect(screen.getByPlaceholderText('例如：把商品放在桌面中央')).toHaveProperty('maxLength', FUSION_NOTE_MAX)
+    expect(screen.queryByText('精修方向')).toBeNull()
+    expect(screen.queryByText('生成尺寸')).toBeNull()
   })
 })
