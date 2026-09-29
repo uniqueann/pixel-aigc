@@ -71,6 +71,11 @@ export interface ImageEditTaskParams extends ImageTaskParams {
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
   referenceImageKey?: string
   referenceImageUrl?: string
+  relight?: {
+    direction: 'left' | 'right' | 'top' | 'bottom' | 'front' | 'back'
+    quality: 'soft' | 'hard'
+    temperature: 'warm' | 'neutral' | 'cool'
+  }
 }
 
 /** 消除/重绘任务参数 */

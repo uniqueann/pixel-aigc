@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
 import { Capability, type GenerationTask, type InpaintTaskParams } from '@/types'
+import { RELIGHT_DEFAULT, type RelightOptions } from '@shared/relight'
 import { getWorkstationTool } from '../tools/registry'
 import type { WorkstationCanvasHandle } from '../types'
 import { useImageWorkstationController } from './useImageWorkstationController'
@@ -78,6 +79,7 @@ function ControllerHarness({
   productAsset,
   referenceAsset,
   useProductAsset,
+  relight,
   onController,
 }: {
   tool?: string
@@ -89,6 +91,7 @@ function ControllerHarness({
   productAsset?: typeof initialAsset
   referenceAsset?: typeof initialAsset
   useProductAsset?: boolean
+  relight?: RelightOptions
   onController: (controller: Controller) => void
 }) {
   const controller = useImageWorkstationController({
@@ -102,6 +105,7 @@ function ControllerHarness({
     productAsset,
     referenceAsset,
     useProductAsset,
+    relight,
   })
   useEffect(() => onController(controller), [controller, onController])
   return null
@@ -636,6 +640,42 @@ describe('useImageWorkstationController 集成流程', () => {
         referenceImageKey: 'temporary/task-inputs/user/scene',
         sourceWidth: 640,
         sourceHeight: 480,
+      }),
+    }))
+  })
+
+  it('重新打光有原图即可提交，默认两张并带上光效', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    mocks.createTask.mockResolvedValue({
+      id: 'task-relight',
+      capability: Capability.ImageEdit,
+      status: 'processing',
+      params: { count: 2, resolution: '2k', relight: RELIGHT_DEFAULT },
+      creditsCost: 2,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    })
+    await act(async () => root.render(
+      <ControllerHarness
+        tool="relight"
+        count={2}
+        resolution="2k"
+        relight={{ direction: 'left', quality: 'soft', temperature: 'warm' }}
+        capabilityReady={(capability) => capability === Capability.Relight}
+        onController={captureController}
+      />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+    expect(mocks.uploadTaskInput).toHaveBeenCalled()
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      capability: Capability.ImageEdit,
+      params: expect.objectContaining({
+        count: 2,
+        resolution: '2k',
+        sourceImageKey: 'temporary/task-inputs/user/source-1',
+        relight: { direction: 'left', quality: 'soft', temperature: 'warm' },
       }),
     }))
   })

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FUSION_FIXED_PROMPT, FUSION_NOTE_MAX, composeFusionPrompt, fusionNoteLimitMessage } from '../../shared/fusion.js'
+import { RELIGHT_FIXED_PROMPT, RELIGHT_NOTE_MAX, composeRelightPrompt, relightNoteLimitMessage } from '../../shared/relight.js'
 import { RETOUCH_FIXED_PROMPT, RETOUCH_NOTE_MAX, composeRetouchPrompt, retouchNoteLimitMessage } from '../../shared/retouch.js'
 import { VARIATION_FIXED_PROMPT, VARIATION_USER_PROMPT_MAX, composeVariationPrompt, variationPromptLimitMessage } from '../../shared/variation.js'
 import { mapDragonCodeRequest } from '../image-providers/dragoncode/mapping.js'
@@ -9,6 +10,7 @@ import {
   IMAGE_LEASE_MS,
   advanceJobInStore,
   assertFusionRequest,
+  assertRelightRequest,
   assertRetouchNoteLimit,
   assertVariationSteerLimit,
   createImageJobInStore,
@@ -434,5 +436,52 @@ describe('融合任务', () => {
     expect(() => assertFusionRequest(body)).toThrow(fusionNoteLimitMessage())
     expect(createImageTaskSchema.parse(params({ prompt: '  ', referenceImageKey: sceneKey })).capability).toBe('image_edit')
     expect(() => createImageTaskSchema.parse(params({ prompt: '  ' }))).toThrow()
+  })
+})
+
+describe('重新打光任务', () => {
+  const relight = { direction: 'left' as const, quality: 'soft' as const, temperature: 'warm' as const }
+
+  it('选项拼进提示词，硬性约束在补充说明后面', async () => {
+    const store = createMemoryStore(user.id)
+    const submit = vi.fn(async () => ({ providerTaskId: 'relight-1' }))
+    const provider = createMockImageProvider({ submit })
+    const rt = runtime(provider)
+    const created = await createImageJobInStore(store, user, params({
+      prompt: '略提亮背景',
+      relight,
+      count: 2,
+    }), rt)
+    const composed = composeRelightPrompt(relight, '略提亮背景')
+    expect(created.bundle.job.capability).toBe('image_edit')
+    expect(created.bundle.job.params).toMatchObject({ relight, prompt: '略提亮背景', count: 2 })
+    expect(created.bundle.job.provider_params.prompt).toBe(composed)
+    expect(String(created.bundle.job.provider_params.prompt)).toContain('不改变商品固有颜色')
+    expect(String(created.bundle.job.provider_params.prompt).endsWith(RELIGHT_FIXED_PROMPT)).toBe(true)
+    await runProviderSubmits(created.bundle, provider, user.id, rt)
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ prompt: composed }), expect.anything())
+
+    const plain = await createImageJobInStore(createMemoryStore(user.id), user, params({
+      prompt: undefined,
+      relight: { direction: 'front', quality: 'soft', temperature: 'neutral' },
+    }), rt)
+    expect(plain.bundle.job.params).not.toHaveProperty('prompt')
+    expect(String(plain.bundle.job.provider_params.prompt)).not.toContain('补充说明：')
+  })
+
+  it('不能和精修或融合一起提交，超长补充说明会写明上限', () => {
+    expect(() => createImageTaskSchema.parse(params({
+      relight,
+      retouchDirections: ['blemish'],
+    }))).toThrow()
+    expect(() => createImageTaskSchema.parse(params({
+      relight,
+      referenceImageKey: `temporary/task-inputs/${user.id}/scene-1`,
+    }))).toThrow()
+    const prompt = '字'.repeat(RELIGHT_NOTE_MAX + 1)
+    const body = params({ prompt, relight })
+    expect(() => assertRelightRequest(body)).toThrow(relightNoteLimitMessage())
+    expect(() => createImageTaskSchema.parse(params({ prompt: '  ' }))).toThrow()
+    expect(createImageTaskSchema.parse(params({ prompt: undefined, relight })).capability).toBe('image_edit')
   })
 })

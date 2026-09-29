@@ -52,6 +52,23 @@ describe('从图片任务补记我的资产', () => {
     mocks.recordWorkstationHistory.mockResolvedValue(undefined)
   })
 
+  it('重新打光记成重新打光，说明用光效名称', async () => {
+    const records = await historyRecordsFromImageTask({
+      ...variationTask,
+      id: '44444444-4444-4444-8444-444444444444',
+      capability: Capability.ImageEdit,
+      params: {
+        relight: { direction: 'left', quality: 'soft', temperature: 'warm' },
+        prompt: '略提亮背景',
+      },
+    })
+    expect(records[0]).toMatchObject({
+      toolSlug: 'relight',
+      capability: Capability.ImageEdit,
+      prompt: '左侧、柔光、暖色。略提亮背景',
+    })
+  })
+
   it('融合记成融合，说明只保留用户补充', async () => {
     const records = await historyRecordsFromImageTask({
       ...variationTask,
