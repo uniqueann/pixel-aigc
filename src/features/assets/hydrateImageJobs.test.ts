@@ -52,6 +52,20 @@ describe('从图片任务补记我的资产', () => {
     mocks.recordWorkstationHistory.mockResolvedValue(undefined)
   })
 
+  it('融合记成融合，说明只保留用户补充', async () => {
+    const records = await historyRecordsFromImageTask({
+      ...variationTask,
+      id: '33333333-3333-4333-8333-333333333333',
+      capability: Capability.ImageEdit,
+      params: { referenceImageKey: 'temporary/task-inputs/user/scene', prompt: '放在桌面中央' },
+    })
+    expect(records[0]).toMatchObject({
+      toolSlug: 'fusion',
+      capability: Capability.ImageEdit,
+      prompt: '放在桌面中央',
+    })
+  })
+
   it('精修按方向记成精修，不把固定句写进资产说明', async () => {
     const records = await historyRecordsFromImageTask({
       ...variationTask,

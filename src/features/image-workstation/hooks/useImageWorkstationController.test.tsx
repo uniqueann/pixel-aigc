@@ -75,6 +75,9 @@ function ControllerHarness({
   resolution,
   capabilityReady,
   retouchDirections,
+  productAsset,
+  referenceAsset,
+  useProductAsset,
   onController,
 }: {
   tool?: string
@@ -83,6 +86,9 @@ function ControllerHarness({
   resolution?: '2k' | '4k'
   capabilityReady?: (capability: Capability) => boolean
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
+  productAsset?: typeof initialAsset
+  referenceAsset?: typeof initialAsset
+  useProductAsset?: boolean
   onController: (controller: Controller) => void
 }) {
   const controller = useImageWorkstationController({
@@ -93,6 +99,9 @@ function ControllerHarness({
     resolution,
     capabilityReady,
     retouchDirections,
+    productAsset,
+    referenceAsset,
+    useProductAsset,
   })
   useEffect(() => onController(controller), [controller, onController])
   return null
@@ -572,5 +581,62 @@ describe('useImageWorkstationController 集成流程', () => {
     }))
     const submitted = mocks.createTask.mock.calls[mocks.createTask.mock.calls.length - 1]?.[0]
     expect(submitted?.params).not.toHaveProperty('prompt')
+  })
+
+  it('融合缺场景图不能提交；两张齐了按商品图在前上传', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const scene = createImageAsset({ id: 'asset:scene', name: '场景', url: 'scene.png', width: 900, height: 600 })
+    const ready = (capability: Capability) => capability === Capability.Fusion || capability === Capability.ImageEdit
+    await act(async () => root.render(
+      <ControllerHarness
+        tool="fusion"
+        productAsset={initialAsset}
+        useProductAsset
+        capabilityReady={ready}
+        onController={captureController}
+      />,
+    ))
+    await expect(currentController.generate(null)).rejects.toThrow('请先上传商品图和场景图')
+    expect(mocks.createTask).not.toHaveBeenCalled()
+
+    mocks.uploadTaskInput
+      .mockResolvedValueOnce('temporary/task-inputs/user/product')
+      .mockResolvedValueOnce('temporary/task-inputs/user/scene')
+    mocks.createTask.mockResolvedValue({
+      id: 'task-fusion',
+      capability: Capability.ImageEdit,
+      status: 'processing',
+      params: { count: 1, resolution: '2k' },
+      creditsCost: 1,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    })
+    await act(async () => root.render(
+      <ControllerHarness
+        tool="fusion"
+        count={1}
+        resolution="2k"
+        productAsset={initialAsset}
+        referenceAsset={scene}
+        useProductAsset
+        capabilityReady={ready}
+        onController={captureController}
+      />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+    expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(2)
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      capability: Capability.ImageEdit,
+      params: expect.objectContaining({
+        count: 1,
+        resolution: '2k',
+        sourceImageKey: 'temporary/task-inputs/user/product',
+        referenceImageKey: 'temporary/task-inputs/user/scene',
+        sourceWidth: 640,
+        sourceHeight: 480,
+      }),
+    }))
   })
 })

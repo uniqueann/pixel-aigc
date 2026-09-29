@@ -19,6 +19,7 @@ export interface WorkstationContext {
   sourceAsset: ImageAsset
   prompt?: string
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
+  referenceAsset?: ImageAsset
   count?: number
   resolution?: '1k' | '2k' | '4k'
   modelProfileId?: string

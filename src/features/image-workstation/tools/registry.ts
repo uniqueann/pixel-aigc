@@ -5,6 +5,7 @@ import type { InteractionMode, WorkstationToolDefinition } from '../types'
 import { buildInpaintRequest } from './requestBuilders/inpaint'
 import { buildImageEditRequest } from './requestBuilders/imageEdit'
 import { buildOutpaintRequest } from './requestBuilders/outpaint'
+import { buildFusionRequest } from './requestBuilders/fusion'
 import { buildRetouchRequest } from './requestBuilders/retouch'
 import { buildVariationRequest } from './requestBuilders/variation'
 
@@ -57,7 +58,16 @@ export const WORKSTATION_TOOLS: WorkstationToolDefinition[] = [
     buildRequest: (ctx) => buildInpaintRequest(ctx, 'repaint'),
   },
   { slug: 'variation', capability: Capability.Variation, label: '裂变', interactionMode: 'params-only', buildRequest: buildVariationRequest },
-  { slug: 'fusion', capability: Capability.Fusion, label: '融合', interactionMode: 'multi-source', validate: unsupported, buildRequest: buildBasicRequest(Capability.Fusion) },
+  {
+    slug: 'fusion',
+    capability: Capability.Fusion,
+    label: '融合',
+    interactionMode: 'multi-source',
+    validate: (context) => context.sourceAsset.url && context.referenceAsset?.url
+      ? { valid: true }
+      : { valid: false, message: '请先上传商品图和场景图' },
+    buildRequest: buildFusionRequest,
+  },
   { slug: 'outpaint', capability: Capability.Outpaint, label: '扩图', interactionMode: 'drag-resize', buildRequest: buildOutpaintRequest },
   {
     slug: 'retouch',

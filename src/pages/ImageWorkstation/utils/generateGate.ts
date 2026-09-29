@@ -10,10 +10,12 @@ export function workstationGenerateBlockReason(input: {
   hasMaskPaint: boolean
   repaintBlocked: boolean
   retouchBlocked?: boolean
+  fusionBlocked?: boolean
   mode?: 'remove' | 'repaint'
 }): string | undefined {
   if (input.submitting) return undefined
   if (!input.toolReady) return COMING_SOON_SUBMIT_MESSAGE
+  if (input.fusionBlocked) return '请先上传商品图和场景图'
   if (!input.hasInput) return '请先上传需要处理的图片'
   if (input.formLocked) return '请等待当前任务完成'
   if (input.retouchBlocked) return '请先选择精修方向'
