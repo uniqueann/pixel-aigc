@@ -13,6 +13,7 @@ describe('图片工作站工具开关', () => {
     expect(isWorkstationToolReady(getWorkstationTool('repaint'), () => false)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('smart-edit'), () => false)).toBe(false)
     expect(isWorkstationToolReady(getWorkstationTool('relight'), () => false)).toBe(false)
+    expect(isWorkstationToolReady(getWorkstationTool('relight'), (capability) => capability === Capability.Relight)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('fusion'), () => false)).toBe(false)
     expect(isWorkstationToolReady(getWorkstationTool('variation'), () => false)).toBe(false)
     expect(isWorkstationToolReady(getWorkstationTool('retouch'), () => false)).toBe(false)

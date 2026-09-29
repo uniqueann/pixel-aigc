@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
 import { publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
+import { RELIGHT_NOTE_MAX } from '@shared/relight'
 import { RETOUCH_NOTE_MAX } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import ParamPanel from './ParamPanel'
@@ -130,5 +131,37 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByPlaceholderText('例如：把商品放在桌面中央')).toHaveProperty('maxLength', FUSION_NOTE_MAX)
     expect(screen.queryByText('精修方向')).toBeNull()
     expect(screen.queryByText('生成尺寸')).toBeNull()
+  })
+
+  it('重新打光展示方向、光质、色温和近似效果提示', () => {
+    render(
+      <ParamPanel
+        capability={Capability.Relight}
+        smartEditPrompt=""
+        onSmartEditPromptChange={() => undefined}
+        count={2}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1000, height: 1000 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('效果为 AI 重绘，光线是近似效果。')).toBeTruthy()
+    expect(screen.getByRole('group', { name: '光线方向' })).toBeTruthy()
+    expect(screen.getByText('光质')).toBeTruthy()
+    expect(screen.getByText('色温')).toBeTruthy()
+    expect(screen.getByPlaceholderText('例如：略微提亮背景')).toHaveProperty('maxLength', RELIGHT_NOTE_MAX)
+    expect(screen.queryByText('后期增强')).toBeNull()
+    expect(screen.queryByText('手动调整')).toBeNull()
   })
 })

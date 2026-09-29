@@ -22,6 +22,7 @@ import { loadImageEditConfigured, loadRepaintConfigured, loadVariationConfigured
 import { listImageModels, type PublicImageModel } from '@/services/api/imageModels'
 import { liveCapabilityReady } from '@/services/api/task'
 import { defaultImageModel, publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
+import { RELIGHT_DEFAULT, type RelightOptions } from '@shared/relight'
 import { normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
@@ -50,6 +51,9 @@ export default function ImageWorkstation() {
   const [variationCount, setVariationCount] = useState(2)
   const [retouchCount, setRetouchCount] = useState(1)
   const [fusionCount, setFusionCount] = useState(1)
+  const [relightCount, setRelightCount] = useState(2)
+  const [relightNote, setRelightNote] = useState('')
+  const [relightOptions, setRelightOptions] = useState<RelightOptions>(RELIGHT_DEFAULT)
   const [editResolution, setEditResolution] = useState<'1k' | '2k' | '4k'>('2k')
   const [imageModels, setImageModels] = useState<PublicImageModel[]>(() =>
     IMAGE_MODEL_PROFILES.filter(profile => profile.operations.includes('image_edit')).map(publicImageModel))
@@ -70,7 +74,7 @@ export default function ImageWorkstation() {
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
   const capabilityReady = useCallback((capability: Capability) => {
-    if (capability === Capability.ImageEdit || capability === Capability.Retouch || capability === Capability.Fusion) return imageEditReady
+    if (capability === Capability.ImageEdit || capability === Capability.Retouch || capability === Capability.Fusion || capability === Capability.Relight) return imageEditReady
     if (capability === Capability.Variation) return variationReady
     return liveCapabilityReady(capability)
   }, [imageEditReady, variationReady])
@@ -79,7 +83,10 @@ export default function ImageWorkstation() {
   const variationTool = activeTool.capability === Capability.Variation
   const retouchTool = activeTool.slug === 'retouch'
   const fusionTool = activeTool.slug === 'fusion'
-  const activePrompt = fusionTool
+  const relightTool = activeTool.slug === 'relight'
+  const activePrompt = relightTool
+    ? relightNote
+    : fusionTool
     ? fusionNote
     : retouchTool
       ? retouchNote
@@ -90,7 +97,7 @@ export default function ImageWorkstation() {
         : activeTool.slug === 'remove'
           ? erasePrompt
           : repaintPrompt
-  const activeCount = fusionTool ? fusionCount : retouchTool ? retouchCount : variationTool ? variationCount : editCount
+  const activeCount = relightTool ? relightCount : fusionTool ? fusionCount : retouchTool ? retouchCount : variationTool ? variationCount : editCount
   const activeModelId = variationTool ? variationModelId : modelProfileId
   const activeModels = variationTool ? variationModels : imageModels
   const controller = useImageWorkstationController({
@@ -102,6 +109,7 @@ export default function ImageWorkstation() {
     modelProfileId: activeModelId,
     capabilityReady,
     retouchDirections,
+    relight: relightOptions,
     productAsset: fusionProduct,
     referenceAsset: fusionReference,
     useProductAsset: fusionTool,
@@ -376,10 +384,12 @@ export default function ImageWorkstation() {
             <ParamPanel
               capability={activeTool.capability}
               mode={inpaintMode}
-              smartEditPrompt={fusionTool ? fusionNote : retouchTool ? retouchNote : variationTool ? variationPrompt : smartEditPrompt}
-              onSmartEditPromptChange={fusionTool ? setFusionNote : retouchTool ? setRetouchNote : variationTool ? setVariationPrompt : setSmartEditPrompt}
+              smartEditPrompt={relightTool ? relightNote : fusionTool ? fusionNote : retouchTool ? retouchNote : variationTool ? variationPrompt : smartEditPrompt}
+              onSmartEditPromptChange={relightTool ? setRelightNote : fusionTool ? setFusionNote : retouchTool ? setRetouchNote : variationTool ? setVariationPrompt : setSmartEditPrompt}
               count={activeCount}
-              onCountChange={fusionTool ? setFusionCount : retouchTool ? setRetouchCount : variationTool ? setVariationCount : setEditCount}
+              onCountChange={relightTool ? setRelightCount : fusionTool ? setFusionCount : retouchTool ? setRetouchCount : variationTool ? setVariationCount : setEditCount}
+              relight={relightOptions}
+              onRelightChange={setRelightOptions}
               retouchDirections={retouchDirections}
               onRetouchDirectionsChange={setRetouchDirections}
               resolution={editResolution}

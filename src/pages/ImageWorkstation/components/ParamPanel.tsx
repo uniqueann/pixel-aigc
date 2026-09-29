@@ -1,9 +1,15 @@
-import { Checkbox, Input, Segmented, Select, Slider, Space } from 'antd'
+import { Button, Checkbox, Input, Segmented, Select, Slider, Space } from 'antd'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
 import { mapDragonCodeSize } from '@shared/image-models'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
+import {
+  RELIGHT_DEFAULT,
+  RELIGHT_DIRECTION_CHOICES,
+  RELIGHT_NOTE_MAX,
+  type RelightOptions,
+} from '@shared/relight'
 import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 
@@ -32,6 +38,8 @@ interface Props {
   onPresetPlatformChange: (platform: string) => void
   retouchDirections?: RetouchDirection[]
   onRetouchDirectionsChange?: (directions: RetouchDirection[]) => void
+  relight?: RelightOptions
+  onRelightChange?: (relight: RelightOptions) => void
 }
 
 const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
@@ -62,6 +70,8 @@ export default function ParamPanel({
   onPresetPlatformChange,
   retouchDirections = [],
   onRetouchDirectionsChange,
+  relight = RELIGHT_DEFAULT,
+  onRelightChange,
 }: Props) {
   if (capability === Capability.ImageEdit || capability === Capability.Variation || capability === Capability.Retouch || capability === Capability.Fusion) {
     const variation = capability === Capability.Variation
@@ -150,31 +160,95 @@ export default function ParamPanel({
   }
 
   if (capability === Capability.Relight) {
+    const model = models.find(item => item.id === modelProfileId) ?? models[0]
+    const maxCount = model?.ui.maxCount ?? 4
+    const resolutions = model?.ui.resolutions ?? ['2k', '4k']
+    const mapped = sourceSize
+      ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution)
+      : undefined
+    const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
+      || model.ui.resolutionRatioConstraints['4k'].includes(mapped?.size ?? '')
+    const update = (patch: Partial<RelightOptions>) => onRelightChange?.({ ...relight, ...patch })
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>效果为 AI 重绘，光线是近似效果。</p>
         <div>
-          <div style={labelStyle}>模式</div>
-          <Select
-            style={{ width: '100%' }}
-            defaultValue="soft"
+          <div style={labelStyle}>光线方向</div>
+          <div className="workstation-relight-compass" role="group" aria-label="光线方向">
+            {RELIGHT_DIRECTION_CHOICES.map(item => (
+              <Button
+                key={item.id}
+                size="small"
+                type={relight.direction === item.id ? 'primary' : 'default'}
+                disabled={disabled}
+                className={`workstation-relight-${item.id}`}
+                onClick={() => update({ direction: item.id })}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={labelStyle}>光质</div>
+          <Segmented
+            block
+            disabled={disabled}
+            value={relight.quality}
+            onChange={(value) => update({ quality: value as RelightOptions['quality'] })}
+            options={[{ label: '柔光', value: 'soft' }, { label: '硬光', value: 'hard' }]}
+          />
+        </div>
+        <div>
+          <div style={labelStyle}>色温</div>
+          <Segmented
+            block
+            disabled={disabled}
+            value={relight.temperature}
+            onChange={(value) => update({ temperature: value as RelightOptions['temperature'] })}
             options={[
-              { value: 'hard', label: '强光' },
-              { value: 'soft', label: '柔光' },
-              { value: 'manual', label: '手动调整' },
+              { label: '暖', value: 'warm' },
+              { label: '中性', value: 'neutral' },
+              { label: '冷', value: 'cool' },
             ]}
           />
         </div>
         <div>
-          <div style={labelStyle}>后期增强</div>
+          <div style={labelStyle}>补充说明（可选）</div>
+          <Input.TextArea
+            value={smartEditPrompt}
+            disabled={disabled}
+            onChange={(event) => onSmartEditPromptChange(event.target.value)}
+            placeholder="例如：略微提亮背景"
+            autoSize={{ minRows: 3, maxRows: 8 }}
+            maxLength={RELIGHT_NOTE_MAX}
+            showCount
+          />
+        </div>
+        <div>
+          <div style={labelStyle}>生成数量</div>
+          <Slider
+            min={1}
+            max={maxCount}
+            step={1}
+            marks={Object.fromEntries(Array.from({ length: maxCount }, (_, index) => [index + 1, String(index + 1)]))}
+            value={Math.min(count, maxCount)}
+            disabled={disabled}
+            onChange={onCountChange}
+          />
+        </div>
+        <div>
+          <div style={labelStyle}>渲染分辨率</div>
           <Select
             style={{ width: '100%' }}
-            defaultValue="medium"
-            options={[
-              { value: 'high', label: '高' },
-              { value: 'medium', label: '中' },
-              { value: 'low', label: '低' },
-              { value: 'off', label: '关闭' },
-            ]}
+            value={resolution}
+            disabled={disabled}
+            onChange={onResolutionChange}
+            options={resolutions.map(value => ({
+              value,
+              label: value.toUpperCase(),
+              disabled: value === '4k' && !fourKAllowed,
+            }))}
           />
         </div>
       </Space>

@@ -20,6 +20,11 @@ export interface WorkstationContext {
   prompt?: string
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
   referenceAsset?: ImageAsset
+  relight?: {
+    direction: 'left' | 'right' | 'top' | 'bottom' | 'front' | 'back'
+    quality: 'soft' | 'hard'
+    temperature: 'warm' | 'neutral' | 'cool'
+  }
   count?: number
   resolution?: '1k' | '2k' | '4k'
   modelProfileId?: string

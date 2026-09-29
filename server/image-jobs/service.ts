@@ -12,6 +12,15 @@ import {
   fusionNoteLimitMessage,
 } from '../../shared/fusion.js'
 import {
+  RELIGHT_DIRECTIONS,
+  RELIGHT_NOTE_MAX,
+  RELIGHT_QUALITIES,
+  RELIGHT_TEMPERATURES,
+  composeRelightPrompt,
+  readRelight,
+  relightNoteLimitMessage,
+} from '../../shared/relight.js'
+import {
   RETOUCH_DIRECTION_IDS,
   RETOUCH_NOTE_MAX,
   composeRetouchPrompt,
@@ -78,10 +87,26 @@ const imageEditParams = z.object({
   retouchDirections: z.array(z.enum(RETOUCH_DIRECTION_IDS)).max(4).optional(),
   referenceImageKey: z.string().trim().min(1).max(512).optional(),
   referenceImageUrl: z.string().max(4000).optional(),
+  relight: z.object({
+    direction: z.enum(RELIGHT_DIRECTIONS),
+    quality: z.enum(RELIGHT_QUALITIES),
+    temperature: z.enum(RELIGHT_TEMPERATURES),
+  }).optional(),
 }).strict().superRefine((value, ctx) => {
   const directions = normalizeRetouchDirections(value.retouchDirections)
   const note = value.prompt?.trim() ?? ''
   const referenceKey = value.referenceImageKey?.trim() ?? ''
+  const relight = value.relight
+  if (relight && (directions.length > 0 || referenceKey)) {
+    ctx.addIssue({ code: 'custom', message: '不能同时提交重新打光和其他编辑', path: ['relight'] })
+    return
+  }
+  if (relight) {
+    if (note.length > RELIGHT_NOTE_MAX) {
+      ctx.addIssue({ code: 'custom', message: relightNoteLimitMessage(), path: ['prompt'] })
+    }
+    return
+  }
   if (referenceKey && directions.length > 0) {
     ctx.addIssue({ code: 'custom', message: '不能同时提交精修和融合', path: ['referenceImageKey'] })
     return
@@ -139,6 +164,16 @@ export function assertVariationSteerLimit(body: unknown) {
   if (typeof prompt !== 'string') return
   if (prompt.trim().length > VARIATION_USER_PROMPT_MAX) {
     throw new HttpError(400, variationPromptLimitMessage(), 'INVALID_PARAMS')
+  }
+}
+
+export function assertRelightRequest(body: unknown) {
+  if (!isRecord(body) || body.capability !== 'image_edit' || !isRecord(body.params)) return
+  if (!readRelight(body.params)) return
+  const prompt = body.params.prompt
+  if (typeof prompt !== 'string') return
+  if (prompt.trim().length > RELIGHT_NOTE_MAX) {
+    throw new HttpError(400, relightNoteLimitMessage(), 'INVALID_PARAMS')
   }
 }
 
@@ -337,9 +372,15 @@ export async function createImageJobInStore(
   const isRetouch = retouchDirections.length > 0
   const referenceKey = parsed.capability === 'image_edit' ? parsed.params.referenceImageKey?.trim() ?? '' : ''
   const isFusion = referenceKey.length > 0
+  const relight = parsed.capability === 'image_edit' ? readRelight(parsed.params) : undefined
+  const isRelight = relight !== undefined
+  if (isRelight && (isRetouch || isFusion)) throw new HttpError(400, '不能同时提交重新打光和其他编辑', 'INVALID_PARAMS')
   if (isFusion && isRetouch) throw new HttpError(400, '不能同时提交精修和融合', 'INVALID_PARAMS')
   if (parsed.capability === 'variation' && userPrompt.length > VARIATION_USER_PROMPT_MAX) {
     throw new HttpError(400, variationPromptLimitMessage(), 'INVALID_PARAMS')
+  }
+  if (isRelight && userPrompt.length > RELIGHT_NOTE_MAX) {
+    throw new HttpError(400, relightNoteLimitMessage(), 'INVALID_PARAMS')
   }
   if (isFusion && userPrompt.length > FUSION_NOTE_MAX) {
     throw new HttpError(400, fusionNoteLimitMessage(), 'INVALID_PARAMS')
@@ -347,10 +388,10 @@ export async function createImageJobInStore(
   if (isRetouch && userPrompt.length > RETOUCH_NOTE_MAX) {
     throw new HttpError(400, retouchNoteLimitMessage(), 'INVALID_PARAMS')
   }
-  if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && !userPrompt) {
+  if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && !isRelight && !userPrompt) {
     throw new HttpError(400, '请填写编辑要求', 'INVALID_PARAMS')
   }
-  if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
+  if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && !isRelight && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
     throw new HttpError(400, '编辑要求过长', 'INVALID_PARAMS')
   }
   if (isFusion && referenceKey === parsed.params.sourceImageKey) {
@@ -363,9 +404,11 @@ export async function createImageJobInStore(
     ? composeVariationPrompt(userPrompt)
     : isFusion
       ? composeFusionPrompt(userPrompt)
-      : isRetouch
-        ? composeRetouchPrompt(retouchDirections, userPrompt)
-        : parsed.params.prompt ?? ''
+      : isRelight
+        ? composeRelightPrompt(relight, userPrompt)
+        : isRetouch
+          ? composeRetouchPrompt(retouchDirections, userPrompt)
+          : parsed.params.prompt ?? ''
   const storedParams = isRetouch
     ? {
         ...parsed.params,
@@ -378,8 +421,14 @@ export async function createImageJobInStore(
           referenceImageKey: referenceKey,
           ...(userPrompt ? { prompt: userPrompt } : {}),
         }
-      : parsed.params
-  if ((isRetouch || isFusion) && !userPrompt) delete storedParams.prompt
+      : isRelight
+        ? {
+            ...parsed.params,
+            relight,
+            ...(userPrompt ? { prompt: userPrompt } : {}),
+          }
+        : parsed.params
+  if ((isRetouch || isFusion || isRelight) && !userPrompt) delete storedParams.prompt
   if (parsed.params.count > profile.ui.maxCount) {
     throw new HttpError(400, `最多生成 ${profile.ui.maxCount} 张`, 'INVALID_PARAMS')
   }
@@ -403,7 +452,7 @@ export async function createImageJobInStore(
     extra: parsed.params.extra,
   }
   const mapped = provider.mapRequest(normalized, profile.model)
-  if (parsed.capability === 'variation' || isRetouch || isFusion) {
+  if (parsed.capability === 'variation' || isRetouch || isFusion || isRelight) {
     mapped.providerParams = { ...mapped.providerParams, prompt }
   }
   const fingerprint = createHash('sha256').update(JSON.stringify({
@@ -716,6 +765,7 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
 export async function submitImageTask(user: User, body: unknown, runtime = defaultImageJobRuntime()) {
   assertVariationSteerLimit(body)
   assertFusionRequest(body)
+  assertRelightRequest(body)
   assertRetouchNoteLimit(body)
   const parsed = createImageTaskSchema.parse(body)
   const created = await withIdentity(user.id, user.email, async sql => {

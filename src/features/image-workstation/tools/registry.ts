@@ -6,22 +6,12 @@ import { buildInpaintRequest } from './requestBuilders/inpaint'
 import { buildImageEditRequest } from './requestBuilders/imageEdit'
 import { buildOutpaintRequest } from './requestBuilders/outpaint'
 import { buildFusionRequest } from './requestBuilders/fusion'
+import { buildRelightRequest } from './requestBuilders/relight'
 import { buildRetouchRequest } from './requestBuilders/retouch'
 import { buildVariationRequest } from './requestBuilders/variation'
 
 export const COMING_SOON_LABEL = '即将上线'
 export const COMING_SOON_SUBMIT_MESSAGE = '该能力即将上线，目前还不能提交生成任务'
-
-const unsupported = () => ({ valid: false, message: '当前工具的画布交互仍在后续迭代中' })
-const buildBasicRequest = (capability: Capability): WorkstationToolDefinition['buildRequest'] => (context) => ({
-  capability,
-  params: {
-    sourceImageUrl: context.sourceAsset.url,
-    size: { width: context.sourceAsset.width, height: context.sourceAsset.height },
-    count: context.count ?? 1,
-  },
-  outputSize: { width: context.sourceAsset.width, height: context.sourceAsset.height },
-})
 
 /** 扩图、消除和重绘走独立接口，不依赖 /tasks。其余工具是否可提交只看 liveCapabilityReady。 */
 export function isWorkstationToolReady(
@@ -50,7 +40,13 @@ export const WORKSTATION_TOOLS: WorkstationToolDefinition[] = [
       : { valid: false, message: '请先填写编辑要求' },
     buildRequest: buildImageEditRequest,
   },
-  { slug: 'relight', capability: Capability.Relight, label: '重新打光', interactionMode: 'light-control', validate: unsupported, buildRequest: buildBasicRequest(Capability.Relight) },
+  {
+    slug: 'relight',
+    capability: Capability.Relight,
+    label: '重新打光',
+    interactionMode: 'params-only',
+    buildRequest: buildRelightRequest,
+  },
   { slug: 'remove', capability: Capability.Inpaint, label: '消除', interactionMode: 'mask-paint', buildRequest: (ctx) => buildInpaintRequest(ctx, 'remove') },
   {
     slug: 'repaint', capability: Capability.Inpaint, label: '重绘', interactionMode: 'mask-paint',
