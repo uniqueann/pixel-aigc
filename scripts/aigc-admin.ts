@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { readFile, writeFile, chmod } from 'node:fs/promises'
 import postgres from 'postgres'
+import { CREDITS_USAGE, parseCreditsCommand } from './credits-args.js'
 
 const url = process.env.AIGC_ADMIN_DATABASE_URL
 if (!url) throw new Error('请配置迁移管理员连接 AIGC_ADMIN_DATABASE_URL；不得用于线上 API')
@@ -43,32 +44,32 @@ try {
     })
     console.log('应用成员状态已更新；共享 Auth 账号未改变。')
   } else if (command === 'credits') {
-    const scope = status
-    const [amountText, key, ...reasonParts] = process.argv.slice(5)
-    const reason = reasonParts.join(' ').trim()
+    const parsed = parseCreditsCommand(process.argv.slice(3))
     const operator = process.env.AIGC_ADMIN_OPERATOR?.trim()
-    const amount = Number(amountText)
-    if (!value || !['local','preview','production'].includes(scope ?? '') || !Number.isSafeInteger(amount)
-      || amount <= 0 || amount > 1_000_000 || !key || key.length > 128 || !reason || !operator)
-      throw new Error('用法：AIGC_ADMIN_OPERATOR=姓名 npm run aigc:credits -- 用户UUID 环境 正整数积分 幂等键 发放原因')
-    await sql.begin(async tx => {
-      const [member] = await tx`select user_id from aigc.members where user_id=${value} for update`
-      if (!member) throw new Error('成员不存在')
-      const [created] = await tx`insert into aigc.credit_accounts(user_id,scope,balance)
-        values(${value},${scope},100) on conflict do nothing returning balance`
-      if (created) await tx`insert into aigc.credit_ledger(user_id,scope,kind,delta,balance_after,idempotency_key,reason)
-        values(${value},${scope},'grant',100,100,'initial','首次赠送')`
-      const [prior] = await tx`select delta from aigc.credit_ledger
-        where user_id=${value} and scope=${scope} and idempotency_key=${`admin:${key}`}`
-      if (prior) {
-        if (Number(prior.delta) !== amount) throw new Error('幂等键已用于不同金额')
-        return
-      }
-      const [account] = await tx`update aigc.credit_accounts set balance=balance+${amount},updated_at=now()
-        where user_id=${value} and scope=${scope} returning balance`
-      await tx`insert into aigc.credit_ledger(user_id,scope,kind,delta,balance_after,idempotency_key,operator,reason)
-        values(${value},${scope},'grant',${amount},${account.balance},${`admin:${key}`},${operator},${reason})`
-    })
-    console.log('积分已发放或此前已用同一幂等键发放。')
+    if (!operator) throw new Error(CREDITS_USAGE)
+    if (parsed.mode === 'grant') {
+      await sql.begin(async tx => {
+        const [member] = await tx`select user_id from aigc.members where user_id=${parsed.userId} for update`
+        if (!member) throw new Error('成员不存在')
+        const [created] = await tx`insert into aigc.credit_accounts(user_id,scope,balance)
+          values(${parsed.userId},${parsed.scope},100) on conflict do nothing returning balance`
+        if (created) await tx`insert into aigc.credit_ledger(user_id,scope,kind,delta,balance_after,idempotency_key,reason)
+          values(${parsed.userId},${parsed.scope},'grant',100,100,'initial','首次赠送')`
+        const [prior] = await tx`select delta from aigc.credit_ledger
+          where user_id=${parsed.userId} and scope=${parsed.scope} and idempotency_key=${`admin:${parsed.key}`}`
+        if (prior) {
+          if (Number(prior.delta) !== parsed.value) throw new Error('幂等键已用于不同金额')
+          return
+        }
+        const [account] = await tx`update aigc.credit_accounts set balance=balance+${parsed.value},updated_at=now()
+          where user_id=${parsed.userId} and scope=${parsed.scope} returning balance`
+        await tx`insert into aigc.credit_ledger(user_id,scope,kind,delta,balance_after,idempotency_key,operator,reason)
+          values(${parsed.userId},${parsed.scope},'grant',${parsed.value},${account.balance},${`admin:${parsed.key}`},${operator},${parsed.reason})`
+      })
+      console.log('积分已发放或此前已用同一幂等键发放。')
+    } else {
+      const [row] = await sql`select aigc.adjust_credits(${parsed.userId},${parsed.scope},${parsed.mode},${parsed.value},${operator},${parsed.reason},${parsed.key}) as balance`
+      console.log(`积分已调整，当前余额 ${Number(row.balance)}。`)
+    }
   } else throw new Error('不支持的管理命令')
 } finally { await sql.end() }

@@ -28,6 +28,7 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/20260923102829_aigc_email_byok.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20260928120000_aigc_image_jobs.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20260929100000_aigc_credits_and_sync_limits.sql','utf8'))
+  await db.exec(readFileSync('supabase/migrations/20260929233436_aigc_credit_adjust.sql','utf8'))
 }, 30000)
 afterAll(async () => { await db.close() })
 describe('aigc 数据库权限与隔离', () => {

@@ -282,6 +282,64 @@ a {
   background: var(--color-surface) !important;
 }
 
+.credits-trigger {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.credits-trigger:hover {
+  color: var(--color-accent);
+}
+
+.credits-ledger-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.credits-ledger-row {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.credits-ledger-row-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.credits-ledger-row-main time,
+.credits-ledger-row-main small,
+.credits-ledger-hint,
+.credits-ledger-error {
+  color: var(--color-text-secondary);
+}
+
+.credits-ledger-row-amounts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.credits-ledger-row-amounts .is-plus {
+  color: var(--color-success);
+}
+
+.credits-ledger-row-amounts .is-minus {
+  color: var(--color-danger);
+}
+
 .settings-modal .ant-modal-content {
   padding: 0;
   overflow: hidden;

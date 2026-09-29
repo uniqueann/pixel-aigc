@@ -192,4 +192,40 @@ describe('API 认证、版本和写入边界', () => {
     expect(response.status).toHaveBeenCalledWith(200)
     expect(response.end).toHaveBeenCalledWith(Buffer.from([1, 2, 3]))
   })
+
+  it('GET /api/credits/ledger 返回当前用户流水', async () => {
+    mocks.sql.mockImplementation(async (parts: TemplateStringsArray) => {
+      const query = parts.join('?')
+      if (query.includes('select status')) return [{ status: 'active' }]
+      if (query.includes('ensure_credit_account')) return [{ balance: 100 }]
+      if (query.includes('from aigc.credit_ledger')) return [{
+        id: '00000000-0000-4000-8000-000000000301',
+        kind: 'grant',
+        delta: 100,
+        balance_after: 100,
+        charged: null,
+        meta: {},
+        reason: '首次赠送',
+        created_at: '2026-09-29T00:00:00.000Z',
+        capability: null,
+        params: null,
+        requested_count: null,
+        provider_params: null,
+      }]
+      if (query.includes('from aigc.credit_accounts')) return [{ balance: 100 }]
+      return []
+    })
+    const res = await request(undefined, 'GET', '/api/credits/ledger')
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith({
+      balance: 100,
+      nextCursor: null,
+      items: [expect.objectContaining({
+        label: '赠送/充值',
+        delta: 100,
+        deltaText: '+100',
+        reason: '首次赠送',
+      })],
+    })
+  })
 })

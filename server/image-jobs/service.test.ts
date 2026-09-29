@@ -119,10 +119,18 @@ describe('图片积分价格', () => {
 
   it('积分不足返回 402，且不创建任务', async () => {
     const billing = billingSpy()
-    billing.reserve.mockResolvedValue({ ok: false, code: 'INSUFFICIENT_CREDITS', message: '积分余额不足' } as never)
+    billing.reserve.mockResolvedValue({
+      ok: false, code: 'INSUFFICIENT_CREDITS', message: '积分余额不足：本次需要 3 积分，当前余额 0',
+      required: 3, balance: 0,
+    } as never)
     const store = createMemoryStore(user.id)
     await expect(createImageJobInStore(store, user, params(), runtime(createMockImageProvider(), billing)))
-      .rejects.toMatchObject({ status: 402, code: 'INSUFFICIENT_CREDITS' })
+      .rejects.toMatchObject({
+        status: 402,
+        code: 'INSUFFICIENT_CREDITS',
+        message: '积分余额不足：本次需要 3 积分，当前余额 0',
+        extra: { required: 3, balance: 0 },
+      })
     expect(await store.findByRequestId(requestId)).toBeUndefined()
   })
 
