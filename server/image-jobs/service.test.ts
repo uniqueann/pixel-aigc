@@ -355,7 +355,9 @@ describe('精修任务', () => {
       count: 1,
     })
     expect(created.bundle.job.provider_params.prompt).toBe(composed)
-    expect(String(created.bundle.job.provider_params.prompt).startsWith(RETOUCH_FIXED_PROMPT)).toBe(true)
+    expect(String(created.bundle.job.provider_params.prompt).endsWith(RETOUCH_FIXED_PROMPT)).toBe(true)
+    expect(String(created.bundle.job.provider_params.prompt).indexOf('保留金属拉丝'))
+      .toBeLessThan(String(created.bundle.job.provider_params.prompt).indexOf(RETOUCH_FIXED_PROMPT))
     expect(String(created.bundle.job.provider_params.prompt)).not.toContain('提亮：')
     await runProviderSubmits(created.bundle, provider, user.id, rt)
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ prompt: composed }), expect.anything())
