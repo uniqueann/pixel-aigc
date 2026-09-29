@@ -176,7 +176,7 @@ function createMockEditedImage(params: ImageEditTaskParams, index: number) {
   const longEdge = params.resolution === '4k' ? 4096 : 2048
   const width = params.size?.width ?? longEdge
   const height = params.size?.height ?? Math.round(longEdge * 0.75)
-  const prompt = escapeSvgText(params.prompt.trim().slice(0, 42) || '智能编辑')
+  const prompt = escapeSvgText((params.prompt ?? '').trim().slice(0, 42) || '智能编辑')
   const hue = (index * 62 + 142) % 360
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">

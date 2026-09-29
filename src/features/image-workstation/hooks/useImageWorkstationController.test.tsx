@@ -74,6 +74,7 @@ function ControllerHarness({
   count,
   resolution,
   capabilityReady,
+  retouchDirections,
   onController,
 }: {
   tool?: string
@@ -81,6 +82,7 @@ function ControllerHarness({
   count?: number
   resolution?: '2k' | '4k'
   capabilityReady?: (capability: Capability) => boolean
+  retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
   onController: (controller: Controller) => void
 }) {
   const controller = useImageWorkstationController({
@@ -90,6 +92,7 @@ function ControllerHarness({
     count,
     resolution,
     capabilityReady,
+    retouchDirections,
   })
   useEffect(() => onController(controller), [controller, onController])
   return null
@@ -524,5 +527,50 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(currentController.activeTask?.warnings).toEqual(['PARTIAL'])
     expect(currentController.outputAssets.map((asset) => asset.url)).toEqual(['candidate-only.png'])
     expect(currentController.protocolError).toBeUndefined()
+  })
+
+  it('精修未选方向不能提交；选中后按智能编辑任务上传原图', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const ready = (capability: Capability) => capability === Capability.Retouch || capability === Capability.ImageEdit
+    await act(async () => root.render(
+      <ControllerHarness tool="retouch" capabilityReady={ready} onController={captureController} />,
+    ))
+    await expect(currentController.generate(null)).rejects.toThrow('请先选择精修方向')
+    expect(mocks.createTask).not.toHaveBeenCalled()
+
+    mocks.createTask.mockResolvedValue({
+      id: 'task-retouch',
+      capability: Capability.ImageEdit,
+      status: 'processing',
+      params: { count: 1, resolution: '2k', retouchDirections: ['blemish'] },
+      creditsCost: 1,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    })
+    await act(async () => root.render(
+      <ControllerHarness
+        tool="retouch"
+        count={1}
+        resolution="2k"
+        retouchDirections={['blemish']}
+        capabilityReady={ready}
+        onController={captureController}
+      />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+    expect(mocks.uploadTaskInput).toHaveBeenCalled()
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      capability: Capability.ImageEdit,
+      params: expect.objectContaining({
+        count: 1,
+        resolution: '2k',
+        sourceImageKey: 'temporary/task-inputs/user/source-1',
+        retouchDirections: ['blemish'],
+      }),
+    }))
+    const submitted = mocks.createTask.mock.calls[mocks.createTask.mock.calls.length - 1]?.[0]
+    expect(submitted?.params).not.toHaveProperty('prompt')
   })
 })

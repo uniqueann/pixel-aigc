@@ -18,6 +18,7 @@ export interface ValidationResult {
 export interface WorkstationContext {
   sourceAsset: ImageAsset
   prompt?: string
+  retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
   count?: number
   resolution?: '1k' | '2k' | '4k'
   modelProfileId?: string

@@ -7,6 +7,13 @@ import { requireActive } from '../model-settings.js'
 import { getObject, putObject, signRead } from '../storage.js'
 import type { NormalizedImageRequest } from '../../shared/image-generation.js'
 import {
+  RETOUCH_DIRECTION_IDS,
+  RETOUCH_NOTE_MAX,
+  composeRetouchPrompt,
+  normalizeRetouchDirections,
+  retouchNoteLimitMessage,
+} from '../../shared/retouch.js'
+import {
   VARIATION_USER_PROMPT_MAX,
   composeVariationPrompt,
   variationPromptLimitMessage,
@@ -62,8 +69,19 @@ const imageSourceParams = {
 }
 const imageEditParams = z.object({
   ...imageSourceParams,
-  prompt: z.string().trim().min(1).max(4000),
-}).strict()
+  prompt: z.string().trim().max(4000).optional(),
+  retouchDirections: z.array(z.enum(RETOUCH_DIRECTION_IDS)).max(4).optional(),
+}).strict().superRefine((value, ctx) => {
+  const directions = normalizeRetouchDirections(value.retouchDirections)
+  const note = value.prompt?.trim() ?? ''
+  if (directions.length > 0) {
+    if (note.length > RETOUCH_NOTE_MAX) {
+      ctx.addIssue({ code: 'custom', message: retouchNoteLimitMessage(), path: ['prompt'] })
+    }
+    return
+  }
+  if (!note) ctx.addIssue({ code: 'custom', message: '请填写编辑要求', path: ['prompt'] })
+})
 const variationParams = z.object({
   ...imageSourceParams,
   prompt: z.string().trim().max(VARIATION_USER_PROMPT_MAX).optional(),
@@ -99,6 +117,17 @@ export function assertVariationSteerLimit(body: unknown) {
   if (typeof prompt !== 'string') return
   if (prompt.trim().length > VARIATION_USER_PROMPT_MAX) {
     throw new HttpError(400, variationPromptLimitMessage(), 'INVALID_PARAMS')
+  }
+}
+
+export function assertRetouchNoteLimit(body: unknown) {
+  if (!isRecord(body) || body.capability !== 'image_edit' || !isRecord(body.params)) return
+  const directions = body.params.retouchDirections
+  if (!Array.isArray(directions) || normalizeRetouchDirections(directions.filter((item): item is string => typeof item === 'string')).length === 0) return
+  const prompt = body.params.prompt
+  if (typeof prompt !== 'string') return
+  if (prompt.trim().length > RETOUCH_NOTE_MAX) {
+    throw new HttpError(400, retouchNoteLimitMessage(), 'INVALID_PARAMS')
   }
 }
 
@@ -266,13 +295,35 @@ export async function createImageJobInStore(
   const provider = runtime.providerFor(profile.provider)
   if (!provider) throw imageModelUnavailable(parsed.capability)
   const userPrompt = parsed.params.prompt?.trim() ?? ''
+  const retouchDirections = parsed.capability === 'image_edit'
+    ? normalizeRetouchDirections(parsed.params.retouchDirections)
+    : []
+  const isRetouch = retouchDirections.length > 0
   if (parsed.capability === 'variation' && userPrompt.length > VARIATION_USER_PROMPT_MAX) {
     throw new HttpError(400, variationPromptLimitMessage(), 'INVALID_PARAMS')
   }
-  if (parsed.capability === 'image_edit' && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
+  if (isRetouch && userPrompt.length > RETOUCH_NOTE_MAX) {
+    throw new HttpError(400, retouchNoteLimitMessage(), 'INVALID_PARAMS')
+  }
+  if (parsed.capability === 'image_edit' && !isRetouch && !userPrompt) {
+    throw new HttpError(400, '请填写编辑要求', 'INVALID_PARAMS')
+  }
+  if (parsed.capability === 'image_edit' && !isRetouch && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
     throw new HttpError(400, '编辑要求过长', 'INVALID_PARAMS')
   }
-  const prompt = parsed.capability === 'variation' ? composeVariationPrompt(userPrompt) : parsed.params.prompt
+  const prompt = parsed.capability === 'variation'
+    ? composeVariationPrompt(userPrompt)
+    : isRetouch
+      ? composeRetouchPrompt(retouchDirections, userPrompt)
+      : parsed.params.prompt ?? ''
+  const storedParams = isRetouch
+    ? {
+        ...parsed.params,
+        retouchDirections,
+        ...(userPrompt ? { prompt: userPrompt } : {}),
+      }
+    : parsed.params
+  if (isRetouch && !userPrompt) delete storedParams.prompt
   if (parsed.params.count > profile.ui.maxCount) {
     throw new HttpError(400, `最多生成 ${profile.ui.maxCount} 张`, 'INVALID_PARAMS')
   }
@@ -293,11 +344,11 @@ export async function createImageJobInStore(
     extra: parsed.params.extra,
   }
   const mapped = provider.mapRequest(normalized, profile.model)
-  if (parsed.capability === 'variation') {
+  if (parsed.capability === 'variation' || isRetouch) {
     mapped.providerParams = { ...mapped.providerParams, prompt }
   }
   const fingerprint = createHash('sha256').update(JSON.stringify({
-    params: parsed.params, modelProfileId: profile.id,
+    params: storedParams, modelProfileId: profile.id,
   })).digest('hex')
   const existing = await store.findByRequestId(parsed.requestId)
   if (existing) {
@@ -330,7 +381,7 @@ export async function createImageJobInStore(
     capability: parsed.capability,
     modelProfileId: profile.id,
     provider: profile.provider,
-    params: parsed.params,
+    params: storedParams,
     providerParams: mapped.providerParams,
     warnings: mapped.warnings,
     requestedCount: mapped.fanOut,
@@ -597,6 +648,7 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
 
 export async function submitImageTask(user: User, body: unknown, runtime = defaultImageJobRuntime()) {
   assertVariationSteerLimit(body)
+  assertRetouchNoteLimit(body)
   const parsed = createImageTaskSchema.parse(body)
   const created = await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)

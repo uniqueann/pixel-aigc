@@ -14,6 +14,7 @@ import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
 import { Capability, type GenerationTask, type ImageEditTaskParams, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
 import { recordWorkstationHistory } from '@/features/assets/workstationHistory'
+import { readRetouchDirections, retouchHistoryText } from '@shared/retouch'
 import { blobFromImageSource } from '../download'
 import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
 import { isVisuallySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
@@ -32,6 +33,7 @@ interface ControllerOptions {
   count?: number
   resolution?: '1k' | '2k' | '4k'
   modelProfileId?: string
+  retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
   /** 工作站自己的能力开关。裂变不写入全局 live capability。 */
   capabilityReady?: (capability: Capability) => boolean
 }
@@ -73,6 +75,7 @@ export function useImageWorkstationController({
   count,
   resolution,
   modelProfileId,
+  retouchDirections,
   capabilityReady = liveCapabilityReady,
 }: ControllerOptions) {
   const project = useEditorStore((state) => state.project)
@@ -116,14 +119,18 @@ export function useImageWorkstationController({
     completedTask: GenerationTask<unknown>,
     assets: ImageAsset[],
   ) => {
-    const toolSlug = completedTask.capability === Capability.Inpaint
-      ? ((completedTask.params as InpaintTaskParams).mode === 'repaint' ? 'repaint' : 'remove')
-      : completedTask.capability === Capability.Outpaint
-        ? 'outpaint'
-        : activeTool.slug
-    const prompt = typeof (completedTask.params as { prompt?: unknown })?.prompt === 'string'
+    const retouchDirections = readRetouchDirections(completedTask.params)
+    const toolSlug = retouchDirections.length
+      ? 'retouch'
+      : completedTask.capability === Capability.Inpaint
+        ? ((completedTask.params as InpaintTaskParams).mode === 'repaint' ? 'repaint' : 'remove')
+        : completedTask.capability === Capability.Outpaint
+          ? 'outpaint'
+          : activeTool.slug
+    const note = typeof (completedTask.params as { prompt?: unknown })?.prompt === 'string'
       ? (completedTask.params as { prompt?: string }).prompt
       : undefined
+    const prompt = retouchDirections.length ? retouchHistoryText(retouchDirections, note) : note
     void Promise.all(assets.map(async (asset, index) => {
       const objectKey = asset.objectKey ?? completedTask.resultImages?.[index]?.objectKey
       const result = await blobFromImageSource(asset.url, objectKey)
@@ -389,7 +396,7 @@ export function useImageWorkstationController({
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
     if (!isWorkstationToolReady(activeTool, capabilityReady)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
     if (!inputAsset) throw new Error('请先上传需要编辑的图片')
-    const initialContext = { sourceAsset: inputAsset, prompt, count, resolution, modelProfileId }
+    const initialContext = { sourceAsset: inputAsset, prompt, count, resolution, modelProfileId, retouchDirections }
     const validation = activeTool.validate?.(initialContext)
     if (validation && !validation.valid) throw new Error(validation.message ?? '当前参数不完整')
 
@@ -436,7 +443,7 @@ export function useImageWorkstationController({
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
     return submitRequest({ ...request, modelProfileId }, inputAsset, inputAsset.generationId)
-  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, prompt, resolution, submitRequest])
+  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, prompt, resolution, retouchDirections, submitRequest])
 
   const retry = useCallback(async () => {
     if (!task) return

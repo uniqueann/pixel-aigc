@@ -74,4 +74,16 @@ describe('生成按钮禁用原因', () => {
       mode: 'remove',
     })).toBe(EMPTY_ERASE_MASK_MESSAGE)
   })
+
+  it('精修未选方向时不能生成', () => {
+    expect(workstationGenerateBlockReason({
+      toolReady: true,
+      hasInput: true,
+      formLocked: false,
+      maskRequired: false,
+      hasMaskPaint: false,
+      repaintBlocked: false,
+      retouchBlocked: true,
+    })).toBe('请先选择精修方向')
+  })
 })
