@@ -388,7 +388,7 @@ export default function WatermarkTool() {
         onDownload={downloadOne}
         onPreviewResult={openAt}
       />
-      <PreviewGallery {...galleryProps} />
+      <PreviewGallery {...galleryProps} onDownload={item => downloadOne(item.id)} />
 
       <div className="toolbox-watermark-footer">
         <div className="toolbox-progress">

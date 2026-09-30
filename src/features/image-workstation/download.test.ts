@@ -10,6 +10,7 @@ import {
   downloadFailureMessage,
   extensionForMime,
   filenameForWorkstationResult,
+  filenameWithMimeExtension,
 } from './download'
 
 describe('工作站结果下载命名', () => {
@@ -33,6 +34,8 @@ describe('工作站结果下载命名', () => {
     expect(extensionForMime('image/webp')).toBe('webp')
     expect(extensionForMime('image/jpeg')).toBe('jpg')
     expect(extensionForMime()).toBe('jpg')
+    expect(filenameWithMimeExtension('mug.jpg', 'image/png')).toBe('mug.png')
+    expect(filenameWithMimeExtension('mug', 'image/webp')).toBe('mug.webp')
   })
 })
 

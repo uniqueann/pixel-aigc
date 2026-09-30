@@ -14,6 +14,13 @@ export function extensionForMime(mimeType?: string) {
   return MIME_EXTENSION[mimeType] ?? (mimeType.startsWith('image/') ? mimeType.slice(6) : 'jpg')
 }
 
+/** 保留原名，按实际字节 MIME 换扩展名（mug.jpg + PNG → mug.png）。 */
+export function filenameWithMimeExtension(name: string, mimeType?: string) {
+  const trimmed = name.trim() || '图片'
+  const base = trimmed.replace(/\.[^.]+$/, '') || trimmed
+  return `${base}.${extensionForMime(mimeType)}`
+}
+
 export function filenameForWorkstationResult(input: {
   toolLabel: string
   width: number

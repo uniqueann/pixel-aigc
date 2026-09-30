@@ -1,7 +1,7 @@
-import { useState, type ImgHTMLAttributes, type ReactElement, type Ref } from 'react'
+import { cloneElement, useEffect, useRef, useState, type ImgHTMLAttributes, type ReactElement } from 'react'
 import { DownloadOutlined, RetweetOutlined } from '@ant-design/icons'
 import { App, Button, Image, Spin } from 'antd'
-import { blobFromImageSource } from '@/features/image-workstation/download'
+import { blobFromImageSource, filenameWithMimeExtension } from '@/features/image-workstation/download'
 import CompareViewer from './CompareViewer'
 import './preview.css'
 
@@ -24,17 +24,28 @@ export interface PreviewGalleryProps {
   onDownload?: (item: PreviewItem) => Promise<void> | void
 }
 
-function PreviewImage({
-  image,
-  src,
-}: {
-  image: ReactElement<ImgHTMLAttributes<HTMLImageElement>>
-  src?: string
-}) {
+function PreviewImage({ image }: { image: ReactElement<ImgHTMLAttributes<HTMLImageElement>> }) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
+  const frameRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const img = frameRef.current?.querySelector('img')
+    if (!img) return
+    const onLoad = () => setState('ready')
+    const onError = () => setState('error')
+    img.addEventListener('load', onLoad)
+    img.addEventListener('error', onError)
+    if (img.complete && (img.naturalWidth || img.naturalHeight)) onLoad()
+    return () => {
+      img.removeEventListener('load', onLoad)
+      img.removeEventListener('error', onError)
+    }
+  }, [attempt, image])
+
   return (
     <div
+      ref={frameRef}
       key={attempt}
       className="preview-image-frame"
       onLoadCapture={() => setState('ready')}
@@ -50,22 +61,9 @@ function PreviewImage({
           )}
         </div>
       )}
-      <img
-        ref={(image as ReactElement<ImgHTMLAttributes<HTMLImageElement>> & { ref?: Ref<HTMLImageElement> }).ref}
-        alt={image.props.alt ?? '图片预览'}
-        className={image.props.className}
-        src={src ?? image.props.src}
-        onLoad={event => { image.props.onLoad?.(event); setState('ready') }}
-        onError={event => { image.props.onError?.(event); setState('error') }}
-        onWheel={image.props.onWheel}
-        onMouseDown={image.props.onMouseDown}
-        onDoubleClick={image.props.onDoubleClick}
-        onTouchStart={image.props.onTouchStart}
-        onTouchMove={image.props.onTouchMove}
-        onTouchEnd={image.props.onTouchEnd}
-        onTouchCancel={image.props.onTouchCancel}
-        style={{ ...image.props.style, visibility: state === 'ready' ? 'visible' : 'hidden' }}
-      />
+      {cloneElement(image, {
+        style: { ...image.props.style, visibility: state === 'ready' ? 'visible' : 'hidden' },
+      })}
     </div>
   )
 }
@@ -88,7 +86,7 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = item.title || '图片'
+        link.download = filenameWithMimeExtension(item.title || '图片', blob.type)
         link.click()
         window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       }
@@ -107,9 +105,7 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
         onVisibleChange: visible => { if (!visible && !comparing) onClose() },
         onChange: change,
         rootClassName: 'preview-gallery-overlay',
-        imageRender: (image, info) => (
-          <PreviewImage key={`${item?.id}:${item?.fullSrc}`} image={image} src={info.image?.url ?? item?.fullSrc} />
-        ),
+        imageRender: image => <PreviewImage key={`${item?.id}:${item?.fullSrc}`} image={image} />,
         toolbarRender: (originalNode) => <>
           {originalNode}
           <Button className="preview-toolbar-action" type="text" icon={<DownloadOutlined />} aria-label="下载原始大图" onClick={() => void download()} />

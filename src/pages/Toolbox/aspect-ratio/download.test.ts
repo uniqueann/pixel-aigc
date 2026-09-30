@@ -17,6 +17,9 @@ describe('转比例下载', () => {
       image('商品.png', new Blob(['第二张'], { type: 'image/jpeg' }), 'two'),
     ]
     expect([...namesForImages(items, 'amazon-main').values()]).toEqual(['商品_amazon-main.jpg', '商品_amazon-main_2.jpg'])
+    expect([...namesForImages([
+      image('mug.jpg', new Blob(['png'], { type: 'image/png' }), 'png-out'),
+    ], 'amazon-main').values()]).toEqual(['mug_amazon-main.png'])
     const zip = await createAspectRatioZip(items, 'amazon-main')
     const reader = new ZipReader(new BlobReader(zip))
     const entries = await reader.getEntries()

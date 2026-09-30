@@ -326,7 +326,7 @@ export default function BgRemoveTool() {
         onPreviewResult={openAt}
         onRefine={refineEdge}
       />
-      <PreviewGallery {...galleryProps} />
+      <PreviewGallery {...galleryProps} onDownload={item => downloadOne(item.id)} />
       <div className="toolbox-watermark-footer">
         <div className="toolbox-progress">
           <span>{completed.length} / {items.length} 张已完成</span>

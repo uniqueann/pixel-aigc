@@ -7,7 +7,7 @@ export { downloadBlob }
 export function namesForImages(images: BatchImage[], presetId: string) {
   const names = outputNames(images.map(image => ({
     name: image.file.name,
-    mimeType: image.outputMime ?? 'image/jpeg',
+    mimeType: image.output?.type || image.outputMime || 'image/jpeg',
     presetId,
   })))
   return new Map(images.map((image, index) => [image.id, names[index]]))

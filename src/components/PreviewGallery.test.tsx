@@ -85,4 +85,22 @@ describe('PreviewGallery', () => {
     fireEvent.load(retried)
     await waitFor(() => expect(retried.style.visibility).toBe('visible'))
   })
+
+  it('加载后点放大不抛错', async () => {
+    const getComputedStyle = window.getComputedStyle
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(element => getComputedStyle(element))
+    render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
+    const preview = await waitFor(() => document.querySelector('.ant-image-preview-img') as HTMLImageElement)
+    Object.defineProperty(preview, 'width', { value: 1200 })
+    Object.defineProperty(preview, 'height', { value: 800 })
+    Object.defineProperty(preview, 'offsetWidth', { value: 1200 })
+    Object.defineProperty(preview, 'offsetHeight', { value: 800 })
+    Object.defineProperty(preview, 'offsetLeft', { value: 10 })
+    Object.defineProperty(preview, 'offsetTop', { value: 10 })
+    fireEvent.load(preview)
+    await waitFor(() => expect(preview.style.visibility).toBe('visible'))
+    const zoomIn = document.querySelector('.ant-image-preview-operations-operation-zoomIn') as HTMLElement
+    expect(zoomIn).toBeTruthy()
+    expect(() => fireEvent.click(zoomIn)).not.toThrow()
+  })
 })

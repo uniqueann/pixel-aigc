@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { Button, Modal, Spin } from 'antd'
 import type { PreviewItem } from './PreviewGallery'
 
@@ -35,7 +35,10 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
   const [scale, setScale] = useState(1)
   const [translation, setTranslation] = useState({ x: 0, y: 0 })
   const [holding, setHolding] = useState(false)
-  const stageRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const detachWheel = useRef<(() => void) | undefined>()
+  const setScaleRef = useRef(setScale)
+  setScaleRef.current = setScale
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<{ mode: 'slide' | 'pan' | 'pinch'; distance?: number; center?: { x: number; y: number } }>({ mode: 'pan' })
 
@@ -52,6 +55,21 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
     window.addEventListener('blur', resetHolding)
     return () => { window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', resetHolding) }
   }, [current, items.length, onChange])
+
+  useEffect(() => () => detachWheel.current?.(), [])
+
+  const setStage = useCallback((node: HTMLDivElement | null) => {
+    detachWheel.current?.()
+    detachWheel.current = undefined
+    stageRef.current = node
+    if (!node) return
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      setScaleRef.current(value => clamp(value * (event.deltaY < 0 ? 1.12 : 1 / 1.12), 1, 8))
+    }
+    node.addEventListener('wheel', onWheel, { passive: false })
+    detachWheel.current = () => node.removeEventListener('wheel', onWheel)
+  }, [])
 
   if (!item?.originalSrc) return null
 
@@ -90,10 +108,6 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
     pointers.current.delete(event.pointerId)
     if (pointers.current.size < 2) gesture.current = { mode: 'pan' }
   }
-  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    setScale(value => clamp(value * (event.deltaY < 0 ? 1.12 : 1 / 1.12), 1, 8))
-  }
   const reset = () => { setScale(1); setTranslation({ x: 0, y: 0 }); setPosition(50) }
   const transform = `translate3d(${translation.x}px, ${translation.y}px, 0) scale(${scale})`
 
@@ -113,9 +127,8 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
       <Button onClick={reset}>重置视图</Button>
     </div>
     <div
-      ref={stageRef}
+      ref={setStage}
       className="compare-stage"
-      onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
