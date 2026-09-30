@@ -57,6 +57,14 @@ import {
   shouldAdvance,
   toClientTaskStatus,
 } from './state.js'
+import {
+  IMAGE_TASK_USER_CONCURRENCY_MESSAGE,
+  USER_CONCURRENCY_RETRY_AFTER,
+  hourlyRetryAfterSeconds,
+  imageTaskHourlyRateLimitMessage,
+  rateLimitExtra,
+  rateLimitWaitMinutes,
+} from '../../shared/rate-limit.js'
 import type { ImageJobBundle, ImageJobItemRow, ImageJobRow, ImageJobStore, InsertImageJobInput } from './types.js'
 
 type User = Awaited<ReturnType<typeof authenticate>>
@@ -466,10 +474,15 @@ export async function createImageJobInStore(
     return { bundle: { job: existing, items: await store.listItems(existing.id) }, created: false, provider }
   }
   if (await store.hourlyCount() >= IMAGE_HOURLY_LIMIT) {
-    throw new HttpError(429, `每小时最多提交 ${IMAGE_HOURLY_LIMIT} 次图片任务，请稍后重试`, 'RATE_LIMIT')
+    const seconds = hourlyRetryAfterSeconds(await store.hourlyOldest())
+    throw new HttpError(429, imageTaskHourlyRateLimitMessage(IMAGE_HOURLY_LIMIT, rateLimitWaitMinutes(seconds)), 'RATE_LIMIT', {
+      extra: rateLimitExtra(seconds),
+    })
   }
   if (await store.userActiveCount() >= IMAGE_USER_CONCURRENCY) {
-    throw new HttpError(429, '当前已有图片任务正在处理，请等待完成', 'USER_CONCURRENCY')
+    throw new HttpError(429, IMAGE_TASK_USER_CONCURRENCY_MESSAGE, 'USER_CONCURRENCY', {
+      extra: rateLimitExtra(USER_CONCURRENCY_RETRY_AFTER),
+    })
   }
   if (await store.globalActiveCount() >= IMAGE_GLOBAL_CONCURRENCY) {
     throw new HttpError(429, '服务当前任务较多，请稍后重试', 'GLOBAL_CONCURRENCY')

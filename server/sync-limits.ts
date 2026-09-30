@@ -1,4 +1,12 @@
 import { randomUUID } from 'node:crypto'
+import {
+  SYNC_USER_CONCURRENCY_MESSAGE,
+  USER_CONCURRENCY_RETRY_AFTER,
+  hourlyRetryAfterSeconds,
+  rateLimitExtra,
+  rateLimitWaitMinutes,
+  syncHourlyRateLimitMessage,
+} from '../shared/rate-limit.js'
 import { runtimeScope, withIdentity, type Transaction } from './db.js'
 import { HttpError } from './errors.js'
 import { requireActive } from './model-settings.js'
@@ -35,12 +43,20 @@ export async function acquireSyncRequest(sql: Transaction, userId: string, scope
   await sql`select pg_advisory_xact_lock(hashtext(${`${userId}:${scope}:${bucket}`}))`
   const [usage] = await sql`select
     count(*) filter(where created_at>now()-interval '1 hour')::integer as hourly,
-    count(*) filter(where completed_at is null and lease_until>now())::integer as active
+    count(*) filter(where completed_at is null and lease_until>now())::integer as active,
+    min(created_at) filter(where created_at>now()-interval '1 hour') as oldest
     from aigc.sync_requests where user_id=${userId} and scope=${scope} and bucket=${bucket}`
-  if (Number(usage.hourly) >= limit.hourly)
-    throw new HttpError(429, '该类图片操作已达到每小时使用上限，请稍后重试', 'RATE_LIMIT')
-  if (Number(usage.active) >= limit.concurrent)
-    throw new HttpError(429, '该类图片操作正在处理中，请等待完成', 'USER_CONCURRENCY')
+  if (Number(usage.hourly) >= limit.hourly) {
+    const seconds = hourlyRetryAfterSeconds(usage.oldest as Date | string | null)
+    throw new HttpError(429, syncHourlyRateLimitMessage(rateLimitWaitMinutes(seconds)), 'RATE_LIMIT', {
+      extra: rateLimitExtra(seconds),
+    })
+  }
+  if (Number(usage.active) >= limit.concurrent) {
+    throw new HttpError(429, SYNC_USER_CONCURRENCY_MESSAGE, 'USER_CONCURRENCY', {
+      extra: rateLimitExtra(USER_CONCURRENCY_RETRY_AFTER),
+    })
+  }
   await sql`insert into aigc.sync_requests(id,user_id,scope,bucket,lease_until)
     values(${id},${userId},${scope},${bucket},now()+interval '3 minutes')`
 }

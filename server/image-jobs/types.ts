@@ -76,6 +76,7 @@ export interface ImageJobStore {
   updateJob(id: string, patch: Partial<ImageJobRow>): Promise<ImageJobRow>
   updateItem(jobId: string, ordinal: number, patch: Partial<ImageJobItemRow>): Promise<ImageJobItemRow>
   hourlyCount(): Promise<number>
+  hourlyOldest(): Promise<Date | undefined>
   userActiveCount(): Promise<number>
   globalActiveCount(): Promise<number>
   expireUserOverdue(now: Date): Promise<void>

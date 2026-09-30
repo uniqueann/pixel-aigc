@@ -352,6 +352,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const code = error instanceof HttpError ? error.code : status === 400 ? 'INVALID_REQUEST' : 'SERVER_ERROR'
     const session = error instanceof SmartSelectFailure ? error.session : null
     const extra = error instanceof HttpError ? error.extra : undefined
+    const retryAfter = extra && typeof extra.retryAfterSeconds === 'number' ? extra.retryAfterSeconds : undefined
+    if (retryAfter && retryAfter > 0) res.setHeader('Retry-After', String(Math.ceil(retryAfter)))
     res.status(status).json({ error: message, code, requestId, ...(extra ?? {}), ...(session ? { session } : {}) })
     const details = describeError(error)
     console.error(JSON.stringify({

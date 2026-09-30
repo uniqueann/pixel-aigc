@@ -6,6 +6,8 @@ import {
   creditJobTitle,
   creditKindLabel,
   formatCreditDelta,
+  mergeCreditJobEntries,
+  type CreditLedgerItem,
 } from '../shared/credits.js'
 
 const cursorSchema = z.object({
@@ -107,30 +109,8 @@ export function presentCreditLedgerRow(row: {
   }
 }
 
-export async function listCreditLedger(sql: Transaction, cursor: string | null, limit = CREDIT_LEDGER_PAGE_SIZE) {
-  const parsed = parseLedgerCursor(cursor)
-  const page = Math.min(50, Math.max(1, limit))
-  const rows = parsed
-    ? await sql`
-        select l.id,l.kind,l.delta,l.balance_after,l.charged,l.meta,l.reason,l.created_at,
-          j.capability,j.params,j.requested_count,j.provider_params
-        from aigc.credit_ledger l
-        left join aigc.image_jobs j on j.id=l.job_id
-        where (l.created_at,l.id)<(${parsed.createdAt}::timestamptz,${parsed.id}::uuid)
-        order by l.created_at desc,l.id desc
-        limit ${page + 1}
-      `
-    : await sql`
-        select l.id,l.kind,l.delta,l.balance_after,l.charged,l.meta,l.reason,l.created_at,
-          j.capability,j.params,j.requested_count,j.provider_params
-        from aigc.credit_ledger l
-        left join aigc.image_jobs j on j.id=l.job_id
-        order by l.created_at desc,l.id desc
-        limit ${page + 1}
-      `
-  const hasMore = rows.length > page
-  const pageRows = hasMore ? rows.slice(0, page) : rows
-  const items = pageRows.map(row => presentCreditLedgerRow({
+function asLedgerSource(row: Record<string, unknown>) {
+  return {
     id: String(row.id),
     kind: String(row.kind),
     delta: Number(row.delta),
@@ -143,7 +123,85 @@ export async function listCreditLedger(sql: Transaction, cursor: string | null, 
     params: row.params,
     requested_count: row.requested_count == null ? null : Number(row.requested_count),
     provider_params: row.provider_params,
-  }))
+    job_id: row.job_id == null ? null : String(row.job_id),
+  }
+}
+
+function presentLedgerGroup(rows: ReturnType<typeof asLedgerSource>[]): CreditLedgerItem | undefined {
+  if (!rows.length) return undefined
+  const presented = rows.map(row => presentCreditLedgerRow(row))
+  if (rows.some(row => row.job_id)) {
+    return mergeCreditJobEntries(presented.map(item => ({
+      id: item.id,
+      kind: item.kind,
+      delta: item.delta,
+      balanceAfter: item.balanceAfter,
+      charged: item.charged,
+      createdAt: item.createdAt,
+      title: item.title,
+      reason: item.reason,
+    })))
+  }
+  return presented[0]
+}
+
+export async function listCreditLedger(sql: Transaction, cursor: string | null, limit = CREDIT_LEDGER_PAGE_SIZE) {
+  const parsed = parseLedgerCursor(cursor)
+  const page = Math.min(50, Math.max(1, limit))
+  const groups = parsed
+    ? await sql`
+        select group_id,newest_at,newest_id from (
+          select distinct on (coalesce(job_id, id))
+            coalesce(job_id, id) as group_id,
+            created_at as newest_at,
+            id as newest_id
+          from aigc.credit_ledger
+          order by coalesce(job_id, id), created_at desc, id desc
+        ) grouped_ledger
+        where (newest_at, newest_id)<(${parsed.createdAt}::timestamptz,${parsed.id}::uuid)
+        order by newest_at desc, newest_id desc
+        limit ${page + 1}
+      `
+    : await sql`
+        select group_id,newest_at,newest_id from (
+          select distinct on (coalesce(job_id, id))
+            coalesce(job_id, id) as group_id,
+            created_at as newest_at,
+            id as newest_id
+          from aigc.credit_ledger
+          order by coalesce(job_id, id), created_at desc, id desc
+        ) grouped_ledger
+        order by newest_at desc, newest_id desc
+        limit ${page + 1}
+      `
+  const hasMore = groups.length > page
+  const pageGroups = hasMore ? groups.slice(0, page) : groups
+  const groupKeys = pageGroups.map(row => String(row.group_id))
+  const rows = groupKeys.length === 0
+    ? []
+    : await sql`
+        select l.id,l.job_id,l.kind,l.delta,l.balance_after,l.charged,l.meta,l.reason,l.created_at,
+          j.capability,j.params,j.requested_count,j.provider_params
+        from aigc.credit_ledger l
+        left join aigc.image_jobs j on j.id=l.job_id
+        where coalesce(l.job_id, l.id) in (
+          select unnest(string_to_array(${groupKeys.join(',')}, ',')::uuid[])
+        )
+        order by l.created_at desc, l.id desc
+      `
+  const grouped = new Map<string, ReturnType<typeof asLedgerSource>[]>()
+  for (const row of rows) {
+    const source = asLedgerSource(row as Record<string, unknown>)
+    const key = source.job_id ?? source.id
+    const list = grouped.get(key) ?? []
+    list.push(source)
+    grouped.set(key, list)
+  }
+  const items = pageGroups.map(group => {
+    const key = String(group.group_id)
+    const members = grouped.get(key) ?? []
+    return presentLedgerGroup(members)
+  }).filter((item): item is CreditLedgerItem => Boolean(item))
   const last = items[items.length - 1]
   const [account] = await sql`select balance from aigc.credit_accounts`
   return {

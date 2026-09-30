@@ -60,3 +60,75 @@ export function formatCreditDelta(delta: number) {
   if (delta > 0) return `+${delta}`
   return String(delta)
 }
+
+export interface CreditLedgerItem {
+  id: string
+  createdAt: string
+  kind: string
+  label: string
+  title: string
+  summary: string
+  delta: number
+  deltaText: string
+  balanceAfter: number
+  charged: number | null
+  reason: string | null
+}
+
+export interface CreditLedgerEntry {
+  id: string
+  kind: string
+  delta: number
+  balanceAfter: number
+  charged: number | null
+  createdAt: string
+  title: string
+  reason: string | null
+}
+
+function sortLedgerNewestFirst(left: CreditLedgerEntry, right: CreditLedgerEntry) {
+  if (left.createdAt === right.createdAt) return right.id.localeCompare(left.id)
+  return right.createdAt.localeCompare(left.createdAt)
+}
+
+export function creditJobGroupStatus(entries: readonly CreditLedgerEntry[]) {
+  const reserve = entries.find(item => item.kind === 'reserve')
+  const settle = entries.find(item => item.kind === 'settle')
+  const refund = entries.find(item => item.kind === 'refund')
+  const reserved = reserve ? Math.max(0, -reserve.delta) : 0
+  const charged = settle?.charged ?? refund?.charged ?? null
+  const refunded = settle ? Math.max(0, settle.delta) : refund ? Math.max(0, refund.delta) : 0
+  if (!settle && !refund) {
+    return { kind: 'reserve', summary: '处理中 预扣', charged: null as number | null }
+  }
+  if (refund || charged === 0) {
+    return { kind: 'refund', summary: '失败/超时已退款', charged: charged ?? 0 }
+  }
+  if (refunded > 0 && charged != null && charged > 0) {
+    return { kind: 'settle', summary: `实扣 ${charged}, 已退回 ${refunded}`, charged }
+  }
+  return { kind: 'settle', summary: `实扣 ${charged ?? reserved}`, charged: charged ?? reserved }
+}
+
+/** 同一 job 的预扣/结算/退款收成一行；余额取该任务最后一条流水。 */
+export function mergeCreditJobEntries(entries: readonly CreditLedgerEntry[]): CreditLedgerItem {
+  const ordered = [...entries].sort(sortLedgerNewestFirst)
+  const newest = ordered[0]
+  const oldest = ordered[ordered.length - 1]
+  const title = ordered.map(item => item.title).filter(Boolean).sort((left, right) => right.length - left.length)[0] ?? ''
+  const net = ordered.reduce((sum, item) => sum + item.delta, 0)
+  const status = creditJobGroupStatus(ordered)
+  return {
+    id: newest.id,
+    createdAt: newest.createdAt,
+    kind: status.kind,
+    label: title,
+    title,
+    summary: status.summary,
+    delta: net,
+    deltaText: formatCreditDelta(net),
+    balanceAfter: newest.balanceAfter,
+    charged: status.charged,
+    reason: oldest.reason,
+  }
+}
