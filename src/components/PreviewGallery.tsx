@@ -66,10 +66,10 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
 
   if (items.length === 0) return null
   return <>
-    <Image.PreviewGroup
+    {!comparing && <Image.PreviewGroup
       items={items.map(entry => ({ src: entry.fullSrc, alt: entry.title ?? '图片预览' }))}
       preview={{
-        visible: open && !comparing,
+        visible: open,
         current,
         onVisibleChange: visible => { if (!visible && !comparing) onClose() },
         onChange: change,
@@ -81,7 +81,7 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
           {item?.originalSrc && <Button className="preview-toolbar-action" type="text" icon={<RetweetOutlined />} aria-label="对比原图与结果" onClick={() => setComparing(true)} />}
         </>,
       }}
-    />
+    />}
     {open && comparing && item?.originalSrc && <CompareViewer key={item.id} items={items} current={current} onChange={change} onClose={() => setComparing(false)} />}
   </>
 }
