@@ -1,16 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VercelRequest, VercelResponse } from './http'
-const mocks = vi.hoisted(() => ({ authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn(), getObject: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn(),
+  getObject: vi.fn(), loadEraseStoredImage: vi.fn(), putObject: vi.fn(), signRead: vi.fn(),
+}))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
 vi.mock('./db', () => ({ runtimeScope: () => 'local', withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
 vi.mock('./storage', () => ({
   verifyAndPromote: mocks.verify,
-  signRead: vi.fn(),
+  signRead: mocks.signRead,
   signUpload: vi.fn(),
-  putObject: vi.fn(),
+  putObject: mocks.putObject,
   getObject: mocks.getObject,
 }))
 vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
+vi.mock('./erase-storage', () => ({ loadEraseStoredImage: mocks.loadEraseStoredImage }))
 vi.mock('./sync-limits', () => ({ withSyncLimit: (_user: unknown, _bucket: string, action: () => Promise<unknown>) => action() }))
 import handler from './handler'
 import { HttpError } from './errors'
@@ -26,6 +30,9 @@ async function request(payload: unknown, method='PUT', url='/api/projects/p') {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.eraseWithBailian.mockReset()
+  mocks.loadEraseStoredImage.mockReset()
+  mocks.putObject.mockReset()
+  mocks.signRead.mockReset()
   mocks.authenticate.mockResolvedValue({ id: 'owner',email: 'owner@example.com',suggestedName: '测试用户',avatarUrl: null,providers: ['email'] })
   mocks.sql.mockImplementation(async (parts: TemplateStringsArray) => {
     const query=parts.join('?')
@@ -178,6 +185,46 @@ describe('API 认证、版本和写入边界', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'ERASE_UNAVAILABLE' }))
     expect(mocks.sql).not.toHaveBeenCalled()
     if (previous !== undefined) process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('消除对象键请求读取用户图片并沿用小结果直返', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    process.env.DASHSCOPE_API_KEY = 'sk-test'
+    mocks.loadEraseStoredImage
+      .mockResolvedValueOnce({ bytes: Buffer.from('source'), width: 10, height: 10 })
+      .mockResolvedValueOnce({ bytes: Buffer.from('mask'), width: 10, height: 10 })
+    mocks.eraseWithBailian.mockResolvedValue(Buffer.from('result'))
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/erase', body: {
+      sourceImageKey: 'generated/owner/job/0.png', maskImageKey: 'temporary/task-inputs/owner/mask', prompt: '移除物体',
+    } } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(mocks.loadEraseStoredImage).toHaveBeenCalledTimes(2)
+    expect(mocks.eraseWithBailian).toHaveBeenCalledWith(Buffer.from('source'), Buffer.from('mask'), '移除物体', expect.any(Object))
+    expect(res.end).toHaveBeenCalledWith(Buffer.from('result'))
+    expect(mocks.putObject).not.toHaveBeenCalled()
+    if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
+    else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('大结果写入临时对象，返回签名地址', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    process.env.DASHSCOPE_API_KEY = 'sk-test'
+    const jpeg = Buffer.alloc(4 * 1024 * 1024, 1)
+    mocks.eraseWithBailian.mockResolvedValue(jpeg)
+    mocks.signRead.mockResolvedValue({ url: 'https://r2.test/result', expiresAt: 123 })
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/erase', body: {
+      mimeType: 'image/jpeg', dataBase64: 'aW1n', maskBase64: 'bWFzaw==',
+    } } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(mocks.putObject).toHaveBeenCalledWith(expect.stringMatching(/^temporary\/erase-results\/owner\//), jpeg, 'image/jpeg')
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ mimeType: 'image/jpeg', bytes: jpeg.length, url: 'https://r2.test/result' }))
+    expect(res.end).not.toHaveBeenCalled()
+    if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
+    else process.env.DASHSCOPE_API_KEY = previous
   })
 
   it('GET /api/objects 按当前用户读私有对象，不走浏览器直连 R2', async () => {

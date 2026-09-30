@@ -6,23 +6,28 @@ import { database, withIdentity } from './db.js'
 import { describeError, HttpError } from './errors.js'
 import { identifier, projectWriteSchema, uploadSchema } from '../shared/cloud.js'
 import { readProject, requireProject, toAsset, validateReferences } from './projects.js'
-import { signRead, signUpload, verifyAndPromote } from './storage.js'
+import { putObject, signRead, signUpload, verifyAndPromote } from './storage.js'
 import { handleModelRoute } from './model-settings.js'
 import { handleEmailTaskRoute } from './email-tasks.js'
 import { handleImageTaskRoute, peekImageTask } from './image-jobs/route.js'
 import { IMAGE_TASK_CAPABILITIES } from './image-jobs/service.js'
 import { imageModelsAvailable, publicConfiguredImageModels } from './image-providers/registry.js'
 import { handleTaskInputs } from './task-inputs.js'
-import { loadOwnedObject, objectContentDisposition } from './objects.js'
+import { loadOwnedObject, objectContentDisposition, signOwnedObjectRead } from './objects.js'
 import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
 import { eraseWithBailian } from './bailian-erase.js'
+import { loadEraseStoredImage } from './erase-storage.js'
+import { createDashScopeLog } from './dashscope.js'
 import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
 import { repaintWithBailian } from './bailian-repaint.js'
 import { segmentConfigured } from './segment/providers.js'
 import { selectSmartMask, SmartSelectFailure } from './segment/select.js'
 import { withSyncLimit } from './sync-limits.js'
+import type { SyncRequestMetrics } from './sync-limits.js'
 import { listCreditLedger } from './credits.js'
 import { ensureCreditAccount } from './image-jobs/billing.js'
+
+const INLINE_ERASE_RESPONSE_BYTES = Math.floor(3.5 * 1024 * 1024)
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = randomUUID(), start = Date.now()
@@ -129,23 +134,90 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (path.join('/') === 'erase' && method === 'POST') {
       if (!bailianConfig()) throw new HttpError(503, '图片消除尚未配置阿里云百炼 API Key', 'ERASE_UNAVAILABLE')
-      const input = z.object({
+      const inlineInput = z.object({
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         maskMimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
         maskBase64: z.string().min(1),
         prompt: z.string().max(800).optional(),
-      }).strict().parse(body)
-      const image = Buffer.from(input.dataBase64, 'base64')
-      const mask = Buffer.from(input.maskBase64, 'base64')
-      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
-      const jpeg = await withSyncLimit(user, 'generation', () => eraseWithBailian(image, mask, input.prompt ?? '', { requestId }))
-      res.setHeader('Content-Type', 'image/jpeg')
-      res.status(200).end(jpeg)
+        clientTimingMs: z.object({
+          prepare: z.number().int().min(0).max(300_000),
+          upload: z.number().int().min(0).max(300_000),
+        }).strict().optional(),
+      }).strict()
+      const objectInput = z.object({
+        sourceImageKey: z.string().min(1).max(512),
+        maskImageKey: z.string().min(1).max(512),
+        prompt: z.string().max(800).optional(),
+        clientTimingMs: z.object({
+          prepare: z.number().int().min(0).max(300_000),
+          upload: z.number().int().min(0).max(300_000),
+        }).strict().optional(),
+      }).strict()
+      const input = z.union([objectInput, inlineInput]).parse(body)
+      const objectTransport = 'sourceImageKey' in input
+      const metrics: SyncRequestMetrics = {
+        route: 'erase', requestId, transport: objectTransport ? 'object' : 'inline',
+        inputBytes: 0, maskBytes: 0, stageMs: {},
+      }
+      if (input.clientTimingMs) {
+        metrics.stageMs.clientPrepare = input.clientTimingMs.prepare
+        metrics.stageMs.clientUpload = input.clientTimingMs.upload
+      }
+      const eraseLog = createDashScopeLog('erase')
+      const result = await withSyncLimit(user, 'generation', async () => {
+        let image: Buffer
+        let mask: Buffer
+        if (objectTransport) {
+          const readStarted = Date.now()
+          const [source, painted] = await Promise.all([
+            loadEraseStoredImage(user.id, input.sourceImageKey, 'source'),
+            loadEraseStoredImage(user.id, input.maskImageKey, 'mask'),
+          ])
+          metrics.stageMs.objectRead = Date.now() - readStarted
+          if (source.width !== painted.width || source.height !== painted.height) {
+            throw new HttpError(400, '蒙版尺寸与原图不一致', 'INVALID_MASK')
+          }
+          image = source.bytes
+          mask = painted.bytes
+        } else {
+          image = Buffer.from(input.dataBase64, 'base64')
+          mask = Buffer.from(input.maskBase64, 'base64')
+        }
+        metrics.inputBytes = image.length
+        metrics.maskBytes = mask.length
+        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+        if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
+        const processStarted = Date.now()
+        const jpeg = await eraseWithBailian(image, mask, input.prompt ?? '', {
+          requestId,
+          log: entry => {
+            eraseLog(entry)
+            if (typeof entry.stage === 'string' && typeof entry.ms === 'number' && Number.isFinite(entry.ms) && entry.stage !== 'poll') {
+              metrics.stageMs[entry.stage] = entry.ms
+            }
+            if (entry.stage === 'plan' && typeof entry.encodeMs === 'number') metrics.stageMs.plan = entry.encodeMs
+          },
+        })
+        metrics.stageMs.process = Date.now() - processStarted
+        metrics.outputBytes = jpeg.length
+        if (jpeg.length <= INLINE_ERASE_RESPONSE_BYTES) return { kind: 'inline' as const, jpeg }
+        const objectKey = `temporary/erase-results/${user.id}/${requestId}.jpg`
+        const writeStarted = Date.now()
+        await putObject(objectKey, jpeg, 'image/jpeg')
+        metrics.stageMs.objectWrite = Date.now() - writeStarted
+        return { kind: 'object' as const, objectKey, signed: await signRead(objectKey, 900), bytes: jpeg.length }
+      }, metrics)
+      if (result.kind === 'inline') {
+        res.setHeader('Content-Type', 'image/jpeg')
+        res.status(200).end(result.jpeg)
+      } else {
+        res.status(200).json({ objectKey: result.objectKey, mimeType: 'image/jpeg', bytes: result.bytes, ...result.signed })
+      }
       console.info(JSON.stringify({
         evt: 'erase', requestId, userId, status: 200, route: 'erase',
-        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
+        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start,
+        transport: metrics.transport, bytes: metrics.outputBytes, stageMs: metrics.stageMs,
       }))
       return
     }
@@ -205,6 +277,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (path[0] === 'objects' && path.length === 1 && method === 'GET') {
       const key = url.searchParams.get('key') ?? ''
+      if (url.searchParams.get('mode') === 'url') {
+        res.status(200).json(await signOwnedObjectRead(user, key))
+        return
+      }
       const downloaded = await loadOwnedObject(user, key)
       const filename = url.searchParams.get('filename')?.trim()
       res.setHeader('Content-Type', downloaded.contentType)

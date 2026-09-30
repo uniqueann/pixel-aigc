@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
 import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
 import { requestErase } from '@/services/api/erase'
+import { fetchOwnedObjectDirect } from '@/services/api/objects'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { requestRepaint } from '@/services/api/repaint'
 import { cloudEnabled } from '@/cloud/client'
@@ -357,8 +358,11 @@ export function useImageWorkstationController({
     setSubmissionError(undefined)
     setProtocolError(undefined)
     try {
-      const original = await blobFromAsset(sourceAsset, '读取原图失败')
-      const result = await requestErase(original, original.type || 'image/jpeg', maskDataUrl, prompt)
+      const sourceKey = imageObjectKey(sourceAsset)
+      const original = sourceKey
+        ? await fetchOwnedObjectDirect(sourceKey)
+        : await blobFromAsset(sourceAsset, '读取原图失败')
+      const result = await requestErase(sourceKey ? null : original, original.type || 'image/jpeg', maskDataUrl, prompt, sourceKey)
       const now = new Date().toISOString()
       const outputSize = { width: sourceAsset.width, height: sourceAsset.height }
       const completed: GenerationTask<InpaintTaskParams> = {

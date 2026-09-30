@@ -25,6 +25,24 @@ export async function getObject(key: string) {
   if (!result.Body) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
   return { bytes: await result.Body.transformToByteArray(), contentType: result.ContentType }
 }
+
+export async function getObjectLimited(key: string, maxBytes: number) {
+  const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }))
+  if (!result.Body) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
+  if (result.ContentLength !== undefined && result.ContentLength > maxBytes) {
+    if ('destroy' in result.Body && typeof result.Body.destroy === 'function') result.Body.destroy()
+    throw new HttpError(413, '图片大小不能超过 20 MB', 'IMAGE_TOO_LARGE')
+  }
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
+    const bytes = Buffer.from(chunk)
+    size += bytes.length
+    if (size > maxBytes) throw new HttpError(413, '图片大小不能超过 20 MB', 'IMAGE_TOO_LARGE')
+    chunks.push(bytes)
+  }
+  return { bytes: Buffer.concat(chunks, size), contentType: result.ContentType }
+}
 export async function verifyAndPromote(tempKey: string, key: string, expectedSize: number, mimeType: string) {
   const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: tempKey }))
   if (result.ContentLength !== expectedSize || expectedSize > 20 * 1024 * 1024 || !result.Body)
