@@ -80,6 +80,7 @@ function ControllerHarness({
   referenceAsset,
   useProductAsset,
   relight,
+  source = initialAsset,
   onController,
 }: {
   tool?: string
@@ -92,11 +93,12 @@ function ControllerHarness({
   referenceAsset?: typeof initialAsset
   useProductAsset?: boolean
   relight?: RelightOptions
+  source?: typeof initialAsset
   onController: (controller: Controller) => void
 }) {
   const controller = useImageWorkstationController({
     activeTool: getWorkstationTool(tool),
-    initialAsset,
+    initialAsset: source,
     prompt,
     count,
     resolution,
@@ -676,6 +678,50 @@ describe('useImageWorkstationController 集成流程', () => {
         resolution: '2k',
         sourceImageKey: 'temporary/task-inputs/user/source-1',
         relight: { direction: 'left', quality: 'soft', temperature: 'warm' },
+      }),
+    }))
+  })
+
+  it('链式编辑用结果 objectKey，不 fetch 签名 URL', async () => {
+    const resultAsset = createImageAsset({
+      id: 'asset:generated',
+      name: '上一轮结果',
+      url: 'https://r2.example/generated/u/job/0.png?X-Amz-Signature=secret',
+      objectKey: 'generated/u/job/0.png',
+      width: 640,
+      height: 480,
+      source: 'generation',
+    })
+    mocks.createTask.mockResolvedValue({
+      id: 'task-chain',
+      capability: Capability.Variation,
+      status: 'processing',
+      params: { count: 2, resolution: '2k' },
+      creditsCost: 1,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    })
+    await act(async () => root.render(
+      <ControllerHarness
+        key="chain"
+        tool="variation"
+        count={2}
+        resolution="2k"
+        source={resultAsset}
+        capabilityReady={(capability) => capability === Capability.Variation}
+        onController={captureController}
+      />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+    const fetchMock = vi.mocked(fetch)
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes('r2.example'))).toBe(false)
+    expect(mocks.uploadTaskInput).not.toHaveBeenCalled()
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      capability: Capability.Variation,
+      params: expect.objectContaining({
+        sourceImageKey: 'generated/u/job/0.png',
       }),
     }))
   })

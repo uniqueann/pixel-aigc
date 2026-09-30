@@ -57,6 +57,24 @@ function isInlineUrl(url?: string) {
   return !!url && (url.startsWith('data:') || url.startsWith('blob:'))
 }
 
+function imageObjectKey(asset: ImageAsset) {
+  return asset.objectKey ?? asset.storage?.objectKey
+}
+
+async function blobFromAsset(asset: ImageAsset, message: string) {
+  try {
+    return await blobFromImageSource(asset.url, imageObjectKey(asset))
+  } catch {
+    throw new Error(message)
+  }
+}
+
+async function taskInputKey(asset: ImageAsset, message: string) {
+  const existing = imageObjectKey(asset)
+  if (existing) return existing
+  return uploadTaskInput(await blobFromAsset(asset, message), asset.mimeType)
+}
+
 async function prepareImageEditRequest(
   request: WorkstationGenerationRequest,
   sourceAsset: ImageAsset,
@@ -65,18 +83,12 @@ async function prepareImageEditRequest(
   const uploadsSource = request.capability === Capability.ImageEdit || request.capability === Capability.Variation
   if (!uploadsSource || useMockGateway) return request
   const params = { ...(request.params as ImageEditTaskParams) }
-  if (!params.sourceImageKey) {
-    const response = await fetch(sourceAsset.url)
-    if (!response.ok) throw new Error('读取原图失败')
-    params.sourceImageKey = await uploadTaskInput(await response.blob(), sourceAsset.mimeType)
-  }
+  params.sourceImageKey ??= await taskInputKey(sourceAsset, '读取原图失败')
   params.sourceWidth = sourceAsset.width
   params.sourceHeight = sourceAsset.height
   if (isInlineUrl(params.sourceImageUrl)) delete params.sourceImageUrl
-  if (referenceAsset && !params.referenceImageKey) {
-    const response = await fetch(referenceAsset.url)
-    if (!response.ok) throw new Error('读取场景图失败')
-    params.referenceImageKey = await uploadTaskInput(await response.blob(), referenceAsset.mimeType)
+  if (referenceAsset) {
+    params.referenceImageKey ??= await taskInputKey(referenceAsset, '读取场景图失败')
   }
   if (isInlineUrl(params.referenceImageUrl)) delete params.referenceImageUrl
   return { ...request, params }
@@ -221,9 +233,7 @@ export function useImageWorkstationController({
     setSubmissionError(undefined)
     setProtocolError(undefined)
     try {
-      const response = await fetch(sourceAsset.url)
-      if (!response.ok) throw new Error('读取原图失败')
-      const original = await response.blob()
+      const original = await blobFromAsset(sourceAsset, '读取原图失败')
       const result = await requestRepaint(original, maskDataUrl, promptText)
       const now = new Date().toISOString()
       const completed: GenerationTask<InpaintTaskParams> = {
@@ -277,9 +287,7 @@ export function useImageWorkstationController({
     setProtocolError(undefined)
     try {
       const padding = paddingAround(sourceSize.width, sourceSize.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
-      const response = await fetch(sourceAsset.url)
-      if (!response.ok) throw new Error('读取原图失败')
-      const original = await response.blob()
+      const original = await blobFromAsset(sourceAsset, '读取原图失败')
       const needsScale = sourceSize.width !== sourceAsset.width || sourceSize.height !== sourceAsset.height
       const input = needsScale
         ? await renderScaledSource(new File([original], sourceAsset.name || 'source.jpg', { type: original.type || 'image/jpeg' }), sourceSize.width, sourceSize.height)
@@ -335,9 +343,7 @@ export function useImageWorkstationController({
     setSubmissionError(undefined)
     setProtocolError(undefined)
     try {
-      const response = await fetch(sourceAsset.url)
-      if (!response.ok) throw new Error('读取原图失败')
-      const original = await response.blob()
+      const original = await blobFromAsset(sourceAsset, '读取原图失败')
       const result = await requestErase(original, original.type || 'image/jpeg', maskDataUrl, prompt)
       const now = new Date().toISOString()
       const outputSize = { width: sourceAsset.width, height: sourceAsset.height }

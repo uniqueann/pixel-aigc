@@ -1,4 +1,5 @@
 import { authEnabled, supabase } from '@/cloud/client'
+import { blobFromImageSource } from '@/features/image-workstation/download'
 import { uploadImage } from '@/services/api/upload'
 import { createTask, getTask, liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
@@ -62,9 +63,7 @@ export async function requestMatte(image: BatchImage, shouldStop: () => boolean)
   if (current.status !== 'succeeded') throw new Error(current.errorMessage || '抠图失败')
   const url = current.resultUrls?.[0]
   if (!url) throw new Error('抠图没有返回图片')
-  const response = await fetch(url)
-  if (!response.ok) throw new Error('抠图结果下载失败')
-  const blob = await response.blob()
+  const blob = await blobFromImageSource(url, current.resultImages?.[0]?.objectKey)
   const size = await readSize(blob)
   if (size.width !== image.width || size.height !== image.height) throw new Error('抠图结果尺寸与原图不一致')
   return blob

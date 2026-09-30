@@ -1,6 +1,7 @@
-import { cloneElement, useState, type ImgHTMLAttributes, type ReactElement } from 'react'
+import { useState, type ImgHTMLAttributes, type ReactElement, type Ref } from 'react'
 import { DownloadOutlined, RetweetOutlined } from '@ant-design/icons'
 import { App, Button, Image, Spin } from 'antd'
+import { blobFromImageSource } from '@/features/image-workstation/download'
 import CompareViewer from './CompareViewer'
 import './preview.css'
 
@@ -9,6 +10,7 @@ export interface PreviewItem {
   thumbSrc: string
   fullSrc: string
   originalSrc?: string
+  objectKey?: string
   title?: string
   meta?: { tool?: string; resolution?: string; createdAt?: string }
 }
@@ -22,18 +24,50 @@ export interface PreviewGalleryProps {
   onDownload?: (item: PreviewItem) => Promise<void> | void
 }
 
-function PreviewImage({ image }: { image: ReactElement<ImgHTMLAttributes<HTMLImageElement>> }) {
+function PreviewImage({
+  image,
+  src,
+}: {
+  image: ReactElement<ImgHTMLAttributes<HTMLImageElement>>
+  src?: string
+}) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
-  return <>
-    {state !== 'ready' && <div className="preview-load-state">{state === 'loading' ? <Spin /> : <><span>图片加载失败</span><Button onClick={() => { setState('loading'); setAttempt(value => value + 1) }}>重试</Button></>}</div>}
-    {cloneElement(image, {
-      key: attempt,
-      onLoad: event => { image.props.onLoad?.(event); setState('ready') },
-      onError: event => { image.props.onError?.(event); setState('error') },
-      style: { ...image.props.style, visibility: state === 'ready' ? 'visible' : 'hidden' },
-    })}
-  </>
+  return (
+    <div
+      key={attempt}
+      className="preview-image-frame"
+      onLoadCapture={() => setState('ready')}
+      onErrorCapture={() => setState('error')}
+    >
+      {state !== 'ready' && (
+        <div className="preview-load-state">
+          {state === 'loading' ? <Spin /> : (
+            <>
+              <span>图片加载失败</span>
+              <Button onClick={() => { setState('loading'); setAttempt(value => value + 1) }}>重试</Button>
+            </>
+          )}
+        </div>
+      )}
+      <img
+        ref={(image as ReactElement<ImgHTMLAttributes<HTMLImageElement>> & { ref?: Ref<HTMLImageElement> }).ref}
+        alt={image.props.alt ?? '图片预览'}
+        className={image.props.className}
+        src={src ?? image.props.src}
+        onLoad={event => { image.props.onLoad?.(event); setState('ready') }}
+        onError={event => { image.props.onError?.(event); setState('error') }}
+        onWheel={image.props.onWheel}
+        onMouseDown={image.props.onMouseDown}
+        onDoubleClick={image.props.onDoubleClick}
+        onTouchStart={image.props.onTouchStart}
+        onTouchMove={image.props.onTouchMove}
+        onTouchEnd={image.props.onTouchEnd}
+        onTouchCancel={image.props.onTouchCancel}
+        style={{ ...image.props.style, visibility: state === 'ready' ? 'visible' : 'hidden' }}
+      />
+    </div>
+  )
 }
 
 export default function PreviewGallery({ items, open, current, onClose, onChange, onDownload }: PreviewGalleryProps) {
@@ -50,9 +84,8 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
     try {
       if (onDownload) await onDownload(item)
       else {
-        const response = await fetch(item.fullSrc)
-        if (!response.ok) throw new Error('下载失败')
-        const url = URL.createObjectURL(await response.blob())
+        const blob = await blobFromImageSource(item.fullSrc, item.objectKey)
+        const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
         link.download = item.title || '图片'
@@ -74,7 +107,9 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
         onVisibleChange: visible => { if (!visible && !comparing) onClose() },
         onChange: change,
         rootClassName: 'preview-gallery-overlay',
-        imageRender: image => <PreviewImage key={item?.fullSrc} image={image} />,
+        imageRender: (image, info) => (
+          <PreviewImage key={`${item?.id}:${item?.fullSrc}`} image={image} src={info.image?.url ?? item?.fullSrc} />
+        ),
         toolbarRender: (originalNode) => <>
           {originalNode}
           <Button className="preview-toolbar-action" type="text" icon={<DownloadOutlined />} aria-label="下载原始大图" onClick={() => void download()} />

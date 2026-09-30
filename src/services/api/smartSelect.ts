@@ -1,4 +1,5 @@
 import { authEnabled, cloudEnabled, supabase } from '@/cloud/client'
+import { blobFromImageSource } from '@/features/image-workstation/download'
 import type { NormBox, NormPoint, SegmentSession } from '@shared/smart-select'
 import { fitMattingWorkingSize } from '@shared/smart-select'
 
@@ -8,6 +9,7 @@ export const SMART_SELECT_RETRY_MESSAGE = '智能选区失败，请重试'
 
 export interface SmartSelectRequest {
   imageUrl: string
+  objectKey?: string
   naturalSize: { width: number; height: number }
   point: NormPoint
   box?: NormBox
@@ -67,10 +69,8 @@ function fileToBase64(blob: Blob) {
   })
 }
 
-async function displayedJpeg(imageUrl: string, width: number, height: number) {
-  const response = await fetch(imageUrl)
-  if (!response.ok) throw new Error('读取原图失败')
-  const blob = await response.blob()
+async function displayedJpeg(imageUrl: string, width: number, height: number, objectKey?: string) {
+  const blob = await blobFromImageSource(imageUrl, objectKey)
   const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' })
   const fitted = fitMattingWorkingSize(width, height)
   const canvas = document.createElement('canvas')
@@ -187,7 +187,7 @@ export async function requestSmartSelect(input: SmartSelectRequest): Promise<Sma
         if (!(error instanceof SmartSelectRequestError) || error.code !== 'SMART_SELECT_SESSION_INVALID') throw error
       }
     }
-    const jpeg = await displayedJpeg(input.imageUrl, input.naturalSize.width, input.naturalSize.height)
+    const jpeg = await displayedJpeg(input.imageUrl, input.naturalSize.width, input.naturalSize.height, input.objectKey)
     const result = await postSmartSelect({
       mimeType: 'image/jpeg',
       dataBase64: await fileToBase64(jpeg),
