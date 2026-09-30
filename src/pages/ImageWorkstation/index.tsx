@@ -224,7 +224,7 @@ export default function ImageWorkstation() {
   }, [message, replaceSourceAsset])
 
   const uploadRef = useRef(handleImageUpload)
-  uploadRef.current = handleImageUpload
+  useEffect(() => { uploadRef.current = handleImageUpload }, [handleImageUpload])
 
   useEffect(() => {
     let active = true
@@ -253,11 +253,12 @@ export default function ImageWorkstation() {
     const handoff = takeOutpaintHandoff()
     if (!handoff) return
     const preset = presetForHandoff(handoff.presetId)
-    if (preset) {
+    let active = true
+    queueMicrotask(() => {
+      if (!active || !preset) return
       setOutpaintMode('preset')
       setPresetPlatform(preset.platform)
-    }
-    let active = true
+    })
     void uploadRef.current(handoff.file).finally(() => {
       if (!active) setOutpaintHandoff(handoff)
     })
@@ -267,8 +268,9 @@ export default function ImageWorkstation() {
   useEffect(() => {
     if (activeTool.slug !== 'remove') {
       clearEdgeRefineHandoff()
-      setEdgeRefine(null)
-      return
+      let active = true
+      queueMicrotask(() => { if (active) setEdgeRefine(null) })
+      return () => { active = false }
     }
     const handoff = takeEdgeRefineHandoff()
     if (!handoff) return
@@ -281,10 +283,15 @@ export default function ImageWorkstation() {
       height: handoff.height,
       source: 'upload',
     })
-    setSourceAsset(asset)
-    replaceSourceAsset(asset)
-    setEdgeRefine(handoff)
+    queueMicrotask(() => {
+      if (!active) return
+      setSourceAsset(asset)
+      replaceSourceAsset(asset)
+      setEdgeRefine(handoff)
+    })
+    let active = true
     return () => {
+      active = false
       URL.revokeObjectURL(url)
       if (!edgeRefineFinishedRef.current) setEdgeRefineHandoff(handoff)
     }

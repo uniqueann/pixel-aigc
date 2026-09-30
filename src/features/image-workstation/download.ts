@@ -65,7 +65,7 @@ export async function downloadImageSource(source: Blob | string, filename: strin
   try {
     downloadBlob(await blobFromImageSource(source, objectKey), filename)
   } catch (error) {
-    throw new Error(downloadFailureMessage(error))
+    throw Object.assign(new Error(downloadFailureMessage(error)), { cause: error })
   }
 }
 

@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
+import { useUserStore } from '@/store/useUserStore'
 import { Capability, type GenerationTask, type InpaintTaskParams } from '@/types'
 import { RELIGHT_DEFAULT, type RelightOptions } from '@shared/relight'
 import { getWorkstationTool } from '../tools/registry'
@@ -34,6 +35,14 @@ vi.mock('@/services/api/upload', () => ({
 vi.mock('@/services/api/erase', () => ({
   requestErase: mocks.requestErase,
 }))
+vi.mock('@/features/assets/historyOwner', async () => {
+  const { useUserStore } = await import('@/store/useUserStore')
+  const currentOwner = () => useUserStore.getState().userId ?? 'anonymous'
+  return {
+    currentWorkstationHistoryOwner: currentOwner,
+    isCurrentWorkstationHistoryOwner: (ownerId: string) => currentOwner() === ownerId,
+  }
+})
 vi.mock('@/services/api/repaint', () => ({
   requestRepaint: mocks.requestRepaint,
 }))
@@ -118,6 +127,7 @@ describe('useImageWorkstationController 集成流程', () => {
   let root: Root
 
   beforeEach(async () => {
+    useUserStore.getState().setUser('11111111-1111-4111-8111-111111111111', 'free')
     mocks.createTask.mockReset()
     mocks.liveCapabilityReady.mockReset()
     mocks.liveCapabilityReady.mockReturnValue(true)
@@ -223,6 +233,32 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(mocks.createTask).toHaveBeenNthCalledWith(2, expect.objectContaining({
       params: expect.objectContaining({ sourceImageUrl: 'first-result.png' }),
     }))
+  })
+
+  it('提交后切换账号时丢弃旧账号的轮询结果', async () => {
+    const pending: GenerationTask = {
+      id: 'task-before-account-switch',
+      capability: Capability.ImageEdit,
+      status: 'processing',
+      params: { prompt: '白色背景', count: 1, resolution: '1k' },
+      creditsCost: 2,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValue(pending)
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白色背景" onController={captureController} />))
+    await act(async () => { await currentController.generate(null) })
+
+    useUserStore.getState().setUser('22222222-2222-4222-8222-222222222222', 'free')
+    mocks.polling.data = {
+      ...pending,
+      status: 'succeeded',
+      resultUrls: ['old-account-result.png'],
+      updatedAt: '2026-09-07T00:01:00.000Z',
+    }
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白色背景" onController={captureController} />))
+    expect(currentController.outputAssets).toEqual([])
+    expect(useEditorStore.getState().project?.assets['asset:task-before-account-switch:0']).toBeUndefined()
   })
 
   it('智能编辑无需画布句柄，并把全部结果暴露为可选候选', async () => {

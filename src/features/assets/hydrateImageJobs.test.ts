@@ -7,7 +7,10 @@ const mocks = vi.hoisted(() => ({
   blobFromImageSource: vi.fn(),
   listWorkstationHistory: vi.fn(),
   recordWorkstationHistory: vi.fn(),
+  isCurrentOwner: vi.fn(),
 }))
+
+const OWNER = '11111111-1111-4111-8111-111111111111'
 
 vi.mock('@/services/api/task', () => ({
   listTasks: mocks.listTasks,
@@ -20,6 +23,7 @@ vi.mock('./workstationHistory', () => ({
   listWorkstationHistory: mocks.listWorkstationHistory,
   recordWorkstationHistory: mocks.recordWorkstationHistory,
 }))
+vi.mock('./historyOwner', () => ({ isCurrentWorkstationHistoryOwner: mocks.isCurrentOwner }))
 
 import { historyRecordsFromImageTask, hydrateWorkstationHistoryFromImageJobs } from './hydrateImageJobs'
 
@@ -47,6 +51,8 @@ describe('从图片任务补记我的资产', () => {
     mocks.blobFromImageSource.mockReset()
     mocks.listWorkstationHistory.mockReset()
     mocks.recordWorkstationHistory.mockReset()
+    mocks.isCurrentOwner.mockReset()
+    mocks.isCurrentOwner.mockReturnValue(true)
     mocks.blobFromImageSource.mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
     mocks.listWorkstationHistory.mockResolvedValue([])
     mocks.recordWorkstationHistory.mockResolvedValue(undefined)
@@ -121,7 +127,7 @@ describe('从图片任务补记我的资产', () => {
         : [],
       total: capability === Capability.Variation ? 1 : 0,
     }))
-    await hydrateWorkstationHistoryFromImageJobs()
+    await hydrateWorkstationHistoryFromImageJobs(OWNER)
     expect(mocks.getTask).not.toHaveBeenCalled()
     expect(mocks.recordWorkstationHistory).not.toHaveBeenCalled()
   })
@@ -134,10 +140,19 @@ describe('从图片任务补记我的资产', () => {
       total: capability === Capability.Variation ? 1 : 0,
     }))
     mocks.getTask.mockResolvedValue(variationTask)
-    await hydrateWorkstationHistoryFromImageJobs()
-    expect(mocks.recordWorkstationHistory).toHaveBeenCalledWith(expect.objectContaining({
+    await hydrateWorkstationHistoryFromImageJobs(OWNER)
+    expect(mocks.recordWorkstationHistory).toHaveBeenCalledWith(OWNER, expect.objectContaining({
       id: `${variationTask.id}:0`,
       toolSlug: 'variation',
     }))
+  })
+
+  it('拉取中切换账号时停止补记', async () => {
+    mocks.listTasks.mockImplementation(async () => {
+      mocks.isCurrentOwner.mockReturnValue(false)
+      return { items: [{ id: variationTask.id, status: 'succeeded' }], total: 1 }
+    })
+    await expect(hydrateWorkstationHistoryFromImageJobs(OWNER)).rejects.toThrow('账号已切换')
+    expect(mocks.recordWorkstationHistory).not.toHaveBeenCalled()
   })
 })

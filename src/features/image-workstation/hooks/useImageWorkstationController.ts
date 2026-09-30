@@ -14,6 +14,7 @@ import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
 import { Capability, type GenerationTask, type ImageEditTaskParams, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
 import { recordWorkstationHistory } from '@/features/assets/workstationHistory'
+import { currentWorkstationHistoryOwner, isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { fusionHistoryText, readReferenceImageKey } from '@shared/fusion'
 import { readRelight, relightHistoryText, type RelightOptions } from '@shared/relight'
 import { readRetouchDirections, retouchHistoryText } from '@shared/retouch'
@@ -48,6 +49,7 @@ interface ControllerOptions {
 interface SubmissionContext {
   request: WorkstationGenerationRequest
   options: TaskAdapterOptions & { inputAssetIds: AssetId[] }
+  ownerId: string
 }
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
@@ -148,7 +150,9 @@ export function useImageWorkstationController({
   const persistHistory = useCallback((
     completedTask: GenerationTask<unknown>,
     assets: ImageAsset[],
+    ownerId: string,
   ) => {
+    if (!isCurrentWorkstationHistoryOwner(ownerId)) return
     const retouchDirections = readRetouchDirections(completedTask.params)
     const referenceKey = readReferenceImageKey(completedTask.params)
     const relight = readRelight(completedTask.params)
@@ -176,7 +180,8 @@ export function useImageWorkstationController({
     void Promise.all(assets.map(async (asset, index) => {
       const objectKey = asset.objectKey ?? completedTask.resultImages?.[index]?.objectKey
       const result = await blobFromImageSource(asset.url, objectKey)
-      await recordWorkstationHistory({
+      if (!isCurrentWorkstationHistoryOwner(ownerId)) return
+      await recordWorkstationHistory(ownerId, {
         id: `${completedTask.id}:${index}`,
         toolSlug,
         capability: completedTask.capability,
@@ -194,8 +199,10 @@ export function useImageWorkstationController({
   const applyCompletedTask = useCallback((
     completedTask: GenerationTask<unknown>,
     assets: ImageAsset[],
+    ownerId: string,
   ) => {
     if (completedTask.status !== 'succeeded') return
+    if (!isCurrentWorkstationHistoryOwner(ownerId)) return
     const finalized = finalizeWorkstationResults(completedTask, assets)
     if (finalized.error) {
       setProtocolError(finalized.error)
@@ -204,12 +211,13 @@ export function useImageWorkstationController({
     setOutputAssetIds(finalized.assets.map((asset) => asset.id))
     setInputAssetId(finalized.assets[0].id)
     setProtocolError(undefined)
-    persistHistory(completedTask, finalized.assets)
+    persistHistory(completedTask, finalized.assets, ownerId)
   }, [persistHistory])
 
   const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
     const context = submissionsRef.current.get(nextTask.id)
     if (!context) return
+    if (!isCurrentWorkstationHistoryOwner(context.ownerId)) return
     const version = `${nextTask.id}:${nextTask.status}:${nextTask.updatedAt}`
     if (handledTaskVersionsRef.current.has(version)) return
     handledTaskVersionsRef.current.add(version)
@@ -218,6 +226,7 @@ export function useImageWorkstationController({
     applyCompletedTask(
       nextTask,
       adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'),
+      context.ownerId,
     )
   }, [applyCompletedTask, service])
 
@@ -229,6 +238,7 @@ export function useImageWorkstationController({
     maskDataUrl: string,
     parentGenerationId: GenerationId | undefined,
   ) => {
+    const ownerId = currentWorkstationHistoryOwner()
     setSubmitting(true)
     setSubmissionError(undefined)
     setProtocolError(undefined)
@@ -255,6 +265,7 @@ export function useImageWorkstationController({
       submissionsRef.current.set(completed.id, {
         request: { capability: Capability.Inpaint, params: completed.params, outputSize },
         options,
+        ownerId,
       })
       setTask(completed)
       upsertTask(completed)
@@ -264,7 +275,7 @@ export function useImageWorkstationController({
         return completed
       }
       const adapted = service.reconcile(completed, options)
-      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
+      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), ownerId)
       return completed
     } catch (error) {
       const message = error instanceof Error ? error.message : '重绘失败'
@@ -282,6 +293,7 @@ export function useImageWorkstationController({
     sourceSize: { width: number; height: number },
     parentGenerationId: GenerationId | undefined,
   ) => {
+    const ownerId = currentWorkstationHistoryOwner()
     setSubmitting(true)
     setSubmissionError(undefined)
     setProtocolError(undefined)
@@ -313,6 +325,7 @@ export function useImageWorkstationController({
       submissionsRef.current.set(completed.id, {
         request: { capability: Capability.Outpaint, params: completed.params, outputSize: targetSize },
         options,
+        ownerId,
       })
       setTask(completed)
       upsertTask(completed)
@@ -322,7 +335,7 @@ export function useImageWorkstationController({
         return completed
       }
       const adapted = service.reconcile(completed, options)
-      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
+      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), ownerId)
       return completed
     } catch (error) {
       const message = error instanceof Error ? error.message : '扩图失败'
@@ -339,6 +352,7 @@ export function useImageWorkstationController({
     prompt: string,
     parentGenerationId: GenerationId | undefined,
   ) => {
+    const ownerId = currentWorkstationHistoryOwner()
     setSubmitting(true)
     setSubmissionError(undefined)
     setProtocolError(undefined)
@@ -370,6 +384,7 @@ export function useImageWorkstationController({
       submissionsRef.current.set(completed.id, {
         request: { capability: Capability.Inpaint, params: completed.params, outputSize },
         options,
+        ownerId,
       })
       setTask(completed)
       upsertTask(completed)
@@ -379,7 +394,7 @@ export function useImageWorkstationController({
         return completed
       }
       const adapted = service.reconcile(completed, options)
-      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
+      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), ownerId)
       return completed
     } catch (error) {
       const message = error instanceof Error ? error.message : '消除失败'
@@ -395,6 +410,7 @@ export function useImageWorkstationController({
     sourceAsset: ImageAsset,
     parentGenerationId: GenerationId | undefined,
   ) => {
+    const ownerId = currentWorkstationHistoryOwner()
     setSubmitting(true)
     setSubmissionError(undefined)
     setProtocolError(undefined)
@@ -411,13 +427,14 @@ export function useImageWorkstationController({
         params: prepared.params,
         modelProfileId: prepared.modelProfileId ?? modelProfileId,
       }, options)
-      submissionsRef.current.set(result.task.id, { request: prepared, options })
+      submissionsRef.current.set(result.task.id, { request: prepared, options, ownerId })
       setTask(result.task as GenerationTask<unknown>)
       upsertTask(result.task as GenerationTask<unknown>)
       setActiveTaskId(result.task.id)
       applyCompletedTask(
         result.task as GenerationTask<unknown>,
         result.assets.filter((asset): asset is ImageAsset => asset.type === 'image'),
+        ownerId,
       )
       return result.task
     } catch (error) {

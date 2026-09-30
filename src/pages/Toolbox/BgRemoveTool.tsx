@@ -76,20 +76,24 @@ export default function BgRemoveTool() {
 
   useEffect(() => {
     mountedRef.current = true
+    let active = true
     const saved = loadBgRemoveSession()
     if (saved) {
       restoredRef.current = true
       itemsRef.current = saved.items
-      setItems(saved.items)
       settingsRef.current = saved.settings
-      setSettings(saved.settings)
       selectedIdRef.current = saved.selectedId
-      setSelectedId(saved.selectedId)
+      queueMicrotask(() => {
+        if (!active) return
+        setItems(saved.items)
+        setSettings(saved.settings)
+        setSelectedId(saved.selectedId)
+      })
     }
     const refined = applyEdgeRefineResult(itemsRef.current, takeEdgeRefineResult())
     if (refined !== itemsRef.current) {
       itemsRef.current = refined
-      setItems(refined)
+      queueMicrotask(() => { if (active) setItems(refined) })
       void recompositeBatch(
         refined,
         (_image, matte) => compositeMatte(matte, settingsRef.current.background),
@@ -99,6 +103,7 @@ export default function BgRemoveTool() {
       })
     }
     return () => {
+      active = false
       mountedRef.current = false
       cancelledRef.current = true
       saveBgRemoveSession({ items: itemsRef.current, settings: settingsRef.current, selectedId: selectedIdRef.current })
@@ -133,8 +138,8 @@ export default function BgRemoveTool() {
   useEffect(() => {
     let cancelled = false
     if (!selected?.matte || processing) {
-      if (!selected?.matte) replacePreview(null)
-      return
+      if (!selected?.matte) queueMicrotask(() => { if (!cancelled) replacePreview(null) })
+      return () => { cancelled = true }
     }
     const timer = window.setTimeout(() => {
       void compositeMatte(selected.matte!, settings.background, PREVIEW_MAX_DIMENSION).then(result => {
