@@ -16,8 +16,8 @@ export const SYNTHESIS_PATH = '/api/v1/services/aigc/image2image/image-synthesis
 
 const dashScopeDispatcher = new Agent({
   connectTimeout: CONNECT_TIMEOUT_MS,
-  headersTimeout: 20_000,
-  bodyTimeout: 30_000,
+  headersTimeout: 40_000,
+  bodyTimeout: 40_000,
 })
 
 export interface BailianConfig {
@@ -257,6 +257,7 @@ export interface DashScopeImageTaskOptions {
   log: DashScopeLog
   pass: number
   extraSubmitLog?: Record<string, unknown>
+  submitTimeoutMs?: number
   kind: string
   errorCode: string
   timeoutCode: string
@@ -277,7 +278,7 @@ export async function submitDashScopeImageTask(options: DashScopeImageTaskOption
     method: 'POST',
     headers,
     body: JSON.stringify(options.body),
-  }, 'submit', SUBMIT_ATTEMPTS, 20_000, options.sleep, options.log, {
+  }, 'submit', SUBMIT_ATTEMPTS, options.submitTimeoutMs ?? 20_000, options.sleep, options.log, {
     requestId: options.requestId, pass: options.pass, host: dashScopeHost(options.config.baseUrl), now: options.now,
     ...options.extraSubmitLog,
   }, options.connectMessage, options.errorCode)

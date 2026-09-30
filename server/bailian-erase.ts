@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { HttpError } from './errors.js'
+import { putObject, signRead } from './storage.js'
 import {
   MASK_DILATE_RADIUS,
   MASK_WHITE_THRESHOLD,
@@ -12,7 +14,6 @@ import {
   trimErasePrompt,
 } from '../shared/erase.js'
 import {
-  DEFAULT_DEADLINE_MS,
   bailianConfig,
   createDashScopeLog,
   dashScopeHost,
@@ -26,9 +27,32 @@ import {
 export const ERASE_WAIT_TIMEOUT_MESSAGE = '消除超时：任务仍在阿里云处理中，请稍后重试'
 export const ERASE_CONNECT_MESSAGE = '无法连接到阿里云百炼消除服务，请稍后重试'
 export const ERASE_MASK_DATA_URL_PREFIX = 'data:image/png;base64,'
+export const ERASE_PROVIDER_URL_THRESHOLD_BYTES = 1_000_000
+export const ERASE_PROVIDER_URL_EXPIRES_SECONDS = 3_600
+export const ERASE_SUBMIT_TIMEOUT_MS = 35_000
+export const ERASE_DEADLINE_MS = 100_000
 
 export function eraseMaskDataUrl(png: Buffer) {
   return `${ERASE_MASK_DATA_URL_PREFIX}${png.toString('base64')}`
+}
+
+export function shouldUseEraseProviderUrls(imageBytes: number, maskBytes: number, mode?: string) {
+  return mode === 'url' || (mode !== 'inline' && imageBytes + maskBytes >= ERASE_PROVIDER_URL_THRESHOLD_BYTES)
+}
+
+async function stageEraseProviderInputs(image: Buffer, mask: Buffer, requestId: string) {
+  const prefix = `temporary/dashscope-inputs/erase/${requestId}`
+  const imageKey = `${prefix}/source.jpg`
+  const maskKey = `${prefix}/mask.png`
+  await Promise.all([
+    putObject(imageKey, image, 'image/jpeg'),
+    putObject(maskKey, mask, 'image/png'),
+  ])
+  const [source, painted] = await Promise.all([
+    signRead(imageKey, ERASE_PROVIDER_URL_EXPIRES_SECONDS),
+    signRead(maskKey, ERASE_PROVIDER_URL_EXPIRES_SECONDS),
+  ])
+  return { baseImageUrl: source.url, maskImageUrl: painted.url }
 }
 
 export type EraseLog = DashScopeLog
@@ -130,6 +154,8 @@ export async function eraseWithBailian(image: Buffer, mask: Buffer, prompt: stri
   const encoded = await encodeJpegForDashScope(image, fitted.width, fitted.height, '图片压缩后仍超过消除服务的 10 MB 限制')
   const prepared = await prepareEraseMask(mask, fitted.width, fitted.height, deps.dilateRadius ?? MASK_DILATE_RADIUS)
   const normalizedPrompt = normalizeErasePrompt(prompt)
+  const inputTransport = shouldUseEraseProviderUrls(encoded.length, prepared.png.length, (deps.env ?? process.env).DASHSCOPE_ERASE_INPUT_MODE)
+    ? 'url' : 'inline'
   log({
     requestId: deps.requestId, stage: 'plan',
     sourceWidth: size.width, sourceHeight: size.height,
@@ -139,9 +165,23 @@ export async function eraseWithBailian(image: Buffer, mask: Buffer, prompt: stri
     promptChars: normalizedPrompt.length,
     promptDefaulted: !trimErasePrompt(prompt),
     encodeMs: now() - encodeStarted, encodeBytes: encoded.length, reusedJpeg: encoded === image,
+    inputTransport,
     host: dashScopeHost(config.baseUrl),
   })
-  const deadline = now() + (deps.deadlineMs ?? DEFAULT_DEADLINE_MS)
+  let baseImageUrl: string
+  let maskImageUrl: string
+  if (inputTransport === 'url') {
+    const uploadStarted = now()
+    const staged = await stageEraseProviderInputs(encoded, prepared.png, deps.requestId ?? randomUUID())
+    baseImageUrl = staged.baseImageUrl
+    maskImageUrl = staged.maskImageUrl
+    log({ requestId: deps.requestId, stage: 'providerInputUpload', ms: now() - uploadStarted,
+      bytes: encoded.length, maskBytes: prepared.png.length })
+  } else {
+    baseImageUrl = `data:image/jpeg;base64,${encoded.toString('base64')}`
+    maskImageUrl = eraseMaskDataUrl(prepared.png)
+  }
+  const deadline = now() + (deps.deadlineMs ?? ERASE_DEADLINE_MS)
   const modelImage = await submitDashScopeImageTask({
     config,
     body: {
@@ -149,8 +189,8 @@ export async function eraseWithBailian(image: Buffer, mask: Buffer, prompt: stri
       input: {
         function: 'description_edit_with_mask',
         prompt: normalizedPrompt,
-        base_image_url: `data:image/jpeg;base64,${encoded.toString('base64')}`,
-        mask_image_url: eraseMaskDataUrl(prepared.png),
+        base_image_url: baseImageUrl,
+        mask_image_url: maskImageUrl,
       },
       parameters: {
         n: 1,
@@ -166,6 +206,7 @@ export async function eraseWithBailian(image: Buffer, mask: Buffer, prompt: stri
     log,
     pass: 1,
     extraSubmitLog: { bytes: encoded.length, maskBytes: prepared.png.length },
+    submitTimeoutMs: inputTransport === 'url' ? ERASE_SUBMIT_TIMEOUT_MS : undefined,
     kind: '消除',
     errorCode: 'ERASE_FAILED',
     timeoutCode: 'ERASE_TIMEOUT',
