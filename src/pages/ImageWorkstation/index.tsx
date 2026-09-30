@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { DownloadOutlined } from '@ant-design/icons'
 import { App, Button, Tooltip } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
+import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import ToolSwitcher from '@/components/ToolSwitcher'
+import { usePreviewGallery } from '@/components/usePreviewGallery'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { createImageAsset } from '@/editor/services/assetService'
 import type { ImageAsset } from '@/editor/types'
@@ -134,6 +136,14 @@ export default function ImageWorkstation() {
   }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
   const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
     ?? controller.outputAssets[0]
+  const previewItems: PreviewItem[] = controller.outputAssets.map(asset => ({
+    id: asset.id,
+    thumbSrc: asset.url,
+    fullSrc: asset.url,
+    title: asset.name,
+    meta: { tool: activeTool.label, resolution: `${asset.width}×${asset.height}` },
+  }))
+  const { openAt, galleryProps } = usePreviewGallery(previewItems)
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
   const generateBlockReason = workstationGenerateBlockReason({
     toolReady,
@@ -367,6 +377,7 @@ export default function ImageWorkstation() {
             onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
             onReady={handleCanvasReady}
             onMaskChange={setHasMaskPaint}
+            onPreview={selectedResult ? () => openAt(selectedResult.id) : undefined}
           />
           <ImageAssetStrip
             assets={controller.outputAssets}
@@ -377,7 +388,12 @@ export default function ImageWorkstation() {
               setCompareMode('effect')
             }}
             onDownload={(asset, index) => void handleDownload(asset, index)}
+            onPreview={openAt}
           />
+          <PreviewGallery {...galleryProps} onDownload={item => {
+            const index = controller.outputAssets.findIndex(asset => asset.id === item.id)
+            if (index >= 0) return handleDownload(controller.outputAssets[index], index)
+          }} />
         </div>
         <aside className="image-workstation-settings">
           {toolReady ? (
