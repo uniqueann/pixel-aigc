@@ -1,6 +1,8 @@
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { Button, Input, Radio } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
+import PreviewResultStrip from '@/components/PreviewResultStrip'
+import { downloadImageSource, extensionForMime } from '@/features/image-workstation/download'
 import type { ImageAsset } from '@/editor/types'
 import type { GenerationTask } from '@/types'
 import type { CanvasGenerationTaskParams } from './requestBuilder'
@@ -71,6 +73,8 @@ export default function DerivedGenerationPanel({
         : imageToVideo
           ? `本次生成 1 段 ${durationSeconds} 秒视频`
           : `本次生成 ${count} 张裂变图片`
+  const resultUrls = task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
+  const previewItems = resultUrls.map((url, index) => ({ id: `${task?.id}:${index}`, thumbSrc: url, fullSrc: url, title: `裂变结果 ${index + 1}` }))
 
   return (
     <aside className="free-canvas-generation-panel free-canvas-derived-panel">
@@ -162,6 +166,11 @@ export default function DerivedGenerationPanel({
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
       />
+      {task?.status === 'succeeded' && !imageToVideo && <PreviewResultStrip items={previewItems} onDownload={item => {
+        const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
+        const image = task.resultImages?.[index]
+        return downloadImageSource(item.fullSrc, `裂变结果_${index + 1}.${extensionForMime(image?.mimeType)}`, image?.objectKey)
+      }} />}
 
       <p className="free-canvas-panel-hint">结果会放在源图右侧；生成后仍可继续作为新的派生起点。</p>
     </aside>

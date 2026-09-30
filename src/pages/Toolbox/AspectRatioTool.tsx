@@ -8,6 +8,8 @@ import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 import BatchImageQueue from './BatchImageQueue'
+import PreviewGallery from '@/components/PreviewGallery'
+import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import { invalidateBatch, processBatch } from './aspect-ratio/batch'
 import { createAspectRatioZip, downloadBlob, namesForImages } from './aspect-ratio/download'
 import { fitScale } from './aspect-ratio/geometry'
@@ -51,6 +53,7 @@ export default function AspectRatioTool() {
   const navigate = useNavigate()
   const scope = useUserStore(state => state.userId ?? 'local')
   const [items, setItems] = useState<BatchImage[]>([])
+  const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [settings, setSettings] = useState<AspectRatioSettings>(DEFAULT_ASPECT_RATIO_SETTINGS)
@@ -361,7 +364,7 @@ export default function AspectRatioTool() {
             {currentPreview?.loading && <span>正在更新预览…</span>}
           </div>
           <div className="toolbox-preview-stage">
-            {selected ? <img src={currentPreview?.url ?? selected.sourceUrl} alt={`${selected.file.name} 的转比例预览`} /> : <p>先添加图片，再选择平台和适配方式</p>}
+            {selected ? <img src={currentPreview?.url ?? selected.sourceUrl} alt={`${selected.file.name} 的转比例预览`} onClick={selected.output ? () => openAt(selected.id) : undefined} style={{ cursor: selected.output ? 'zoom-in' : undefined }} /> : <p>先添加图片，再选择平台和适配方式</p>}
           </div>
           {currentPreview?.error && <div className="toolbox-preview-error">预览失败：{currentPreview.error}</div>}
           <p className="toolbox-hint">预览最长边不超过 {PREVIEW_MAX_DIMENSION}px；导出为 {preset.width} × {preset.height}。图片在本机处理。</p>
@@ -472,8 +475,10 @@ export default function AspectRatioTool() {
         onClear={clearFiles}
         onRetry={id => { void processImages([id]) }}
         onDownload={downloadOne}
+        onPreviewResult={openAt}
         onRefine={settings.strategy === 'outpaint' ? refineFailed : undefined}
       />
+      <PreviewGallery {...galleryProps} />
 
       <div className="toolbox-watermark-footer">
         {settings.strategy === 'crop' && gridFallbacks.length > 0 && <p className="toolbox-hint toolbox-warning toolbox-crop-warning">{gridFallbacks.length} 张没有按商品裁剪，用的是当前九宫格。下载前请把焦点改到商品所在位置，再重新处理。</p>}
