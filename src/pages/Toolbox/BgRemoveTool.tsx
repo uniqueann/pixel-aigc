@@ -6,6 +6,8 @@ import { loadBgRemoveConfigured } from '@/services/api/capabilities'
 import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
+import PreviewGallery from '@/components/PreviewGallery'
+import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import BatchImageQueue from './BatchImageQueue'
 import { processRemovalBatch, recompositeBatch } from './bg-remove/batch'
 import { requestMatte } from './bg-remove/client'
@@ -26,6 +28,7 @@ export default function BgRemoveTool() {
   const { message } = App.useApp()
   const scope = useUserStore(state => state.userId ?? 'local')
   const [items, setItems] = useState<BatchImage[]>([])
+  const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -286,7 +289,7 @@ export default function BgRemoveTool() {
             <div><strong>抠图预览</strong><span>{selected ? `${selected.width} × ${selected.height}` : '等待图片'}</span></div>
           </div>
           <div className="toolbox-preview-stage">
-            {selected ? <img src={previewUrl ?? selected.sourceUrl} alt={`${selected.file.name} 的抠图预览`} /> : <p>先添加图片，再选择背景</p>}
+            {selected ? <img src={previewUrl ?? selected.sourceUrl} alt={`${selected.file.name} 的抠图预览`} onClick={selected.output ? () => openAt(selected.id) : undefined} style={{ cursor: selected.output ? 'zoom-in' : undefined }} /> : <p>先添加图片，再选择背景</p>}
           </div>
           <p className="toolbox-hint">有抠图结果后，预览最长边不超过 {PREVIEW_MAX_DIMENSION}px。换背景只在本机重新合成。</p>
         </section>
@@ -320,8 +323,10 @@ export default function BgRemoveTool() {
         onClear={clearFiles}
         onRetry={id => { void processImages([id]) }}
         onDownload={downloadOne}
+        onPreviewResult={openAt}
         onRefine={refineEdge}
       />
+      <PreviewGallery {...galleryProps} />
       <div className="toolbox-watermark-footer">
         <div className="toolbox-progress">
           <span>{completed.length} / {items.length} 张已完成</span>

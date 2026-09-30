@@ -29,3 +29,27 @@
 .toolbox-queue-card:hover .preview-zoom-button,
 .toolbox-queue-card:focus-within .preview-zoom-button { opacity: 1; }
 @media (hover: none) { .preview-zoom-button { opacity: 1; } }
+.assets-cover { position: relative; }
+.preview-result-strip { display: flex; gap: 8px; overflow-x: auto; }
+.preview-result-tile { position: relative; flex: 0 0 58px; height: 58px; }
+.preview-result-tile img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+.preview-result-tile:hover .preview-zoom-button,
+.preview-result-tile:focus-within .preview-zoom-button { opacity: 1; }
+.compare-modal { width: 100vw !important; max-width: 100vw !important; margin: 0; padding: 0; }
+.compare-modal .ant-modal-content { min-height: 100dvh; padding: 16px; border-radius: 0; background: #17171a; color: #fff; }
+.compare-modal .ant-modal-title { background: #17171a; color: #fff; }
+.compare-modal .ant-modal-close { color: #fff; }
+.compare-controls, .compare-navigation { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px; color: #fff; }
+.compare-controls { flex-wrap: wrap; }
+.compare-stage { position: relative; height: calc(100dvh - 150px); min-height: 300px; overflow: hidden; background: #17171a; touch-action: none; user-select: none; cursor: grab; }
+.compare-stage:active { cursor: grabbing; }
+.compare-layer { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
+.compare-layer img { width: 100%; height: 100%; object-fit: contain; will-change: transform; pointer-events: none; }
+.compare-original-layer { z-index: 1; }
+.compare-image-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: #fff; }
+.compare-divider { position: absolute; z-index: 2; top: 0; bottom: 0; width: 2px; background: #21cfa0; cursor: ew-resize; }
+.compare-divider span { position: absolute; top: 50%; left: 50%; display: grid; width: 38px; height: 38px; place-items: center; transform: translate(-50%, -50%); border-radius: 50%; background: #21cfa0; color: #17171a; }
+.compare-label { position: absolute; z-index: 3; top: 12px; padding: 4px 8px; border-radius: 4px; background: #000a; color: #fff; pointer-events: none; }
+.compare-label-left { left: 12px; }
+.compare-label-right { right: 12px; }
+@media (max-width: 600px) { .compare-modal .ant-modal-content { padding: 10px; } .compare-stage { height: calc(100dvh - 190px); } }
