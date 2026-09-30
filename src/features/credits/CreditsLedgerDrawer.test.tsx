@@ -31,9 +31,9 @@ describe('积分明细抽屉', () => {
       balance: 97,
       nextCursor: 'c1',
       items: [{
-        id: '1', createdAt: '2026-09-29T08:00:00.000Z', kind: 'settle', label: '结算退回',
-        title: '精修 1K×1', summary: '精修 1K×1 实扣 2', delta: 1, deltaText: '+1',
-        balanceAfter: 97, charged: 2, reason: null,
+        id: '1', createdAt: '2026-09-29T08:00:00.000Z', kind: 'settle', label: '精修 1K×1',
+        title: '精修 1K×1', summary: '实扣 2', delta: -2, deltaText: '-2',
+        balanceAfter: 98, charged: 2, reason: null,
       }],
     }).mockResolvedValueOnce({
       balance: 97,
@@ -45,9 +45,10 @@ describe('积分明细抽屉', () => {
       }],
     })
     render(<CreditsLedgerDrawer open onClose={() => undefined} />)
-    expect(await screen.findByText('精修 1K×1 实扣 2')).toBeTruthy()
-    expect(screen.getByText('+1')).toBeTruthy()
-    expect(screen.getByText('余额 97')).toBeTruthy()
+    expect(await screen.findByText('精修 1K×1')).toBeTruthy()
+    expect(screen.getByText('实扣 2')).toBeTruthy()
+    expect(screen.getByText('-2')).toBeTruthy()
+    expect(screen.getByText('余额 98')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }))
     expect(await screen.findByText('首次赠送')).toBeTruthy()
     expect(listCreditLedger).toHaveBeenNthCalledWith(2, 'c1')

@@ -104,6 +104,10 @@ export function createMemoryStore(userId: string, scope = 'local'): ImageJobStor
       return next
     },
     async hourlyCount() { return jobs.size },
+    async hourlyOldest() {
+      const times = [...jobs.values()].map(job => new Date(job.created_at).getTime()).filter(value => !Number.isNaN(value))
+      return times.length ? new Date(Math.min(...times)) : undefined
+    },
     async userActiveCount() {
       return [...jobs.values()].filter(job => job.status === 'queued' || job.status === 'processing').length
     },

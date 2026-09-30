@@ -198,8 +198,15 @@ describe('API 认证、版本和写入边界', () => {
       const query = parts.join('?')
       if (query.includes('select status')) return [{ status: 'active' }]
       if (query.includes('ensure_credit_account')) return [{ balance: 100 }]
+      if (query.includes('newest_id')) return [{
+        group_id: '00000000-0000-4000-8000-000000000301',
+        is_job: false,
+        newest_at: '2026-09-29T00:00:00.000Z',
+        newest_id: '00000000-0000-4000-8000-000000000301',
+      }]
       if (query.includes('from aigc.credit_ledger')) return [{
         id: '00000000-0000-4000-8000-000000000301',
+        job_id: null,
         kind: 'grant',
         delta: 100,
         balance_after: 100,
@@ -227,5 +234,21 @@ describe('API 认证、版本和写入边界', () => {
         reason: '首次赠送',
       })],
     })
+  })
+
+  it('429 限流响应带上 Retry-After 和剩余秒数', async () => {
+    mocks.sql.mockImplementation(async () => {
+      throw new HttpError(429, '该类图片操作已达到每小时使用上限，约 8 分钟后可再试', 'RATE_LIMIT', {
+        extra: { retryAfterSeconds: 480 },
+      })
+    })
+    const res = await request(undefined, 'GET', '/api/me')
+    expect(res.status).toHaveBeenCalledWith(429)
+    expect(res.setHeader).toHaveBeenCalledWith('Retry-After', '480')
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      error: '该类图片操作已达到每小时使用上限，约 8 分钟后可再试',
+      code: 'RATE_LIMIT',
+      retryAfterSeconds: 480,
+    }))
   })
 })

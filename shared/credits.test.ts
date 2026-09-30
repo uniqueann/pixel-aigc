@@ -5,6 +5,7 @@ import {
   creditKindLabel,
   formatCreditDelta,
   insufficientCreditsMessage,
+  mergeCreditJobEntries,
 } from './credits'
 
 describe('积分明细文案', () => {
@@ -46,5 +47,56 @@ describe('积分明细文案', () => {
     expect(formatCreditDelta(5)).toBe('+5')
     expect(formatCreditDelta(-3)).toBe('-3')
     expect(formatCreditDelta(0)).toBe('0')
+  })
+
+  it('同一任务的预扣和结算收成一行', () => {
+    const settled = mergeCreditJobEntries([
+      {
+        id: 'r', kind: 'reserve', delta: -2, balanceAfter: 98, charged: null,
+        createdAt: '2026-09-29T08:00:00.000Z', title: '精修 1K×1', reason: null,
+      },
+      {
+        id: 's', kind: 'settle', delta: 0, balanceAfter: 98, charged: 2,
+        createdAt: '2026-09-29T08:01:00.000Z', title: '精修 1K×1', reason: null,
+      },
+    ])
+    expect(settled).toMatchObject({
+      id: 's', label: '精修 1K×1', summary: '实扣 2', delta: -2, deltaText: '-2', balanceAfter: 98, charged: 2,
+    })
+    const partial = mergeCreditJobEntries([
+      {
+        id: 'r2', kind: 'reserve', delta: -6, balanceAfter: 94, charged: null,
+        createdAt: '2026-09-29T09:00:00.000Z', title: '精修 2K×2', reason: null,
+      },
+      {
+        id: 's2', kind: 'settle', delta: 3, balanceAfter: 97, charged: 3,
+        createdAt: '2026-09-29T09:02:00.000Z', title: '精修 2K×2', reason: null,
+      },
+    ])
+    expect(partial).toMatchObject({
+      summary: '实扣 3, 已退回 3', delta: -3, deltaText: '-3', balanceAfter: 97,
+    })
+    const refunded = mergeCreditJobEntries([
+      {
+        id: 'r3', kind: 'reserve', delta: -2, balanceAfter: 98, charged: null,
+        createdAt: '2026-09-29T10:00:00.000Z', title: '精修 1K×1', reason: null,
+      },
+      {
+        id: 'f3', kind: 'refund', delta: 2, balanceAfter: 100, charged: 0,
+        createdAt: '2026-09-29T10:03:00.000Z', title: '精修 1K×1', reason: null,
+      },
+    ])
+    expect(refunded).toMatchObject({
+      summary: '失败/超时已退款', delta: 0, deltaText: '0', balanceAfter: 100,
+    })
+    const pending = mergeCreditJobEntries([
+      {
+        id: 'r4', kind: 'reserve', delta: -2, balanceAfter: 98, charged: null,
+        createdAt: '2026-09-29T11:00:00.000Z', title: '精修 1K×1', reason: null,
+      },
+    ])
+    expect(pending).toMatchObject({
+      summary: '处理中 预扣', delta: -2, deltaText: '-2', balanceAfter: 98,
+    })
   })
 })

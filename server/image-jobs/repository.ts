@@ -110,6 +110,11 @@ export function createSqlStore(sql: Transaction, userId: string): ImageJobStore 
         where user_id=${userId} and scope=${scope} and created_at>now()-interval '1 hour'`
       return Number(row.used)
     },
+    async hourlyOldest() {
+      const [row] = await sql`select min(created_at) as oldest from aigc.image_jobs
+        where user_id=${userId} and scope=${scope} and created_at>now()-interval '1 hour'`
+      return row.oldest ? new Date(row.oldest as Date | string) : undefined
+    },
     async userActiveCount() {
       const [row] = await sql`select count(*)::integer as used from aigc.image_jobs
         where user_id=${userId} and scope=${scope} and status in ('queued','processing') and deadline_at>now()`

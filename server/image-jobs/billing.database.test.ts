@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { PGlite } from '@electric-sql/pglite'
 import type { Transaction } from '../db'
+import { listCreditLedger } from '../credits'
 import { acquireSyncRequest } from '../sync-limits'
 import { createSqlBilling, ensureCreditAccount } from './billing'
 
@@ -169,7 +170,12 @@ describe('积分账本与同步请求限流', () => {
       await acquireSyncRequest(sql, userId, 'production', 'generation', ids[0])
       await acquireSyncRequest(sql, userId, 'production', 'generation', ids[1])
       await expect(acquireSyncRequest(sql, userId, 'production', 'generation', ids[2]))
-        .rejects.toMatchObject({ status: 429, code: 'USER_CONCURRENCY' })
+        .rejects.toMatchObject({
+          status: 429,
+          code: 'USER_CONCURRENCY',
+          message: '该类图片操作正在处理中，请等待当前任务完成',
+          extra: { retryAfterSeconds: 5 },
+        })
     })
     await asUser(async sql => {
       await sql`update aigc.sync_requests set completed_at=now() where id=${ids[0]}`
@@ -185,7 +191,12 @@ describe('积分账本与同步请求限流', () => {
       await acquireSyncRequest(sql, userId, 'production', 'detection', last)
       await sql`update aigc.sync_requests set completed_at=now() where id=${last}`
       await expect(acquireSyncRequest(sql, userId, 'production', 'detection', randomUUID()))
-        .rejects.toMatchObject({ status: 429, code: 'RATE_LIMIT' })
+        .rejects.toMatchObject({
+          status: 429,
+          code: 'RATE_LIMIT',
+          message: expect.stringMatching(/约 \d+ 分钟后可再试/),
+          extra: { retryAfterSeconds: expect.any(Number) },
+        })
     })
   })
 
@@ -222,5 +233,51 @@ describe('积分账本与同步请求限流', () => {
       { kind: 'adjust', delta: 0 },
       { kind: 'adjust', delta: 100 },
     ])
+  })
+
+  it('积分明细把同一任务的预扣和结算收成一行', async () => {
+    const id = randomUUID()
+    const page = await asUser(async sql => {
+      const billing = createSqlBilling(sql)
+      await billing.reserve({
+        userId, jobId: id, amount: 2,
+        meta: { capability: 'image_edit', resolution: '1k', unitPrice: 2 },
+      })
+      await insertJob(sql, id, 2, 1)
+      await billing.settle({ jobId: id, charged: 2 })
+      return listCreditLedger(sql, null, 50)
+    })
+    const merged = page.items.find(item => item.summary === '实扣 2' && item.delta === -2)
+    expect(merged).toMatchObject({ label: '智能编辑 1K×1', deltaText: '-2' })
+    expect(page.items.filter(item => item.id === merged?.id)).toHaveLength(1)
+    expect(page.items.some(item => item.label === '提交预扣' && item.summary.includes('1K×1'))).toBe(false)
+  })
+
+  it('积分明细分页按任务成组，不会把同一 job 拆到两页', async () => {
+    const jobId = randomUUID()
+    await asUser(async sql => {
+      const billing = createSqlBilling(sql)
+      await billing.reserve({
+        userId, jobId, amount: 6,
+        meta: { capability: 'image_edit', resolution: '2k', unitPrice: 3 },
+      })
+      await insertJob(sql, jobId, 6, 2)
+      await billing.settle({ jobId, charged: 3 })
+    })
+    for (let i = 0; i < 19; i += 1) {
+      await db.query(
+        `insert into aigc.credit_ledger(user_id,scope,kind,delta,balance_after,idempotency_key,reason)
+         values($1,'production','grant',0,100,$2,$3)`,
+        [userId, `pad-key-${i}`, `pad-${i}`],
+      )
+    }
+    const page = await asUser(sql => listCreditLedger(sql, null, 20))
+    const jobRow = page.items.find(item => item.summary === '实扣 3, 已退回 3')
+    expect(jobRow).toMatchObject({ delta: -3, deltaText: '-3' })
+    expect(page.items.filter(item => item.summary.includes('预扣') && item.label.includes('2K'))).toHaveLength(0)
+    expect(page.nextCursor).toBeTruthy()
+    const next = await asUser(sql => listCreditLedger(sql, page.nextCursor, 20))
+    expect(next.items.some(item => item.id === jobRow?.id)).toBe(false)
+    expect(next.items.some(item => item.summary === '实扣 3, 已退回 3')).toBe(false)
   })
 })
