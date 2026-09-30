@@ -1,4 +1,5 @@
 import { computeOutpaintMask } from '@/pages/ImageWorkstation/utils/maskExport'
+import { blobFromImageSource } from '@/features/image-workstation/download'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { uploadDataUrl, uploadImage } from '@/services/api/upload'
 import { createTask, getTask, liveCapabilityReady } from '@/services/api/task'
@@ -63,9 +64,7 @@ async function expandViaTask(scaled: File, plan: ExpansionPlan, targetWidth: num
   if (current.status !== 'succeeded') throw new Error(current.errorMessage || '扩图失败')
   const url = current.resultUrls?.[0]
   if (!url) throw new Error('扩图没有返回图片')
-  const response = await fetch(url)
-  if (!response.ok) throw new Error('扩图结果下载失败')
-  const blob = await response.blob()
+  const blob = await blobFromImageSource(url, current.resultImages?.[0]?.objectKey)
   const size = await readSize(blob)
   return { blob, mimeType: blob.type || 'image/jpeg', width: size.width, height: size.height }
 }

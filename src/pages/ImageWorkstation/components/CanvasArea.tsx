@@ -16,6 +16,7 @@ export type CanvasHandle = MaskPaintCanvasHandle | OutpaintCanvasHandle
 interface Props {
   interactionMode: InteractionMode
   imageUrl?: string
+  imageObjectKey?: string
   referenceImageUrl?: string
   originalImageUrl?: string
   imageNaturalSize: { width: number; height: number }
@@ -29,7 +30,7 @@ interface Props {
   onReferenceImageUpload?: (file: File) => void
   onReady: (handle: CanvasHandle | null) => void
   onMaskChange?: (hasPaint: boolean) => void
-  onPreview?: () => void
+  onPreview?: (view: 'original' | 'effect') => void
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -84,6 +85,7 @@ function FusionSlot({
 export default function CanvasArea({
   interactionMode,
   imageUrl,
+  imageObjectKey,
   referenceImageUrl,
   originalImageUrl,
   imageNaturalSize,
@@ -226,6 +228,7 @@ export default function CanvasArea({
           <MaskPaintCanvas
             ref={setMaskHandle}
             imageUrl={imageUrl}
+            imageObjectKey={imageObjectKey}
             imageNaturalSize={imageNaturalSize}
             brushSize={brushSize}
             tool={paintTool}
@@ -275,7 +278,7 @@ export default function CanvasArea({
         src={compareMode === 'original' ? originalImageUrl ?? imageUrl : imageUrl}
         alt={compareMode === 'original' ? '原始图片' : '当前编辑效果'}
         style={{ maxWidth: '72%', maxHeight: '72%', objectFit: 'contain', cursor: onPreview ? 'zoom-in' : undefined }}
-        onClick={onPreview}
+        onClick={onPreview ? () => onPreview(compareMode) : undefined}
       />
       <div className="workstation-canvas-footnote">
         {interactionMode === 'params-only' ? '选择候选结果后，可基于该结果继续编辑' : '当前工具将在后续迭代中开放'}

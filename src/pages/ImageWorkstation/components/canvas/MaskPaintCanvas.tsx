@@ -16,6 +16,7 @@ const SMART_SELECT_TOAST_KEY = 'workstation-smart-select'
 
 interface MaskPaintCanvasProps {
   imageUrl: string
+  imageObjectKey?: string
   imageNaturalSize?: { width: number; height: number }
   brushSize: number
   tool: PaintTool
@@ -47,10 +48,12 @@ function flushOverlayHasPaint(canvas: Canvas | null, fallback: HTMLCanvasElement
 }
 
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange, onMaskChange },
+  { imageUrl, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange, onMaskChange },
   ref,
 ) {
   const { hostRef, display } = useCanvasDisplay()
+  const objectKeyRef = useRef(imageObjectKey)
+  objectKeyRef.current = imageObjectKey
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
   const fabricCanvasRef = useRef<Canvas | null>(null)
   const historyRef = useRef<string[]>([])
@@ -297,6 +300,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         const cached = sessionRef.current?.imageUrl === imageUrl ? sessionRef.current.session : null
         const result = await requestSmartSelect({
           imageUrl,
+          objectKey: objectKeyRef.current,
           naturalSize: natural,
           point,
           session: cached,

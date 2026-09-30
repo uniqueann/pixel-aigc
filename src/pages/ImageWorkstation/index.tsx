@@ -138,7 +138,7 @@ export default function ImageWorkstation() {
   }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
   const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
     ?? controller.outputAssets[0]
-  const previewItems: PreviewItem[] = controller.outputAssets.map(asset => {
+  const resultPreviewItems: PreviewItem[] = controller.outputAssets.map(asset => {
     const generation = Object.values(project?.generations ?? {}).find(job => job.outputAssetIds.includes(asset.id))
     const source = generation?.inputAssetIds[0] ? project?.assets[generation.inputAssetIds[0]] : undefined
     return {
@@ -146,10 +146,21 @@ export default function ImageWorkstation() {
       thumbSrc: asset.url,
       fullSrc: asset.url,
       originalSrc: source?.type === 'image' ? source.url : undefined,
+      objectKey: asset.objectKey ?? asset.storage?.objectKey,
       title: asset.name,
       meta: { tool: activeTool.label, resolution: `${asset.width}×${asset.height}` },
     }
   })
+  const sourcePreviewItem: PreviewItem | undefined = sourceAsset && !resultPreviewItems.some(item => item.id === sourceAsset.id)
+    ? {
+      id: sourceAsset.id,
+      thumbSrc: sourceAsset.url,
+      fullSrc: sourceAsset.url,
+      objectKey: sourceAsset.objectKey ?? sourceAsset.storage?.objectKey,
+      title: sourceAsset.name || '原图',
+    }
+    : undefined
+  const previewItems = sourcePreviewItem ? [sourcePreviewItem, ...resultPreviewItems] : resultPreviewItems
   const { openAt, galleryProps } = usePreviewGallery(previewItems)
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
   const generateBlockReason = workstationGenerateBlockReason({
@@ -371,6 +382,7 @@ export default function ImageWorkstation() {
           <CanvasArea
             interactionMode={activeTool.interactionMode}
             imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
+            imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
             referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
             originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}
             imageNaturalSize={inputSize}
@@ -384,7 +396,10 @@ export default function ImageWorkstation() {
             onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
             onReady={handleCanvasReady}
             onMaskChange={setHasMaskPaint}
-            onPreview={selectedResult ? () => openAt(selectedResult.id) : undefined}
+            onPreview={(view) => {
+              const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
+              if (id) openAt(id)
+            }}
           />
           <ImageAssetStrip
             assets={controller.outputAssets}
