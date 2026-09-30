@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { DownloadOutlined, DeleteOutlined } from '@ant-design/icons'
+import { DownloadOutlined, DeleteOutlined, ZoomInOutlined } from '@ant-design/icons'
 import { App, Button, Card, Segmented, Space, Spin } from 'antd'
 import EmptyState from '@/components/EmptyState'
+import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
+import { usePreviewGallery } from '@/components/usePreviewGallery'
 import { authEnabled } from '@/cloud/client'
 import {
   capabilityLabel,
@@ -120,6 +122,14 @@ export default function Assets() {
   }, [emailItems, previewUrls, workstationItems])
 
   const visible = items.filter((item) => filter === 'all' || item.kind === filter)
+  const previewItems: PreviewItem[] = visible.flatMap(item => item.previewUrl ? [{
+    id: item.id,
+    thumbSrc: item.previewUrl,
+    fullSrc: item.previewUrl,
+    title: item.title,
+    meta: { tool: item.title, resolution: item.record ? `${item.record.width}×${item.record.height}` : undefined, createdAt: item.createdAt },
+  }] : [])
+  const { openAt, galleryProps } = usePreviewGallery(previewItems)
 
   const downloadRecord = async (record: WorkstationHistoryRecord) => {
     setDownloadingId(record.id)
@@ -175,7 +185,7 @@ export default function Assets() {
             <Card
               key={item.id}
               className="assets-card"
-              cover={item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : undefined}
+              cover={item.previewUrl ? <div className="assets-cover"><img src={item.previewUrl} alt={item.title} /><Button className="preview-zoom-button" type="text" size="small" icon={<ZoomInOutlined />} aria-label={`放大${item.title}`} onClick={() => openAt(item.id)} /></div> : undefined}
             >
               <div className="assets-card-title">{item.title}</div>
               <div className="assets-card-meta">{formatTime(item.createdAt)} · {taskStatusLabel(item.status)}</div>
@@ -201,6 +211,10 @@ export default function Assets() {
           ))}
         </div>
       )}
+      <PreviewGallery {...galleryProps} onDownload={item => {
+        const record = workstationItems.find(candidate => candidate.id === item.id)
+        if (record) return downloadRecord(record)
+      }} />
     </div>
   )
 }

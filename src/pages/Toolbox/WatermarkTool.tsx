@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { App, Button, ColorPicker, Input, Progress, Radio, Select, Slider, Upload } from 'antd'
 import { DownloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons'
 import { useUserStore } from '@/store/useUserStore'
+import PreviewGallery from '@/components/PreviewGallery'
+import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import BatchImageQueue from './BatchImageQueue'
 import { invalidateBatch, processBatch } from './watermark/batch'
 import { createWatermarkZip, downloadBlob, namesForImages } from './watermark/download'
@@ -42,6 +44,7 @@ export default function WatermarkTool() {
   const { message } = App.useApp()
   const scope = useUserStore(state => state.userId ?? 'local')
   const [items, setItems] = useState<BatchImage[]>([])
+  const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [settings, setSettings] = useState<WatermarkSettings>(DEFAULT_WATERMARK_SETTINGS)
@@ -291,7 +294,7 @@ export default function WatermarkTool() {
             {currentPreview?.loading && <span>正在更新预览…</span>}
           </div>
           <div className="toolbox-preview-stage">
-            {selected ? <img src={currentPreview?.url ?? selected.sourceUrl} alt={`${selected.file.name} 的水印预览`} /> : <p>先添加图片，再设置水印</p>}
+            {selected ? <img src={currentPreview?.url ?? selected.sourceUrl} alt={`${selected.file.name} 的水印预览`} onClick={selected.output ? () => openAt(selected.id) : undefined} style={{ cursor: selected.output ? 'zoom-in' : undefined }} /> : <p>先添加图片，再设置水印</p>}
           </div>
           {currentPreview?.error && <div className="toolbox-preview-error">预览失败：{currentPreview.error}</div>}
           <p className="toolbox-hint">预览使用缩略尺寸；导出按原图像素处理。图片不会上传到服务器。</p>
@@ -383,7 +386,9 @@ export default function WatermarkTool() {
         onClear={clearFiles}
         onRetry={id => { void processImages([id]) }}
         onDownload={downloadOne}
+        onPreviewResult={openAt}
       />
+      <PreviewGallery {...galleryProps} />
 
       <div className="toolbox-watermark-footer">
         <div className="toolbox-progress">

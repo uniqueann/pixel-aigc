@@ -1,5 +1,7 @@
 import { Button, Input, Radio, Segmented } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
+import PreviewResultStrip from '@/components/PreviewResultStrip'
+import { downloadImageSource, extensionForMime } from '@/features/image-workstation/download'
 import { Capability, type GenerationTask } from '@/types'
 import type { CanvasGenerationTaskParams } from './requestBuilder'
 import { IMAGE_SIZE_PRESETS } from './config'
@@ -65,6 +67,8 @@ export default function GenerationPanel({
       : taskIsVideo || textToVideo
         ? `本次生成 1 段 ${taskDuration} 秒视频`
         : `本次生成 ${task?.params.count ?? count} 张图片`
+  const resultUrls = task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
+  const previewItems = resultUrls.map((url, index) => ({ id: `${task?.id}:${index}`, thumbSrc: url, fullSrc: url, title: `生成结果 ${index + 1}` }))
 
   return (
     <aside className="free-canvas-generation-panel">
@@ -144,6 +148,11 @@ export default function GenerationPanel({
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
       />
+      {task?.status === 'succeeded' && !taskIsVideo && <PreviewResultStrip items={previewItems} onDownload={item => {
+        const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
+        const image = task.resultImages?.[index]
+        return downloadImageSource(item.fullSrc, `生成结果_${index + 1}.${extensionForMime(image?.mimeType)}`, image?.objectKey)
+      }} />}
 
       <p className="free-canvas-panel-hint">生成期间可移动占位位置；完成后，{textToVideo ? '视频' : '图片'}会保留该位置和尺寸。</p>
     </aside>

@@ -1,5 +1,5 @@
 import { Button, Tag, Upload } from 'antd'
-import { DeleteOutlined, DownloadOutlined, InboxOutlined, RedoOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, InboxOutlined, RedoOutlined, ZoomInOutlined } from '@ant-design/icons'
 
 export interface BatchQueueItem {
   id: string
@@ -25,6 +25,7 @@ interface Props {
   onRetry: (id: string) => void
   onDownload: (id: string) => void
   onRefine?: (id: string) => void
+  onPreviewResult?: (id: string) => void
 }
 
 const statusLabels = {
@@ -41,7 +42,7 @@ const statusColors = {
   failed: 'error',
 }
 
-export default function BatchImageQueue({ items, selectedId, disabled, onAdd, onSelect, onRemove, onClear, onRetry, onDownload, onRefine }: Props) {
+export default function BatchImageQueue({ items, selectedId, disabled, onAdd, onSelect, onRemove, onClear, onRetry, onDownload, onRefine, onPreviewResult }: Props) {
   return (
     <section className="toolbox-batch-queue" aria-label="批量图片队列">
       <div className="toolbox-section-heading">
@@ -72,6 +73,7 @@ export default function BatchImageQueue({ items, selectedId, disabled, onAdd, on
                 <span className="toolbox-queue-name" title={item.name}>{item.name}</span>
                 <span className="toolbox-queue-size">{item.width} × {item.height}</span>
               </button>
+              {item.status === 'succeeded' && onPreviewResult && <Button className="preview-zoom-button" size="small" type="text" icon={<ZoomInOutlined />} aria-label={`放大${item.name}的结果`} onClick={() => onPreviewResult(item.id)} />}
               <div className="toolbox-queue-card-footer">
                 <Tag color={statusColors[item.status]}>{statusLabels[item.status]}</Tag>
                 <div className="toolbox-queue-actions">
