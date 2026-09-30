@@ -8,7 +8,7 @@
     "build": "npm run typecheck:server && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "dev:api": "tsx --env-file-if-exists=.env.local scripts/dev-api.ts",
     "typecheck:server": "tsc -p tsconfig.server.json",
     "aigc:invite": "tsx --env-file-if-exists=.env.local scripts/aigc-admin.ts invite",

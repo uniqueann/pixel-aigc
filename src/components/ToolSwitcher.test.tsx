@@ -3,7 +3,8 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import ToolSwitcher, { formatToolSwitcherLabel, TOOL_SWITCHER_COMING_SOON } from './ToolSwitcher'
+import ToolSwitcher from './ToolSwitcher'
+import { formatToolSwitcherLabel, TOOL_SWITCHER_COMING_SOON } from './toolSwitcherLabel'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

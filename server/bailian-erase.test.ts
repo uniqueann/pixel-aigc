@@ -2,7 +2,6 @@ import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { fitDashScopeImageSize } from '../shared/erase'
 import { DEFAULT_ERASE_PROMPT } from '../shared/erase'
-import { dashScopeFailureText } from './dashscope'
 import { ERASE_MASK_DATA_URL_PREFIX, ERASE_WAIT_TIMEOUT_MESSAGE, eraseWithBailian, prepareEraseMask, restoreEraseResult } from './bailian-erase'
 import { HttpError } from './errors'
 

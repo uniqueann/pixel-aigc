@@ -6,6 +6,7 @@ import { readRelight, relightHistoryText } from '@shared/relight'
 import { readRetouchDirections, retouchHistoryText } from '@shared/retouch'
 import { workstationSlugForCapability } from './labels'
 import { listWorkstationHistory, recordWorkstationHistory } from './workstationHistory'
+import { isCurrentWorkstationHistoryOwner } from './historyOwner'
 
 const IMAGE_JOB_CAPABILITIES = [Capability.ImageEdit, Capability.Variation] as const
 
@@ -53,17 +54,24 @@ export async function historyRecordsFromImageTask(task: GenerationTask<unknown>)
 }
 
 /** 把已落库的智能编辑 / 裂变结果补进本地「我的资产」，避免只写 IndexedDB 时漏记。 */
-export async function hydrateWorkstationHistoryFromImageJobs() {
-  const existing = new Set((await listWorkstationHistory()).map((item) => item.id))
+export async function hydrateWorkstationHistoryFromImageJobs(ownerId: string) {
+  const assertOwner = () => {
+    if (!isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('账号已切换，停止补记历史')
+  }
+  assertOwner()
+  const existing = new Set((await listWorkstationHistory(ownerId)).map((item) => item.id))
   for (const capability of IMAGE_JOB_CAPABILITIES) {
+    assertOwner()
     const listed = await listTasks({ capability, page: 1 })
     for (const summary of listed.items) {
+      assertOwner()
       if (summary.status !== 'succeeded') continue
       if (existing.has(`${summary.id}:0`)) continue
       const task = await getTask(summary.id)
       for (const record of await historyRecordsFromImageTask(task)) {
+        assertOwner()
         if (existing.has(record.id)) continue
-        await recordWorkstationHistory(record)
+        await recordWorkstationHistory(ownerId, record)
         existing.add(record.id)
       }
     }

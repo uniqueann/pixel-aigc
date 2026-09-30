@@ -37,8 +37,6 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
   const [holding, setHolding] = useState(false)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const detachWheel = useRef<(() => void) | undefined>()
-  const setScaleRef = useRef(setScale)
-  setScaleRef.current = setScale
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<{ mode: 'slide' | 'pan' | 'pinch'; distance?: number; center?: { x: number; y: number } }>({ mode: 'pan' })
 
@@ -67,7 +65,7 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
       if (!(event instanceof WheelEvent)) return
       if (!node.contains(event.target as Node)) return
       if (event.cancelable) event.preventDefault()
-      setScaleRef.current(value => clamp(value * (event.deltaY < 0 ? 1.12 : 1 / 1.12), 1, 8))
+      setScale(value => clamp(value * (event.deltaY < 0 ? 1.12 : 1 / 1.12), 1, 8))
     }
     const host: EventTarget = node.closest('.ant-modal-wrap') ?? node
     host.addEventListener('wheel', onWheel, { passive: false, capture: true })

@@ -1,6 +1,6 @@
 import { Capability } from '@/types'
 
-const DATABASE_NAME = 'pixel-aigc-history'
+const DATABASE_NAME = 'pixel-aigc-history-v2'
 const STORE_NAME = 'workstationResults'
 const DATABASE_VERSION = 1
 const MAX_ITEMS = 50
@@ -21,7 +21,12 @@ export interface WorkstationHistoryRecord {
 }
 
 interface StoredHistoryRecord extends Omit<WorkstationHistoryRecord, 'result'> {
+  ownerId: string
   resultBytes: ArrayBuffer
+}
+
+function requireOwner(ownerId: string) {
+  if (!ownerId.trim()) throw new Error('缺少历史记录所属账号')
 }
 
 function openHistoryDatabase(): Promise<IDBDatabase> {
@@ -29,8 +34,8 @@ function openHistoryDatabase(): Promise<IDBDatabase> {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION)
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        const store = request.result.createObjectStore(STORE_NAME, { keyPath: 'id' })
-        store.createIndex('createdAt', 'createdAt')
+        const store = request.result.createObjectStore(STORE_NAME, { keyPath: ['ownerId', 'id'] })
+        store.createIndex('ownerId', 'ownerId')
       }
     }
     request.onerror = () => reject(request.error ?? new Error('无法打开本地历史'))
@@ -55,10 +60,9 @@ function runStore<T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore
 }
 
 function toRecord(stored: StoredHistoryRecord): WorkstationHistoryRecord {
-  return {
-    ...stored,
-    result: new Blob([stored.resultBytes], { type: stored.mimeType }),
-  }
+  const { ownerId: _ownerId, resultBytes, ...record } = stored
+  void _ownerId
+  return { ...record, result: new Blob([resultBytes], { type: stored.mimeType }) }
 }
 
 function readBlobBytes(blob: Blob): Promise<ArrayBuffer> {
@@ -71,45 +75,50 @@ function readBlobBytes(blob: Blob): Promise<ArrayBuffer> {
   })
 }
 
-async function toStored(record: WorkstationHistoryRecord): Promise<StoredHistoryRecord> {
-  return {
-    id: record.id,
-    toolSlug: record.toolSlug,
-    capability: record.capability,
-    prompt: record.prompt,
-    width: record.width,
-    height: record.height,
-    mimeType: record.mimeType,
-    resultBytes: await readBlobBytes(record.result),
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  }
+async function toStored(ownerId: string, record: WorkstationHistoryRecord): Promise<StoredHistoryRecord> {
+  const { result, ...fields } = record
+  return { ...fields, ownerId, resultBytes: await readBlobBytes(result) }
 }
 
-export async function listWorkstationHistory(): Promise<WorkstationHistoryRecord[]> {
+export async function listWorkstationHistory(ownerId: string): Promise<WorkstationHistoryRecord[]> {
+  requireOwner(ownerId)
   if (typeof indexedDB === 'undefined') return []
-  const items = await runStore<StoredHistoryRecord[]>('readonly', (store) => store.getAll())
+  const items = await runStore<StoredHistoryRecord[]>('readonly', (store) => store.index('ownerId').getAll(ownerId))
   return items.map(toRecord).sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 }
 
-export async function recordWorkstationHistory(record: WorkstationHistoryRecord) {
+export async function recordWorkstationHistory(ownerId: string, record: WorkstationHistoryRecord) {
+  requireOwner(ownerId)
   if (typeof indexedDB === 'undefined') return
-  const stored = await toStored(record)
-  await runStore('readwrite', (store) => store.put(stored))
-  const items = await runStore<StoredHistoryRecord[]>('readonly', (store) => store.getAll())
-  if (items.length <= MAX_ITEMS) return
-  const extra = items.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(MAX_ITEMS)
+  const stored = await toStored(ownerId, record)
   await runStore('readwrite', (store) => {
-    for (const item of extra) store.delete(item.id)
+    store.put(stored)
+    const request = store.index('ownerId').getAll(ownerId)
+    request.onsuccess = () => {
+      const extra = (request.result as StoredHistoryRecord[])
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(MAX_ITEMS)
+      for (const item of extra) store.delete([ownerId, item.id])
+    }
   })
 }
 
-export async function deleteWorkstationHistory(id: string) {
+export async function deleteWorkstationHistory(ownerId: string, id: string) {
+  requireOwner(ownerId)
   if (typeof indexedDB === 'undefined') return
-  await runStore('readwrite', (store) => store.delete(id))
+  await runStore('readwrite', (store) => store.delete([ownerId, id]))
 }
 
-export async function clearWorkstationHistory() {
+export async function clearWorkstationHistory(ownerId: string) {
+  requireOwner(ownerId)
   if (typeof indexedDB === 'undefined') return
-  await runStore('readwrite', (store) => store.clear())
+  await runStore('readwrite', (store) => {
+    const request = store.index('ownerId').openKeyCursor(ownerId)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) return
+      store.delete(cursor.primaryKey)
+      cursor.continue()
+    }
+  })
 }
