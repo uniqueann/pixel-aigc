@@ -1,6 +1,7 @@
 import { cloneElement, useState, type ImgHTMLAttributes, type ReactElement } from 'react'
-import { DownloadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, RetweetOutlined } from '@ant-design/icons'
 import { App, Button, Image, Spin } from 'antd'
+import CompareViewer from './CompareViewer'
 import './preview.css'
 
 export interface PreviewItem {
@@ -37,7 +38,12 @@ function PreviewImage({ image }: { image: ReactElement<ImgHTMLAttributes<HTMLIma
 
 export default function PreviewGallery({ items, open, current, onClose, onChange, onDownload }: PreviewGalleryProps) {
   const { message } = App.useApp()
+  const [comparing, setComparing] = useState(false)
   const item = items[current]
+  const change = (index: number) => {
+    if (!items[index]?.originalSrc) setComparing(false)
+    onChange(index)
+  }
 
   const download = async () => {
     if (!item) return
@@ -59,21 +65,23 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
   }
 
   if (items.length === 0) return null
-  return (
+  return <>
     <Image.PreviewGroup
       items={items.map(entry => ({ src: entry.fullSrc, alt: entry.title ?? '图片预览' }))}
       preview={{
-        visible: open,
+        visible: open && !comparing,
         current,
-        onVisibleChange: visible => { if (!visible) onClose() },
-        onChange,
+        onVisibleChange: visible => { if (!visible && !comparing) onClose() },
+        onChange: change,
         rootClassName: 'preview-gallery-overlay',
         imageRender: image => <PreviewImage key={item?.fullSrc} image={image} />,
         toolbarRender: (originalNode) => <>
           {originalNode}
           <Button className="preview-toolbar-action" type="text" icon={<DownloadOutlined />} aria-label="下载原始大图" onClick={() => void download()} />
+          {item?.originalSrc && <Button className="preview-toolbar-action" type="text" icon={<RetweetOutlined />} aria-label="对比原图与结果" onClick={() => setComparing(true)} />}
         </>,
       }}
     />
-  )
+    {open && comparing && item?.originalSrc && <CompareViewer key={item.id} items={items} current={current} onChange={change} onClose={() => setComparing(false)} />}
+  </>
 }
