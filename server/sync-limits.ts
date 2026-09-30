@@ -19,18 +19,36 @@ const limits: Record<Bucket, { hourly: number; concurrent: number }> = {
   detection: { hourly: 60, concurrent: 3 },
 }
 
-export async function withSyncLimit<T>(user: User, bucket: Bucket, action: () => Promise<T>): Promise<T> {
+export interface SyncRequestMetrics {
+  route: 'erase'
+  requestId: string
+  transport: 'inline' | 'object'
+  inputBytes: number
+  maskBytes: number
+  outputBytes?: number
+  stageMs: Record<string, number>
+}
+
+export async function withSyncLimit<T>(user: User, bucket: Bucket, action: () => Promise<T>, metrics?: SyncRequestMetrics): Promise<T> {
   const id = randomUUID()
   const scope = runtimeScope()
   await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
-    await acquireSyncRequest(sql, user.id, scope, bucket, id)
+    await acquireSyncRequest(sql, user.id, scope, bucket, id, metrics)
   })
+  let httpStatus = 200
+  let errorCode: string | null = null
   try {
     return await action()
+  } catch (error) {
+    httpStatus = error instanceof HttpError ? error.status : 500
+    errorCode = error instanceof HttpError ? error.code ?? 'SYNC_FAILED' : 'SERVER_ERROR'
+    throw error
   } finally {
     await withIdentity(user.id, user.email, async sql => {
-      await sql`update aigc.sync_requests set completed_at=now()
+      await sql`update aigc.sync_requests set completed_at=now(),http_status=${metrics ? httpStatus : null},
+        error_code=${errorCode},input_bytes=${metrics?.inputBytes ?? null},mask_bytes=${metrics?.maskBytes ?? null},
+        output_bytes=${metrics?.outputBytes ?? null},stage_ms=${sql.json(metrics?.stageMs ?? {})}
         where id=${id} and user_id=${user.id} and scope=${scope}`
     }).catch(error => {
       console.error(JSON.stringify({ evt: 'sync-limit-release', userId: user.id, bucket, message: String(error) }))
@@ -38,7 +56,7 @@ export async function withSyncLimit<T>(user: User, bucket: Bucket, action: () =>
   }
 }
 
-export async function acquireSyncRequest(sql: Transaction, userId: string, scope: string, bucket: Bucket, id: string) {
+export async function acquireSyncRequest(sql: Transaction, userId: string, scope: string, bucket: Bucket, id: string, metrics?: SyncRequestMetrics) {
   const limit = limits[bucket]
   await sql`select pg_advisory_xact_lock(hashtext(${`${userId}:${scope}:${bucket}`}))`
   const [usage] = await sql`select
@@ -57,6 +75,6 @@ export async function acquireSyncRequest(sql: Transaction, userId: string, scope
       extra: rateLimitExtra(USER_CONCURRENCY_RETRY_AFTER),
     })
   }
-  await sql`insert into aigc.sync_requests(id,user_id,scope,bucket,lease_until)
-    values(${id},${userId},${scope},${bucket},now()+interval '3 minutes')`
+  await sql`insert into aigc.sync_requests(id,user_id,scope,bucket,lease_until,route,request_id,transport)
+    values(${id},${userId},${scope},${bucket},now()+interval '3 minutes',${metrics?.route ?? null},${metrics?.requestId ?? null},${metrics?.transport ?? null})`
 }

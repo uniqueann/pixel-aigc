@@ -283,6 +283,7 @@ export function isSafeObjectKey(userId: string, key: string) {
   if (!key || key.includes('..') || key.includes('\\') || key.startsWith('/') || key.includes('//')) return false
   return [
     `temporary/task-inputs/${userId}/`,
+    `temporary/erase-results/${userId}/`,
     `generated/${userId}/`,
     `media/${userId}/`,
   ].some(prefix => key.startsWith(prefix) && key.length > prefix.length)

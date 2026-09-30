@@ -3,7 +3,7 @@ import { withIdentity } from './db.js'
 import { HttpError } from './errors.js'
 import { requireActive } from './model-settings.js'
 import { isSafeObjectKey } from './image-jobs/service.js'
-import { getObject } from './storage.js'
+import { getObject, signRead } from './storage.js'
 
 type User = Awaited<ReturnType<typeof authenticate>>
 
@@ -22,4 +22,12 @@ export async function loadOwnedObject(user: User, key: string) {
     bytes: object.bytes,
     contentType: object.contentType?.startsWith('image/') ? object.contentType : 'application/octet-stream',
   }
+}
+
+export async function signOwnedObjectRead(user: User, key: string) {
+  if (!isSafeObjectKey(user.id, key)) throw new HttpError(400, '对象无效或无权访问', 'INVALID_SOURCE')
+  await withIdentity(user.id, user.email, async sql => {
+    await requireActive(sql, user.id)
+  })
+  return signRead(key, 900)
 }

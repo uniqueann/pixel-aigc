@@ -2,15 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { HttpError } from './errors.js'
 
 const getObject = vi.fn()
+const signRead = vi.fn()
 const requireActive = vi.fn()
 
-vi.mock('./storage', () => ({ getObject: (...args: unknown[]) => getObject(...args) }))
+vi.mock('./storage', () => ({ getObject: (...args: unknown[]) => getObject(...args), signRead: (...args: unknown[]) => signRead(...args) }))
 vi.mock('./model-settings', () => ({ requireActive: (...args: unknown[]) => requireActive(...args) }))
 vi.mock('./db', () => ({
   withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn({}),
 }))
 
-import { loadOwnedObject, objectContentDisposition } from './objects.js'
+import { loadOwnedObject, objectContentDisposition, signOwnedObjectRead } from './objects.js'
 
 const user = { id: 'user-1', email: 'user@example.com' } as Awaited<ReturnType<typeof import('./auth.js').authenticate>>
 
@@ -34,5 +35,14 @@ describe('同域读取私有对象', () => {
   it('下载文件名带 UTF-8 编码，避免中文被丢掉', () => {
     expect(objectContentDisposition('裂变_2048x2048.png')).toContain("filename*=UTF-8''")
     expect(objectContentDisposition('裂变_2048x2048.png')).toContain(encodeURIComponent('裂变_2048x2048.png'))
+  })
+
+  it('仅为本人对象签发短期读取地址', async () => {
+    signRead.mockResolvedValue({ url: 'https://r2.test/result', expiresAt: 123 })
+    await expect(signOwnedObjectRead(user, 'temporary/erase-results/user-1/1.jpg')).resolves.toEqual({
+      url: 'https://r2.test/result', expiresAt: 123,
+    })
+    expect(signRead).toHaveBeenCalledWith('temporary/erase-results/user-1/1.jpg', 900)
+    await expect(signOwnedObjectRead(user, 'temporary/erase-results/other/1.jpg')).rejects.toBeInstanceOf(HttpError)
   })
 })

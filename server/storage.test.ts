@@ -6,7 +6,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
   GetObjectCommand: class { constructor(public input: unknown) {} },
   PutObjectCommand: class { constructor(public input: unknown) {} },
 }))
-import { verifyAndPromote } from './storage'
+import { getObjectLimited, verifyAndPromote } from './storage'
 beforeEach(() => {
   send.mockReset()
   process.env.R2_ACCOUNT_ID = 'test'; process.env.R2_ACCESS_KEY_ID = 'test'; process.env.R2_SECRET_ACCESS_KEY = 'test'; process.env.R2_BUCKET = 'test'
@@ -29,5 +29,16 @@ describe('R2 对象核验', () => {
     send.mockResolvedValueOnce({ ContentLength: png.length, Body: { transformToByteArray: async () => png } })
     await expect(verifyAndPromote('temp','final',png.length,'image/jpeg')).rejects.toThrow('类型不匹配')
     expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('对象读取过程中超过上限时停止缓冲', async () => {
+    const body = {
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.alloc(5)
+        yield Buffer.alloc(5)
+      },
+    }
+    send.mockResolvedValue({ ContentLength: 8, ContentType: 'image/png', Body: body })
+    await expect(getObjectLimited('temporary/task-inputs/u/large', 8)).rejects.toThrow('20 MB')
   })
 })

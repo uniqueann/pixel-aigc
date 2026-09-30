@@ -55,6 +55,7 @@ beforeAll(async () => {
     '20260928120000_aigc_image_jobs.sql',
     '20260929100000_aigc_credits_and_sync_limits.sql',
     '20260929233436_aigc_credit_adjust.sql',
+    '20260930115938_erase_transfer_metrics.sql',
   ]) await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
   await db.query('insert into aigc.members(user_id) values($1)', [userId])
 }, 30000)
@@ -66,6 +67,23 @@ afterAll(async () => {
 })
 
 describe('积分账本与同步请求限流', () => {
+  it('消除性能记录保留七天，其他同步记录仍按两小时清理', async () => {
+    const recentErase = randomUUID()
+    const oldErase = randomUUID()
+    const oldOther = randomUUID()
+    await asUser(async sql => {
+      await sql`insert into aigc.sync_requests(id,user_id,scope,bucket,lease_until,completed_at,created_at,route,transport,stage_ms)
+        values(${recentErase},${userId},'production','generation',now()-interval '3 days',now()-interval '3 days',now()-interval '3 days','erase','object',${sql.json({ process: 1234 })})`
+      await sql`insert into aigc.sync_requests(id,user_id,scope,bucket,lease_until,completed_at,created_at,route)
+        values(${oldErase},${userId},'production','generation',now()-interval '8 days',now()-interval '8 days',now()-interval '8 days','erase')`
+      await sql`insert into aigc.sync_requests(id,user_id,scope,bucket,lease_until,completed_at,created_at)
+        values(${oldOther},${userId},'production','generation',now()-interval '3 hours',now()-interval '3 hours',now()-interval '3 hours')`
+      await sql`select aigc.purge_expired_sync_requests()`
+    })
+    const rows = await db.query('select id,stage_ms from aigc.sync_requests where id in ($1,$2,$3)', [recentErase, oldErase, oldOther])
+    expect(rows.rows).toEqual([{ id: recentErase, stage_ms: { process: 1234 } }])
+  })
+
   it('首次发放幂等，且不同环境有独立余额', async () => {
     expect(await asUser(sql => ensureCreditAccount(sql, userId))).toBe(100)
     expect(await asUser(sql => ensureCreditAccount(sql, userId))).toBe(100)
