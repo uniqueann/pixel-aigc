@@ -19,7 +19,7 @@ export function outputNames(files: { name: string; mimeType: string }[]) {
 export function namesForImages(images: BatchImage[]) {
   const names = outputNames(images.map(image => ({
     name: image.file.name,
-    mimeType: image.outputMime ?? 'image/png',
+    mimeType: image.output?.type || image.outputMime || 'image/png',
   })))
   return new Map(images.map((image, index) => [image.id, names[index]]))
 }

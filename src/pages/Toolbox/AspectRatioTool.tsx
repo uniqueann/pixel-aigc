@@ -478,7 +478,7 @@ export default function AspectRatioTool() {
         onPreviewResult={openAt}
         onRefine={settings.strategy === 'outpaint' ? refineFailed : undefined}
       />
-      <PreviewGallery {...galleryProps} />
+      <PreviewGallery {...galleryProps} onDownload={item => downloadOne(item.id)} />
 
       <div className="toolbox-watermark-footer">
         {settings.strategy === 'crop' && gridFallbacks.length > 0 && <p className="toolbox-hint toolbox-warning toolbox-crop-warning">{gridFallbacks.length} 张没有按商品裁剪，用的是当前九宫格。下载前请把焦点改到商品所在位置，再重新处理。</p>}

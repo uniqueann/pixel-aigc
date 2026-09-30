@@ -24,6 +24,9 @@ describe('批量结果下载', () => {
       image('商品.png', 'image/png', new Blob(['第二张'], { type: 'image/jpeg' }), 'two'),
     ]
     expect([...namesForImages(items).values()]).toEqual(['商品_watermarked.jpg', '商品_watermarked_2.jpg'])
+    expect([...namesForImages([
+      image('mug.jpg', 'image/jpeg', new Blob(['png'], { type: 'image/png' }), 'png-out'),
+    ]).values()]).toEqual(['mug_watermarked.png'])
     const zip = await createWatermarkZip(items)
     const reader = new ZipReader(new BlobReader(zip))
     const entries = await reader.getEntries()

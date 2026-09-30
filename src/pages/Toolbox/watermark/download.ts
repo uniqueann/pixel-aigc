@@ -5,7 +5,10 @@ import type { BatchImage } from './types'
 export { downloadBlob }
 
 export function namesForImages(images: BatchImage[]) {
-  const names = outputNames(images.map(image => ({ name: image.file.name, mimeType: image.outputMime ?? image.sourceMime })))
+  const names = outputNames(images.map(image => ({
+    name: image.file.name,
+    mimeType: image.output?.type || image.outputMime || image.sourceMime,
+  })))
   return new Map(images.map((image, index) => [image.id, names[index]]))
 }
 
