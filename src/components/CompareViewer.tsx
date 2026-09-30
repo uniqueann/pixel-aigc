@@ -63,18 +63,15 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
     detachWheel.current = undefined
     stageRef.current = node
     if (!node) return
-    const onWheel = (event: WheelEvent) => {
+    const onWheel = (event: Event) => {
+      if (!(event instanceof WheelEvent)) return
       if (!node.contains(event.target as Node)) return
       if (event.cancelable) event.preventDefault()
       setScaleRef.current(value => clamp(value * (event.deltaY < 0 ? 1.12 : 1 / 1.12), 1, 8))
     }
-    const hosts = new Set<EventTarget>([node])
-    const wrap = node.closest('.ant-modal-wrap, .ant-modal-root, .compare-modal')
-    if (wrap) hosts.add(wrap)
-    for (const host of hosts) host.addEventListener('wheel', onWheel, { passive: false, capture: true })
-    detachWheel.current = () => {
-      for (const host of hosts) host.removeEventListener('wheel', onWheel, true)
-    }
+    const host: EventTarget = node.closest('.ant-modal-wrap') ?? node
+    host.addEventListener('wheel', onWheel, { passive: false, capture: true })
+    detachWheel.current = () => host.removeEventListener('wheel', onWheel, true)
   }, [])
 
   if (!item?.originalSrc) return null
