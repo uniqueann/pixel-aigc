@@ -278,6 +278,6 @@ describe('积分账本与同步请求限流', () => {
     expect(page.nextCursor).toBeTruthy()
     const next = await asUser(sql => listCreditLedger(sql, page.nextCursor, 20))
     expect(next.items.some(item => item.id === jobRow?.id)).toBe(false)
-    expect(next.items.some(item => item.summary === '实扣 3, 已退回 3')).toBe(false)
+    expect(next.items.filter(item => item.summary.includes('预扣') && item.label.includes('2K'))).toHaveLength(0)
   })
 })

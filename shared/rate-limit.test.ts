@@ -16,6 +16,6 @@ describe('限流等待时间', () => {
     expect(imageTaskHourlyRateLimitMessage(20, 8)).toBe('每小时最多提交 20 次图片任务，约 8 分钟后可再试')
     expect(hourlyRetryAfterSeconds(undefined, now)).toBe(3600)
     expect(hourlyRetryAfterSeconds('not-a-date', now)).toBe(3600)
-    expect(hourlyRetryAfterSeconds('2026-09-30T00:59:59.000Z', now)).toBe(1)
+    expect(hourlyRetryAfterSeconds('2026-09-30T00:00:01.000Z', now)).toBe(1)
   })
 })

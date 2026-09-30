@@ -63,6 +63,17 @@ describe('积分明细文案', () => {
     expect(settled).toMatchObject({
       id: 's', label: '精修 1K×1', summary: '实扣 2', delta: -2, deltaText: '-2', balanceAfter: 98, charged: 2,
     })
+    const settleLacksSpec = mergeCreditJobEntries([
+      {
+        id: 'r0', kind: 'reserve', delta: -2, balanceAfter: 98, charged: null,
+        createdAt: '2026-09-29T07:00:00.000Z', title: '精修 1K×1', reason: null,
+      },
+      {
+        id: 's0', kind: 'settle', delta: 0, balanceAfter: 98, charged: 2,
+        createdAt: '2026-09-29T07:01:00.000Z', title: '精修', reason: null,
+      },
+    ])
+    expect(settleLacksSpec.label).toBe('精修 1K×1')
     const partial = mergeCreditJobEntries([
       {
         id: 'r2', kind: 'reserve', delta: -6, balanceAfter: 94, charged: null,

@@ -115,7 +115,7 @@ export function mergeCreditJobEntries(entries: readonly CreditLedgerEntry[]): Cr
   const ordered = [...entries].sort(sortLedgerNewestFirst)
   const newest = ordered[0]
   const oldest = ordered[ordered.length - 1]
-  const title = ordered.map(item => item.title).find(Boolean) ?? ''
+  const title = ordered.map(item => item.title).filter(Boolean).sort((left, right) => right.length - left.length)[0] ?? ''
   const net = ordered.reduce((sum, item) => sum + item.delta, 0)
   const status = creditJobGroupStatus(ordered)
   return {
