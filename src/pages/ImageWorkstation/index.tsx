@@ -8,6 +8,7 @@ import ToolSwitcher from '@/components/ToolSwitcher'
 import { usePreviewGallery } from '@/components/usePreviewGallery'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { createImageAsset } from '@/editor/services/assetService'
+import { useEditorStore } from '@/editor/store'
 import type { ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
 import {
@@ -38,6 +39,7 @@ export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const project = useEditorStore(state => state.project)
   const canvasHandleRef = useRef<CanvasHandle | null>(null)
   const [sourceAsset, setSourceAsset] = useState<ImageAsset>()
   const [uploading, setUploading] = useState(false)
@@ -136,13 +138,18 @@ export default function ImageWorkstation() {
   }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
   const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
     ?? controller.outputAssets[0]
-  const previewItems: PreviewItem[] = controller.outputAssets.map(asset => ({
-    id: asset.id,
-    thumbSrc: asset.url,
-    fullSrc: asset.url,
-    title: asset.name,
-    meta: { tool: activeTool.label, resolution: `${asset.width}×${asset.height}` },
-  }))
+  const previewItems: PreviewItem[] = controller.outputAssets.map(asset => {
+    const generation = Object.values(project?.generations ?? {}).find(job => job.outputAssetIds.includes(asset.id))
+    const source = generation?.inputAssetIds[0] ? project?.assets[generation.inputAssetIds[0]] : undefined
+    return {
+      id: asset.id,
+      thumbSrc: asset.url,
+      fullSrc: asset.url,
+      originalSrc: source?.type === 'image' ? source.url : undefined,
+      title: asset.name,
+      meta: { tool: activeTool.label, resolution: `${asset.width}×${asset.height}` },
+    }
+  })
   const { openAt, galleryProps } = usePreviewGallery(previewItems)
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
   const generateBlockReason = workstationGenerateBlockReason({

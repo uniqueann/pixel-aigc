@@ -74,7 +74,7 @@ export default function DerivedGenerationPanel({
           ? `本次生成 1 段 ${durationSeconds} 秒视频`
           : `本次生成 ${count} 张裂变图片`
   const resultUrls = task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
-  const previewItems = resultUrls.map((url, index) => ({ id: `${task?.id}:${index}`, thumbSrc: url, fullSrc: url, title: `裂变结果 ${index + 1}` }))
+  const previewItems = resultUrls.map((url, index) => ({ id: `${task?.id}:${index}`, thumbSrc: url, fullSrc: url, originalSrc: sourceAsset.url, title: `裂变结果 ${index + 1}` }))
 
   return (
     <aside className="free-canvas-generation-panel free-canvas-derived-panel">
