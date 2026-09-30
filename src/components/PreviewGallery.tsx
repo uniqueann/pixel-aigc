@@ -1,9 +1,13 @@
-import { cloneElement, useEffect, useRef, useState, type ImgHTMLAttributes, type ReactElement } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type ReactElement } from 'react'
 import { DownloadOutlined, RetweetOutlined } from '@ant-design/icons'
 import { App, Button, Image, Spin } from 'antd'
 import { blobFromImageSource, filenameWithMimeExtension } from '@/features/image-workstation/download'
 import CompareViewer from './CompareViewer'
 import './preview.css'
+
+type RcPreviewImageProps = ImgHTMLAttributes<HTMLImageElement> & {
+  imgRef?: { current: HTMLImageElement | null | undefined }
+}
 
 export interface PreviewItem {
   id: string
@@ -24,10 +28,24 @@ export interface PreviewGalleryProps {
   onDownload?: (item: PreviewItem) => Promise<void> | void
 }
 
-function PreviewImage({ image }: { image: ReactElement<ImgHTMLAttributes<HTMLImageElement>> }) {
+function PreviewImage({ image }: { image: ReactElement<RcPreviewImageProps> }) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
   const frameRef = useRef<HTMLDivElement>(null)
+  const src = typeof image.props.src === 'string' ? image.props.src : undefined
+  const previousSrc = useRef(src)
+
+  useLayoutEffect(() => {
+    const img = frameRef.current?.querySelector('img')
+    const imgRef = image.props.imgRef
+    if (img && imgRef) imgRef.current = img
+  })
+
+  useLayoutEffect(() => {
+    if (previousSrc.current === src) return
+    previousSrc.current = src
+    setState('loading')
+  }, [src])
 
   useEffect(() => {
     const img = frameRef.current?.querySelector('img')
@@ -36,18 +54,24 @@ function PreviewImage({ image }: { image: ReactElement<ImgHTMLAttributes<HTMLIma
     const onError = () => setState('error')
     img.addEventListener('load', onLoad)
     img.addEventListener('error', onError)
-    if (img.complete && (img.naturalWidth || img.naturalHeight)) onLoad()
+    if (attempt > 0) {
+      const currentSrc = img.getAttribute('src')
+      img.removeAttribute('src')
+      if (currentSrc) img.setAttribute('src', currentSrc)
+    } else if (img.complete && (img.naturalWidth || img.naturalHeight)) {
+      onLoad()
+    }
     return () => {
       img.removeEventListener('load', onLoad)
       img.removeEventListener('error', onError)
     }
-  }, [attempt, image])
+  }, [attempt, src])
 
   return (
     <div
       ref={frameRef}
-      key={attempt}
       className="preview-image-frame"
+      data-state={state}
       onLoadCapture={() => setState('ready')}
       onErrorCapture={() => setState('error')}
     >
@@ -61,9 +85,7 @@ function PreviewImage({ image }: { image: ReactElement<ImgHTMLAttributes<HTMLIma
           )}
         </div>
       )}
-      {cloneElement(image, {
-        style: { ...image.props.style, visibility: state === 'ready' ? 'visible' : 'hidden' },
-      })}
+      {image}
     </div>
   )
 }
@@ -105,7 +127,7 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
         onVisibleChange: visible => { if (!visible && !comparing) onClose() },
         onChange: change,
         rootClassName: 'preview-gallery-overlay',
-        imageRender: image => <PreviewImage key={`${item?.id}:${item?.fullSrc}`} image={image} />,
+        imageRender: image => <PreviewImage image={image} />,
         toolbarRender: (originalNode) => <>
           {originalNode}
           <Button className="preview-toolbar-action" type="text" icon={<DownloadOutlined />} aria-label="下载原始大图" onClick={() => void download()} />

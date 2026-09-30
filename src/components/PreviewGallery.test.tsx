@@ -11,10 +11,49 @@ const items: PreviewItem[] = [
   { id: 'second', thumbSrc: 'second-small.png', fullSrc: 'second.png' },
 ]
 
+function stubPreviewMetrics(image: HTMLImageElement) {
+  Object.defineProperty(image, 'width', { configurable: true, value: 1200 })
+  Object.defineProperty(image, 'height', { configurable: true, value: 800 })
+  Object.defineProperty(image, 'offsetWidth', { configurable: true, value: 1200 })
+  Object.defineProperty(image, 'offsetHeight', { configurable: true, value: 800 })
+  Object.defineProperty(image, 'offsetLeft', { configurable: true, value: 10 })
+  Object.defineProperty(image, 'offsetTop', { configurable: true, value: 10 })
+}
+
+function mockOverlayStyle() {
+  const getComputedStyle = window.getComputedStyle
+  vi.spyOn(window, 'getComputedStyle').mockImplementation(element => getComputedStyle(element))
+}
+
+function frameState(image: Element) {
+  return image.closest('.preview-image-frame')?.getAttribute('data-state')
+}
+
+function zoomInButton() {
+  return document.querySelector('.ant-image-preview-operations-operation-zoomIn') as HTMLElement
+}
+
+function collectConsoleErrors() {
+  const errors: string[] = []
+  const consoleError = vi.spyOn(console, 'error').mockImplementation((...args) => {
+    errors.push(args.map(item => item instanceof Error ? item.message : String(item)).join(' '))
+  })
+  const onWindowError = (event: ErrorEvent) => {
+    errors.push(String(event.error instanceof Error ? event.error.message : event.message))
+  }
+  window.addEventListener('error', onWindowError)
+  return {
+    errors,
+    restore() {
+      consoleError.mockRestore()
+      window.removeEventListener('error', onWindowError)
+    },
+  }
+}
+
 describe('PreviewGallery', () => {
   it('仅有源图时显示对比，并在切换到无源图结果时回到普通预览', async () => {
-    const getComputedStyle = window.getComputedStyle
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(element => getComputedStyle(element))
+    mockOverlayStyle()
     const onChange = vi.fn()
     const { rerender } = render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={onChange} /></App>)
     fireEvent.click(await screen.findByRole('button', { name: '对比原图与结果' }))
@@ -27,8 +66,7 @@ describe('PreviewGallery', () => {
   })
 
   it('缩放同步作用于两张图，按住原图后松开恢复滑块', async () => {
-    const getComputedStyle = window.getComputedStyle
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(element => getComputedStyle(element))
+    mockOverlayStyle()
     render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
     fireEvent.click(await screen.findByRole('button', { name: '对比原图与结果' }))
     const stage = document.querySelector('.compare-stage') as HTMLElement
@@ -47,21 +85,19 @@ describe('PreviewGallery', () => {
   })
 
   it('真实 antd/rc-image 预览在 onLoad 后显示图片', async () => {
-    const getComputedStyle = window.getComputedStyle
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(element => getComputedStyle(element))
+    mockOverlayStyle()
     render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
     const preview = await waitFor(() => document.querySelector('.ant-image-preview-img') as HTMLImageElement)
     expect(preview).toBeTruthy()
-    expect(preview.style.visibility).toBe('hidden')
+    expect(frameState(preview)).toBe('loading')
     expect(document.querySelector('.preview-load-state')).toBeTruthy()
     fireEvent.load(preview)
-    await waitFor(() => expect(preview.style.visibility).toBe('visible'))
+    await waitFor(() => expect(frameState(preview)).toBe('ready'))
     expect(document.querySelector('.preview-load-state')).toBeNull()
   })
 
   it('对比图用自己的 onLoad，加载完成后可见', async () => {
-    const getComputedStyle = window.getComputedStyle
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(element => getComputedStyle(element))
+    mockOverlayStyle()
     render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
     fireEvent.click(await screen.findByRole('button', { name: '对比原图与结果' }))
     const images = [...document.querySelectorAll('.compare-layer img')] as HTMLImageElement[]
@@ -73,34 +109,84 @@ describe('PreviewGallery', () => {
   })
 
   it('预览加载失败时可以重试', async () => {
-    const getComputedStyle = window.getComputedStyle
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(element => getComputedStyle(element))
+    mockOverlayStyle()
     render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
     const preview = await waitFor(() => document.querySelector('.ant-image-preview-img') as HTMLImageElement)
     fireEvent.error(preview)
     expect(await screen.findByText('图片加载失败')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }))
     const retried = await waitFor(() => document.querySelector('.ant-image-preview-img') as HTMLImageElement)
-    expect(retried.style.visibility).toBe('hidden')
+    expect(frameState(retried)).toBe('loading')
     fireEvent.load(retried)
-    await waitFor(() => expect(retried.style.visibility).toBe('visible'))
+    await waitFor(() => expect(frameState(retried)).toBe('ready'))
   })
 
   it('加载后点放大不抛错', async () => {
-    const getComputedStyle = window.getComputedStyle
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(element => getComputedStyle(element))
+    mockOverlayStyle()
     render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
     const preview = await waitFor(() => document.querySelector('.ant-image-preview-img') as HTMLImageElement)
-    Object.defineProperty(preview, 'width', { value: 1200 })
-    Object.defineProperty(preview, 'height', { value: 800 })
-    Object.defineProperty(preview, 'offsetWidth', { value: 1200 })
-    Object.defineProperty(preview, 'offsetHeight', { value: 800 })
-    Object.defineProperty(preview, 'offsetLeft', { value: 10 })
-    Object.defineProperty(preview, 'offsetTop', { value: 10 })
+    stubPreviewMetrics(preview)
     fireEvent.load(preview)
-    await waitFor(() => expect(preview.style.visibility).toBe('visible'))
-    const zoomIn = document.querySelector('.ant-image-preview-operations-operation-zoomIn') as HTMLElement
-    expect(zoomIn).toBeTruthy()
-    expect(() => fireEvent.click(zoomIn)).not.toThrow()
+    await waitFor(() => expect(frameState(preview)).toBe('ready'))
+    expect(zoomInButton()).toBeTruthy()
+    expect(() => fireEvent.click(zoomInButton())).not.toThrow()
+  })
+
+  it('打开预览、切换图片、缩放时不抛错且不 console.error', async () => {
+    mockOverlayStyle()
+    const tracker = collectConsoleErrors()
+    const onChange = vi.fn()
+    const { rerender } = render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={onChange} /></App>)
+    const first = await waitFor(() => document.querySelector('.ant-image-preview-img') as HTMLImageElement)
+    stubPreviewMetrics(first)
+    expect(() => fireEvent.click(zoomInButton())).not.toThrow()
+    expect(() => fireEvent.wheel(first, { deltaY: -120 })).not.toThrow()
+    fireEvent.load(first)
+    await waitFor(() => expect(frameState(first)).toBe('ready'))
+    expect(() => fireEvent.click(zoomInButton())).not.toThrow()
+
+    fireEvent.click(document.querySelector('.ant-image-preview-switch-right') as HTMLElement)
+    expect(onChange).toHaveBeenCalledWith(1)
+    rerender(<App><PreviewGallery items={items} open current={1} onClose={vi.fn()} onChange={onChange} /></App>)
+
+    const second = await waitFor(() => document.querySelector('.ant-image-preview-img') as HTMLImageElement)
+    stubPreviewMetrics(second)
+    expect(() => fireEvent.click(zoomInButton())).not.toThrow()
+    expect(() => fireEvent.wheel(second, { deltaY: -80 })).not.toThrow()
+    fireEvent.load(second)
+    await waitFor(() => expect(frameState(second)).toBe('ready'))
+    expect(() => fireEvent.click(zoomInButton())).not.toThrow()
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft', keyCode: 37, which: 37 })
+    rerender(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={onChange} /></App>)
+    const back = await waitFor(() => document.querySelector('.ant-image-preview-img') as HTMLImageElement)
+    stubPreviewMetrics(back)
+    expect(() => fireEvent.wheel(back, { deltaY: 80 })).not.toThrow()
+    fireEvent.load(back)
+    await waitFor(() => expect(frameState(back)).toBe('ready'))
+
+    tracker.restore()
+    expect(tracker.errors.filter(message => /width|preventDefault|TypeError/i.test(message))).toEqual([])
+  })
+
+  it('对比滚轮挂在非 passive 的 capture 监听上', async () => {
+    mockOverlayStyle()
+    const original = EventTarget.prototype.addEventListener
+    const wheelAdds: AddEventListenerOptions[] = []
+    vi.spyOn(EventTarget.prototype, 'addEventListener').mockImplementation(function (this: EventTarget, type, listener, options) {
+      if (type === 'wheel' && this instanceof Element && (this.classList.contains('compare-stage') || this.classList.contains('ant-modal-wrap'))) {
+        wheelAdds.push(typeof options === 'boolean' ? { capture: options } : { ...(options ?? {}) })
+      }
+      return original.call(this, type, listener, options)
+    })
+    render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
+    fireEvent.click(await screen.findByRole('button', { name: '对比原图与结果' }))
+    const stage = document.querySelector('.compare-stage') as HTMLElement
+    expect(stage).toBeTruthy()
+    expect(stage.getAttribute('onwheel')).toBeNull()
+    expect(wheelAdds.some(options => options.passive === false && options.capture === true)).toBe(true)
+    const event = new WheelEvent('wheel', { deltaY: -100, cancelable: true, bubbles: true })
+    expect(stage.dispatchEvent(event)).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
   })
 })

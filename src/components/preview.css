@@ -2,6 +2,8 @@
 .preview-gallery-overlay .ant-image-preview-operations { background: #17171a; }
 .preview-toolbar-action { color: #fff; }
 .preview-toolbar-action:hover { color: #21cfa0 !important; }
+.preview-image-frame[data-state='loading'] .ant-image-preview-img,
+.preview-image-frame[data-state='error'] .ant-image-preview-img { visibility: hidden; }
 .preview-load-state {
   position: fixed;
   left: 50%;
@@ -41,7 +43,7 @@
 .compare-modal .ant-modal-close { color: #fff; }
 .compare-controls, .compare-navigation { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px; color: #fff; }
 .compare-controls { flex-wrap: wrap; }
-.compare-stage { position: relative; height: calc(100dvh - 150px); min-height: 300px; overflow: hidden; background: #17171a; touch-action: none; user-select: none; cursor: grab; }
+.compare-stage { position: relative; height: calc(100dvh - 150px); min-height: 300px; overflow: hidden; overscroll-behavior: none; background: #17171a; touch-action: none; user-select: none; cursor: grab; }
 .compare-stage:active { cursor: grabbing; }
 .compare-layer { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
 .compare-layer img { width: 100%; height: 100%; object-fit: contain; will-change: transform; pointer-events: none; }
