@@ -60,22 +60,16 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const { message } = App.useApp()
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
+  const [hydrating, setHydrating] = useState(authEnabled)
   const [workstationItems, setWorkstationItems] = useState<WorkstationHistoryRecord[]>([])
   const [emailItems, setEmailItems] = useState<TaskSummary[]>([])
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
   const previewUrlsRef = useRef<Record<string, string>>({})
   const [downloadingId, setDownloadingId] = useState<string>()
 
-  const refresh = useCallback(async (isActive: () => boolean) => {
-    setLoading(true)
+  const refresh = useCallback(async (isActive: () => boolean, showLoading = true) => {
+    if (showLoading) setLoading(true)
     try {
-      if (authEnabled) {
-        try {
-          await hydrateWorkstationHistoryFromImageJobs(ownerId)
-        } catch {
-          /* 补记失败不挡住已有本地历史 */
-        }
-      }
       if (!isActive()) return
       const local = await listWorkstationHistory(ownerId)
       if (!isActive()) return
@@ -108,7 +102,14 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     let active = true
     const isActive = () => active && isCurrentWorkstationHistoryOwner(ownerId)
     queueMicrotask(() => {
-      if (isActive()) void refresh(isActive)
+      if (!isActive()) return
+      void refresh(isActive)
+      if (authEnabled) {
+        void hydrateWorkstationHistoryFromImageJobs(ownerId)
+          .then(() => isActive() ? refresh(isActive, false) : undefined)
+          .catch(() => undefined)
+          .finally(() => { if (isActive()) setHydrating(false) })
+      }
     })
     return () => {
       active = false
@@ -201,6 +202,8 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       </div>
       {loading ? (
         <div className="assets-loading"><Spin /> 正在读取历史任务…</div>
+      ) : hydrating && visible.length === 0 && filter !== 'email' ? (
+        <div className="assets-loading"><Spin /> 正在补记当前账号的云端图片任务…</div>
       ) : visible.length === 0 ? (
         <EmptyState
           description={filter === 'email'
