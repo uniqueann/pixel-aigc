@@ -1,4 +1,4 @@
-import { DownloadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, ZoomInOutlined } from '@ant-design/icons'
 import { Button } from 'antd'
 import type { AssetId, ImageAsset } from '@/editor/types'
 
@@ -8,6 +8,7 @@ interface ImageAssetStripProps {
   downloadingAssetId?: AssetId
   onSelect: (assetId: AssetId) => void
   onDownload?: (asset: ImageAsset, index: number) => void
+  onPreview: (assetId: AssetId) => void
 }
 
 /** 智能编辑生成结果候选条，选中的结果会成为下一次编辑输入。 */
@@ -17,6 +18,7 @@ export default function ImageAssetStrip({
   downloadingAssetId,
   onSelect,
   onDownload,
+  onPreview,
 }: ImageAssetStripProps) {
   if (assets.length === 0) return null
 
@@ -38,6 +40,14 @@ export default function ImageAssetStrip({
             >
               <img src={asset.url} alt={`候选结果 ${index + 1}`} />
             </button>
+            <Button
+              className="preview-zoom-button"
+              size="small"
+              type="text"
+              icon={<ZoomInOutlined />}
+              aria-label={`放大候选结果 ${index + 1}`}
+              onClick={() => onPreview(asset.id)}
+            />
             {onDownload ? (
               <Button
                 className="workstation-result-download"
