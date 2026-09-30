@@ -23,6 +23,18 @@ function readBlobBytes(blob: Blob): Promise<ArrayBuffer> {
   })
 }
 
+/** 局部编辑仅拦截字节完全相同的原图回传，避免小范围修改被整图均值掩盖。 */
+export async function isExactlySameImage(source: Blob | string, result: Blob | string) {
+  if (typeof source === 'string' && typeof result === 'string' && source === result) return true
+  try {
+    const [sourceBlob, resultBlob] = await Promise.all([blobFromImageSource(source), blobFromImageSource(result)])
+    if (sourceBlob.size !== resultBlob.size) return false
+    return buffersEqual(await readBlobBytes(sourceBlob), await readBlobBytes(resultBlob))
+  } catch {
+    return false
+  }
+}
+
 async function decodeSample(blob: Blob): Promise<Uint8ClampedArray | undefined> {
   if (typeof createImageBitmap !== 'function' && typeof Image === 'undefined') return undefined
   try {

@@ -1,9 +1,17 @@
 import sharp from 'sharp'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fitDashScopeImageSize } from '../shared/erase'
 import { DEFAULT_ERASE_PROMPT } from '../shared/erase'
-import { ERASE_MASK_DATA_URL_PREFIX, ERASE_WAIT_TIMEOUT_MESSAGE, eraseWithBailian, prepareEraseMask, restoreEraseResult } from './bailian-erase'
+const storageMocks = vi.hoisted(() => ({ putObject: vi.fn(), signRead: vi.fn() }))
+vi.mock('./storage', () => storageMocks)
+import { ERASE_MASK_DATA_URL_PREFIX, ERASE_SUBMIT_TIMEOUT_MS, ERASE_WAIT_TIMEOUT_MESSAGE,
+  eraseWithBailian, prepareEraseMask, restoreEraseResult, shouldUseEraseProviderUrls } from './bailian-erase'
 import { HttpError } from './errors'
+
+beforeEach(() => {
+  storageMocks.putObject.mockReset()
+  storageMocks.signRead.mockReset()
+})
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -94,6 +102,61 @@ describe('消除结果尺寸还原', () => {
 })
 
 describe('万相消除调用', () => {
+  it('大输入改用处理后原图和蒙版的 R2 签名地址提交', async () => {
+    expect(shouldUseEraseProviderUrls(1_750_000, 20_000)).toBe(true)
+    expect(shouldUseEraseProviderUrls(100_000, 20_000)).toBe(false)
+    expect(shouldUseEraseProviderUrls(100_000, 20_000, 'url')).toBe(true)
+    expect(shouldUseEraseProviderUrls(1_750_000, 20_000, 'inline')).toBe(false)
+    storageMocks.signRead.mockImplementation(async (key: string) => ({ url: `https://r2.test/${key}?signed=1` }))
+    const source = await solidJpeg(640, 640, { r: 10, g: 20, b: 30 })
+    const mask = await maskPng(640, 640, pixels => {
+      pixels[0] = 255
+      pixels[1] = 255
+      pixels[2] = 255
+    })
+    const model = await solidJpeg(640, 640, { r: 40, g: 50, b: 60 })
+    const logs: Array<Record<string, unknown>> = []
+    let submitted = ''
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        submitted = String(init?.body)
+        return jsonResponse({ output: { task_id: 'erase-url', task_status: 'PENDING' } })
+      }
+      if (url.endsWith('/tasks/erase-url')) {
+        return jsonResponse({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://example.test/out.jpg' }] } })
+      }
+      return new Response(model, { status: 200 })
+    }
+    try {
+      await eraseWithBailian(source, mask, '', {
+        fetch: fetchImpl,
+        env: { DASHSCOPE_API_KEY: 'sk-test', DASHSCOPE_ERASE_INPUT_MODE: 'url' },
+        requestId: 'erase-request',
+        sleep: async () => {},
+        now: () => 0,
+        log: entry => { logs.push(entry) },
+      })
+      expect(timeoutSpy).toHaveBeenCalledWith(ERASE_SUBMIT_TIMEOUT_MS)
+    } finally {
+      timeoutSpy.mockRestore()
+    }
+    const input = (JSON.parse(submitted) as { input: { base_image_url: string; mask_image_url: string } }).input
+    expect(input.base_image_url).toBe('https://r2.test/temporary/dashscope-inputs/erase/erase-request/source.jpg?signed=1')
+    expect(input.mask_image_url).toBe('https://r2.test/temporary/dashscope-inputs/erase/erase-request/mask.png?signed=1')
+    expect(submitted.length).toBeLessThan(2_000)
+    expect(storageMocks.putObject).toHaveBeenCalledWith(
+      'temporary/dashscope-inputs/erase/erase-request/source.jpg', expect.any(Buffer), 'image/jpeg',
+    )
+    expect(storageMocks.putObject).toHaveBeenCalledWith(
+      'temporary/dashscope-inputs/erase/erase-request/mask.png', expect.any(Buffer), 'image/png',
+    )
+    expect(storageMocks.signRead).toHaveBeenCalledWith(expect.any(String), 3_600)
+    expect(logs.find(entry => entry.stage === 'providerInputUpload')).toMatchObject({ ms: 0 })
+    expect(JSON.stringify(logs)).not.toContain('https://r2.test/')
+  })
+
   it('提交 wanx2.1-imageedit description_edit_with_mask，蒙版与底图同尺寸，n=1', async () => {
     const source = await solidJpeg(640, 640, { r: 10, g: 20, b: 30 })
     const mask = await maskPng(640, 640, (pixels) => {

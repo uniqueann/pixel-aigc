@@ -7,6 +7,12 @@
 3. 发布服务端和前端。对小图确认 `/api/erase` 仍直接返回 JPEG；对大图确认请求体只包含对象键，结果超过 3.5 MiB 时返回签名地址，浏览器可以直接下载。
 4. 用本人账号分别测试本地上传图片、已有生成图片、无效蒙版、超 20 MB 图片、失效签名，以及大于 4.5 MB 的输出。确认请求失败时仍显示明确错误，不扣除额外积分。
 
+## 百炼提交路径
+
+消除会先把原图规范为 JPEG、把蒙版规范为黑白 PNG。两者合计达到 1 MB 时，服务端将处理后的图片写入 R2 的 `temporary/dashscope-inputs/erase/`，签发 1 小时的 GET 地址，百炼提交请求只发送这两个地址。较小的输入保持原有 Base64 路径。URL 模式的提交超时为 35 秒，消除整体处理预算为 100 秒。
+
+可用服务端环境变量 `DASHSCOPE_ERASE_INPUT_MODE=inline` 临时强制走旧路径，或设为 `url` 强制使用签名地址，以便联调。请用真实任务确认百炼从北京可以读取 R2 签名地址；浏览器 CORS 成功只证明浏览器能读取，不等同于百炼可读取。日志记录 `inputTransport`，不记录签名地址。
+
 ## 观测
 
 `aigc.sync_requests` 对消除请求保留 7 天，其他同步请求仍保留 2 小时。`transport` 为 `inline` 或 `object`；`stage_ms` 包含客户端准备与上传、服务端 R2 读取、百炼处理、R2 写入等阶段。`created_at` 到 `completed_at` 是服务端总耗时，不含浏览器下载结果的时间。
@@ -19,6 +25,7 @@ select date_trunc('day', created_at) as day, transport,
        round(percentile_cont(0.95) within group (order by extract(epoch from completed_at-created_at)*1000)) as p95_server_ms,
        round(avg((stage_ms->>'clientUpload')::numeric)) as avg_client_upload_ms,
        round(avg((stage_ms->>'objectRead')::numeric)) as avg_r2_read_ms,
+       round(avg((stage_ms->>'providerInputUpload')::numeric)) as avg_provider_input_upload_ms,
        round(avg((stage_ms->>'process')::numeric)) as avg_process_ms
 from aigc.sync_requests
 where route = 'erase' and created_at >= now() - interval '7 days'

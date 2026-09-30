@@ -21,7 +21,7 @@ import { readRelight, relightHistoryText, type RelightOptions } from '@shared/re
 import { readRetouchDirections, retouchHistoryText } from '@shared/retouch'
 import { blobFromImageSource } from '../download'
 import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
-import { isVisuallySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
+import { isExactlySameImage, isVisuallySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
 import { finalizeWorkstationResults } from '../results'
 import { COMING_SOON_SUBMIT_MESSAGE, isWorkstationToolReady } from '../tools/registry'
 import type {
@@ -271,7 +271,7 @@ export function useImageWorkstationController({
       setTask(completed)
       upsertTask(completed)
       setActiveTaskId(undefined)
-      if (await isVisuallySameImage(original, result)) {
+      if (await isExactlySameImage(original, result)) {
         setProtocolError(SOURCE_ECHO_ERROR)
         return completed
       }
@@ -393,7 +393,7 @@ export function useImageWorkstationController({
       setTask(completed)
       upsertTask(completed)
       setActiveTaskId(undefined)
-      if (await isVisuallySameImage(original, result)) {
+      if (await isExactlySameImage(original, result)) {
         setProtocolError(SOURCE_ECHO_ERROR)
         return completed
       }
