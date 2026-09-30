@@ -35,6 +35,14 @@ vi.mock('@/services/api/upload', () => ({
 vi.mock('@/services/api/erase', () => ({
   requestErase: mocks.requestErase,
 }))
+vi.mock('@/features/assets/historyOwner', async () => {
+  const { useUserStore } = await import('@/store/useUserStore')
+  const currentOwner = () => useUserStore.getState().userId ?? 'anonymous'
+  return {
+    currentWorkstationHistoryOwner: currentOwner,
+    isCurrentWorkstationHistoryOwner: (ownerId: string) => currentOwner() === ownerId,
+  }
+})
 vi.mock('@/services/api/repaint', () => ({
   requestRepaint: mocks.requestRepaint,
 }))
