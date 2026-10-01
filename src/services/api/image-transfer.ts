@@ -1,5 +1,5 @@
 import { authEnabled, supabase } from '@/cloud/client'
-import { signedOwnedObjectUrl } from './objects'
+import { readOwnedImage, OwnedImageReadError } from './ownedImages'
 import type { SyncImageObjectResult } from '@shared/sync-image'
 
 export const INLINE_IMAGE_BYTES = Math.floor(3.5 * 1024 * 1024)
@@ -65,46 +65,31 @@ export function throwIfImageRequestAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException('处理已取消', 'AbortError')
 }
 
-function downloadSignal(signal?: AbortSignal) {
-  return signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000)
-}
-
-/** 下载失败只刷新地址，不通过服务器代理图片，也不重复生成。 */
-export async function downloadImageResult(payload: SyncImageObjectResult, tool: string, signal?: AbortSignal) {
-  throwIfImageRequestAborted(signal)
-  let downloaded = await fetch(payload.url, { signal: downloadSignal(signal) }).catch(error => {
-    throwIfImageRequestAborted(signal)
-    if (error instanceof Error && error.name === 'TimeoutError') throw new ImageResultError(504, `读取${tool}结果超时，请重试`)
-    return null
-  })
-  if (!downloaded || downloaded.status === 403) {
-    await downloaded?.body?.cancel()
-    const refreshed = signal ? await signedOwnedObjectUrl(payload.objectKey, signal) : await signedOwnedObjectUrl(payload.objectKey)
-    downloaded = await fetch(refreshed, { signal: downloadSignal(signal) }).catch(() => {
-      throwIfImageRequestAborted(signal)
-      return null
-    })
-  }
-  if (!downloaded?.ok || downloaded.headers.get('Content-Type')?.split(';')[0].trim() !== payload.mimeType) {
-    await downloaded?.body?.cancel()
-    throw new ImageResultError(downloaded?.status ?? 502, `读取${tool}结果失败，请重试`)
-  }
-  try { return await downloaded.blob() }
-  catch {
-    throwIfImageRequestAborted(signal)
-    throw new ImageResultError(502, `读取${tool}结果中断，请重试`)
+/** 读取失败保留对象描述，只读取已有结果，不重新生成。 */
+export async function downloadImageResult(payload: SyncImageObjectResult, tool: string, signal?: AbortSignal, ownerId?: string) {
+  try { return await readOwnedImage(payload, { signal, ownerId }) }
+  catch (error) {
+    if (error instanceof OwnedImageReadError) throw new ImageResultError(error.status, `读取${tool}结果失败：${error.message}`)
+    if (error && typeof error === 'object' && 'status' in error && typeof error.status === 'number') throw new ImageResultError(error.status, `读取${tool}结果地址失败，请重试读取`)
+    throw error
   }
 }
 
-export async function readImageResult(response: Response, tool: string, options: {
+export interface ImageResultReadOptions {
+  ownerId?: string
   expectedMime?: SyncImageObjectResult['mimeType']
   signal?: AbortSignal
   onObjectResult?: (result: SyncImageObjectResult) => void
-} = {}) {
+}
+
+export async function readImageResult(response: Response, tool: string, options: ImageResultReadOptions = {}) {
   const expectedMime = options.expectedMime ?? 'image/jpeg'
-  if (response.headers.get('Content-Type')?.split(';')[0].trim() === expectedMime) return response.blob()
+  if (response.headers.get('Content-Type')?.split(';')[0].trim() === expectedMime) {
+    try { return await response.blob() }
+    catch { throwIfImageRequestAborted(options.signal); throw new Error('内联结果读取中断，无法恢复图片；请主动重新生成') }
+  }
   const payload = await response.json().catch(() => null) as SyncImageObjectResult | null
   if (!payload?.objectKey || !payload.url || payload.mimeType !== expectedMime) throw new Error(`${tool}没有返回图片`)
   options.onObjectResult?.(payload)
-  return downloadImageResult(payload, tool, options.signal)
+  return downloadImageResult(payload, tool, options.signal, options.ownerId)
 }

@@ -1,3 +1,4 @@
+import { invalidateOwnedImage } from '@/services/api/ownedImages'
 import { blobFromImageSource } from '@/features/image-workstation/download'
 import { uploadImage, uploadTaskInput } from '@/services/api/upload'
 import { normalizeImageBlob } from '@shared/image-format'
@@ -45,6 +46,7 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
       return normalized
     } catch (error) {
       check()
+      if (transfer.result) invalidateOwnedImage(ownerId, transfer.result.objectKey)
       transfer.result = undefined
       saveTransfer()
       throw error
@@ -54,7 +56,7 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
   const started = performance.now()
   if (transfer.result) {
     try {
-      const matte = await finish(await downloadImageResult(transfer.result, '抠图', options.signal))
+      const matte = await finish(await downloadImageResult(transfer.result, '抠图', options.signal, options.ownerId))
       console.info(JSON.stringify({ evt: 'bg-remove-client', resultReuse: true, downloadMs: Math.round(performance.now() - started) }))
       return matte
     }
@@ -103,7 +105,7 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
     check()
     const downloadStarted = performance.now()
     const matte = await readImageResult(response, '抠图', {
-      expectedMime: 'image/png', signal: options.signal,
+      expectedMime: 'image/png', signal: options.signal, ownerId: options.ownerId,
       onObjectResult: result => { transfer.result = result; saveTransfer() },
     }).catch(error => {
       if (error instanceof ImageResultError && error.status === 200) { transfer.result = undefined; saveTransfer() }

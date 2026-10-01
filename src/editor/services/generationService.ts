@@ -27,8 +27,9 @@ export class GenerationService {
 
   reconcile<TParams>(task: GenerationTask<TParams>, options: TaskAdapterOptions) {
     const adapted = adaptGenerationTask(task, options)
-    this.registry.registerGeneration(adapted.generation)
-    adapted.assets.forEach((asset) => this.registry.registerAsset(asset))
+    const existing = new Set(options.existingAssets?.map(asset => asset.id) ?? [])
+    this.registry.registerGeneration(options.deferAssets ? { ...adapted.generation, outputAssetIds: adapted.assets.filter(asset => existing.has(asset.id)).map(asset => asset.id) } : adapted.generation)
+    if (!options.deferAssets) adapted.assets.forEach((asset) => this.registry.registerAsset(asset))
     return adapted
   }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DownloadOutlined, DeleteOutlined, ZoomInOutlined } from '@ant-design/icons'
-import { App, Button, Card, Segmented, Space, Spin } from 'antd'
+import { App, Alert, Button, Card, Segmented, Space, Spin } from 'antd'
 import EmptyState from '@/components/EmptyState'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import { usePreviewGallery } from '@/components/usePreviewGallery'
@@ -16,10 +16,13 @@ import { hydrateWorkstationHistoryFromImageJobs } from '@/features/assets/hydrat
 import { isCurrentWorkstationHistoryOwner, resolveWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import {
   deleteWorkstationHistory,
-  listWorkstationHistory,
-  type WorkstationHistoryRecord,
+  listHistoryPreviews,
+  HISTORY_CHANGED,
+  type WorkstationHistoryListItem,
 } from '@/features/assets/workstationHistory'
 import { downloadFailureMessage, downloadImageSource, filenameForWorkstationResult } from '@/features/image-workstation/download'
+import { runtimeImageBlob } from '@/services/api/imageRuntime'
+import { readOwnedImage } from '@/services/api/ownedImages'
 import { listTasks, type TaskSummary } from '@/services/api/task'
 import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
@@ -35,7 +38,7 @@ interface LibraryItem {
   createdAt: string
   previewUrl?: string
   prompt?: string
-  record?: WorkstationHistoryRecord
+  record?: WorkstationHistoryListItem
   email?: TaskSummary
 }
 
@@ -60,63 +63,103 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const { message } = App.useApp()
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
+  const [historyError, setHistoryError] = useState<string>()
+  const lifetimeAbortRef = useRef(new AbortController())
   const [hydrating, setHydrating] = useState(authEnabled)
-  const [workstationItems, setWorkstationItems] = useState<WorkstationHistoryRecord[]>([])
+  const [workstationItems, setWorkstationItems] = useState<WorkstationHistoryListItem[]>([])
   const [emailItems, setEmailItems] = useState<TaskSummary[]>([])
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
+  const previewVersionsRef = useRef<Record<string, string>>({})
   const previewUrlsRef = useRef<Record<string, string>>({})
+  const refreshVersionRef = useRef(0)
   const [downloadingId, setDownloadingId] = useState<string>()
 
   const refresh = useCallback(async (isActive: () => boolean, showLoading = true) => {
+    const version = ++refreshVersionRef.current
+    const current = () => isActive() && version === refreshVersionRef.current
     if (showLoading) setLoading(true)
     try {
-      if (!isActive()) return
-      const local = await listWorkstationHistory(ownerId)
-      if (!isActive()) return
+      if (!current()) return
+      const local = await listHistoryPreviews(ownerId)
+      if (!current()) return
       const nextUrls: Record<string, string> = {}
-      for (const item of local) nextUrls[item.id] = URL.createObjectURL(item.result)
-      if (!isActive()) {
-        for (const url of Object.values(nextUrls)) URL.revokeObjectURL(url)
+      const nextVersions: Record<string, string> = {}
+      for (const item of local) if (item.thumbnail) {
+        nextVersions[item.id] = item.updatedAt
+        nextUrls[item.id] = previewVersionsRef.current[item.id] === item.updatedAt && previewUrlsRef.current[item.id]
+          ? previewUrlsRef.current[item.id] : URL.createObjectURL(item.thumbnail)
+      }
+      if (!current()) {
+        for (const url of Object.values(nextUrls)) if (!Object.values(previewUrlsRef.current).includes(url)) URL.revokeObjectURL(url)
         return
       }
-      for (const url of Object.values(previewUrlsRef.current)) URL.revokeObjectURL(url)
+      for (const url of Object.values(previewUrlsRef.current)) if (!Object.values(nextUrls).includes(url)) URL.revokeObjectURL(url)
+      previewVersionsRef.current = nextVersions
       previewUrlsRef.current = nextUrls
       setPreviewUrls(nextUrls)
       setWorkstationItems(local)
-      if (authEnabled) {
+      if (authEnabled && showLoading) {
         try {
           const response = await listTasks({ capability: Capability.EmailAssist, page: 1 })
           if (isActive()) setEmailItems(response.items)
         } catch {
           if (isActive()) setEmailItems([])
         }
-      } else {
-        if (isActive()) setEmailItems([])
+      } else if (!authEnabled) {
+        if (current()) setEmailItems([])
       }
     } finally {
-      if (isActive()) setLoading(false)
+      if (current()) setLoading(false)
     }
   }, [ownerId])
 
   useEffect(() => {
     let active = true
+    const abort = new AbortController()
+    lifetimeAbortRef.current = abort
     const isActive = () => active && isCurrentWorkstationHistoryOwner(ownerId)
     queueMicrotask(() => {
       if (!isActive()) return
-      void refresh(isActive)
+      void refresh(isActive).catch(error => { if (isActive()) setHistoryError(error instanceof Error ? error.message : '历史读取失败') })
       if (authEnabled) {
-        void hydrateWorkstationHistoryFromImageJobs(ownerId)
-          .then(() => isActive() ? refresh(isActive, false) : undefined)
-          .catch(() => undefined)
+        void hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: abort.signal })
+          .then(result => {
+            if (!isActive()) return
+            if (result.failed) setHistoryError(`有 ${result.failed} 项结果未能补记，请重试读取与保存`)
+            return refresh(isActive, false)
+          })
+          .catch(error => { if (isActive()) setHistoryError(error instanceof Error ? error.message : '历史补记失败') })
           .finally(() => { if (isActive()) setHydrating(false) })
       }
     })
+    const updated = () => { void refresh(isActive, false).catch(() => undefined) }
+    window.addEventListener(HISTORY_CHANGED, updated)
+    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(HISTORY_CHANGED) : undefined
+    if (channel) channel.onmessage = event => { if (event.data === ownerId) updated() }
     return () => {
       active = false
+      abort.abort()
+      window.removeEventListener(HISTORY_CHANGED, updated)
+      channel?.close()
       for (const url of Object.values(previewUrlsRef.current)) URL.revokeObjectURL(url)
       previewUrlsRef.current = {}
     }
   }, [ownerId, refresh])
+
+  const retryHistory = async () => {
+    const isActive = () => !lifetimeAbortRef.current.signal.aborted && isCurrentWorkstationHistoryOwner(ownerId)
+    setHistoryError(undefined)
+    setHydrating(authEnabled)
+    try {
+      await refresh(isActive)
+      if (authEnabled && isActive()) {
+        const result = await hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: lifetimeAbortRef.current.signal })
+        if (isActive() && result.failed) setHistoryError(`有 ${result.failed} 项结果未能补记，请重试读取与保存`)
+        if (isActive()) await refresh(isActive, false)
+      }
+    } catch (error) { if (isActive()) setHistoryError(error instanceof Error ? error.message : '历史读取失败') }
+    finally { if (isActive()) setHydrating(false) }
+  }
 
   const items = useMemo<LibraryItem[]>(() => {
     const workstation = workstationItems.map((record) => ({
@@ -143,19 +186,22 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   }, [emailItems, previewUrls, workstationItems])
 
   const visible = items.filter((item) => filter === 'all' || item.kind === filter)
-  const previewItems: PreviewItem[] = visible.flatMap(item => item.previewUrl ? [{
+  const previewItems: PreviewItem[] = visible.flatMap(item => item.record ? [{
     id: item.id,
-    thumbSrc: item.previewUrl,
-    fullSrc: item.previewUrl,
+    thumbSrc: item.previewUrl ?? '',
+    fullSrc: '',
+    historyId: item.id,
+    objectKey: item.record?.objectKey,
+    ownerId,
     title: item.title,
     meta: { tool: item.title, resolution: item.record ? `${item.record.width}×${item.record.height}` : undefined, createdAt: item.createdAt },
   }] : [])
   const { openAt, galleryProps } = usePreviewGallery(previewItems)
 
-  const downloadRecord = async (record: WorkstationHistoryRecord) => {
+  const downloadRecord = async (record: WorkstationHistoryListItem, currentBlob?: Blob) => {
     setDownloadingId(record.id)
     try {
-      await downloadImageSource(record.result, filenameForWorkstationResult({
+      await downloadImageSource(currentBlob ?? await readOwnedImage({ historyId: record.id, objectKey: record.objectKey }, { ownerId }), filenameForWorkstationResult({
         toolLabel: capabilityLabel(record.capability, record.toolSlug),
         width: record.width,
         height: record.height,
@@ -200,6 +246,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           ]}
         />
       </div>
+      {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>重试历史读取与保存</Button>} /> : null}
       {loading ? (
         <div className="assets-loading"><Spin /> 正在读取历史任务…</div>
       ) : hydrating && visible.length === 0 && filter !== 'email' ? (
@@ -217,7 +264,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
             <Card
               key={item.id}
               className="assets-card"
-              cover={item.previewUrl ? <div className="assets-cover"><img src={item.previewUrl} alt={item.title} /><Button className="preview-zoom-button" type="text" size="small" icon={<ZoomInOutlined />} aria-label={`放大${item.title}`} onClick={() => openAt(item.id)} /></div> : undefined}
+              cover={item.record ? <div className="assets-cover">{item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : <span>图片已保存在本地</span>}<Button className="preview-zoom-button" type="text" size="small" icon={<ZoomInOutlined />} aria-label={`放大${item.title}`} onClick={() => openAt(item.id)} /></div> : undefined}
             >
               <div className="assets-card-title">{item.title}</div>
               <div className="assets-card-meta">{formatTime(item.createdAt)} · {taskStatusLabel(item.status)}</div>
@@ -245,7 +292,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       )}
       <PreviewGallery {...galleryProps} onDownload={item => {
         const record = workstationItems.find(candidate => candidate.id === item.id)
-        if (record) return downloadRecord(record)
+        if (record) return downloadRecord(record, runtimeImageBlob(item.fullSrc))
       }} />
     </div>
   )

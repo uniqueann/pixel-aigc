@@ -367,7 +367,7 @@ export default function ImageWorkstation() {
   const handleRetry = async () => {
     try {
       await controller.retry()
-      message.success('已按原参数重新提交')
+      message.success(controller.activeTask?.status === 'succeeded' ? '已重试读取已有结果' : '已按原参数重新提交')
     } catch (error) {
       message.error(error instanceof Error ? error.message : '任务重试失败')
     }
@@ -486,6 +486,12 @@ export default function ImageWorkstation() {
             summary={taskSummary}
             submissionError={controller.submissionError}
             protocolError={controller.protocolError}
+            readingResults={controller.readingResults}
+            resultReadError={controller.resultReadError}
+            historyError={controller.historyError}
+            historySaved={controller.historySaved}
+            onRetryRead={() => void controller.retryRead()}
+            onRetrySave={() => void controller.retrySave()}
             pollError={controller.pollError}
             onRetry={() => void handleRetry()}
             onModifyParameters={controller.modifyParameters}

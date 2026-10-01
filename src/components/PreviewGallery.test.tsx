@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { App } from 'antd'
 import PreviewGallery, { type PreviewItem } from './PreviewGallery'
+import * as ownedImages from '@/services/api/ownedImages'
+import * as historyOwner from '@/features/assets/historyOwner'
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 const items: PreviewItem[] = [
   { id: 'first', thumbSrc: 'first-small.png', fullSrc: 'first.png', originalSrc: 'source.png' },
@@ -52,6 +54,40 @@ function collectConsoleErrors() {
 }
 
 describe('PreviewGallery', () => {
+  it('历史预览下载直接复用当前 Blob，不再次读取完整历史', async () => {
+    mockOverlayStyle()
+    vi.spyOn(historyOwner, 'currentWorkstationHistoryOwner').mockReturnValue('anonymous')
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:shared-preview')
+      static revokeObjectURL = vi.fn()
+    })
+    const blob = new Blob(['图片'], { type: 'image/png' })
+    const read = vi.spyOn(ownedImages, 'readOwnedImage').mockResolvedValue(blob)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const history: PreviewItem[] = [{ id: 'history', historyId: 'history', thumbSrc: '', fullSrc: '', title: '商品.jpg' }]
+    render(<App><PreviewGallery items={history} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
+    await waitFor(() => expect(document.querySelector('.ant-image-preview-img')?.getAttribute('src')).toBe('blob:shared-preview'))
+    fireEvent.click(screen.getByRole('button', { name: '下载原始大图' }))
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(URL.createObjectURL).toHaveBeenLastCalledWith(blob)
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalled(), { timeout: 1500 })
+  })
+
+  it('账号切换后的旧历史不读取图片，也不调用自定义下载', async () => {
+    mockOverlayStyle()
+    vi.spyOn(historyOwner, 'isCurrentWorkstationHistoryOwner').mockReturnValue(false)
+    const read = vi.spyOn(ownedImages, 'readOwnedImage')
+    const download = vi.fn()
+    const history: PreviewItem[] = [{ id: 'history', historyId: 'history', ownerId: 'old-owner', thumbSrc: '', fullSrc: '' }]
+    render(<App><PreviewGallery items={history} open current={0} onClose={vi.fn()} onChange={vi.fn()} onDownload={download} /></App>)
+    await screen.findByText('账号已切换，无法读取其他账号的图片')
+    fireEvent.click(screen.getByRole('button', { name: '下载原始大图' }))
+    await screen.findByText(/账号已切换，无法下载其他账号的图片/)
+    expect(read).not.toHaveBeenCalled()
+    expect(download).not.toHaveBeenCalled()
+  })
+
   it('仅有源图时显示对比，并在切换到无源图结果时回到普通预览', async () => {
     mockOverlayStyle()
     const onChange = vi.fn()
