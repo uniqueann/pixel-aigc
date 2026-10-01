@@ -190,13 +190,16 @@ export async function callDashScope(
   extra: Record<string, unknown> & { now: () => number },
   connectMessage: string,
   errorCode: string,
+  deadline?: { at: number; message: string; code: string },
 ) {
   const { now, ...rest } = extra
   let lastError: unknown
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const remaining = deadline ? deadline.at - now() : Infinity
+    if (deadline && remaining <= 0) throw new HttpError(504, deadline.message, deadline.code, { stage })
     const started = now()
     try {
-      return await fetchImpl(input, { ...init, signal: AbortSignal.timeout(abortMs) })
+      return await fetchImpl(input, { ...init, signal: AbortSignal.timeout(Math.max(1, Math.min(abortMs, remaining))) })
     } catch (error) {
       lastError = error
       const details = describeError(error)
@@ -206,6 +209,7 @@ export async function callDashScope(
         error: details.message, cause: details.cause ?? null,
         ms: now() - started, ...rest,
       })
+      if (deadline && now() >= deadline.at) throw new HttpError(504, deadline.message, deadline.code, { cause: error, stage })
       if (!retry) {
         throw new HttpError(502, connectMessage, errorCode, { cause: error, stage })
       }
@@ -281,7 +285,9 @@ export async function submitDashScopeImageTask(options: DashScopeImageTaskOption
   }, 'submit', SUBMIT_ATTEMPTS, options.submitTimeoutMs ?? 20_000, options.sleep, options.log, {
     requestId: options.requestId, pass: options.pass, host: dashScopeHost(options.config.baseUrl), now: options.now,
     ...options.extraSubmitLog,
-  }, options.connectMessage, options.errorCode)
+  }, options.connectMessage, options.errorCode, {
+    at: options.deadline, message: options.timeoutMessage, code: options.timeoutCode,
+  })
   const createdPayload = await readJson(created)
   options.log({
     requestId: options.requestId, stage: 'submit', pass: options.pass, ms: options.now() - submitStarted,
@@ -310,7 +316,9 @@ export async function submitDashScopeImageTask(options: DashScopeImageTaskOption
       headers: { Authorization: `Bearer ${options.config.apiKey}` },
     }, 'poll', GET_ATTEMPTS, 20_000, options.sleep, options.log, {
       requestId: options.requestId, pass: options.pass, poll: polls, now: options.now,
-    }, options.connectMessage, options.errorCode)
+    }, options.connectMessage, options.errorCode, {
+      at: options.deadline, message: options.timeoutMessage, code: options.timeoutCode,
+    })
     const payload = await readJson(polled)
     const status = payload.output?.task_status
     const failure = dashScopeErrorFields(payload)
@@ -342,7 +350,9 @@ export async function submitDashScopeImageTask(options: DashScopeImageTaskOption
   const downloadStarted = options.now()
   const downloaded = await callDashScope(options.fetch, imageUrl, undefined, 'download', GET_ATTEMPTS, 30_000, options.sleep, options.log, {
     requestId: options.requestId, pass: options.pass, now: options.now,
-  }, options.connectMessage, options.errorCode)
+  }, options.connectMessage, options.errorCode, {
+    at: options.deadline, message: options.timeoutMessage, code: options.timeoutCode,
+  })
   if (!downloaded.ok) throw new HttpError(502, `${options.kind}结果下载失败`, options.errorCode)
   const buffer = Buffer.from(await downloaded.arrayBuffer())
   options.log({

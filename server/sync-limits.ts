@@ -20,7 +20,7 @@ const limits: Record<Bucket, { hourly: number; concurrent: number }> = {
 }
 
 export interface SyncRequestMetrics {
-  route: 'erase'
+  route: 'erase' | 'repaint' | 'outpaint'
   requestId: string
   transport: 'inline' | 'object'
   inputBytes: number

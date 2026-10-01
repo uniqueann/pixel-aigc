@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { HttpError } from './errors.js'
 import {
@@ -9,6 +10,7 @@ import {
 } from '../shared/outpaint.js'
 import {
   DEFAULT_DEADLINE_MS,
+  FINISH_RESERVE_MS,
   bailianConfig,
   createDashScopeLog,
   dashScopeHost,
@@ -20,6 +22,7 @@ import {
   type BailianPayload,
   type DashScopeLog,
 } from './dashscope.js'
+import { PROVIDER_URL_SUBMIT_TIMEOUT_MS, shouldUseProviderUrls, stageProviderInputs } from './provider-input-storage.js'
 
 export {
   CONNECT_TIMEOUT_MS,
@@ -47,6 +50,7 @@ interface BailianDeps {
   sleep?: (ms: number) => Promise<void>
   now?: () => number
   deadlineMs?: number
+  deadlineAt?: number
   requestId?: string
   log?: OutpaintLog
 }
@@ -113,6 +117,7 @@ export async function cropOutpaintResult(modelImage: Buffer, plan: BailianOutpai
 async function submitExpand(
   config: BailianConfig,
   image: Buffer,
+  imageUrl: string,
   scales: BailianExpandScales,
   deps: {
     fetch: typeof fetch
@@ -123,6 +128,8 @@ async function submitExpand(
     log: OutpaintLog
     pass: number
     remainingPasses: number
+    inputTransport: 'inline' | 'url'
+    submitTimeoutMs?: number
   },
 ) {
   return submitDashScopeImageTask({
@@ -132,7 +139,7 @@ async function submitExpand(
       input: {
         function: 'expand',
         prompt: DEFAULT_EXPAND_PROMPT,
-        base_image_url: `data:image/jpeg;base64,${image.toString('base64')}`,
+        base_image_url: imageUrl,
       },
       parameters: {
         left_scale: scales.left,
@@ -151,7 +158,8 @@ async function submitExpand(
     requestId: deps.requestId,
     log: deps.log,
     pass: deps.pass,
-    extraSubmitLog: { bytes: image.length },
+    extraSubmitLog: { bytes: image.length, inputTransport: deps.inputTransport },
+    submitTimeoutMs: deps.submitTimeoutMs,
     kind: '扩图',
     errorCode: 'OUTPAINT_FAILED',
     timeoutCode: 'OUTPAINT_TIMEOUT',
@@ -193,13 +201,32 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
     encodeMs: now() - encodeStarted, encodeBytes: encoded.length, reusedJpeg: encoded === image,
     host: dashScopeHost(config.baseUrl),
   })
-  const deadline = now() + (deps.deadlineMs ?? DEFAULT_DEADLINE_MS)
+  const deadline = Math.min(now() + (deps.deadlineMs ?? DEFAULT_DEADLINE_MS), deps.deadlineAt ?? Infinity)
   let current = encoded
   for (let index = 0; index < plan.passes.length; index += 1) {
     if (now() > deadline) throw new HttpError(504, OUTPAINT_WAIT_TIMEOUT_MESSAGE, 'OUTPAINT_TIMEOUT', { stage: 'wait' })
-    current = await submitExpand(config, current, plan.passes[index].scales, {
+    const pass = index + 1
+    const remainingPasses = plan.passes.length - index
+    const inputTransport = shouldUseProviderUrls(current.length, (deps.env ?? process.env).DASHSCOPE_OUTPAINT_INPUT_MODE)
+      ? 'url' : 'inline'
+    let imageUrl: string
+    if (inputTransport === 'url') {
+      const uploadStarted = now()
+      const signal = deps.deadlineAt ? AbortSignal.timeout(Math.max(1, deadline - now())) : undefined
+      const staged = await stageProviderInputs('outpaint', deps.requestId ?? randomUUID(), current, undefined, pass, signal)
+      imageUrl = staged.baseImageUrl
+      log({ requestId: deps.requestId, stage: 'providerInputUpload', pass,
+        ms: now() - uploadStarted, bytes: current.length })
+    } else {
+      imageUrl = `data:image/jpeg;base64,${current.toString('base64')}`
+    }
+    const passBudget = Math.max(0, Math.floor((deadline - now() - FINISH_RESERVE_MS) / remainingPasses))
+    const submitTimeoutMs = inputTransport === 'url'
+      ? Math.max(1_000, Math.min(PROVIDER_URL_SUBMIT_TIMEOUT_MS, Math.floor(passBudget / 2)))
+      : undefined
+    current = await submitExpand(config, current, imageUrl, plan.passes[index].scales, {
       fetch: fetchImpl, sleep, now, deadline, requestId: deps.requestId, log, pass: index + 1,
-      remainingPasses: plan.passes.length - index,
+      remainingPasses, inputTransport, submitTimeoutMs,
     })
     if (index < plan.passes.length - 1) current = await encodePassInput(current)
   }

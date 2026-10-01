@@ -16,8 +16,9 @@ export async function signRead(key: string, expiresIn = 900) {
   return { url: await getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket(), Key: key }), { expiresIn }), expiresAt: Date.now() + expiresIn * 1000 }
 }
 
-export async function putObject(key: string, bytes: Uint8Array, contentType: string) {
-  await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: contentType }))
+export async function putObject(key: string, bytes: Uint8Array, contentType: string, signal?: AbortSignal) {
+  await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: contentType }),
+    signal ? { abortSignal: signal } : undefined)
 }
 
 export async function getObject(key: string) {
@@ -26,8 +27,9 @@ export async function getObject(key: string) {
   return { bytes: await result.Body.transformToByteArray(), contentType: result.ContentType }
 }
 
-export async function getObjectLimited(key: string, maxBytes: number) {
-  const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }))
+export async function getObjectLimited(key: string, maxBytes: number, signal?: AbortSignal) {
+  const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }),
+    signal ? { abortSignal: signal } : undefined)
   if (!result.Body) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
   if (result.ContentLength !== undefined && result.ContentLength > maxBytes) {
     if ('destroy' in result.Body && typeof result.Body.destroy === 'function') result.Body.destroy()

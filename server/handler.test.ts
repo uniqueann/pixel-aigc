@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VercelRequest, VercelResponse } from './http'
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn(),
-  getObject: vi.fn(), loadEraseStoredImage: vi.fn(), putObject: vi.fn(), signRead: vi.fn(),
+  repaintWithBailian: vi.fn(), expandWithBailian: vi.fn(),
+  getObject: vi.fn(), loadEraseStoredImage: vi.fn(), loadStoredSyncImage: vi.fn(), putObject: vi.fn(), signRead: vi.fn(),
 }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
 vi.mock('./db', () => ({ runtimeScope: () => 'local', withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
@@ -14,7 +15,13 @@ vi.mock('./storage', () => ({
   getObject: mocks.getObject,
 }))
 vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
-vi.mock('./erase-storage', () => ({ loadEraseStoredImage: mocks.loadEraseStoredImage }))
+vi.mock('./bailian-repaint', () => ({ repaintWithBailian: mocks.repaintWithBailian }))
+vi.mock('./bailian-outpaint', async importOriginal => ({
+  ...(await importOriginal<typeof import('./bailian-outpaint')>()), expandWithBailian: mocks.expandWithBailian,
+}))
+vi.mock('./erase-storage', () => ({
+  loadEraseStoredImage: mocks.loadEraseStoredImage, loadStoredSyncImage: mocks.loadStoredSyncImage,
+}))
 vi.mock('./sync-limits', () => ({ withSyncLimit: (_user: unknown, _bucket: string, action: () => Promise<unknown>) => action() }))
 import handler from './handler'
 import { HttpError } from './errors'
@@ -30,7 +37,10 @@ async function request(payload: unknown, method='PUT', url='/api/projects/p') {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.eraseWithBailian.mockReset()
+  mocks.repaintWithBailian.mockReset()
+  mocks.expandWithBailian.mockReset()
   mocks.loadEraseStoredImage.mockReset()
+  mocks.loadStoredSyncImage.mockReset()
   mocks.putObject.mockReset()
   mocks.signRead.mockReset()
   mocks.authenticate.mockResolvedValue({ id: 'owner',email: 'owner@example.com',suggestedName: '测试用户',avatarUrl: null,providers: ['email'] })
@@ -223,6 +233,57 @@ describe('API 认证、版本和写入边界', () => {
     expect(mocks.putObject).toHaveBeenCalledWith(expect.stringMatching(/^temporary\/erase-results\/owner\//), jpeg, 'image/jpeg')
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ mimeType: 'image/jpeg', bytes: jpeg.length, url: 'https://r2.test/result' }))
     expect(res.end).not.toHaveBeenCalled()
+    if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
+    else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('重绘对象请求读取原图与蒙版，大结果经私有对象返回', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    process.env.DASHSCOPE_API_KEY = 'sk-test'
+    const jpeg = Buffer.alloc(4 * 1024 * 1024, 1)
+    mocks.loadStoredSyncImage
+      .mockResolvedValueOnce({ bytes: Buffer.from('source'), width: 10, height: 10 })
+      .mockResolvedValueOnce({ bytes: Buffer.from('mask'), width: 10, height: 10 })
+    mocks.repaintWithBailian.mockResolvedValue(jpeg)
+    mocks.signRead.mockResolvedValue({ url: 'https://r2.test/repaint', expiresAt: 123 })
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/repaint', body: {
+      sourceImageKey: 'generated/owner/job/0.png', maskImageKey: 'temporary/task-inputs/owner/mask',
+      prompt: '玻璃花瓶', clientTimingMs: { prepare: 2, upload: 3 },
+    } } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(mocks.loadStoredSyncImage).toHaveBeenNthCalledWith(1, 'owner', 'generated/owner/job/0.png', 'source', expect.any(AbortSignal))
+    expect(mocks.loadStoredSyncImage).toHaveBeenNthCalledWith(2, 'owner', 'temporary/task-inputs/owner/mask', 'mask', expect.any(AbortSignal))
+    expect(mocks.repaintWithBailian).toHaveBeenCalledWith(Buffer.from('source'), Buffer.from('mask'), '玻璃花瓶', expect.objectContaining({
+      deadlineAt: expect.any(Number),
+    }))
+    expect(mocks.putObject.mock.calls[0][0]).toMatch(/^temporary\/repaint-results\/owner\//)
+    expect(mocks.putObject.mock.calls[0][1]).toBe(jpeg)
+    expect(mocks.putObject.mock.calls[0][2]).toBe('image/jpeg')
+    expect(mocks.putObject.mock.calls[0][3]).toBeInstanceOf(AbortSignal)
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://r2.test/repaint', bytes: jpeg.length }))
+    if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
+    else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('扩图对象请求读取原图，小结果直接返回图片', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    process.env.DASHSCOPE_API_KEY = 'sk-test'
+    mocks.loadStoredSyncImage.mockResolvedValue({ bytes: Buffer.from('source'), width: 10, height: 10 })
+    mocks.expandWithBailian.mockResolvedValue(Buffer.from('result'))
+    const padding = { left: 5, right: 0, top: 0, bottom: 0 }
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/outpaint', body: {
+      sourceImageKey: 'temporary/task-inputs/owner/source', padding,
+    } } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(mocks.loadStoredSyncImage).toHaveBeenCalledWith('owner', 'temporary/task-inputs/owner/source', 'source', expect.any(AbortSignal))
+    expect(mocks.expandWithBailian).toHaveBeenCalledWith(Buffer.from('source'), padding, expect.objectContaining({
+      deadlineAt: expect.any(Number),
+    }))
+    expect(res.end).toHaveBeenCalledWith(Buffer.from('result'))
     if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
     else process.env.DASHSCOPE_API_KEY = previous
   })

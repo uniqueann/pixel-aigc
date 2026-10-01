@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { HttpError } from './errors.js'
-import { putObject, signRead } from './storage.js'
+import {
+  PROVIDER_URL_EXPIRES_SECONDS, PROVIDER_URL_SUBMIT_TIMEOUT_MS, PROVIDER_URL_THRESHOLD_BYTES,
+  shouldUseProviderUrls, stageProviderInputs,
+} from './provider-input-storage.js'
 import {
   MASK_DILATE_RADIUS,
   MASK_WHITE_THRESHOLD,
@@ -27,9 +30,9 @@ import {
 export const ERASE_WAIT_TIMEOUT_MESSAGE = '消除超时：任务仍在阿里云处理中，请稍后重试'
 export const ERASE_CONNECT_MESSAGE = '无法连接到阿里云百炼消除服务，请稍后重试'
 export const ERASE_MASK_DATA_URL_PREFIX = 'data:image/png;base64,'
-export const ERASE_PROVIDER_URL_THRESHOLD_BYTES = 1_000_000
-export const ERASE_PROVIDER_URL_EXPIRES_SECONDS = 3_600
-export const ERASE_SUBMIT_TIMEOUT_MS = 35_000
+export const ERASE_PROVIDER_URL_THRESHOLD_BYTES = PROVIDER_URL_THRESHOLD_BYTES
+export const ERASE_PROVIDER_URL_EXPIRES_SECONDS = PROVIDER_URL_EXPIRES_SECONDS
+export const ERASE_SUBMIT_TIMEOUT_MS = PROVIDER_URL_SUBMIT_TIMEOUT_MS
 export const ERASE_DEADLINE_MS = 100_000
 
 export function eraseMaskDataUrl(png: Buffer) {
@@ -37,22 +40,7 @@ export function eraseMaskDataUrl(png: Buffer) {
 }
 
 export function shouldUseEraseProviderUrls(imageBytes: number, maskBytes: number, mode?: string) {
-  return mode === 'url' || (mode !== 'inline' && imageBytes + maskBytes >= ERASE_PROVIDER_URL_THRESHOLD_BYTES)
-}
-
-async function stageEraseProviderInputs(image: Buffer, mask: Buffer, requestId: string) {
-  const prefix = `temporary/dashscope-inputs/erase/${requestId}`
-  const imageKey = `${prefix}/source.jpg`
-  const maskKey = `${prefix}/mask.png`
-  await Promise.all([
-    putObject(imageKey, image, 'image/jpeg'),
-    putObject(maskKey, mask, 'image/png'),
-  ])
-  const [source, painted] = await Promise.all([
-    signRead(imageKey, ERASE_PROVIDER_URL_EXPIRES_SECONDS),
-    signRead(maskKey, ERASE_PROVIDER_URL_EXPIRES_SECONDS),
-  ])
-  return { baseImageUrl: source.url, maskImageUrl: painted.url }
+  return shouldUseProviderUrls(imageBytes + maskBytes, mode)
 }
 
 export type EraseLog = DashScopeLog
@@ -172,9 +160,9 @@ export async function eraseWithBailian(image: Buffer, mask: Buffer, prompt: stri
   let maskImageUrl: string
   if (inputTransport === 'url') {
     const uploadStarted = now()
-    const staged = await stageEraseProviderInputs(encoded, prepared.png, deps.requestId ?? randomUUID())
+    const staged = await stageProviderInputs('erase', deps.requestId ?? randomUUID(), encoded, prepared.png)
     baseImageUrl = staged.baseImageUrl
-    maskImageUrl = staged.maskImageUrl
+    maskImageUrl = staged.maskImageUrl!
     log({ requestId: deps.requestId, stage: 'providerInputUpload', ms: now() - uploadStarted,
       bytes: encoded.length, maskBytes: prepared.png.length })
   } else {

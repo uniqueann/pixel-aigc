@@ -1,8 +1,8 @@
+import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { HttpError } from './errors.js'
 import { fitDashScopeImageSize } from '../shared/erase.js'
 import {
-  DEFAULT_DEADLINE_MS,
   bailianConfig,
   createDashScopeLog,
   dashScopePayloadError,
@@ -11,8 +11,10 @@ import {
   submitDashScopeImageTask,
   type DashScopeLog,
 } from './dashscope.js'
+import { PROVIDER_URL_SUBMIT_TIMEOUT_MS, shouldUseProviderUrls, stageProviderInputs } from './provider-input-storage.js'
 
 const PROMPT_LIMIT = 800
+export const REPAINT_DEADLINE_MS = 100_000
 
 export function fitRepaintSize(width: number, height: number) {
   const fitted = fitDashScopeImageSize(width, height)
@@ -67,6 +69,7 @@ interface RepaintDeps {
   sleep?: (ms: number) => Promise<void>
   now?: () => number
   deadlineMs?: number
+  deadlineAt?: number
   requestId?: string
   log?: DashScopeLog
 }
@@ -101,7 +104,27 @@ export async function repaintWithBailian(image: Buffer, mask: Buffer, prompt: st
   }
   const encoded = await encodeJpegForDashScope(oriented, fitted.width, fitted.height, '图片压缩后仍超过重绘服务的 10 MB 限制')
   const encodedMask = await encodeMask(mask, fitted.width, fitted.height)
-  const deadline = now() + (deps.deadlineMs ?? DEFAULT_DEADLINE_MS)
+  const inputTransport = shouldUseProviderUrls(
+    encoded.length + encodedMask.length,
+    (deps.env ?? process.env).DASHSCOPE_REPAINT_INPUT_MODE,
+  ) ? 'url' : 'inline'
+  log({ requestId: deps.requestId, stage: 'plan', inputTransport, encodeBytes: encoded.length,
+    maskBytes: encodedMask.length, inputWidth: fitted.width, inputHeight: fitted.height })
+  const deadline = Math.min(now() + (deps.deadlineMs ?? REPAINT_DEADLINE_MS), deps.deadlineAt ?? Infinity)
+  let baseImageUrl: string
+  let maskImageUrl: string
+  if (inputTransport === 'url') {
+    const uploadStarted = now()
+    const signal = deps.deadlineAt ? AbortSignal.timeout(Math.max(1, deadline - now())) : undefined
+    const staged = await stageProviderInputs('repaint', deps.requestId ?? randomUUID(), encoded, encodedMask, undefined, signal)
+    baseImageUrl = staged.baseImageUrl
+    maskImageUrl = staged.maskImageUrl!
+    log({ requestId: deps.requestId, stage: 'providerInputUpload', ms: now() - uploadStarted,
+      bytes: encoded.length, maskBytes: encodedMask.length })
+  } else {
+    baseImageUrl = `data:image/jpeg;base64,${encoded.toString('base64')}`
+    maskImageUrl = `data:image/png;base64,${encodedMask.toString('base64')}`
+  }
   const model = await submitDashScopeImageTask({
     config,
     body: {
@@ -109,8 +132,8 @@ export async function repaintWithBailian(image: Buffer, mask: Buffer, prompt: st
       input: {
         function: 'description_edit_with_mask',
         prompt: text,
-        base_image_url: `data:image/jpeg;base64,${encoded.toString('base64')}`,
-        mask_image_url: `data:image/png;base64,${encodedMask.toString('base64')}`,
+        base_image_url: baseImageUrl,
+        mask_image_url: maskImageUrl,
       },
       parameters: { n: 1, watermark: false },
     },
@@ -122,6 +145,8 @@ export async function repaintWithBailian(image: Buffer, mask: Buffer, prompt: st
     requestId: deps.requestId,
     log,
     pass: 1,
+    extraSubmitLog: { bytes: encoded.length, maskBytes: encodedMask.length, inputTransport },
+    submitTimeoutMs: inputTransport === 'url' ? PROVIDER_URL_SUBMIT_TIMEOUT_MS : undefined,
     kind: '重绘',
     errorCode: 'REPAINT_FAILED',
     timeoutCode: 'REPAINT_TIMEOUT',
@@ -129,5 +154,8 @@ export async function repaintWithBailian(image: Buffer, mask: Buffer, prompt: st
     connectMessage: '无法连接到阿里云百炼重绘服务，请稍后重试',
     payloadError: payload => dashScopePayloadError(payload, '重绘', 'REPAINT_FAILED'),
   })
-  return compositeRepaint(oriented, model, mask)
+  const compositeStarted = now()
+  const output = await compositeRepaint(oriented, model, mask)
+  log({ requestId: deps.requestId, stage: 'composite', ms: now() - compositeStarted, bytes: output.length })
+  return output
 }

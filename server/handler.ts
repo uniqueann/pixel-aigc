@@ -16,7 +16,7 @@ import { handleTaskInputs } from './task-inputs.js'
 import { loadOwnedObject, objectContentDisposition, signOwnedObjectRead } from './objects.js'
 import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
 import { eraseWithBailian } from './bailian-erase.js'
-import { loadEraseStoredImage } from './erase-storage.js'
+import { loadEraseStoredImage, loadStoredSyncImage } from './erase-storage.js'
 import { createDashScopeLog } from './dashscope.js'
 import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
 import { repaintWithBailian } from './bailian-repaint.js'
@@ -27,7 +27,49 @@ import type { SyncRequestMetrics } from './sync-limits.js'
 import { listCreditLedger } from './credits.js'
 import { ensureCreditAccount } from './image-jobs/billing.js'
 
-const INLINE_ERASE_RESPONSE_BYTES = Math.floor(3.5 * 1024 * 1024)
+const INLINE_IMAGE_RESPONSE_BYTES = Math.floor(3.5 * 1024 * 1024)
+const SYNC_PROVIDER_DEADLINE_MS = 100_000
+const clientTimingSchema = z.object({
+  prepare: z.number().int().min(0).max(300_000),
+  upload: z.number().int().min(0).max(300_000),
+}).strict()
+
+function recordSyncTiming(metrics: SyncRequestMetrics, entry: Record<string, unknown>) {
+  if (typeof entry.stage === 'string' && typeof entry.ms === 'number' && Number.isFinite(entry.ms) && entry.stage !== 'poll') {
+    metrics.stageMs[entry.stage] = entry.ms
+    if (typeof entry.pass === 'number') metrics.stageMs[`${entry.stage}Pass${entry.pass}`] = entry.ms
+  }
+  if (entry.stage === 'plan' && typeof entry.encodeMs === 'number') metrics.stageMs.plan = entry.encodeMs
+}
+
+async function storeSyncImageResult(
+  route: 'erase' | 'repaint' | 'outpaint', userId: string, requestId: string,
+  jpeg: Buffer, metrics: SyncRequestMetrics, deadlineAt?: number,
+) {
+  metrics.outputBytes = jpeg.length
+  if (jpeg.length <= INLINE_IMAGE_RESPONSE_BYTES) return { kind: 'inline' as const, jpeg }
+  const objectKey = `temporary/${route}-results/${userId}/${requestId}.jpg`
+  const writeStarted = Date.now()
+  const signal = deadlineAt ? AbortSignal.timeout(Math.max(1, deadlineAt - writeStarted)) : undefined
+  try {
+    if (signal) await putObject(objectKey, jpeg, 'image/jpeg', signal)
+    else await putObject(objectKey, jpeg, 'image/jpeg')
+  } catch (error) {
+    if (signal?.aborted) throw new HttpError(504, '结果保存超时，请重试', 'IMAGE_RESULT_TIMEOUT', { cause: error, stage: 'objectWrite' })
+    throw error
+  }
+  metrics.stageMs.objectWrite = Date.now() - writeStarted
+  return { kind: 'object' as const, objectKey, signed: await signRead(objectKey, 900), bytes: jpeg.length }
+}
+
+function sendSyncImageResult(res: VercelResponse, result: Awaited<ReturnType<typeof storeSyncImageResult>>) {
+  if (result.kind === 'inline') {
+    res.setHeader('Content-Type', 'image/jpeg')
+    res.status(200).end(result.jpeg)
+  } else {
+    res.status(200).json({ objectKey: result.objectKey, mimeType: 'image/jpeg', bytes: result.bytes, ...result.signed })
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const requestId = randomUUID(), start = Date.now()
@@ -111,24 +153,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (path.join('/') === 'outpaint' && method === 'POST') {
       if (!bailianConfig()) throw new HttpError(503, '智能扩展尚未配置阿里云百炼 API Key', 'OUTPAINT_UNAVAILABLE')
-      const input = z.object({
+      const padding = z.object({
+        left: z.number().int().min(0).max(20000),
+        right: z.number().int().min(0).max(20000),
+        top: z.number().int().min(0).max(20000),
+        bottom: z.number().int().min(0).max(20000),
+      }).strict()
+      const inlineInput = z.object({
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
-        padding: z.object({
-          left: z.number().int().min(0).max(20000),
-          right: z.number().int().min(0).max(20000),
-          top: z.number().int().min(0).max(20000),
-          bottom: z.number().int().min(0).max(20000),
-        }).strict(),
-      }).strict().parse(body)
-      const image = Buffer.from(input.dataBase64, 'base64')
-      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      const jpeg = await withSyncLimit(user, 'generation', () => expandWithBailian(image, input.padding, { requestId }))
-      res.setHeader('Content-Type', 'image/jpeg')
-      res.status(200).end(jpeg)
+        padding,
+        clientTimingMs: clientTimingSchema.optional(),
+      }).strict()
+      const objectInput = z.object({
+        sourceImageKey: z.string().min(1).max(512),
+        padding,
+        clientTimingMs: clientTimingSchema.optional(),
+      }).strict()
+      const input = z.union([objectInput, inlineInput]).parse(body)
+      const objectTransport = 'sourceImageKey' in input
+      const metrics: SyncRequestMetrics = {
+        route: 'outpaint', requestId, transport: objectTransport ? 'object' : 'inline',
+        inputBytes: 0, maskBytes: 0, stageMs: {},
+      }
+      if (input.clientTimingMs) {
+        metrics.stageMs.clientPrepare = input.clientTimingMs.prepare
+        metrics.stageMs.clientUpload = input.clientTimingMs.upload
+      }
+      const outpaintLog = createDashScopeLog('outpaint')
+      const result = await withSyncLimit(user, 'generation', async () => {
+        let image: Buffer
+        if (objectTransport) {
+          const readStarted = Date.now()
+          const signal = AbortSignal.timeout(Math.max(1, start + SYNC_PROVIDER_DEADLINE_MS - Date.now()))
+          image = (await loadStoredSyncImage(user.id, input.sourceImageKey, 'source', signal)).bytes
+          metrics.stageMs.objectRead = Date.now() - readStarted
+        } else {
+          image = Buffer.from(input.dataBase64, 'base64')
+        }
+        metrics.inputBytes = image.length
+        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+        const processStarted = Date.now()
+        const jpeg = await expandWithBailian(image, input.padding, {
+          requestId, deadlineAt: start + SYNC_PROVIDER_DEADLINE_MS,
+          log: entry => { outpaintLog(entry); recordSyncTiming(metrics, entry) },
+        })
+        metrics.stageMs.process = Date.now() - processStarted
+        return storeSyncImageResult('outpaint', user.id, requestId, jpeg, metrics, start + 105_000)
+      }, metrics)
+      sendSyncImageResult(res, result)
       console.info(JSON.stringify({
         evt: 'outpaint', requestId, userId, status: 200, route: 'outpaint',
-        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
+        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start,
+        transport: metrics.transport, bytes: metrics.outputBytes, stageMs: metrics.stageMs,
       }))
       return
     }
@@ -140,19 +217,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         maskMimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
         maskBase64: z.string().min(1),
         prompt: z.string().max(800).optional(),
-        clientTimingMs: z.object({
-          prepare: z.number().int().min(0).max(300_000),
-          upload: z.number().int().min(0).max(300_000),
-        }).strict().optional(),
+        clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
         sourceImageKey: z.string().min(1).max(512),
         maskImageKey: z.string().min(1).max(512),
         prompt: z.string().max(800).optional(),
-        clientTimingMs: z.object({
-          prepare: z.number().int().min(0).max(300_000),
-          upload: z.number().int().min(0).max(300_000),
-        }).strict().optional(),
+        clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const input = z.union([objectInput, inlineInput]).parse(body)
       const objectTransport = 'sourceImageKey' in input
@@ -193,27 +264,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           requestId,
           log: entry => {
             eraseLog(entry)
-            if (typeof entry.stage === 'string' && typeof entry.ms === 'number' && Number.isFinite(entry.ms) && entry.stage !== 'poll') {
-              metrics.stageMs[entry.stage] = entry.ms
-            }
-            if (entry.stage === 'plan' && typeof entry.encodeMs === 'number') metrics.stageMs.plan = entry.encodeMs
+            recordSyncTiming(metrics, entry)
           },
         })
         metrics.stageMs.process = Date.now() - processStarted
-        metrics.outputBytes = jpeg.length
-        if (jpeg.length <= INLINE_ERASE_RESPONSE_BYTES) return { kind: 'inline' as const, jpeg }
-        const objectKey = `temporary/erase-results/${user.id}/${requestId}.jpg`
-        const writeStarted = Date.now()
-        await putObject(objectKey, jpeg, 'image/jpeg')
-        metrics.stageMs.objectWrite = Date.now() - writeStarted
-        return { kind: 'object' as const, objectKey, signed: await signRead(objectKey, 900), bytes: jpeg.length }
+        return storeSyncImageResult('erase', user.id, requestId, jpeg, metrics)
       }, metrics)
-      if (result.kind === 'inline') {
-        res.setHeader('Content-Type', 'image/jpeg')
-        res.status(200).end(result.jpeg)
-      } else {
-        res.status(200).json({ objectKey: result.objectKey, mimeType: 'image/jpeg', bytes: result.bytes, ...result.signed })
-      }
+      sendSyncImageResult(res, result)
       console.info(JSON.stringify({
         evt: 'erase', requestId, userId, status: 200, route: 'erase',
         region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start,
@@ -223,22 +280,64 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (path.join('/') === 'repaint' && method === 'POST') {
       if (!bailianConfig()) throw new HttpError(503, '重绘尚未配置阿里云百炼 API Key', 'REPAINT_UNAVAILABLE')
-      const input = z.object({
+      const inlineInput = z.object({
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         maskBase64: z.string().min(1),
         prompt: z.string().min(1).max(2000),
-      }).strict().parse(body)
-      const image = Buffer.from(input.dataBase64, 'base64')
-      const mask = Buffer.from(input.maskBase64, 'base64')
-      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
-      const jpeg = await withSyncLimit(user, 'generation', () => repaintWithBailian(image, mask, input.prompt, { requestId }))
-      res.setHeader('Content-Type', 'image/jpeg')
-      res.status(200).end(jpeg)
+        clientTimingMs: clientTimingSchema.optional(),
+      }).strict()
+      const objectInput = z.object({
+        sourceImageKey: z.string().min(1).max(512),
+        maskImageKey: z.string().min(1).max(512),
+        prompt: z.string().min(1).max(2000),
+        clientTimingMs: clientTimingSchema.optional(),
+      }).strict()
+      const input = z.union([objectInput, inlineInput]).parse(body)
+      const objectTransport = 'sourceImageKey' in input
+      const metrics: SyncRequestMetrics = {
+        route: 'repaint', requestId, transport: objectTransport ? 'object' : 'inline',
+        inputBytes: 0, maskBytes: 0, stageMs: {},
+      }
+      if (input.clientTimingMs) {
+        metrics.stageMs.clientPrepare = input.clientTimingMs.prepare
+        metrics.stageMs.clientUpload = input.clientTimingMs.upload
+      }
+      const repaintLog = createDashScopeLog('repaint')
+      const result = await withSyncLimit(user, 'generation', async () => {
+        let image: Buffer
+        let mask: Buffer
+        if (objectTransport) {
+          const readStarted = Date.now()
+          const signal = AbortSignal.timeout(Math.max(1, start + SYNC_PROVIDER_DEADLINE_MS - readStarted))
+          const [source, painted] = await Promise.all([
+            loadStoredSyncImage(user.id, input.sourceImageKey, 'source', signal),
+            loadStoredSyncImage(user.id, input.maskImageKey, 'mask', signal),
+          ])
+          metrics.stageMs.objectRead = Date.now() - readStarted
+          image = source.bytes
+          mask = painted.bytes
+        } else {
+          image = Buffer.from(input.dataBase64, 'base64')
+          mask = Buffer.from(input.maskBase64, 'base64')
+        }
+        metrics.inputBytes = image.length
+        metrics.maskBytes = mask.length
+        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+        if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
+        const processStarted = Date.now()
+        const jpeg = await repaintWithBailian(image, mask, input.prompt, {
+          requestId, deadlineAt: start + SYNC_PROVIDER_DEADLINE_MS,
+          log: entry => { repaintLog(entry); recordSyncTiming(metrics, entry) },
+        })
+        metrics.stageMs.process = Date.now() - processStarted
+        return storeSyncImageResult('repaint', user.id, requestId, jpeg, metrics, start + 105_000)
+      }, metrics)
+      sendSyncImageResult(res, result)
       console.info(JSON.stringify({
         evt: 'repaint', requestId, userId, status: 200, route: 'repaint',
-        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start, bytes: jpeg.length,
+        region: process.env.VERCEL_REGION ?? null, durationMs: Date.now() - start,
+        transport: metrics.transport, bytes: metrics.outputBytes, stageMs: metrics.stageMs,
       }))
       return
     }

@@ -1,7 +1,14 @@
 import sharp from 'sharp'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+const storageMocks = vi.hoisted(() => ({ putObject: vi.fn(), signRead: vi.fn() }))
+vi.mock('./storage', () => ({ putObject: storageMocks.putObject, signRead: storageMocks.signRead }))
 import { compositeRepaint, fitRepaintSize, repaintWithBailian } from './bailian-repaint'
 import { HttpError } from './errors'
+
+beforeEach(() => {
+  storageMocks.putObject.mockReset()
+  storageMocks.signRead.mockReset()
+})
 
 async function solid(width: number, height: number, color: { r: number; g: number; b: number }, format: 'png' | 'jpeg' = 'png') {
   const image = sharp({ create: { width, height, channels: 3, background: color } })
@@ -45,6 +52,35 @@ describe('重绘合成', () => {
 })
 
 describe('百炼局部重绘', () => {
+  it('URL 模式把处理后的原图和蒙版写入 R2，只提交签名地址', async () => {
+    storageMocks.signRead.mockImplementation(async (key: string) => ({ url: `https://r2.test/${key}?signed=1` }))
+    const source = await solid(640, 480, { r: 10, g: 20, b: 200 }, 'jpeg')
+    const mask = await halfMask(640, 480)
+    const model = await solid(640, 480, { r: 220, g: 30, b: 40 }, 'jpeg')
+    let submitted = ''
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/image-synthesis')) {
+        submitted = String(init?.body)
+        return new Response(JSON.stringify({ output: { task_id: 'repaint-url' } }), { status: 200 })
+      }
+      if (url.endsWith('/tasks/repaint-url')) {
+        return new Response(JSON.stringify({ output: { task_status: 'SUCCEEDED', results: [{ url: 'https://example.test/out.jpg' }] } }))
+      }
+      return new Response(model, { status: 200 })
+    }
+    await repaintWithBailian(source, mask, '玻璃花瓶', {
+      fetch: fetchImpl, env: { DASHSCOPE_API_KEY: 'sk-test', DASHSCOPE_REPAINT_INPUT_MODE: 'url' },
+      requestId: 'repaint-request', sleep: async () => {}, now: () => 0,
+    })
+    const input = (JSON.parse(submitted) as { input: { base_image_url: string; mask_image_url: string } }).input
+    expect(input.base_image_url).toContain('/repaint/repaint-request/source.jpg?signed=1')
+    expect(input.mask_image_url).toContain('/repaint/repaint-request/mask.png?signed=1')
+    expect(submitted.length).toBeLessThan(2_000)
+    expect(storageMocks.putObject).toHaveBeenCalledTimes(2)
+    expect(storageMocks.signRead).toHaveBeenCalledWith(expect.any(String), 3_600)
+  })
+
   it('只传局部重绘参数，结果宽高等于原图', async () => {
     const source = await solid(640, 480, { r: 10, g: 20, b: 200 }, 'jpeg')
     const mask = await halfMask(640, 480)
