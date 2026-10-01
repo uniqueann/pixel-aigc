@@ -22,6 +22,9 @@ function canvasBlob(canvas: HTMLCanvasElement, type: string) {
 export async function compositeMatte(matte: Blob, background: string, previewMaxDimension?: number): Promise<CompositeResult> {
   const source = await loadImage(matte)
   try {
+    if (background === 'transparent' && !previewMaxDimension) {
+      return { blob: matte, mimeType: 'image/png', width: source.width, height: source.height }
+    }
     const scale = previewMaxDimension
       ? Math.min(1, previewMaxDimension / Math.max(source.width, source.height))
       : 1

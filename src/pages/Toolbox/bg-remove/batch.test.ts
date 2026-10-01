@@ -54,6 +54,18 @@ describe('抠图批量', () => {
     expect(imagesNeedingRemoval(images)).toEqual([])
     expect(images[0].outputMime).toBe('image/png')
   })
+
+  it('合成失败仍保存透明结果，重试不再次抠图', async () => {
+    let images = [item('a')]
+    const update = (id: string, patch: Partial<BatchImage>) => { images = images.map(image => image.id === id ? { ...image, ...patch } : image) }
+    const remove = vi.fn(async () => new Blob(['matte']))
+    const compose = vi.fn().mockRejectedValueOnce(new Error('合成失败')).mockResolvedValueOnce({ blob: new Blob(['jpg']), mimeType: 'image/jpeg' })
+    await processRemovalBatch({ images, remove, compose, update, shouldStop: () => false })
+    expect(images[0]).toMatchObject({ status: 'failed', matte: expect.any(Blob) })
+    await processRemovalBatch({ images, remove, compose, update, shouldStop: () => false })
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(images[0].status).toBe('succeeded')
+  })
 })
 
 describe('抠图下载名', () => {

@@ -9,6 +9,15 @@ import { loadEraseStoredImage, loadStoredSyncImage, validateSyncImage } from './
 beforeEach(() => getObjectLimited.mockReset())
 
 describe('消除对象输入校验', () => {
+  it('抠图结果只允许本人读取，抠图原图按 24 MP 上限校验', async () => {
+    await expect(loadStoredSyncImage('owner', 'temporary/bg-remove-results/other/a.png', 'source')).rejects.toThrow('无权访问')
+    expect(getObjectLimited).not.toHaveBeenCalled()
+    const bytes = await sharp({ create: { width: 12, height: 8, channels: 3, background: '#fff' } }).jpeg().toBuffer()
+    const marker = bytes.indexOf(Buffer.from([255, 192]))
+    bytes.writeUInt16BE(5000, marker + 5)
+    bytes.writeUInt16BE(5000, marker + 7)
+    await expect(validateSyncImage(bytes, 'source', 'image/jpeg', 24_000_000)).rejects.toThrow('24 百万像素')
+  })
   it('拒绝其他用户的对象键，且不读取 R2', async () => {
     await expect(loadEraseStoredImage('owner', 'generated/other/job/0.png', 'source')).rejects.toThrow('无权访问')
     expect(getObjectLimited).not.toHaveBeenCalled()

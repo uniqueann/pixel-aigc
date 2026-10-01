@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VercelRequest, VercelResponse } from './http'
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn(),
   repaintWithBailian: vi.fn(), expandWithBailian: vi.fn(),
+  removeBackground: vi.fn(),
   getObject: vi.fn(), loadEraseStoredImage: vi.fn(), loadStoredSyncImage: vi.fn(), validateSyncImage: vi.fn(), metrics: [] as unknown[], putObject: vi.fn(), signRead: vi.fn(),
 }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
@@ -16,6 +17,7 @@ vi.mock('./storage', () => ({
 }))
 vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
 vi.mock('./bailian-repaint', () => ({ repaintWithBailian: mocks.repaintWithBailian }))
+vi.mock('./bg-remove', () => ({ removeBackground: mocks.removeBackground }))
 vi.mock('./bailian-outpaint', async importOriginal => ({
   ...(await importOriginal<typeof import('./bailian-outpaint')>()), expandWithBailian: mocks.expandWithBailian,
 }))
@@ -40,6 +42,7 @@ beforeEach(() => {
   mocks.eraseWithBailian.mockReset()
   mocks.repaintWithBailian.mockReset()
   mocks.expandWithBailian.mockReset()
+  mocks.removeBackground.mockReset()
   mocks.loadEraseStoredImage.mockReset()
   mocks.loadStoredSyncImage.mockReset()
   mocks.putObject.mockReset()
@@ -55,6 +58,56 @@ beforeEach(() => {
     if (query.includes('select * from aigc.projects')) return [{ id: 'p',revision: 3 }]
     if (query.includes('update aigc.projects')) return [{ revision: 4 }]
     return []
+  })
+})
+
+describe('智能抠图同步传输接口', () => {
+  beforeEach(() => {
+    for (const key of ['TENCENT_COS_SECRET_ID', 'TENCENT_COS_SECRET_KEY', 'TENCENT_COS_BUCKET', 'TENCENT_COS_REGION']) vi.stubEnv(key, 'configured')
+    mocks.removeBackground.mockResolvedValue(Buffer.from('png'))
+  })
+  afterEach(() => vi.unstubAllEnvs())
+  async function mattingRequest(payload: unknown) {
+    const response = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    response.status.mockReturnValue(response)
+    await handler({ headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/bg-remove', body: payload } as VercelRequest, response as unknown as VercelResponse)
+    return response
+  }
+  it('旧内联请求仍返回 PNG，并使用检测限流与阶段记录', async () => {
+    const res = await mattingRequest({ mimeType: 'image/png', dataBase64: 'aW1n', clientTimingMs: { prepare: 2, upload: 0 } })
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/png')
+    expect(res.end).toHaveBeenCalledWith(Buffer.from('png'))
+    expect(mocks.validateSyncImage).toHaveBeenCalledWith(Buffer.from('img'), 'source', 'image/png', 24_000_000)
+    expect(mocks.metrics.at(-1)).toMatchObject({ route: 'bg-remove', transport: 'inline', inputBytes: 3, outputBytes: 3, stageMs: { clientPrepare: 2 } })
+  })
+  it('对象输入校验后进入地址读图，大 PNG 返回对象描述', async () => {
+    const png = Buffer.alloc(4 * 1024 * 1024)
+    mocks.loadStoredSyncImage.mockResolvedValue({ bytes: Buffer.from('source'), width: 3200, height: 5035 })
+    mocks.removeBackground.mockResolvedValue(png)
+    mocks.signRead.mockResolvedValue({ url: 'https://r2.test/png', expiresAt: 123 })
+    const res = await mattingRequest({ sourceImageKey: 'temporary/task-inputs/owner/image', clientTimingMs: { prepare: 2, upload: 5 } })
+    expect(mocks.loadStoredSyncImage).toHaveBeenCalledWith('owner', 'temporary/task-inputs/owner/image', 'source', expect.any(AbortSignal), expect.objectContaining({ maxPixels: 24_000_000 }))
+    expect(mocks.removeBackground).toHaveBeenCalledWith(Buffer.from('source'), expect.objectContaining({ sourceImageKey: 'temporary/task-inputs/owner/image', deadlineAt: expect.any(Number) }))
+    expect(mocks.putObject).toHaveBeenCalledWith(expect.stringMatching(/^temporary\/bg-remove-results\/owner\/.+\.png$/), png, 'image/png', expect.any(AbortSignal))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://r2.test/png', mimeType: 'image/png', bytes: png.length }))
+    expect(res.end).not.toHaveBeenCalled()
+  })
+  it('拒绝混合输入和外部源图地址，不调用腾讯', async () => {
+    expect((await mattingRequest({ sourceImageKey: 'temporary/task-inputs/owner/image', mimeType: 'image/png', dataBase64: 'aW1n' })).status).toHaveBeenCalledWith(400)
+    expect((await mattingRequest({ sourceImageUrl: 'https://external.test/a.jpg' })).status).toHaveBeenCalledWith(400)
+    expect(mocks.removeBackground).not.toHaveBeenCalled()
+  })
+  it('校验失败仍保留读取大小和耗时，不调用腾讯', async () => {
+    mocks.loadStoredSyncImage.mockImplementation(async (_owner, _key, _kind, _signal, options) => {
+      options.onRead(1024, 3)
+      options.onValidate({ stage: 'imageValidate', ms: 2, valid: false })
+      throw new HttpError(400, '图片文件损坏', 'INVALID_IMAGE')
+    })
+    const res = await mattingRequest({ sourceImageKey: 'temporary/task-inputs/owner/broken' })
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(mocks.removeBackground).not.toHaveBeenCalled()
+    expect(mocks.metrics.at(-1)).toMatchObject({ inputBytes: 1024, stageMs: { objectRead: 3, imageValidate: 2 } })
   })
 })
 describe('API 认证、版本和写入边界', () => {

@@ -12,6 +12,10 @@ beforeEach(() => {
   process.env.R2_ACCOUNT_ID = 'test'; process.env.R2_ACCESS_KEY_ID = 'test'; process.env.R2_SECRET_ACCESS_KEY = 'test'; process.env.R2_BUCKET = 'test'
 })
 describe('R2 对象核验', () => {
+  it('临时输入已过期返回可重传的错误码', async () => {
+    send.mockRejectedValue(Object.assign(new Error('不存在'), { name: 'NoSuchKey' }))
+    await expect(getObjectLimited('temporary/task-inputs/u/old', 20 * 1024 * 1024)).rejects.toMatchObject({ status: 404, code: 'OBJECT_NOT_FOUND' })
+  })
   it('保存同一份已验证字节，重复核验仍可使用临时对象', async () => {
     const png = await sharp({ create: { width: 3, height: 2, channels: 4, background: '#fff' } }).png().toBuffer()
     send.mockResolvedValueOnce({ ContentLength: png.length, Body: { transformToByteArray: async () => png } }).mockResolvedValueOnce({})

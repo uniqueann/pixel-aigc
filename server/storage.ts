@@ -29,7 +29,12 @@ export async function getObject(key: string) {
 
 export async function getObjectLimited(key: string, maxBytes: number, signal?: AbortSignal) {
   const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }),
-    signal ? { abortSignal: signal } : undefined)
+    signal ? { abortSignal: signal } : undefined).catch(error => {
+    if (error?.name === 'NoSuchKey' || error?.$metadata?.httpStatusCode === 404) {
+      throw new HttpError(404, '图片对象已过期或不存在，请重新上传', 'OBJECT_NOT_FOUND')
+    }
+    throw error
+  })
   if (!result.Body) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
   if (result.ContentLength !== undefined && result.ContentLength > maxBytes) {
     if ('destroy' in result.Body && typeof result.Body.destroy === 'function') result.Body.destroy()

@@ -27,7 +27,7 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
   const signed = await apiClient.post<unknown, { uploadUrl: string; objectKey: string }>('/task-inputs', {
     mimeType,
     size: file.size,
-  })
+  }, ...(signal ? [{ signal }] : []))
   if (!signed.uploadUrl || !signed.objectKey) throw new Error('未获得原图上传地址')
   const uploaded = await fetch(signed.uploadUrl, {
     method: 'PUT',

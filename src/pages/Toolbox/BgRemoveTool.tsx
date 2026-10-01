@@ -27,6 +27,7 @@ export default function BgRemoveTool() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const scope = useUserStore(state => state.userId ?? 'local')
+  const scopeRef = useRef(scope)
   const [items, setItems] = useState<BatchImage[]>([])
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
@@ -40,6 +41,7 @@ export default function BgRemoveTool() {
   const [processing, setProcessing] = useState(false)
   const processingRef = useRef(false)
   const cancelledRef = useRef(false)
+  const batchAbortRef = useRef<AbortController | null>(null)
   const mountedRef = useRef(true)
   const restoredRef = useRef(false)
   const addChainRef = useRef<Promise<void>>(Promise.resolve())
@@ -76,8 +78,9 @@ export default function BgRemoveTool() {
 
   useEffect(() => {
     mountedRef.current = true
+    scopeRef.current = scope
     let active = true
-    const saved = loadBgRemoveSession()
+    const saved = loadBgRemoveSession(scope)
     if (saved) {
       restoredRef.current = true
       itemsRef.current = saved.items
@@ -88,6 +91,14 @@ export default function BgRemoveTool() {
         setItems(saved.items)
         setSettings(saved.settings)
         setSelectedId(saved.selectedId)
+      })
+    } else {
+      itemsRef.current = []
+      selectedIdRef.current = null
+      settingsRef.current = DEFAULT_BG_REMOVE_SETTINGS
+      restoredRef.current = false
+      queueMicrotask(() => {
+        if (active) { setItems([]); setSelectedId(null); setSettings(DEFAULT_BG_REMOVE_SETTINGS) }
       })
     }
     const refined = applyEdgeRefineResult(itemsRef.current, takeEdgeRefineResult())
@@ -106,10 +117,11 @@ export default function BgRemoveTool() {
       active = false
       mountedRef.current = false
       cancelledRef.current = true
-      saveBgRemoveSession({ items: itemsRef.current, settings: settingsRef.current, selectedId: selectedIdRef.current })
+      batchAbortRef.current?.abort()
+      saveBgRemoveSession({ ownerId: scope, items: itemsRef.current, settings: settingsRef.current, selectedId: selectedIdRef.current })
       if (previewRef.current) URL.revokeObjectURL(previewRef.current)
     }
-  }, [message])
+  }, [message, scope])
 
   useEffect(() => {
     let active = true
@@ -180,8 +192,9 @@ export default function BgRemoveTool() {
     pendingBytesRef.current += file.size
     setAdding(true)
     addChainRef.current = addChainRef.current.then(async () => {
+      if (scopeRef.current !== scope) return
       const inspected = await inspectImage(file)
-      if (!mountedRef.current) return
+      if (!mountedRef.current || scopeRef.current !== scope) return
       const item: BatchImage = {
         id: crypto.randomUUID(), file, sourceMime: inspected.mimeType,
         sourceUrl: URL.createObjectURL(file), width: inspected.width, height: inspected.height, status: 'pending',
@@ -192,7 +205,7 @@ export default function BgRemoveTool() {
         setSelectedId(item.id)
       }
     }).catch(error => {
-      if (mountedRef.current) message.error(`${file.name}：${errorMessage(error)}`)
+      if (mountedRef.current && scopeRef.current === scope) message.error(`${file.name}：${errorMessage(error)}`)
     }).finally(() => {
       addingCountRef.current -= 1
       pendingBytesRef.current -= file.size
@@ -241,18 +254,24 @@ export default function BgRemoveTool() {
     if (processingRef.current || addingCountRef.current) return
     processingRef.current = true
     cancelledRef.current = false
+    const abort = new AbortController()
+    batchAbortRef.current = abort
     setProcessing(true)
     try {
       await processRemovalBatch({
         images: itemsRef.current,
         ids: onlyIds,
-        remove: image => requestMatte(image, () => cancelledRef.current || !mountedRef.current),
+        remove: image => requestMatte(image, () => cancelledRef.current || !mountedRef.current, {
+          signal: abort.signal, ownerId: scope,
+          onTransfer: transfer => commitItems(itemsRef.current.map(item => item.id === image.id ? { ...item, transfer } : item)),
+        }),
         compose: (_image, matte) => compositeMatte(matte, settingsRef.current.background),
         update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
-        shouldStop: () => cancelledRef.current || !mountedRef.current,
+        shouldStop: () => abort.signal.aborted || cancelledRef.current || !mountedRef.current,
       })
     } finally {
       processingRef.current = false
+      if (batchAbortRef.current === abort) batchAbortRef.current = null
       if (mountedRef.current) {
         commitItems(itemsRef.current.map(item => item.status === 'processing' ? { ...item, status: 'pending' } : item))
         setProcessing(false)
@@ -262,6 +281,7 @@ export default function BgRemoveTool() {
 
   function cancelProcessing() {
     cancelledRef.current = true
+    batchAbortRef.current?.abort()
   }
 
   function downloadOne(id: string) {

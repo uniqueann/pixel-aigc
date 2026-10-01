@@ -1,6 +1,7 @@
 import type { BatchImage, BgRemoveSettings } from './types'
 
 export interface BgRemoveSession {
+  ownerId?: string
   items: BatchImage[]
   settings: BgRemoveSettings
   selectedId: string | null
@@ -31,8 +32,8 @@ export function saveBgRemoveSession(next: BgRemoveSession) {
   }
 }
 
-export function loadBgRemoveSession() {
-  return session
+export function loadBgRemoveSession(ownerId?: string) {
+  return ownerId !== undefined && session?.ownerId !== ownerId ? null : session
 }
 
 export function clearBgRemoveSession() {
