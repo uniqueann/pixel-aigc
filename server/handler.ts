@@ -15,7 +15,9 @@ import { IMAGE_TASK_CAPABILITIES } from './image-jobs/service.js'
 import { imageModelsAvailable, publicConfiguredImageModels } from './image-providers/registry.js'
 import { handleTaskInputs } from './task-inputs.js'
 import { loadOwnedObject, objectContentDisposition, signOwnedObjectRead } from './objects.js'
-import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
+import { detectGoodsSubject, tencentCiConfig } from './tencent-ci.js'
+import { removeBackground } from './bg-remove.js'
+import { BG_REMOVE_MAX_PIXELS } from './bg-remove-image.js'
 import { eraseWithBailian } from './bailian-erase.js'
 import { loadEraseStoredImage, loadStoredSyncImage, validateSyncImage } from './erase-storage.js'
 import { createDashScopeLog } from './dashscope.js'
@@ -44,31 +46,32 @@ function recordSyncTiming(metrics: SyncRequestMetrics, entry: Record<string, unk
 }
 
 async function storeSyncImageResult(
-  route: 'erase' | 'repaint' | 'outpaint', userId: string, requestId: string,
-  jpeg: Buffer, metrics: SyncRequestMetrics, deadlineAt?: number,
+  route: SyncRequestMetrics['route'], userId: string, requestId: string,
+  bytes: Buffer, metrics: SyncRequestMetrics, deadlineAt?: number, mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
 ) {
-  metrics.outputBytes = jpeg.length
-  if (jpeg.length <= INLINE_IMAGE_RESPONSE_BYTES) return { kind: 'inline' as const, jpeg }
-  const objectKey = `temporary/${route}-results/${userId}/${requestId}.jpg`
+  metrics.outputBytes = bytes.length
+  if (bytes.length <= INLINE_IMAGE_RESPONSE_BYTES) return { kind: 'inline' as const, bytes, mimeType }
+  const objectKey = `temporary/${route}-results/${userId}/${requestId}.${mimeType === 'image/png' ? 'png' : 'jpg'}`
   const writeStarted = Date.now()
   const signal = deadlineAt ? AbortSignal.timeout(Math.max(1, deadlineAt - writeStarted)) : undefined
   try {
-    if (signal) await putObject(objectKey, jpeg, 'image/jpeg', signal)
-    else await putObject(objectKey, jpeg, 'image/jpeg')
+    if (signal) await putObject(objectKey, bytes, mimeType, signal)
+    else await putObject(objectKey, bytes, mimeType)
   } catch (error) {
     if (signal?.aborted) throw new HttpError(504, '结果保存超时，请重试', 'IMAGE_RESULT_TIMEOUT', { cause: error, stage: 'objectWrite' })
     throw error
+  } finally {
+    metrics.stageMs.objectWrite = Date.now() - writeStarted
   }
-  metrics.stageMs.objectWrite = Date.now() - writeStarted
-  return { kind: 'object' as const, objectKey, signed: await signRead(objectKey, 900), bytes: jpeg.length }
+  return { kind: 'object' as const, objectKey, signed: await signRead(objectKey, 900), bytes: bytes.length, mimeType }
 }
 
 function sendSyncImageResult(res: VercelResponse, result: Awaited<ReturnType<typeof storeSyncImageResult>>) {
   if (result.kind === 'inline') {
-    res.setHeader('Content-Type', 'image/jpeg')
-    res.status(200).end(result.jpeg)
+    res.setHeader('Content-Type', result.mimeType)
+    res.status(200).end(result.bytes)
   } else {
-    res.status(200).json({ objectKey: result.objectKey, mimeType: 'image/jpeg', bytes: result.bytes, ...result.signed })
+    res.status(200).json({ objectKey: result.objectKey, mimeType: result.mimeType, bytes: result.bytes, ...result.signed })
   }
 }
 
@@ -129,15 +132,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
     if (Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? null)) > maxBytes) throw new HttpError(413, '请求内容过大')
     if (path.join('/') === 'bg-remove' && method === 'POST') {
-      const input = z.object({
+      if (!tencentCiConfig()) throw new HttpError(503, '智能抠图尚未配置腾讯云', 'BG_REMOVE_UNCONFIGURED')
+      const inlineInput = z.object({
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
-      }).strict().parse(body)
-      const image = Buffer.from(input.dataBase64, 'base64')
-      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      const png = await withSyncLimit(user, 'detection', () => goodsMatting(image))
-      res.setHeader('Content-Type', 'image/png')
-      res.status(200).end(png)
+        clientTimingMs: clientTimingSchema.optional(),
+      }).strict()
+      const objectInput = z.object({
+        sourceImageKey: z.string().min(1).max(512), clientTimingMs: clientTimingSchema.optional(),
+      }).strict()
+      const input = z.union([objectInput, inlineInput]).parse(body)
+      const objectTransport = 'sourceImageKey' in input
+      const metrics: SyncRequestMetrics = {
+        route: 'bg-remove', requestId, transport: objectTransport ? 'object' : 'inline',
+        inputBytes: 0, maskBytes: 0, stageMs: {},
+      }
+      if (input.clientTimingMs) {
+        metrics.stageMs.clientPrepare = input.clientTimingMs.prepare
+        metrics.stageMs.clientUpload = input.clientTimingMs.upload
+      }
+      const log = (entry: Record<string, unknown>) => {
+        recordSyncTiming(metrics, entry)
+        console.info(JSON.stringify({ evt: 'bg-remove', requestId, userId, ...entry }))
+      }
+      const result = await withSyncLimit(user, 'detection', async () => {
+        let image: Buffer
+        if (objectTransport) {
+          image = (await loadStoredSyncImage(user.id, input.sourceImageKey, 'source',
+            AbortSignal.timeout(Math.max(1, start + 100_000 - Date.now())), {
+              maxPixels: BG_REMOVE_MAX_PIXELS,
+              onRead: (bytes, ms) => { metrics.inputBytes = bytes; metrics.stageMs.objectRead = ms },
+              onValidate: log,
+            })).bytes
+        } else {
+          image = Buffer.from(input.dataBase64, 'base64')
+          metrics.inputBytes = image.length
+          if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB', 'IMAGE_TOO_LARGE')
+          const validateStarted = Date.now()
+          try { await validateSyncImage(image, 'source', input.mimeType, BG_REMOVE_MAX_PIXELS) }
+          finally { metrics.stageMs.imageValidate = Date.now() - validateStarted }
+        }
+        const png = await removeBackground(image, {
+          userId: user.id, requestId, sourceImageKey: objectTransport ? input.sourceImageKey : undefined,
+          deadlineAt: start + 100_000, log,
+        })
+        return storeSyncImageResult('bg-remove', user.id, requestId, png, metrics, start + 105_000, 'image/png')
+      }, metrics)
+      sendSyncImageResult(res, result)
+      log({ stage: 'complete', ms: Date.now() - start, status: 200, transport: metrics.transport,
+        resultTransport: result.kind, bytes: metrics.outputBytes, stageMs: metrics.stageMs })
       return
     }
     if (path.join('/') === 'subject-detect' && method === 'POST') {

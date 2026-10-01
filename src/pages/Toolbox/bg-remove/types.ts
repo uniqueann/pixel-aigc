@@ -20,8 +20,10 @@ export interface BatchImage {
   output?: Blob
   outputMime?: string
   error?: string
+  transfer?: { ownerId: string; sourceImageKey?: string; result?: SyncImageObjectResult }
 }
 
 export const PREVIEW_MAX_DIMENSION = 800
 export const JPEG_QUALITY = 0.92
 export const BG_REMOVE_CONCURRENCY = 3
+import type { SyncImageObjectResult } from '@shared/sync-image'

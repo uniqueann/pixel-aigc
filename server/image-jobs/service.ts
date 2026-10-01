@@ -286,6 +286,7 @@ export function isSafeObjectKey(userId: string, key: string) {
     `temporary/erase-results/${userId}/`,
     `temporary/repaint-results/${userId}/`,
     `temporary/outpaint-results/${userId}/`,
+    `temporary/bg-remove-results/${userId}/`,
     `generated/${userId}/`,
     `media/${userId}/`,
   ].some(prefix => key.startsWith(prefix) && key.length > prefix.length)

@@ -38,6 +38,14 @@ describe('边缘精修像素', () => {
 })
 
 describe('边缘精修交接', () => {
+  it('队列会话按账号隔离，原图对象和结果描述可在返回页面时复用', () => {
+    clearBgRemoveSession()
+    const image: BatchImage = { id: 'a', file: new File(['s'], 'a.png'), sourceMime: 'image/png', sourceUrl: '',
+      width: 2, height: 2, status: 'pending', transfer: { ownerId: 'u', sourceImageKey: 'temporary/task-inputs/u/a' } }
+    saveBgRemoveSession({ ownerId: 'u', items: [image], settings: { background: '#ffffff' }, selectedId: 'a' })
+    expect(loadBgRemoveSession('u')?.items[0].transfer?.sourceImageKey).toBe('temporary/task-inputs/u/a')
+    expect(loadBgRemoveSession('other')).toBeNull()
+  })
   it('取消保留原透明底，完成后换背景使用新透明底且不再抠图', async () => {
     clearBgRemoveSession()
     const matte = new Blob(['old'])

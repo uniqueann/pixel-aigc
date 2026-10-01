@@ -88,7 +88,7 @@ src/pages/Toolbox/
 **模拟与真实调用**
 
 - `VITE_GENERATION_MODE=mock` 且未启用云同步时，不调用腾讯云。假任务返回一张与原图同尺寸、带透明通道的 PNG
-- 其余情况由 `GET /api/capabilities` 决定。配置齐全时 `POST /api/bg-remove`，请求体为 `mimeType` 与 `dataBase64`，响应为 PNG，单张不超过 20 MB
+- 其余情况由 `GET /api/capabilities` 决定。配置齐全时 `POST /api/bg-remove`，小图请求体为 `mimeType` 与 `dataBase64`，大图直传 R2 后提交 `sourceImageKey`；大 PNG 结果通过签名地址下载。单张原图仍不超过 20 MiB，完整链路见 [大图传输上线与验收](bg-remove-transfer-rollout.md)
 - 服务端在 `fileid` 前补上 `/`，避免结果被写到原图目录的下一层。读取时使用数据万象返回的对象 key
 
 **第一期范围**

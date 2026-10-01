@@ -30,8 +30,11 @@ export async function processRemovalBatch({
     update(item.id, { status: 'processing', error: undefined })
     try {
       const matte = item.matte ?? await remove(item)
-      if (shouldStop()) { update(item.id, { status: 'pending', matte: item.matte }); return }
+      update(item.id, { matte })
+      if (shouldStop()) { update(item.id, { status: 'pending', matte }); return }
+      const composeStarted = performance.now()
       const output = await compose(item, matte)
+      console.info(JSON.stringify({ evt: 'bg-remove-compose', itemId: item.id, ms: Math.round(performance.now() - composeStarted) }))
       if (shouldStop()) { update(item.id, { status: 'pending', matte }); return }
       update(item.id, { status: 'succeeded', matte, output: output.blob, outputMime: output.mimeType, error: undefined })
     } catch (error) {
