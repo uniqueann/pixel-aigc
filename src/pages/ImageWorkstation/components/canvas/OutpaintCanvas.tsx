@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { Canvas, FabricImage, Rect } from 'fabric'
 import { computeOutpaintMask, type MaskExportResult } from '../../utils/maskExport'
 import { useCanvasDisplay } from '../../utils/useCanvasDisplay'
+import type { OutpaintOutputMode } from '@shared/outpaint'
 import {
   freeOutpaintGeometry,
   modelSizeFromDisplay,
@@ -17,6 +18,8 @@ interface OutpaintCanvasProps {
   imageNaturalSize: { width: number; height: number }
   /** 选中平台预设时传入目标尺寸；为空时允许自由拖拽 */
   presetTargetSize?: { width: number; height: number }
+  outputMode?: OutpaintOutputMode
+  onTargetSizeChange?: (size: { width: number; height: number }) => void
 }
 
 export interface OutpaintCanvasHandle {
@@ -27,7 +30,7 @@ export interface OutpaintCanvasHandle {
 }
 
 const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(function OutpaintCanvas(
-  { imageUrl, imageNaturalSize, presetTargetSize },
+  { imageUrl, imageNaturalSize, presetTargetSize, outputMode = 'original', onTargetSizeChange },
   ref,
 ) {
   const { hostRef, display } = useCanvasDisplay()
@@ -75,6 +78,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
         imageNaturalSize.height,
         presetTargetSize.width,
         presetTargetSize.height,
+        outputMode,
       )
       : freeOutpaintGeometry(
         imageNaturalSize.width,
@@ -83,6 +87,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
         imageNaturalSize.height,
       )
     modelRef.current = model
+    onTargetSizeChange?.(model.targetSize)
     const displayScale = outpaintDisplayScale(model.targetSize.width, model.targetSize.height)
 
     const centerX = OUTPAINT_VIEW_WIDTH / 2
@@ -120,6 +125,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
         size.height,
       )
       modelRef.current = next
+      onTargetSizeChange?.(next.targetSize)
       return next
     }
 
@@ -172,7 +178,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
       fabricCanvasRef.current = null
       void canvas.dispose()
     }
-  }, [imageNaturalSize, imageUrl, presetTargetSize])
+  }, [imageNaturalSize, imageUrl, presetTargetSize, outputMode, onTargetSizeChange])
 
   return (
     <div ref={hostRef} className="workstation-paint-host">

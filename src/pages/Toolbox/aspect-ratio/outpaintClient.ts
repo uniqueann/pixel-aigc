@@ -69,8 +69,11 @@ async function expandViaTask(scaled: File, plan: ExpansionPlan, targetWidth: num
   return { blob, mimeType: blob.type || 'image/jpeg', width: size.width, height: size.height }
 }
 
-export async function expandRemoteImage(image: BatchImage, plan: ExpansionPlan, targetWidth: number, targetHeight: number, shouldStop: () => boolean): Promise<RenderResult> {
-  const scaled = await renderScaledSource(image.file, plan.sourceSize.width, plan.sourceSize.height)
+export async function expandRemoteImage(image: BatchImage, plan: ExpansionPlan, shouldStop: () => boolean): Promise<RenderResult> {
+  const { width: targetWidth, height: targetHeight } = plan.targetSize
+  const scaled = plan.sourceSize.width === image.width && plan.sourceSize.height === image.height
+    ? image.file
+    : await renderScaledSource(image.file, plan.sourceSize.width, plan.sourceSize.height)
   if (liveCapabilityReady(Capability.Outpaint)) return expandViaTask(scaled, plan, targetWidth, targetHeight, shouldStop)
   const padding = paddingAround(
     plan.sourceSize.width,
@@ -80,7 +83,7 @@ export async function expandRemoteImage(image: BatchImage, plan: ExpansionPlan, 
     targetWidth,
     targetHeight,
   )
-  const blob = await requestOutpaint(scaled, 'image/jpeg', padding)
+  const blob = await requestOutpaint(scaled, scaled.type, padding)
   if (shouldStop()) throw new Error('处理已取消')
   const size = await readSize(blob)
   return { blob, mimeType: 'image/jpeg', width: size.width, height: size.height }

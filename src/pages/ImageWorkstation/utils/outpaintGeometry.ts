@@ -1,4 +1,5 @@
 import { expansionPlan } from '@/pages/Toolbox/aspect-ratio/expansion'
+import type { OutpaintOutputMode } from '@shared/outpaint'
 
 export const OUTPAINT_VIEW_WIDTH = 640
 export const OUTPAINT_VIEW_HEIGHT = 420
@@ -10,16 +11,17 @@ export interface OutpaintModelGeometry {
   sourceSize: { width: number; height: number }
 }
 
-/** 平台预设：contain 进精确 preset 像素，与工具箱转比例同一套 expansionPlan。 */
+/** 平台预设：按输出模式计算画布，与工具箱转比例使用同一套扩图计划。 */
 export function presetOutpaintGeometry(
   sourceWidth: number,
   sourceHeight: number,
   presetWidth: number,
   presetHeight: number,
+  outputMode: OutpaintOutputMode = 'platform',
 ): OutpaintModelGeometry {
-  const plan = expansionPlan(sourceWidth, sourceHeight, presetWidth, presetHeight)
+  const plan = expansionPlan(sourceWidth, sourceHeight, presetWidth, presetHeight, outputMode)
   return {
-    targetSize: { width: presetWidth, height: presetHeight },
+    targetSize: plan.targetSize,
     originOffset: plan.originOffset,
     sourceSize: plan.sourceSize,
   }

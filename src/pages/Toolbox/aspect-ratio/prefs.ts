@@ -26,7 +26,8 @@ export function normalizeSettings(value: Partial<AspectRatioSettings> | null | u
     ? rawBackground
     : DEFAULT_ASPECT_RATIO_SETTINGS.background
   if (typeof background !== 'string') return DEFAULT_ASPECT_RATIO_SETTINGS
-  return { strategy, selectedPresetId: presetId, background, fx, fy }
+  const outpaintOutputMode = value?.outpaintOutputMode === 'original' ? 'original' : 'platform'
+  return { strategy, selectedPresetId: presetId, background, fx, fy, outpaintOutputMode }
 }
 
 function openDatabase(): Promise<IDBDatabase> {

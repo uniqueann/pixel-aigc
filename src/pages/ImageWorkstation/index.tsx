@@ -34,6 +34,8 @@ import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import ParamPanel from './components/ParamPanel'
 import { workstationGenerateBlockReason } from './utils/generateGate'
+import { presetOutpaintGeometry } from './utils/outpaintGeometry'
+import type { OutpaintOutputMode } from '@shared/outpaint'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
@@ -68,6 +70,8 @@ export default function ImageWorkstation() {
   const [erasePrompt, setErasePrompt] = useState('')
   const [repaintPrompt, setRepaintPrompt] = useState('')
   const [outpaintMode, setOutpaintMode] = useState<'free' | 'preset'>('free')
+  const [outpaintOutputMode, setOutpaintOutputMode] = useState<OutpaintOutputMode>('original')
+  const [outpaintTargetSize, setOutpaintTargetSize] = useState<{ width: number; height: number }>()
   const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
   const [repaintReady, setRepaintReady] = useState(() => liveCapabilityReady(Capability.Inpaint))
@@ -122,9 +126,9 @@ export default function ImageWorkstation() {
 
   const inpaintMode = activeTool.slug === 'repaint' ? 'repaint' : activeTool.slug === 'remove' ? 'remove' : undefined
   const selectedPreset = PLATFORM_SIZE_PRESETS.find((preset) => preset.platform === presetPlatform)
-  const presetTargetSize = outpaintMode === 'preset' && selectedPreset
+  const presetTargetSize = useMemo(() => outpaintMode === 'preset' && selectedPreset
     ? { width: selectedPreset.width, height: selectedPreset.height }
-    : undefined
+    : undefined, [outpaintMode, selectedPreset])
   const taskSummary = useMemo(() => {
     const task = controller.activeTask
     if (!task) return undefined
@@ -257,6 +261,7 @@ export default function ImageWorkstation() {
     queueMicrotask(() => {
       if (!active || !preset) return
       setOutpaintMode('preset')
+      setOutpaintOutputMode(handoff.outputMode ?? 'platform')
       setPresetPlatform(preset.platform)
     })
     void uploadRef.current(handoff.file).finally(() => {
@@ -368,9 +373,14 @@ export default function ImageWorkstation() {
     }
   }
 
-  const inputSize = controller.inputAsset
-    ? { width: controller.inputAsset.width, height: controller.inputAsset.height }
-    : { width: 0, height: 0 }
+  const inputWidth = controller.inputAsset?.width ?? 0
+  const inputHeight = controller.inputAsset?.height ?? 0
+  const inputSize = useMemo(() => ({ width: inputWidth, height: inputHeight }), [inputWidth, inputHeight])
+  const predictedOutpaintSize = inputWidth && inputHeight
+    ? presetTargetSize
+      ? presetOutpaintGeometry(inputWidth, inputHeight, presetTargetSize.width, presetTargetSize.height, outpaintOutputMode).targetSize
+      : outpaintTargetSize ?? inputSize
+    : undefined
 
   return (
     <div className="image-workstation-page">
@@ -394,6 +404,8 @@ export default function ImageWorkstation() {
             originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}
             imageNaturalSize={inputSize}
             presetTargetSize={presetTargetSize}
+            outpaintOutputMode={outpaintOutputMode}
+            onOutpaintTargetSizeChange={setOutpaintTargetSize}
             compareMode={compareMode}
             uploading={uploading}
             uploadDisabled={controller.formLocked || Boolean(edgeRefine)}
@@ -450,7 +462,16 @@ export default function ImageWorkstation() {
               onRepaintPromptChange={setRepaintPrompt}
               repaintReady={repaintReady}
               outpaintMode={outpaintMode}
-              onOutpaintModeChange={setOutpaintMode}
+              onOutpaintModeChange={mode => {
+                setOutpaintMode(mode)
+                if (mode === 'free') setOutpaintOutputMode('original')
+              }}
+              outpaintOutputMode={outpaintOutputMode}
+              onOutpaintOutputModeChange={mode => {
+                setOutpaintOutputMode(mode)
+                if (mode === 'platform') setOutpaintMode('preset')
+              }}
+              outpaintTargetSize={predictedOutpaintSize}
               presetPlatform={presetPlatform}
               onPresetPlatformChange={setPresetPlatform}
             />

@@ -4,6 +4,7 @@ import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
 import { requestErase } from '@/services/api/erase'
 import { fetchOwnedObjectDirect } from '@/services/api/objects'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
+import { validateOutpaintOutputSize } from '@shared/outpaint'
 import { requestRepaint } from '@/services/api/repaint'
 import { cloudEnabled } from '@/cloud/client'
 import { liveCapabilityReady } from '@/services/api/task'
@@ -21,7 +22,7 @@ import { readRelight, relightHistoryText, type RelightOptions } from '@shared/re
 import { readRetouchDirections, retouchHistoryText } from '@shared/retouch'
 import { blobFromImageSource } from '../download'
 import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
-import { isExactlySameImage, isVisuallySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
+import { isExactlySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
 import { finalizeWorkstationResults } from '../results'
 import { COMING_SOON_SUBMIT_MESSAGE, isWorkstationToolReady } from '../tools/registry'
 import type {
@@ -303,6 +304,7 @@ export function useImageWorkstationController({
     setProtocolError(undefined)
     try {
       const padding = paddingAround(sourceSize.width, sourceSize.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
+      validateOutpaintOutputSize(targetSize.width, targetSize.height)
       const sourceKey = imageObjectKey(sourceAsset)
       const original = sourceKey
         ? await fetchOwnedObjectDirect(sourceKey)
@@ -339,7 +341,7 @@ export function useImageWorkstationController({
       setTask(completed)
       upsertTask(completed)
       setActiveTaskId(undefined)
-      if (hasPad && await isVisuallySameImage(input, result)) {
+      if (hasPad && await isExactlySameImage(input, result)) {
         setProtocolError(SOURCE_ECHO_ERROR)
         return completed
       }

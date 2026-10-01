@@ -7,6 +7,7 @@ import type { InteractionMode } from '../tools'
 import BrushToolbar, { type PaintTool } from './canvas/BrushToolbar'
 import type { MaskPaintCanvasHandle } from './canvas/MaskPaintCanvas'
 import type { OutpaintCanvasHandle } from './canvas/OutpaintCanvas'
+import type { OutpaintOutputMode } from '@shared/outpaint'
 
 const MaskPaintCanvas = lazyWithRetry(() => import('./canvas/MaskPaintCanvas'))
 const OutpaintCanvas = lazyWithRetry(() => import('./canvas/OutpaintCanvas'))
@@ -21,6 +22,8 @@ interface Props {
   originalImageUrl?: string
   imageNaturalSize: { width: number; height: number }
   presetTargetSize?: { width: number; height: number }
+  outpaintOutputMode?: OutpaintOutputMode
+  onOutpaintTargetSizeChange?: (size: { width: number; height: number }) => void
   compareMode: 'original' | 'effect'
   uploading?: boolean
   uploadDisabled?: boolean
@@ -90,6 +93,8 @@ export default function CanvasArea({
   originalImageUrl,
   imageNaturalSize,
   presetTargetSize,
+  outpaintOutputMode,
+  onOutpaintTargetSizeChange,
   compareMode,
   uploading = false,
   uploadDisabled = false,
@@ -258,6 +263,8 @@ export default function CanvasArea({
             imageUrl={imageUrl}
             imageNaturalSize={imageNaturalSize}
             presetTargetSize={presetTargetSize}
+            outputMode={outpaintOutputMode}
+            onTargetSizeChange={onOutpaintTargetSizeChange}
           />
         </Suspense>
       </div>

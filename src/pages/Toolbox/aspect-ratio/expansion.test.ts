@@ -30,6 +30,25 @@ describe('智能扩展计划', () => {
 })
 
 describe('扩图批量并发', () => {
+  it('高分辨率批次按每张原图计算输出，同一比例直接保留原尺寸', async () => {
+    let images = [item('large', 3200, 5035), item('small', 800, 400), item('square', 600, 600)]
+    const expandRemote = vi.fn(async (_image: BatchImage, plan: ReturnType<typeof expansionPlan>) => ({
+      blob: new Blob(['remote']), mimeType: 'image/jpeg', ...plan.targetSize,
+    }))
+    const renderLocal = vi.fn(async (image: BatchImage) => ({
+      blob: image.file, mimeType: image.file.type, width: image.width, height: image.height,
+    }))
+    await processOutpaintBatch({
+      images, settings: { strategy: 'outpaint', selectedPresetId: 'amazon-main', background: '#ffffff', fx: 0.5, fy: 0.5, outpaintOutputMode: 'original' },
+      targetWidth: 1600, targetHeight: 1600, expandRemote, renderLocal, shouldStop: () => false,
+      update: (id, patch) => { images = images.map(image => image.id === id ? { ...image, ...patch } : image) },
+    })
+    expect(expandRemote.mock.calls[0][1]).toMatchObject({ sourceSize: { width: 3200, height: 5035 }, targetSize: { width: 5035, height: 5035 } })
+    expect(expandRemote.mock.calls[1][1].targetSize).toEqual({ width: 800, height: 800 })
+    expect(renderLocal).toHaveBeenCalledTimes(1)
+    expect(images.every(image => image.status === 'succeeded')).toBe(true)
+  })
+
   it('最多同时处理 2 张，单张失败不阻断其他图片', async () => {
     let images = [item('a', 800, 400), item('b', 800, 400), item('c', 800, 800)]
     let active = 0

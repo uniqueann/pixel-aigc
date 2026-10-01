@@ -12,6 +12,7 @@ import {
 } from '@shared/relight'
 import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
+import type { OutpaintOutputMode } from '@shared/outpaint'
 
 interface Props {
   capability: Capability
@@ -34,6 +35,9 @@ interface Props {
   repaintReady?: boolean
   outpaintMode: 'free' | 'preset'
   onOutpaintModeChange: (mode: 'free' | 'preset') => void
+  outpaintOutputMode?: OutpaintOutputMode
+  onOutpaintOutputModeChange?: (mode: OutpaintOutputMode) => void
+  outpaintTargetSize?: { width: number; height: number }
   presetPlatform: string
   onPresetPlatformChange: (platform: string) => void
   retouchDirections?: RetouchDirection[]
@@ -66,6 +70,9 @@ export default function ParamPanel({
   repaintReady = true,
   outpaintMode,
   onOutpaintModeChange,
+  outpaintOutputMode = 'original',
+  onOutpaintOutputModeChange,
+  outpaintTargetSize,
   presetPlatform,
   onPresetPlatformChange,
   retouchDirections = [],
@@ -295,6 +302,24 @@ export default function ParamPanel({
       {capability === Capability.Outpaint ? (
         <>
           <div>
+            <div style={labelStyle}>输出模式</div>
+            <Select
+              aria-label="扩图输出模式"
+              style={{ width: '100%' }}
+              value={outpaintOutputMode}
+              disabled={disabled}
+              onChange={onOutpaintOutputModeChange}
+              options={[
+                { label: '保留原图分辨率', value: 'original' },
+                { label: '按平台尺寸输出', value: 'platform' },
+              ]}
+            />
+            <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
+              {outpaintOutputMode === 'original' ? '原图保持原尺寸，只向外延伸背景。' : '原图按平台尺寸缩放，生成可直接使用的平台图片。'}
+              {sourceSize && outpaintTargetSize ? ` 预计输出 ${outpaintTargetSize.width} × ${outpaintTargetSize.height} 像素。` : ' 上传图片后显示预计尺寸。'}
+            </p>
+          </div>
+          <div>
             <div style={labelStyle}>扩图方式</div>
             <Segmented
               block
@@ -303,19 +328,21 @@ export default function ParamPanel({
                 { label: '平台预设', value: 'preset' },
               ]}
               value={outpaintMode}
+              disabled={disabled}
               onChange={(value) => onOutpaintModeChange(value as 'free' | 'preset')}
             />
           </div>
           {outpaintMode === 'preset' ? (
             <div>
-              <div style={labelStyle}>目标平台</div>
+              <div style={labelStyle}>{outpaintOutputMode === 'original' ? '参考平台比例' : '目标平台'}</div>
               <Select
                 style={{ width: '100%' }}
                 value={presetPlatform}
+                disabled={disabled}
                 onChange={onPresetPlatformChange}
                 options={PLATFORM_SIZE_PRESETS.map((preset) => ({
                   value: preset.platform,
-                  label: `${preset.label} · ${preset.width}×${preset.height}`,
+                  label: outpaintOutputMode === 'original' ? `${preset.label} · 仅使用比例` : `${preset.label} · ${preset.width}×${preset.height}`,
                 }))}
               />
             </div>

@@ -78,6 +78,10 @@ export default function AspectRatioTool() {
 
   const preset = PLATFORM_SIZE_PRESETS.find(item => item.id === settings.selectedPresetId) ?? PLATFORM_SIZE_PRESETS[0]
   const selected = items.find(item => item.id === selectedId)
+  const selectedOutputPlan = selected && settings.strategy === 'outpaint'
+    ? expansionPlan(selected.width, selected.height, preset.width, preset.height, settings.outpaintOutputMode)
+    : undefined
+  const selectedOutputSize = selectedOutputPlan?.targetSize ?? { width: preset.width, height: preset.height }
   const completed = items.filter(item => item.status === 'succeeded')
   const failed = items.filter(item => item.status === 'failed')
   const gridFallbacks = items.filter(item => item.status === 'succeeded' && item.cropFocus?.source === 'grid' && item.cropFocus.note)
@@ -290,13 +294,15 @@ export default function AspectRatioTool() {
           targetWidth: preset.width,
           targetHeight: preset.height,
           ids: onlyIds,
-          renderLocal: image => renderer().render({
+          renderLocal: (image, plan) => settings.outpaintOutputMode === 'original'
+            ? Promise.resolve({ blob: image.file, mimeType: image.file.type, width: image.width, height: image.height })
+            : renderer().render({
             file: image.file,
             settings: { ...settings, strategy: 'letterbox', background: '#ffffff' },
-            targetWidth: preset.width,
-            targetHeight: preset.height,
+            targetWidth: plan.targetSize.width,
+            targetHeight: plan.targetSize.height,
           }),
-          expandRemote: (image, plan) => expandRemoteImage(image, plan, preset.width, preset.height, () => cancelledRef.current || !mountedRef.current),
+          expandRemote: (image, plan) => expandRemoteImage(image, plan, () => cancelledRef.current || !mountedRef.current),
           update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
           shouldStop: () => cancelledRef.current || !mountedRef.current,
         })
@@ -331,7 +337,7 @@ export default function AspectRatioTool() {
   function refineFailed(id: string) {
     const item = itemsRef.current.find(candidate => candidate.id === id)
     if (!item || settingsRef.current.strategy !== 'outpaint') return
-    setOutpaintHandoff({ file: item.file, presetId: preset.id })
+    setOutpaintHandoff({ file: item.file, presetId: preset.id, outputMode: settingsRef.current.outpaintOutputMode ?? 'platform' })
     navigate('/image-workstation/outpaint')
   }
 
@@ -360,14 +366,19 @@ export default function AspectRatioTool() {
       <div className="toolbox-watermark-main">
         <section className="toolbox-preview-panel" aria-label="转比例预览">
           <div className="toolbox-section-heading">
-            <div><strong>转比例预览</strong><span>{preset.label} {preset.width} × {preset.height}</span></div>
+            <div><strong>转比例预览</strong><span>{preset.label} · {settings.strategy === 'outpaint' && settings.outpaintOutputMode === 'original' && !selected ? '保留原图分辨率' : `${selectedOutputSize.width} × ${selectedOutputSize.height}`}</span></div>
             {currentPreview?.loading && <span>正在更新预览…</span>}
           </div>
           <div className="toolbox-preview-stage">
             {selected ? <img src={currentPreview?.url ?? selected.sourceUrl} alt={`${selected.file.name} 的转比例预览`} onClick={selected.output ? () => openAt(selected.id) : undefined} style={{ cursor: selected.output ? 'zoom-in' : undefined }} /> : <p>先添加图片，再选择平台和适配方式</p>}
           </div>
           {currentPreview?.error && <div className="toolbox-preview-error">预览失败：{currentPreview.error}</div>}
-          <p className="toolbox-hint">预览最长边不超过 {PREVIEW_MAX_DIMENSION}px；导出为 {preset.width} × {preset.height}。图片在本机处理。</p>
+          <p className="toolbox-hint">
+            预览最长边不超过 {PREVIEW_MAX_DIMENSION}px；{settings.strategy === 'outpaint' && settings.outpaintOutputMode === 'original' && !selected
+              ? '添加图片后显示每张图片的预计输出尺寸。'
+              : `${selected ? '当前图片' : ''}导出为 ${selectedOutputSize.width} × ${selectedOutputSize.height}。`}
+            {settings.strategy === 'outpaint' ? '智能扩展会上传图片生成背景。' : '图片在本机处理。'}
+          </p>
           {upscale > 2 && <p className="toolbox-hint toolbox-warning">当前图片需要放大超过 2 倍才能铺满目标尺寸，细节可能变糊。</p>}
         </section>
 
@@ -398,9 +409,24 @@ export default function AspectRatioTool() {
           />
           {settings.strategy === 'letterbox' && <p className="toolbox-hint">留白会把原图完整放进目标尺寸，空白处用所选颜色填上。</p>}
           {settings.strategy === 'outpaint' && (
-            <p className="toolbox-hint">
-              需要补边的 {items.filter(item => expansionPlan(item.width, item.height, preset.width, preset.height).mode === 'remote').length} 张会先扩图，再裁成精确的目标尺寸。比例已经一致的图片只在本机缩放。预览里的深色区域是待补全的留白。
-            </p>
+            <>
+              <label className="toolbox-field-label">输出模式</label>
+              <Radio.Group
+                value={settings.outpaintOutputMode ?? 'platform'}
+                disabled={controlsLocked}
+                onChange={event => updateSettings({ outpaintOutputMode: event.target.value })}
+                options={[
+                  { label: '按平台尺寸输出', value: 'platform' },
+                  { label: '保留原图分辨率', value: 'original' },
+                ]}
+              />
+              <p className="toolbox-hint">
+                {settings.outpaintOutputMode === 'original'
+                  ? '原图保持原尺寸，按平台比例补背景；每张图片的输出尺寸随原图变化，比例一致时保留原文件。'
+                  : `输出精确的 ${preset.width} × ${preset.height} 平台尺寸，原图会按尺寸缩放。`}
+                预览里的深色区域是待补全的留白。
+              </p>
+            </>
           )}
           {settings.strategy === 'outpaint' && !outpaintReady && (
             <p className="toolbox-hint toolbox-warning">智能扩展还不能用。请在服务端配置阿里云百炼的 DASHSCOPE_API_KEY（华北2北京）。</p>
@@ -462,6 +488,7 @@ export default function AspectRatioTool() {
       </div>
 
       <BatchImageQueue
+        processingHint={settings.strategy === 'outpaint' ? '智能扩展会上传图片生成背景' : undefined}
         items={items.map(item => ({
           id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error,
           note: item.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : item.cropFocus?.note,

@@ -26,6 +26,7 @@ interface Props {
   onDownload: (id: string) => void
   onRefine?: (id: string) => void
   onPreviewResult?: (id: string) => void
+  processingHint?: string
 }
 
 const statusLabels = {
@@ -42,7 +43,7 @@ const statusColors = {
   failed: 'error',
 }
 
-export default function BatchImageQueue({ items, selectedId, disabled, onAdd, onSelect, onRemove, onClear, onRetry, onDownload, onRefine, onPreviewResult }: Props) {
+export default function BatchImageQueue({ items, selectedId, disabled, onAdd, onSelect, onRemove, onClear, onRetry, onDownload, onRefine, onPreviewResult, processingHint = '图片仅在本机处理' }: Props) {
   return (
     <section className="toolbox-batch-queue" aria-label="批量图片队列">
       <div className="toolbox-section-heading">
@@ -62,7 +63,7 @@ export default function BatchImageQueue({ items, selectedId, disabled, onAdd, on
       >
         <p className="ant-upload-drag-icon"><InboxOutlined /></p>
         <p>拖入图片，或点击选择</p>
-        <p className="ant-upload-hint">静态 JPG / PNG / WebP，最多 20 张；图片仅在本机处理</p>
+        <p className="ant-upload-hint">静态 JPG / PNG / WebP，最多 20 张；{processingHint}</p>
       </Upload.Dragger>
       {items.length > 0 && (
         <div className="toolbox-queue-grid">
