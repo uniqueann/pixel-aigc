@@ -1,3 +1,4 @@
+import type { ImageResultReadOptions } from './image-transfer'
 import { normalizeImageBlob } from '@shared/image-format'
 import {
   clientTiming, fileToBase64, imageAuthHeader, imageMimeType, MAX_IMAGE_BYTES,
@@ -16,6 +17,7 @@ export async function requestErase(
   mask: Blob | string,
   prompt = '',
   sourceObjectKey?: string,
+  resultOptions: ImageResultReadOptions = {},
 ) {
   const prepareStarted = performance.now()
   const painted = pngMaskBlob(mask, '请先涂抹要消除的区域', '消除蒙版无效，请重新涂抹')
@@ -49,5 +51,5 @@ export async function requestErase(
     const payload = await response.json().catch(() => null) as { error?: string } | null
     throw new Error(payload?.error || '消除失败')
   }
-  return readImageResult(response, '消除')
+  return readImageResult(response, '消除', resultOptions)
 }

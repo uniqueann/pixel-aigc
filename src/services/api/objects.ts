@@ -23,13 +23,14 @@ export class OwnedObjectError extends Error {
   constructor(public status: number, message: string) { super(message); this.name = 'OwnedObjectError' }
 }
 
-export async function signedOwnedObjectUrl(objectKey: string, signal?: AbortSignal) {
+export async function signedOwnedObject(objectKey: string, signal?: AbortSignal) {
   const token = authEnabled
     ? (await supabase!.auth.getSession()).data.session?.access_token
     : localStorage.getItem('access_token')
   const params = new URLSearchParams({ key: objectKey, mode: 'url' })
   const response = await fetch(`/api/objects?${params}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: 'no-store',
     ...(signal ? { signal } : {}),
   })
   if (!response.ok) {
@@ -38,11 +39,14 @@ export async function signedOwnedObjectUrl(objectKey: string, signal?: AbortSign
   }
   const signed = await response.json() as { url?: string; expiresAt?: number }
   if (!signed.url) throw new Error('未取得图片地址')
-  return signed.url
+  return { url: signed.url, expiresAt: signed.expiresAt }
+}
+
+export async function signedOwnedObjectUrl(objectKey: string, signal?: AbortSignal) {
+  return (await signedOwnedObject(objectKey, signal)).url
 }
 
 export async function fetchOwnedObjectDirect(objectKey: string) {
-  const response = await fetch(await signedOwnedObjectUrl(objectKey)).catch(() => null)
-  if (!response?.ok) return fetchOwnedObject(objectKey)
-  return response.blob()
+  const { readOwnedImage } = await import('./ownedImages')
+  return readOwnedImage({ objectKey })
 }

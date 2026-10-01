@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+import { clearOwnedImageSession } from '@/services/api/ownedImages'
+vi.mock('@/features/assets/historyOwner', () => ({ currentWorkstationHistoryOwner: () => 'u' }))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BatchImage } from './types'
 const mocks = vi.hoisted(() => ({ upload: vi.fn(), signed: vi.fn() }))
 vi.mock('@/services/api/upload', () => ({ uploadTaskInput: mocks.upload, uploadImage: vi.fn() }))
-vi.mock('@/services/api/objects', () => ({ signedOwnedObjectUrl: mocks.signed }))
+vi.mock('@/services/api/objects', () => ({ signedOwnedObject: (...args: unknown[]) => mocks.signed(...args).then((url: string) => ({ url, expiresAt: Date.now() + 60_000 })) }))
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false, createTask: vi.fn(), getTask: vi.fn() }))
 import { requestMatte } from './client'
 
@@ -14,9 +16,10 @@ function image(size = 20): BatchImage {
 }
 function response() { return new Response(png, { headers: { 'Content-Type': 'image/png' } }) }
 function objectResponse() { return new Response(JSON.stringify({ objectKey: 'temporary/bg-remove-results/u/1.png',
-  url: 'https://r2.test/result', mimeType: 'image/png', bytes: png.length, expiresAt: 100 }), { headers: { 'Content-Type': 'application/json' } }) }
+  url: 'https://r2.test/result', mimeType: 'image/png', bytes: png.length, expiresAt: Date.now() + 60_000 }), { headers: { 'Content-Type': 'application/json' } }) }
 
 beforeEach(() => {
+  clearOwnedImageSession()
   mocks.upload.mockReset().mockResolvedValue('temporary/task-inputs/u/image')
   mocks.signed.mockReset().mockResolvedValue('https://r2.test/refreshed')
   vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 100, height: 80, close: vi.fn() })))

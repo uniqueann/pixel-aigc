@@ -11,6 +11,7 @@ interface ImageAssetInput {
   createdAt?: string
   mimeType?: string
   objectKey?: string
+  accessExpiresAt?: number
 }
 
 export function createImageAsset(input: ImageAssetInput): ImageAsset {
@@ -21,6 +22,7 @@ export function createImageAsset(input: ImageAssetInput): ImageAsset {
     url: input.url,
     mimeType: input.mimeType || inferMimeType(input.url, 'image/png'),
     objectKey: input.objectKey,
+    accessExpiresAt: input.accessExpiresAt,
     width: input.width,
     height: input.height,
     source: input.source ?? 'upload',
@@ -37,6 +39,7 @@ export function createVideoAsset(input: Omit<ImageAssetInput, 'source'> & { dura
     url: input.url,
     mimeType: inferMimeType(input.url, 'video/mp4'),
     objectKey: input.objectKey,
+    accessExpiresAt: input.accessExpiresAt,
     width: input.width,
     height: input.height,
     duration: input.duration ?? 0,

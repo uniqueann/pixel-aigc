@@ -25,6 +25,12 @@ interface GenerationTaskStatusProps {
   submissionError?: string
   protocolError?: string
   pollError?: Error | null
+  readingResults?: boolean
+  resultReadError?: string
+  historyError?: string
+  historySaved?: boolean
+  onRetryRead?: () => void
+  onRetrySave?: () => void
   onRetry?: () => void
   onModifyParameters?: () => void
   onRefetch?: () => void
@@ -40,6 +46,12 @@ export default function GenerationTaskStatus({
   submissionError,
   protocolError,
   pollError,
+  readingResults = false,
+  resultReadError,
+  historyError,
+  historySaved = false,
+  onRetryRead,
+  onRetrySave,
   onRetry,
   onModifyParameters,
   onRefetch,
@@ -51,8 +63,8 @@ export default function GenerationTaskStatus({
       {(task || submitting) ? (
         <div className={`generation-task-status is-${task?.status ?? 'pending'}`}>
           <div className="generation-task-status-title">
-            <strong>{task ? STATUS_LABELS[task.status] : '正在提交'}</strong>
-            {(active || polling) ? <Spin size="small" /> : null}
+            <strong>{readingResults ? '读取结果中' : task ? STATUS_LABELS[task.status] : '正在提交'}</strong>
+            {(active || polling || readingResults) ? <Spin size="small" /> : null}
           </div>
           {summary ? <span>{summary}</span> : null}
           {task?.warnings?.length ? (
@@ -67,6 +79,9 @@ export default function GenerationTaskStatus({
         </div>
       ) : null}
 
+      {task?.status === 'succeeded' && historySaved ? <span>完整图片已保存到本地历史</span> : null}
+      {resultReadError ? <Alert type="warning" showIcon message="已生成，结果读取失败" description={resultReadError} action={onRetryRead ? <Button size="small" loading={readingResults} onClick={onRetryRead}>重试读取</Button> : undefined} /> : null}
+      {historyError ? <Alert type="warning" showIcon message="图片可用，历史未保存" description={historyError} action={onRetrySave ? <Button size="small" onClick={onRetrySave}>重试保存</Button> : undefined} /> : null}
       {submissionError ? <Alert type="error" showIcon message="提交失败" description={submissionError} /> : null}
       {protocolError ? <Alert type="error" showIcon message="结果异常" description={protocolError} /> : null}
       {pollError ? (

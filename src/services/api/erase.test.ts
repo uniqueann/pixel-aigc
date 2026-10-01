@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 
+import { clearOwnedImageSession } from '@/services/api/ownedImages'
+vi.mock('@/features/assets/historyOwner', () => ({ currentWorkstationHistoryOwner: () => 'u' }))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ uploadTaskInput: vi.fn(), signedOwnedObjectUrl: vi.fn() }))
 vi.mock('./upload', () => ({ uploadTaskInput: mocks.uploadTaskInput }))
-vi.mock('./objects', () => ({ signedOwnedObjectUrl: mocks.signedOwnedObjectUrl }))
+vi.mock('./objects', () => ({ signedOwnedObject: (...args: unknown[]) => mocks.signedOwnedObjectUrl(...args).then((url: string) => ({ url, expiresAt: Date.now() + 60_000 })) }))
 import { requestErase, shouldUseInlineEraseTransport } from './erase'
 
 describe('消除客户端请求', () => {
   beforeEach(() => {
+  clearOwnedImageSession()
     mocks.uploadTaskInput.mockReset()
     mocks.signedOwnedObjectUrl.mockReset()
     if (typeof AbortSignal.timeout !== 'function') {
@@ -62,7 +65,7 @@ describe('消除客户端请求', () => {
       if (url === '/api/erase') return new Response(JSON.stringify({
         objectKey: 'temporary/erase-results/user/1.jpg', mimeType: 'image/jpeg', url: 'https://r2.test/result',
       }), { headers: { 'Content-Type': 'application/json' } })
-      return new Response(new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' }), {
+      return new Response(new Uint8Array([255, 216, 255]), {
         headers: { 'Content-Type': 'image/jpeg' },
       })
     })

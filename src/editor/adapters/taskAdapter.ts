@@ -7,6 +7,8 @@ export interface TaskAdapterOptions {
   parentGenerationId?: GenerationId
   retryOfGenerationId?: GenerationId
   outputSize?: { width: number; height: number }
+  existingAssets?: Asset[]
+  deferAssets?: boolean
   outputDuration?: number
 }
 
@@ -31,16 +33,19 @@ export function adaptGenerationTask<TParams>(
   const outputSize = options.outputSize ?? { width: 0, height: 0 }
   const isVideo = task.capability === Capability.TextToVideo
   const resultImages = task.resultImages ?? []
-  const assets = (task.resultUrls ?? []).map((url, index) => {
+  const urls = resultImages.length ? resultImages.map(image => image.url) : (task.resultUrls ?? [])
+  const assets = urls.map((url, index) => {
     const measured = resultImages[index]
     const common = {
-      id: assetIdForTaskResult(task.id, index),
+      id: options.existingAssets?.find(asset => measured?.objectKey && asset.objectKey === measured.objectKey)?.id
+        ?? (measured?.ordinal !== undefined ? `asset:${task.id}:o${measured.ordinal}` : assetIdForTaskResult(task.id, index)),
       name: `生成结果 ${index + 1}`,
       url: measured?.url ?? url,
       width: measured?.width || outputSize.width,
       height: measured?.height || outputSize.height,
       mimeType: measured?.mimeType,
       objectKey: measured?.objectKey,
+      accessExpiresAt: measured?.expiresAt,
       generationId,
       createdAt: task.updatedAt,
     }

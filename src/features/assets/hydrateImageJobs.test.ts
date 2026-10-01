@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   listTasks: vi.fn(),
   getTask: vi.fn(),
   blobFromImageSource: vi.fn(),
+  readOwnedImage: vi.fn(),
+  listHistoryDeletions: vi.fn(),
   listWorkstationHistory: vi.fn(),
   recordWorkstationHistory: vi.fn(),
   isCurrentOwner: vi.fn(),
@@ -16,14 +18,19 @@ vi.mock('@/services/api/task', () => ({
   listTasks: mocks.listTasks,
   getTask: mocks.getTask,
 }))
+vi.mock('@/services/api/ownedImages', () => ({ readOwnedImage: mocks.readOwnedImage }))
 vi.mock('@/features/image-workstation/download', () => ({
   blobFromImageSource: mocks.blobFromImageSource,
 }))
 vi.mock('./workstationHistory', () => ({
-  listWorkstationHistory: mocks.listWorkstationHistory,
+  listHistoryMetadata: mocks.listWorkstationHistory,
+  listHistoryDeletions: mocks.listHistoryDeletions,
+  associateHistoryResult: vi.fn(),
+  HISTORY_LIMIT: 50,
+  compareHistory: (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id),
   recordWorkstationHistory: mocks.recordWorkstationHistory,
 }))
-vi.mock('./historyOwner', () => ({ isCurrentWorkstationHistoryOwner: mocks.isCurrentOwner }))
+vi.mock('./historyOwner', () => ({ isCurrentWorkstationHistoryOwner: mocks.isCurrentOwner, currentWorkstationHistoryOwner: () => '11111111-1111-4111-8111-111111111111' }))
 
 import { historyRecordsFromImageTask, hydrateWorkstationHistoryFromImageJobs } from './hydrateImageJobs'
 
@@ -55,6 +62,8 @@ describe('从图片任务补记我的资产', () => {
     mocks.isCurrentOwner.mockReturnValue(true)
     mocks.blobFromImageSource.mockResolvedValue(new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' }))
     mocks.listWorkstationHistory.mockResolvedValue([])
+    mocks.listHistoryDeletions.mockReset().mockResolvedValue([])
+    mocks.readOwnedImage.mockReset().mockResolvedValue(new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' }))
     mocks.recordWorkstationHistory.mockResolvedValue(undefined)
   })
 
@@ -113,10 +122,7 @@ describe('从图片任务补记我的资产', () => {
       width: 2048,
       height: 2048,
     })])
-    expect(mocks.blobFromImageSource).toHaveBeenCalledWith(
-      'https://r2.example/generated/a.png',
-      'generated/user/job/0.png',
-    )
+    expect(mocks.readOwnedImage).toHaveBeenCalledWith(expect.objectContaining({ objectKey: 'generated/user/job/0.png' }), expect.objectContaining({ ownerId: OWNER }))
   })
 
   it('已有本地记录时不再重复拉取', async () => {
@@ -155,4 +161,38 @@ describe('从图片任务补记我的资产', () => {
     await expect(hydrateWorkstationHistoryFromImageJobs(OWNER)).rejects.toThrow('账号已切换')
     expect(mocks.recordWorkstationHistory).not.toHaveBeenCalled()
   })
+  it('四张只缺两张时仅补缺失项，部分读取失败不丢其他结果', async () => {
+    const task = { ...variationTask, resultImages: Array.from({ length: 4 }, (_, ordinal) => ({ ...variationTask.resultImages![0], objectKey: `k${ordinal}`, ordinal })) }
+    mocks.listWorkstationHistory.mockResolvedValue([0, 2].map(ordinal => ({ id: `${task.id}:o${ordinal}`, objectKey: `k${ordinal}`, taskId: task.id, createdAt: task.createdAt })))
+    mocks.listTasks.mockResolvedValue({ items: [{ ...task }], total: 1 })
+    mocks.getTask.mockResolvedValue(task)
+    mocks.readOwnedImage.mockImplementation(async ({ objectKey }: { objectKey: string }) => { if (objectKey === 'k1') throw new Error('网络中断'); return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' }) })
+    const result = await hydrateWorkstationHistoryFromImageJobs(OWNER)
+    expect(result.failed).toBe(1)
+    expect(mocks.readOwnedImage.mock.calls.map(([image]) => image.objectKey)).toEqual(['k1', 'k3'])
+    expect(mocks.recordWorkstationHistory).toHaveBeenCalledWith(OWNER, expect.objectContaining({ id: `${task.id}:o3` }))
+    expect(mocks.getTask).toHaveBeenCalledTimes(1)
+  })
+  it('分页先选最近 50 张，反复补记不读被淘汰的旧图，删除对象不复活', async () => {
+    const tasks = Array.from({ length: 60 }, (_, i) => ({ ...variationTask, id: `task-${i}`, createdAt: new Date(Date.UTC(2026, 8, 30, 0, 60 - i)).toISOString(), resultImages: [{ ...variationTask.resultImages![0], ordinal: 0, objectKey: `key-${i}` }] }))
+    const local: Array<{ id: string; objectKey: string; taskId: string; createdAt: string }> = []
+    mocks.listWorkstationHistory.mockImplementation(async () => local)
+    mocks.listHistoryDeletions.mockResolvedValue([{ id: 'task-0:o0', objectKey: 'key-0', taskId: 'task-0' }])
+    mocks.listTasks.mockImplementation(async ({ page }: { page: number }) => ({ items: tasks.slice((page - 1) * 20, page * 20), total: 60 }))
+    mocks.getTask.mockImplementation(async (id: string) => tasks.find(task => task.id === id))
+    mocks.recordWorkstationHistory.mockImplementation(async (_owner, record) => { local.push(record) })
+    await hydrateWorkstationHistoryFromImageJobs(OWNER)
+    expect(mocks.readOwnedImage).toHaveBeenCalledTimes(50)
+    expect(mocks.readOwnedImage.mock.calls.map(([item]) => item.objectKey)).not.toContain('key-0')
+    expect(mocks.readOwnedImage.mock.calls.map(([item]) => item.objectKey)).not.toContain('key-51')
+    await hydrateWorkstationHistoryFromImageJobs(OWNER)
+    expect(mocks.readOwnedImage).toHaveBeenCalledTimes(50)
+  })
+  it('稳定序号不因第一项失败或晚到而改变', async () => {
+    const first = await historyRecordsFromImageTask({ ...variationTask, resultImages: [{ ...variationTask.resultImages![0], ordinal: 2 }] })
+    const late = await historyRecordsFromImageTask({ ...variationTask, resultImages: [{ ...variationTask.resultImages![0], ordinal: 0 }, { ...variationTask.resultImages![0], ordinal: 2 }] })
+    expect(first[0].id).toBe(`${variationTask.id}:o2`)
+    expect(late[1].id).toBe(first[0].id)
+  })
+
 })

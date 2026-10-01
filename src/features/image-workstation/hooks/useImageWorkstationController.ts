@@ -4,7 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
 import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
 import { requestErase } from '@/services/api/erase'
-import { fetchOwnedObjectDirect } from '@/services/api/objects'
+import { readOwnedImage, invalidateOwnedImage } from '@/services/api/ownedImages'
+import { runtimeImageBlob } from '@/services/api/imageRuntime'
+import { bindRuntimeImage, withRuntimeImage, setRuntimeImageUsers, releaseRuntimeImageUser, abandonPendingRuntimeImages } from '@/editor/runtimeImages'
+import { downloadImageResult, type ImageResultReadOptions } from '@/services/api/image-transfer'
+import type { SyncImageObjectResult } from '@shared/sync-image'
+import { historyIdForResult } from '@/features/assets/resultIdentity'
+import { useUserStore } from '@/store/useUserStore'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { validateOutpaintOutputSize } from '@shared/outpaint'
 import { requestRepaint } from '@/services/api/repaint'
@@ -14,10 +20,10 @@ import { uploadDataUrl, uploadTaskInput } from '@/services/api/upload'
 import { GenerationService } from '@/editor/services/generationService'
 import { useEditorStore } from '@/editor/store'
 import type { AssetId, GenerationId, ImageAsset } from '@/editor/types'
-import type { TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
+import { adaptGenerationTask, type TaskAdapterOptions } from '@/editor/adapters/taskAdapter'
 import { useTaskStore } from '@/store/useTaskStore'
 import { Capability, type GenerationTask, type ImageEditTaskParams, type InpaintTaskParams, type OutpaintTaskParams, type TaskStatus } from '@/types'
-import { recordWorkstationHistory } from '@/features/assets/workstationHistory'
+import { recordWorkstationHistory, type WorkstationHistoryRecord } from '@/features/assets/workstationHistory'
 import { currentWorkstationHistoryOwner, isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { fusionHistoryText, readReferenceImageKey } from '@shared/fusion'
 import { readRelight, relightHistoryText, type RelightOptions } from '@shared/relight'
@@ -54,10 +60,16 @@ interface SubmissionContext {
   request: WorkstationGenerationRequest
   options: TaskAdapterOptions & { inputAssetIds: AssetId[] }
   ownerId: string
+  epoch: number
 }
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
+
+function historyFailureMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'name' in error && error.name === 'QuotaExceededError') return '浏览器存储空间不足，历史未保存；当前图片仍可下载'
+  return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : '历史未保存，请重试保存'
+}
 
 function isInlineUrl(url?: string) {
   return !!url && (url.startsWith('data:') || url.startsWith('blob:'))
@@ -67,34 +79,36 @@ function imageObjectKey(asset: ImageAsset) {
   return asset.objectKey ?? asset.storage?.objectKey
 }
 
-async function blobFromAsset(asset: ImageAsset, message: string) {
+async function blobFromAsset(asset: ImageAsset, message: string, options?: { ownerId: string; signal: AbortSignal }) {
   try {
-    return await blobFromImageSource(asset.url, imageObjectKey(asset))
+    return await blobFromImageSource(asset.url, imageObjectKey(asset), options)
   } catch {
     throw new Error(message)
   }
 }
 
-async function taskInputKey(asset: ImageAsset, message: string) {
+async function taskInputKey(asset: ImageAsset, message: string, options?: { ownerId: string; signal: AbortSignal }) {
+  if (options?.signal.aborted) throw new DOMException('提交已取消', 'AbortError')
   const existing = imageObjectKey(asset)
   if (existing) return existing
-  return uploadTaskInput(await blobFromAsset(asset, message), asset.mimeType)
+  return uploadTaskInput(await blobFromAsset(asset, message, options), asset.mimeType, options?.signal)
 }
 
 async function prepareImageEditRequest(
   request: WorkstationGenerationRequest,
   sourceAsset: ImageAsset,
   referenceAsset?: ImageAsset,
+  options?: { ownerId: string; signal: AbortSignal },
 ): Promise<WorkstationGenerationRequest> {
   const uploadsSource = request.capability === Capability.ImageEdit || request.capability === Capability.Variation
   if (!uploadsSource || useMockGateway) return request
   const params = { ...(request.params as ImageEditTaskParams) }
-  params.sourceImageKey ??= await taskInputKey(sourceAsset, '读取原图失败')
+  params.sourceImageKey ??= await taskInputKey(sourceAsset, '读取原图失败', options)
   params.sourceWidth = sourceAsset.width
   params.sourceHeight = sourceAsset.height
   if (isInlineUrl(params.sourceImageUrl)) delete params.sourceImageUrl
   if (referenceAsset) {
-    params.referenceImageKey ??= await taskInputKey(referenceAsset, '读取场景图失败')
+    params.referenceImageKey ??= await taskInputKey(referenceAsset, '读取场景图失败', options)
   }
   if (isInlineUrl(params.referenceImageUrl)) delete params.referenceImageUrl
   return { ...request, params }
@@ -128,6 +142,41 @@ export function useImageWorkstationController({
   const [protocolError, setProtocolError] = useState<string>()
   const submissionsRef = useRef(new Map<string, SubmissionContext>())
   const handledTaskVersionsRef = useRef(new Set<string>())
+  const runtimeUserRef = useRef({})
+  const latestResultVersionRef = useRef<string>()
+  const appliedTaskVersionsRef = useRef(new Set<string>())
+  const readingVersionsRef = useRef(new Set<string>())
+  const epochRef = useRef(0)
+  const readAbortRef = useRef(new AbortController())
+  const [readingResults, setReadingResults] = useState(false)
+  const [resultReadError, setResultReadError] = useState<string>()
+  const [historyError, setHistoryError] = useState<string>()
+  const [historySaved, setHistorySaved] = useState(false)
+  const failedSavesRef = useRef(new Map<string, { ownerId: string; record: WorkstationHistoryRecord; epoch: number }>())
+  const syncRecoveryRef = useRef<{ descriptor: SyncImageObjectResult; complete: (blob: Blob) => Promise<GenerationTask<unknown>>; epoch: number; ownerId: string }>()
+  const beginOperation = useCallback(() => {
+    abandonPendingRuntimeImages(runtimeUserRef.current)
+    readAbortRef.current.abort()
+    readAbortRef.current = new AbortController()
+    epochRef.current++
+    latestResultVersionRef.current = undefined
+    syncRecoveryRef.current = undefined
+    setTask(undefined); setActiveTaskId(undefined)
+    failedSavesRef.current.clear()
+    setResultReadError(undefined); setHistoryError(undefined); setHistorySaved(false); setReadingResults(false)
+    setSubmissionError(undefined); setProtocolError(undefined)
+    return epochRef.current
+  }, [])
+  useEffect(() => {
+    const epochState = epochRef
+    const readState = readAbortRef
+    const unsubscribe = useUserStore.subscribe((state, previous) => {
+      if (state.userId !== previous.userId) {
+        beginOperation(); setTask(undefined); setActiveTaskId(undefined); setOutputAssetIds([]); setInputAssetId(undefined)
+      }
+    })
+    return () => { unsubscribe(); epochState.current++; readState.current.abort() }
+  }, [beginOperation])
 
   useEffect(() => {
     if (!useEditorStore.getState().project) createProject('图片工作台')
@@ -144,292 +193,218 @@ export function useImageWorkstationController({
   )
   const projectAsset = inputAssetId ? project?.assets[inputAssetId] : undefined
   const inputAsset = projectAsset?.type === 'image'
-    ? projectAsset
+    ? withRuntimeImage(projectAsset)
     : initialAsset?.id === inputAssetId ? initialAsset : undefined
   const outputAssets = outputAssetIds.flatMap((assetId) => {
     const asset = project?.assets[assetId]
-    return asset?.type === 'image' ? [asset] : []
+    return asset?.type === 'image' ? [withRuntimeImage(asset)] : []
   })
 
-  const persistHistory = useCallback((
-    completedTask: GenerationTask<unknown>,
-    assets: ImageAsset[],
-    ownerId: string,
+  useEffect(() => {
+    const ids = [...outputAssetIds, ...(inputAssetId ? [inputAssetId] : [])]
+    for (const outputId of outputAssetIds) {
+      const asset = project?.assets[outputId]
+      const generation = asset?.generationId ? project?.generations[asset.generationId] : undefined
+      ids.push(...(generation?.inputAssetIds ?? []))
+    }
+    setRuntimeImageUsers(runtimeUserRef.current, ids)
+  }, [inputAssetId, outputAssetIds, project])
+  useEffect(() => {
+    const user = runtimeUserRef.current
+    return () => releaseRuntimeImageUser(user)
+  }, [])
+
+  const persistHistory = useCallback(async (
+    completedTask: GenerationTask<unknown>, assets: ImageAsset[], ownerId: string, epoch: number,
   ) => {
-    if (!isCurrentWorkstationHistoryOwner(ownerId)) return
-    const retouchDirections = readRetouchDirections(completedTask.params)
+    const directions = readRetouchDirections(completedTask.params)
     const referenceKey = readReferenceImageKey(completedTask.params)
-    const relight = readRelight(completedTask.params)
-    const toolSlug = referenceKey
-      ? 'fusion'
-      : relight
-        ? 'relight'
-        : retouchDirections.length
-          ? 'retouch'
-          : completedTask.capability === Capability.Inpaint
-            ? ((completedTask.params as InpaintTaskParams).mode === 'repaint' ? 'repaint' : 'remove')
-            : completedTask.capability === Capability.Outpaint
-              ? 'outpaint'
-              : activeTool.slug
-    const note = typeof (completedTask.params as { prompt?: unknown })?.prompt === 'string'
-      ? (completedTask.params as { prompt?: string }).prompt
-      : undefined
-    const prompt = referenceKey
-      ? fusionHistoryText(note)
-      : relight
-        ? relightHistoryText(relight, note)
-        : retouchDirections.length
-          ? retouchHistoryText(retouchDirections, note)
-          : note
-    void Promise.all(assets.map(async (asset, index) => {
-      const objectKey = asset.objectKey ?? completedTask.resultImages?.[index]?.objectKey
-      const result = await normalizeImageBlob(await blobFromImageSource(asset.url, objectKey))
-      if (!isCurrentWorkstationHistoryOwner(ownerId)) return
-      await recordWorkstationHistory(ownerId, {
-        id: `${completedTask.id}:${index}`,
-        toolSlug,
-        capability: completedTask.capability,
-        prompt,
-        width: asset.width,
-        height: asset.height,
-        mimeType: result.type,
-        result,
-        createdAt: completedTask.createdAt,
-        updatedAt: completedTask.updatedAt,
-      })
-    })).catch(() => undefined)
+    const light = readRelight(completedTask.params)
+    const toolSlug = referenceKey ? 'fusion' : light ? 'relight' : directions.length ? 'retouch'
+      : completedTask.capability === Capability.Inpaint ? ((completedTask.params as InpaintTaskParams).mode === 'repaint' ? 'repaint' : 'remove')
+        : completedTask.capability === Capability.Outpaint ? 'outpaint' : completedTask.capability === Capability.Variation ? 'variation' : completedTask.capability === Capability.ImageEdit ? 'smart-edit' : activeTool.slug
+    const note = typeof (completedTask.params as { prompt?: unknown })?.prompt === 'string' ? (completedTask.params as { prompt?: string }).prompt : undefined
+    const prompt = referenceKey ? fusionHistoryText(note) : light ? relightHistoryText(light, note) : directions.length ? retouchHistoryText(directions, note) : note
+    await Promise.all(assets.map(async asset => {
+      const imageIndex = completedTask.resultImages?.findIndex(image => asset.objectKey ? image.objectKey === asset.objectKey : image.url === asset.url) ?? -1
+      const index = imageIndex < 0 ? assets.indexOf(asset) : imageIndex
+      const image = completedTask.resultImages?.[index]
+      const id = historyIdForResult(completedTask.id, image ?? {}, index)
+      try {
+        const result = await normalizeImageBlob(await blobFromImageSource(withRuntimeImage(asset).url, asset.objectKey))
+        if (!isCurrentWorkstationHistoryOwner(ownerId)) return
+        const record: WorkstationHistoryRecord = { id, taskId: completedTask.id, ordinal: image?.ordinal, objectKey: asset.objectKey, toolSlug, capability: completedTask.capability, prompt,
+          width: asset.width, height: asset.height, mimeType: result.type, result, createdAt: completedTask.createdAt, updatedAt: completedTask.updatedAt }
+        if (epoch === epochRef.current) failedSavesRef.current.set(id, { ownerId, record, epoch })
+        await recordWorkstationHistory(ownerId, record)
+        failedSavesRef.current.delete(id)
+      } catch (error) {
+        if (epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId)) setHistoryError(historyFailureMessage(error))
+      }
+    }))
+    if (epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId)) setHistorySaved(failedSavesRef.current.size === 0)
   }, [activeTool.slug])
 
-  const applyCompletedTask = useCallback((
-    completedTask: GenerationTask<unknown>,
-    assets: ImageAsset[],
-    ownerId: string,
+  const applyCompletedTask = useCallback(async (
+    completedTask: GenerationTask<unknown>, _assets: ImageAsset[], ownerId: string, inlineBlobs?: Blob[], operationEpoch = epochRef.current,
   ) => {
-    if (completedTask.status !== 'succeeded') return
-    if (!isCurrentWorkstationHistoryOwner(ownerId)) return
-    const finalized = finalizeWorkstationResults(completedTask, assets)
-    if (finalized.error) {
-      setProtocolError(finalized.error)
-      return
+    if (completedTask.status !== 'succeeded' || !isCurrentWorkstationHistoryOwner(ownerId) || operationEpoch !== epochRef.current) return
+    const version = `${completedTask.id}:${completedTask.updatedAt}`
+    if (appliedTaskVersionsRef.current.has(version) || readingVersionsRef.current.has(version)) return
+    latestResultVersionRef.current = version
+    const context = submissionsRef.current.get(completedTask.id)
+    const adapted = adaptGenerationTask(completedTask, { ...context?.options, existingAssets: Object.values(useEditorStore.getState().project?.assets ?? {}) })
+    const finalized = finalizeWorkstationResults(completedTask, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
+    if (finalized.error) { setProtocolError(finalized.error); return }
+    readingVersionsRef.current.add(version)
+    setReadingResults(true); setResultReadError(undefined)
+    const successful: ImageAsset[] = []
+    let failures = 0
+    const signal = readAbortRef.current.signal
+    const current = () => latestResultVersionRef.current === version && operationEpoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId) && !signal.aborted
+    try {
+      await Promise.all(finalized.assets.map(async (asset, index) => {
+        try {
+          const image = completedTask.resultImages?.[index]
+          const blob = inlineBlobs?.[index] ?? (runtimeImageBlob(withRuntimeImage(asset).url)
+            ?? await (asset.objectKey ? readOwnedImage({ objectKey: asset.objectKey, url: asset.url, expiresAt: image?.expiresAt, mimeType: asset.mimeType }, { ownerId, signal }) : blobFromImageSource(asset.url)))
+          const measured = await readResultImage(blob)
+          if (image?.width && image?.height && (measured.width !== image.width || measured.height !== image.height)) throw new Error('结果尺寸与声明不一致')
+          if (!current()) return
+          const available = { ...asset, width: measured.width, height: measured.height, mimeType: measured.mimeType }
+          registerAsset(available)
+          bindRuntimeImage(ownerId, available, measured.blob, runtimeUserRef.current)
+          successful.push(available)
+          const order = finalized.assets.filter(candidate => successful.some(result => result.id === candidate.id))
+          registerGeneration({ ...adapted.generation, outputAssetIds: order.map(result => result.id) })
+          setOutputAssetIds(order.map(result => result.id))
+          setInputAssetId(previous => previous && order.some(result => result.id === previous) ? previous : order[0].id)
+          setProtocolError(undefined)
+          void persistHistory(completedTask, [available], ownerId, operationEpoch)
+        } catch (error) {
+          if (asset.objectKey) invalidateOwnedImage(ownerId, asset.objectKey)
+          failures++
+          if (current()) setResultReadError(error instanceof Error ? error.message : '结果读取失败，请重试读取')
+        }
+      }))
+      if (current() && failures === 0) appliedTaskVersionsRef.current.add(version)
+    } finally {
+      readingVersionsRef.current.delete(version)
+      if (current()) setReadingResults(false)
     }
-    setOutputAssetIds(finalized.assets.map((asset) => asset.id))
-    setInputAssetId(finalized.assets[0].id)
-    setProtocolError(undefined)
-    persistHistory(completedTask, finalized.assets, ownerId)
-  }, [persistHistory])
+  }, [persistHistory, registerAsset, registerGeneration])
 
   const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
     const context = submissionsRef.current.get(nextTask.id)
-    if (!context) return
-    if (!isCurrentWorkstationHistoryOwner(context.ownerId)) return
+    if (!context || context.epoch !== epochRef.current || !isCurrentWorkstationHistoryOwner(context.ownerId)) return
     const version = `${nextTask.id}:${nextTask.status}:${nextTask.updatedAt}`
     if (handledTaskVersionsRef.current.has(version)) return
     handledTaskVersionsRef.current.add(version)
     setTask(nextTask)
-    const adapted = service.reconcile(nextTask, context.options)
-    applyCompletedTask(
-      nextTask,
-      adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'),
-      context.ownerId,
-    )
+    const adapted = service.reconcile(nextTask, { ...context.options, existingAssets: Object.values(useEditorStore.getState().project?.assets ?? {}), deferAssets: nextTask.status === 'succeeded' })
+    void applyCompletedTask(nextTask, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), context.ownerId, undefined, context.epoch)
   }, [applyCompletedTask, service])
-
   const taskQuery = useTaskPolling(activeTaskId, handlePolledTask)
 
-  const completeRepaint = useCallback(async (
-    sourceAsset: ImageAsset,
-    promptText: string,
-    maskDataUrl: string,
-    parentGenerationId: GenerationId | undefined,
-  ) => {
+  const completeSync = useCallback(async (input: {
+    sourceAsset: ImageAsset; capability: Capability; params: InpaintTaskParams | OutpaintTaskParams; parentGenerationId?: GenerationId
+    prepare: (original: Blob) => Promise<{ execute: (options: ImageResultReadOptions) => Promise<Blob>; compare?: Blob; targetSize?: { width: number; height: number } }>
+  }) => {
     const ownerId = currentWorkstationHistoryOwner()
+    const epoch = beginOperation()
+    const signal = readAbortRef.current.signal
     setSubmitting(true)
-    setSubmissionError(undefined)
-    setProtocolError(undefined)
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    let descriptor: SyncImageObjectResult | undefined
+    const current = () => epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId)
     try {
-      const sourceKey = imageObjectKey(sourceAsset)
-      const original = sourceKey
-        ? await fetchOwnedObjectDirect(sourceKey)
-        : await blobFromAsset(sourceAsset, '读取原图失败')
-      const result = await requestRepaint(sourceKey ? null : original, maskDataUrl, promptText, sourceKey)
-      const measured = await readResultImage(result)
-      const resultUrl = URL.createObjectURL(measured.blob)
-      const now = new Date().toISOString()
-      const completed: GenerationTask<InpaintTaskParams> = {
-        id: crypto.randomUUID(),
-        capability: Capability.Inpaint,
-        status: 'succeeded',
-        params: { sourceImageUrl: sourceAsset.url, maskUrl: maskDataUrl, mode: 'repaint', prompt: promptText },
-        resultUrls: [resultUrl],
-        resultImages: [{ url: resultUrl, width: measured.width, height: measured.height, mimeType: measured.mimeType }],
-        creditsCost: 0,
-        createdAt: now,
-        updatedAt: now,
-      }
-      const outputSize = { width: measured.width, height: measured.height }
-      const options: SubmissionContext['options'] = {
-        inputAssetIds: [sourceAsset.id],
-        parentGenerationId,
-        outputSize,
-      }
-      submissionsRef.current.set(completed.id, {
-        request: { capability: Capability.Inpaint, params: completed.params, outputSize },
-        options,
-        ownerId,
-      })
-      setTask(completed)
-      upsertTask(completed)
-      setActiveTaskId(undefined)
-      if (await isExactlySameImage(original, result)) {
-        setProtocolError(SOURCE_ECHO_ERROR)
+      const original = await blobFromAsset(input.sourceAsset, '读取原图失败', { ownerId, signal })
+      const prepared = await input.prepare(original)
+      if (!current() || signal.aborted) throw new DOMException('处理已取消', 'AbortError')
+      const completed: GenerationTask<unknown> = { id, capability: input.capability, status: 'succeeded', params: input.params, creditsCost: 0, createdAt: now, updatedAt: now }
+      const complete = async (result: Blob) => {
+        const measured = await readResultImage(result)
+        if (!current()) return completed
+        if (prepared.targetSize && (measured.width !== prepared.targetSize.width || measured.height !== prepared.targetSize.height)) throw new Error('扩图结果尺寸与目标不一致，请重试读取')
+        if (prepared.compare && await isExactlySameImage(prepared.compare, measured.blob)) { setProtocolError(SOURCE_ECHO_ERROR); return completed }
+        // 项目只保存可恢复的对象身份；本地展示地址由运行时租约持有。
+        const url = descriptor?.url ?? `/local-image/${encodeURIComponent(id)}`
+        completed.resultUrls = [url]
+        completed.resultImages = [{ url, objectKey: descriptor?.objectKey, expiresAt: descriptor?.expiresAt, ordinal: 0, width: measured.width, height: measured.height, mimeType: measured.mimeType }]
+        const options = { inputAssetIds: [input.sourceAsset.id], parentGenerationId: input.parentGenerationId, outputSize: { width: measured.width, height: measured.height } }
+        submissionsRef.current.set(id, { request: { capability: input.capability, params: input.params, outputSize: options.outputSize }, options, ownerId, epoch })
+        service.reconcile(completed, { ...options, deferAssets: true })
+        setTask({ ...completed }); upsertTask(completed); setActiveTaskId(undefined)
+        await applyCompletedTask(completed, [], ownerId, [measured.blob], epoch)
+        if (current()) syncRecoveryRef.current = undefined
         return completed
       }
-      const adapted = service.reconcile(completed, options)
-      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), ownerId)
-      return completed
+      const result = await prepared.execute({ ownerId, signal, onObjectResult: object => {
+        descriptor = object
+        if (!current()) return
+        syncRecoveryRef.current = { descriptor: object, complete, epoch, ownerId }
+        completed.resultUrls = [object.url]
+        completed.resultImages = [{ ...object, width: prepared.targetSize?.width ?? 0, height: prepared.targetSize?.height ?? 0, ordinal: 0 }]
+        setTask({ ...completed }); setActiveTaskId(undefined); setReadingResults(true)
+      } })
+      return await complete(result)
     } catch (error) {
-      const message = error instanceof Error ? error.message : '重绘失败'
-      setSubmissionError(message)
+      if (current()) {
+        const message = error instanceof Error ? error.message : '处理失败'
+        if (descriptor) setResultReadError(message)
+        else setSubmissionError(message)
+      }
       throw error
-    } finally {
-      setSubmitting(false)
-    }
-  }, [applyCompletedTask, service, upsertTask])
+    } finally { if (current()) { setSubmitting(false); setReadingResults(false) } }
+  }, [applyCompletedTask, beginOperation, service, upsertTask])
 
-  const completeOutpaint = useCallback(async (
-    sourceAsset: ImageAsset,
-    targetSize: { width: number; height: number },
-    originOffset: { x: number; y: number },
-    sourceSize: { width: number; height: number },
-    parentGenerationId: GenerationId | undefined,
-  ) => {
-    const ownerId = currentWorkstationHistoryOwner()
-    setSubmitting(true)
-    setSubmissionError(undefined)
-    setProtocolError(undefined)
-    try {
-      const padding = paddingAround(sourceSize.width, sourceSize.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
+  const completeRepaint = useCallback((sourceAsset: ImageAsset, promptText: string, maskDataUrl: string, parentGenerationId?: GenerationId) => completeSync({
+    sourceAsset, capability: Capability.Inpaint, params: { sourceImageUrl: sourceAsset.url, maskUrl: maskDataUrl, mode: 'repaint', prompt: promptText }, parentGenerationId,
+    prepare: async original => ({ compare: original, execute: options => requestRepaint(imageObjectKey(sourceAsset) ? null : original, maskDataUrl, promptText, imageObjectKey(sourceAsset), options) }),
+  }), [completeSync])
+  const completeErase = useCallback((sourceAsset: ImageAsset, maskDataUrl: string, prompt: string, parentGenerationId?: GenerationId) => completeSync({
+    sourceAsset, capability: Capability.Inpaint, params: { sourceImageUrl: sourceAsset.url, maskUrl: maskDataUrl, mode: 'remove', prompt: prompt || undefined }, parentGenerationId,
+    prepare: async original => ({ compare: original, execute: options => requestErase(imageObjectKey(sourceAsset) ? null : original, original.type, maskDataUrl, prompt, imageObjectKey(sourceAsset), options) }),
+  }), [completeSync])
+  const completeOutpaint = useCallback((sourceAsset: ImageAsset, targetSize: { width: number; height: number }, originOffset: { x: number; y: number }, sourceSize: { width: number; height: number }, parentGenerationId?: GenerationId) => completeSync({
+    sourceAsset, capability: Capability.Outpaint, params: { sourceImageUrl: sourceAsset.url, targetSize, originOffset, sourceSize }, parentGenerationId,
+    prepare: async original => {
       validateOutpaintOutputSize(targetSize.width, targetSize.height)
-      const sourceKey = imageObjectKey(sourceAsset)
-      const original = sourceKey
-        ? await fetchOwnedObjectDirect(sourceKey)
-        : await blobFromAsset(sourceAsset, '读取原图失败')
+      const padding = paddingAround(sourceSize.width, sourceSize.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
       const needsScale = sourceSize.width !== sourceAsset.width || sourceSize.height !== sourceAsset.height
-      const input = needsScale
-        ? await renderScaledSource(new File([original], sourceAsset.name || 'source.jpg', { type: original.type || 'image/jpeg' }), sourceSize.width, sourceSize.height)
-        : original
+      const input = needsScale ? await renderScaledSource(new File([original], sourceAsset.name || 'source.jpg', { type: original.type }), sourceSize.width, sourceSize.height) : original
       const hasPad = padding.left + padding.right + padding.top + padding.bottom > 0
-      const result = hasPad
-        ? await requestOutpaint(sourceKey && !needsScale ? null : input, 'image/jpeg', padding, needsScale ? undefined : sourceKey)
-        : input
-      const measured = await readResultImage(result)
-      if (measured.width !== targetSize.width || measured.height !== targetSize.height) throw new Error('扩图结果尺寸与目标不一致，请重试')
-      const resultUrl = URL.createObjectURL(measured.blob)
-      const now = new Date().toISOString()
-      const completed: GenerationTask<OutpaintTaskParams> = {
-        id: crypto.randomUUID(),
-        capability: Capability.Outpaint,
-        status: 'succeeded',
-        params: { sourceImageUrl: sourceAsset.url, targetSize, originOffset, sourceSize },
-        resultUrls: [resultUrl],
-        resultImages: [{ url: resultUrl, width: measured.width, height: measured.height, mimeType: measured.mimeType }],
-        creditsCost: 0,
-        createdAt: now,
-        updatedAt: now,
-      }
-      const options: SubmissionContext['options'] = {
-        inputAssetIds: [sourceAsset.id],
-        parentGenerationId,
-        outputSize: targetSize,
-      }
-      submissionsRef.current.set(completed.id, {
-        request: { capability: Capability.Outpaint, params: completed.params, outputSize: targetSize },
-        options,
-        ownerId,
-      })
-      setTask(completed)
-      upsertTask(completed)
-      setActiveTaskId(undefined)
-      if (hasPad && await isExactlySameImage(input, result)) {
-        setProtocolError(SOURCE_ECHO_ERROR)
-        return completed
-      }
-      const adapted = service.reconcile(completed, options)
-      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), ownerId)
-      return completed
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '扩图失败'
-      setSubmissionError(message)
-      throw error
-    } finally {
-      setSubmitting(false)
-    }
-  }, [applyCompletedTask, service, upsertTask])
+      return { targetSize, compare: hasPad ? input : undefined, execute: options => hasPad ? requestOutpaint(imageObjectKey(sourceAsset) && !needsScale ? null : input, input.type, padding, needsScale ? undefined : imageObjectKey(sourceAsset), options) : Promise.resolve(input) }
+    },
+  }), [completeSync])
 
-  const completeErase = useCallback(async (
-    sourceAsset: ImageAsset,
-    maskDataUrl: string,
-    prompt: string,
-    parentGenerationId: GenerationId | undefined,
-  ) => {
-    const ownerId = currentWorkstationHistoryOwner()
-    setSubmitting(true)
-    setSubmissionError(undefined)
-    setProtocolError(undefined)
+  const retryRead = useCallback(async () => {
+    const epoch = epochRef.current
+    setResultReadError(undefined); setReadingResults(true)
+    const recovery = syncRecoveryRef.current
     try {
-      const sourceKey = imageObjectKey(sourceAsset)
-      const original = sourceKey
-        ? await fetchOwnedObjectDirect(sourceKey)
-        : await blobFromAsset(sourceAsset, '读取原图失败')
-      const result = await requestErase(sourceKey ? null : original, original.type || 'image/jpeg', maskDataUrl, prompt, sourceKey)
-      const measured = await readResultImage(result)
-      const resultUrl = URL.createObjectURL(measured.blob)
-      const now = new Date().toISOString()
-      const outputSize = { width: measured.width, height: measured.height }
-      const completed: GenerationTask<InpaintTaskParams> = {
-        id: crypto.randomUUID(),
-        capability: Capability.Inpaint,
-        status: 'succeeded',
-        params: {
-          sourceImageUrl: sourceAsset.url,
-          maskUrl: maskDataUrl,
-          mode: 'remove',
-          prompt: prompt || undefined,
-        },
-        resultUrls: [resultUrl],
-        resultImages: [{ url: resultUrl, width: measured.width, height: measured.height, mimeType: measured.mimeType }],
-        creditsCost: 0,
-        createdAt: now,
-        updatedAt: now,
+      if (recovery && recovery.epoch === epochRef.current) await recovery.complete(await downloadImageResult(recovery.descriptor, '图片', readAbortRef.current.signal, recovery.ownerId))
+      else if (task?.status === 'succeeded') {
+        const context = submissionsRef.current.get(task.id)
+        if (context) await applyCompletedTask(task, [], context.ownerId, undefined, context.epoch)
       }
-      const options: SubmissionContext['options'] = {
-        inputAssetIds: [sourceAsset.id],
-        parentGenerationId,
-        outputSize,
-      }
-      submissionsRef.current.set(completed.id, {
-        request: { capability: Capability.Inpaint, params: completed.params, outputSize },
-        options,
-        ownerId,
-      })
-      setTask(completed)
-      upsertTask(completed)
-      setActiveTaskId(undefined)
-      if (await isExactlySameImage(original, result)) {
-        setProtocolError(SOURCE_ECHO_ERROR)
-        return completed
-      }
-      const adapted = service.reconcile(completed, options)
-      applyCompletedTask(completed, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), ownerId)
-      return completed
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '消除失败'
-      setSubmissionError(message)
-      throw error
-    } finally {
-      setSubmitting(false)
-    }
-  }, [applyCompletedTask, service, upsertTask])
+    } catch (error) { if (epoch === epochRef.current) setResultReadError(error instanceof Error ? error.message : '读取失败，请重试读取') }
+    finally { if (epoch === epochRef.current) setReadingResults(false) }
+  }, [applyCompletedTask, task])
+  const retrySave = useCallback(async () => {
+    setHistoryError(undefined)
+    const epoch = epochRef.current
+    const outcomes = await Promise.allSettled([...failedSavesRef.current].map(async ([id, entry]) => {
+      if (entry.epoch !== epoch || !isCurrentWorkstationHistoryOwner(entry.ownerId)) return
+      await recordWorkstationHistory(entry.ownerId, entry.record)
+      failedSavesRef.current.delete(id)
+    }))
+    if (epoch !== epochRef.current) return
+    const failed = outcomes.find(result => result.status === 'rejected')
+    if (failed?.status === 'rejected') setHistoryError(historyFailureMessage(failed.reason))
+    setHistorySaved(failedSavesRef.current.size === 0)
+  }, [])
 
   const submitRequest = useCallback(async (
     request: WorkstationGenerationRequest,
@@ -437,27 +412,29 @@ export function useImageWorkstationController({
     parentGenerationId: GenerationId | undefined,
   ) => {
     const ownerId = currentWorkstationHistoryOwner()
+    const epoch = beginOperation()
+    const signal = readAbortRef.current.signal
     setSubmitting(true)
-    setSubmissionError(undefined)
-    setProtocolError(undefined)
     const options: SubmissionContext['options'] = {
       inputAssetIds: [sourceAsset.id],
       parentGenerationId,
       outputSize: request.outputSize,
     }
     try {
-      const prepared = await prepareImageEditRequest(request, sourceAsset, referenceAsset)
+      const prepared = await prepareImageEditRequest(request, sourceAsset, referenceAsset, { ownerId, signal })
+      if (epoch !== epochRef.current || !isCurrentWorkstationHistoryOwner(ownerId) || signal.aborted) throw new DOMException('提交已取消', 'AbortError')
       const result = await service.submit({
         capability: prepared.capability,
         requestId: crypto.randomUUID(),
         params: prepared.params,
         modelProfileId: prepared.modelProfileId ?? modelProfileId,
-      }, options)
-      submissionsRef.current.set(result.task.id, { request: prepared, options, ownerId })
+      }, { ...options, deferAssets: true })
+      if (epoch !== epochRef.current || !isCurrentWorkstationHistoryOwner(ownerId)) return result.task
+      submissionsRef.current.set(result.task.id, { request: prepared, options, ownerId, epoch })
       setTask(result.task as GenerationTask<unknown>)
       upsertTask(result.task as GenerationTask<unknown>)
       setActiveTaskId(result.task.id)
-      applyCompletedTask(
+      void applyCompletedTask(
         result.task as GenerationTask<unknown>,
         result.assets.filter((asset): asset is ImageAsset => asset.type === 'image'),
         ownerId,
@@ -465,21 +442,23 @@ export function useImageWorkstationController({
       return result.task
     } catch (error) {
       const message = error instanceof Error ? error.message : '生成任务提交失败'
-      setSubmissionError(message)
+      if (epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId)) setSubmissionError(message)
       throw error
     } finally {
-      setSubmitting(false)
+      if (epoch === epochRef.current) setSubmitting(false)
     }
-  }, [applyCompletedTask, modelProfileId, referenceAsset, service, upsertTask])
+  }, [applyCompletedTask, beginOperation, modelProfileId, referenceAsset, service, upsertTask])
 
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
+    const sourceOwner = currentWorkstationHistoryOwner()
+    const sourceEpoch = epochRef.current
     if (!isWorkstationToolReady(activeTool, capabilityReady)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
     const product = useProductAsset ? productAsset : inputAsset
     if (activeTool.slug === 'fusion' && (!product || !referenceAsset?.url)) {
       throw new Error('请先上传商品图和场景图')
     }
     if (!product) throw new Error('请先上传需要编辑的图片')
-    registerAsset(product)
+    registerAsset(useEditorStore.getState().project?.assets[product.id] ?? product)
     if (referenceAsset) registerAsset(referenceAsset)
     const initialContext = {
       sourceAsset: product,
@@ -528,6 +507,7 @@ export function useImageWorkstationController({
       if (!canvasHandle) throw new Error('当前工具的画布交互仍在后续迭代中')
       const mask = canvasHandle.exportMask()
       const maskUrl = await uploadDataUrl(mask.maskDataUrl)
+      if (!isCurrentWorkstationHistoryOwner(sourceOwner) || sourceEpoch !== epochRef.current) throw new DOMException('提交已取消', 'AbortError')
       canvasContext = {
         maskUrl,
         targetSize: canvasHandle.getTargetSize?.(),
@@ -540,6 +520,7 @@ export function useImageWorkstationController({
   }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, productAsset, prompt, referenceAsset, registerAsset, relight, resolution, retouchDirections, submitRequest, useProductAsset])
 
   const retry = useCallback(async () => {
+    if (task?.status === 'succeeded') return retryRead()
     if (!task) return
     const context = submissionsRef.current.get(task.id)
     const sourceAssetId = context?.options.inputAssetIds[0]
@@ -573,16 +554,18 @@ export function useImageWorkstationController({
       )
     }
     return submitRequest(context.request, sourceAsset, context.options.parentGenerationId)
-  }, [capabilityReady, completeErase, completeOutpaint, completeRepaint, submitRequest, task])
+  }, [capabilityReady, completeErase, completeOutpaint, completeRepaint, submitRequest, task, retryRead])
 
   const modifyParameters = useCallback(() => {
+    beginOperation()
     setTask(undefined)
     setActiveTaskId(undefined)
     setSubmissionError(undefined)
     setProtocolError(undefined)
-  }, [])
+  }, [beginOperation])
 
   const replaceSourceAsset = useCallback((asset: ImageAsset) => {
+    beginOperation()
     if (!useEditorStore.getState().project) createProject('图片工作台', { width: asset.width, height: asset.height })
     registerAsset(asset)
     setInputAssetId(asset.id)
@@ -591,7 +574,7 @@ export function useImageWorkstationController({
     setActiveTaskId(undefined)
     setSubmissionError(undefined)
     setProtocolError(undefined)
-  }, [createProject, registerAsset])
+  }, [beginOperation, createProject, registerAsset])
 
   const selectOutput = useCallback((assetId: AssetId) => {
     const asset = useEditorStore.getState().project?.assets[assetId]
@@ -605,7 +588,13 @@ export function useImageWorkstationController({
     activeTask: task,
     submitting,
     active: !!status && ACTIVE_STATUSES.has(status),
-    formLocked: !!status && ACTIVE_STATUSES.has(status),
+    formLocked: submitting || readingResults || (!!status && ACTIVE_STATUSES.has(status)),
+    readingResults,
+    resultReadError,
+    historyError,
+    historySaved,
+    retryRead,
+    retrySave,
     submissionError,
     protocolError,
     pollError: taskQuery.error,

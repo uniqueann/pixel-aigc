@@ -22,9 +22,11 @@ const mocks = vi.hoisted(() => ({
   requestErase: vi.fn(),
   requestRepaint: vi.fn(),
   requestOutpaint: vi.fn(),
+  historySave: vi.fn(),
   polling: { data: undefined as GenerationTask<unknown> | undefined },
 }))
 
+vi.mock('@/features/assets/workstationHistory', async importOriginal => ({ ...(await importOriginal<typeof import('@/features/assets/workstationHistory')>()), recordWorkstationHistory: mocks.historySave }))
 vi.mock('@/services/api/task', () => ({
   createTask: mocks.createTask,
   liveCapabilityReady: mocks.liveCapabilityReady,
@@ -132,6 +134,7 @@ describe('useImageWorkstationController 集成流程', () => {
 
   beforeEach(async () => {
     useUserStore.getState().setUser('11111111-1111-4111-8111-111111111111', 'free')
+    mocks.historySave.mockReset().mockResolvedValue(undefined)
     mocks.createTask.mockReset()
     mocks.liveCapabilityReady.mockReset()
     mocks.liveCapabilityReady.mockReturnValue(true)
@@ -140,7 +143,10 @@ describe('useImageWorkstationController 集成流程', () => {
     mocks.uploadTaskInput.mockReset()
     mocks.uploadTaskInput.mockResolvedValue('temporary/task-inputs/user/source-1')
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 640, height: 480, close: vi.fn() })))
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }))))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), { headers: { 'Content-Type': 'image/png' } })))
+    let blobIndex = 0
+    URL.createObjectURL = vi.fn(() => `blob:result-${++blobIndex}`)
+    URL.revokeObjectURL = vi.fn()
     mocks.requestErase.mockReset()
     mocks.requestRepaint.mockReset()
     mocks.requestOutpaint.mockReset()
@@ -208,6 +214,7 @@ describe('useImageWorkstationController 集成流程', () => {
     mocks.polling.data = firstSucceededTask
     await act(async () => root.render(<ControllerHarness onController={captureController} />))
 
+    await vi.waitFor(async () => { await act(async () => {}); expect(currentController.outputAssets).toHaveLength(1) })
     const firstGeneration = useEditorStore.getState().project?.generations['generation:task-1']
     const firstAsset = useEditorStore.getState().project?.assets['asset:task-1:0']
     expect(firstGeneration).toMatchObject({
@@ -228,6 +235,7 @@ describe('useImageWorkstationController 集成流程', () => {
       await currentController.generate(canvasHandle)
     })
 
+    await vi.waitFor(async () => { await act(async () => {}); expect(currentController.inputAsset?.id).toBe('asset:task-2:0') })
     const secondGeneration = useEditorStore.getState().project?.generations['generation:task-2']
     expect(secondGeneration).toMatchObject({
       status: 'succeeded',
@@ -237,7 +245,7 @@ describe('useImageWorkstationController 集成流程', () => {
     })
     expect(currentController.inputAsset?.id).toBe('asset:task-2:0')
     expect(mocks.createTask).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      params: expect.objectContaining({ sourceImageUrl: 'first-result.png' }),
+      params: expect.objectContaining({ sourceImageUrl: expect.stringMatching(/^blob:/) }),
     }))
   })
 
@@ -324,9 +332,10 @@ describe('useImageWorkstationController 集成流程', () => {
       />,
     ))
 
-    expect(currentController.outputAssets.map((asset) => asset.url)).toEqual(['candidate-1.png', 'candidate-2.png'])
+    await vi.waitFor(async () => { await act(async () => {}); expect(currentController.outputAssets).toHaveLength(2) })
+    expect(currentController.outputAssets.map((asset) => asset.id)).toEqual(['asset:task-smart-edit:0', 'asset:task-smart-edit:1'])
     await act(async () => currentController.selectOutput('asset:task-smart-edit:1'))
-    expect(currentController.inputAsset?.url).toBe('candidate-2.png')
+    expect(currentController.inputAsset?.id).toBe(currentController.outputAssets[1].id)
   })
 
   it('失败后使用原始图片和参数创建新的重试任务', async () => {
@@ -477,9 +486,10 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(currentController.activeTask?.resultImages?.[0]).toMatchObject({ width: 800, height: 480, mimeType: 'image/jpeg' })
     expect(currentController.inputAsset?.mimeType).toBe('image/jpeg')
     expect(currentController.inputAsset?.width).toBe(800)
+    mocks.requestOutpaint.mockResolvedValue(new Blob([new Uint8Array([255, 216, 255, 224, 0, 17])], { type: 'image/jpeg' }))
     vi.mocked(createImageBitmap).mockResolvedValue({ width: 960, height: 480, close: vi.fn() } as unknown as ImageBitmap)
     await act(async () => { await currentController.generate({ ...canvas, getTargetSize: () => ({ width: 960, height: 480 }) }) })
-    expect(mocks.requestOutpaint).toHaveBeenLastCalledWith(expect.any(Blob), 'image/jpeg', { left: 80, right: 80, top: 0, bottom: 0 }, undefined)
+    expect(mocks.requestOutpaint).toHaveBeenLastCalledWith(expect.any(Blob), 'image/jpeg', { left: 80, right: 80, top: 0, bottom: 0 }, undefined, expect.objectContaining({ onObjectResult: expect.any(Function) }))
     expect(currentController.inputAsset?.width).toBe(960)
     await act(async () => {
       await expect(currentController.generate({ ...canvas, getTargetSize: () => ({ width: 1120, height: 480 }) })).rejects.toThrow('尺寸与目标不一致')
@@ -607,7 +617,8 @@ describe('useImageWorkstationController 集成流程', () => {
     ))
     expect(currentController.activeTask?.status).toBe('succeeded')
     expect(currentController.activeTask?.warnings).toEqual(['PARTIAL'])
-    expect(currentController.outputAssets.map((asset) => asset.url)).toEqual(['candidate-only.png'])
+    await vi.waitFor(async () => { await act(async () => {}); expect(currentController.outputAssets).toHaveLength(1) })
+    expect(currentController.outputAssets[0].url).toMatch(/^blob:/)
     expect(currentController.protocolError).toBeUndefined()
   })
 
@@ -792,4 +803,83 @@ describe('useImageWorkstationController 集成流程', () => {
       }),
     }))
   })
+  it('同步对象结果下载失败只重试 GET，保存失败只重试同一 Blob', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const descriptor = { objectKey: 'temporary/repaint-results/u/retry.jpg', url: 'https://r2.test/retry', mimeType: 'image/jpeg' as const, expiresAt: Date.now() + 60_000 }
+    mocks.requestRepaint.mockImplementation(async (_image, _mask, _prompt, _key, options) => {
+      options.onObjectResult(descriptor)
+      throw new Error('下载中断')
+    })
+    const fetchMock = vi.fn(async (url: string) => new Response(new Uint8Array([255, 216, 255, url.startsWith('https:') ? 5 : 1]), { headers: { 'Content-Type': 'image/jpeg' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    mocks.historySave.mockRejectedValueOnce(new DOMException('空间不足', 'QuotaExceededError')).mockResolvedValue(undefined)
+    await act(async () => root.render(<ControllerHarness tool="repaint" prompt="白色桌面" onController={captureController} />))
+    await act(async () => { await expect(currentController.generate(canvasHandle)).rejects.toThrow('下载中断') })
+    expect(currentController.activeTask?.status).toBe('succeeded')
+    expect(currentController.resultReadError).toBe('下载中断')
+    await act(async () => { await currentController.retryRead() })
+    await vi.waitFor(async () => { await act(async () => {}); expect(currentController.historyError).toContain('存储空间不足') })
+    expect(currentController.outputAssets).toHaveLength(1)
+    expect(mocks.requestRepaint).toHaveBeenCalledTimes(1)
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    const savedBlob = mocks.historySave.mock.calls[0][1].result
+    const networkCount = fetchMock.mock.calls.length
+    await act(async () => { await currentController.retrySave() })
+    expect(mocks.historySave.mock.calls[1][1].result).toBe(savedBlob)
+    expect(fetchMock).toHaveBeenCalledTimes(networkCount)
+    expect(currentController.historySaved).toBe(true)
+    expect(currentController.historyError).toBeUndefined()
+  })
+  it('四张中读取失败一张，其余先展示；同一任务版本重试不重新生成', async () => {
+    const task: GenerationTask = { id: 'partial-read', capability: Capability.ImageEdit, params: { prompt: '白背景' }, status: 'processing', createdAt: '2026-09-30T12:00:00Z', updatedAt: '2026-09-30T12:00:00Z', creditsCost: 4 }
+    mocks.createTask.mockResolvedValue(task)
+    let failed = true
+    const fetchMock = vi.fn(async (url: string) => url.endsWith('/1') && failed ? new Response('', { status: 503 }) : new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), { headers: { 'Content-Type': 'image/png' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白背景" count={4} onController={captureController} />))
+    await act(async () => { await currentController.generate(null) })
+    const completed: GenerationTask = { ...task, status: 'succeeded', updatedAt: '2026-09-30T12:01:00Z', resultUrls: [0, 1, 2, 3].map(i => `https://r2.test/${i}`), resultImages: [0, 1, 2, 3].map(ordinal => ({ objectKey: `generated/u/partial/${ordinal}.png`, url: `https://r2.test/${ordinal}`, expiresAt: Date.now() + 60_000, ordinal, width: 640, height: 480, mimeType: 'image/png' })) }
+    mocks.polling.data = completed
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白背景" count={4} onController={captureController} />))
+    await vi.waitFor(async () => { await act(async () => {}); expect(currentController.readingResults).toBe(false); expect(currentController.outputAssets).toHaveLength(3) })
+    const firstIds = currentController.outputAssets.map(asset => asset.id)
+    failed = false
+    await act(async () => { await currentController.retryRead() })
+    expect(currentController.outputAssets).toHaveLength(4)
+    expect(currentController.outputAssets.map(asset => asset.id)).toEqual(expect.arrayContaining(firstIds))
+    expect(fetchMock.mock.calls.filter(([url]) => url.startsWith('https:'))).toHaveLength(5)
+    expect(mocks.createTask).toHaveBeenCalledTimes(1)
+    expect(currentController.resultReadError).toBeUndefined()
+  })
+  it('结果读取未完成时更换原图，迟到结果不更新页面', async () => {
+    const task: GenerationTask = { id: 'late-read', capability: Capability.ImageEdit, params: {}, status: 'succeeded', createdAt: '2026-09-30T12:00:00Z', updatedAt: '2026-09-30T12:01:00Z', creditsCost: 1, resultUrls: ['late.png'] }
+    mocks.createTask.mockResolvedValue(task)
+    let finish!: () => void
+    const fetchMock = vi.fn(async (url: string) => url === 'late.png' ? new Promise<Response>(resolve => { finish = () => resolve(new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), { headers: { 'Content-Type': 'image/png' } })) }) : new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), { headers: { 'Content-Type': 'image/png' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白背景" onController={captureController} />))
+    await act(async () => { await currentController.generate(null) })
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    await act(async () => { currentController.replaceSourceAsset({ ...initialAsset, id: 'new-source' }); finish() })
+    await act(async () => {})
+    expect(currentController.inputAsset?.id).toBe('new-source')
+    expect(currentController.outputAssets).toEqual([])
+    expect(mocks.historySave).not.toHaveBeenCalled()
+  })
+
+  it('准备原图时切换账号，中止读取且不向新账号提交旧请求', async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))))
+    vi.stubGlobal('fetch', fetchMock)
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白背景" onController={captureController} />))
+    let result!: Promise<unknown>
+    await act(async () => { result = currentController.generate(null).catch(error => error) })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    await act(async () => { useUserStore.getState().setUser('22222222-2222-4222-8222-222222222222', 'free'); await result })
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+    expect(mocks.uploadTaskInput).not.toHaveBeenCalled()
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    expect(currentController.inputAsset).toBeUndefined()
+    expect(currentController.submissionError).toBeUndefined()
+  })
+
 })

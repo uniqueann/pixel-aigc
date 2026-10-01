@@ -1,7 +1,8 @@
 import { normalizeImageBlob } from '@shared/image-format'
 import { downloadBlob } from '@/pages/Toolbox/shared/zip'
 import type { ImageAsset } from '@/editor/types'
-import { fetchOwnedObject } from '@/services/api/objects'
+import { readOwnedImage } from '@/services/api/ownedImages'
+import { runtimeImageBlob } from '@/services/api/imageRuntime'
 
 const MIME_EXTENSION: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -49,16 +50,19 @@ function isInlineSource(source: string) {
     || !/^[a-z][a-z0-9+.-]*:/i.test(source)
 }
 
-async function fetchSourceBlob(source: string) {
-  const response = await fetch(source)
+async function fetchSourceBlob(source: string, signal?: AbortSignal) {
+  const response = await fetch(source, signal ? { signal } : undefined)
   if (!response.ok) throw new Error('读取图片失败')
   return response.blob()
 }
 
-export async function blobFromImageSource(source: Blob | string, objectKey?: string) {
+export async function blobFromImageSource(source: Blob | string, objectKey?: string, options: { ownerId?: string; signal?: AbortSignal } = {}) {
+  if (options.signal?.aborted) throw new DOMException('读取已取消', 'AbortError')
   if (typeof source !== 'string') return source
-  if (objectKey) return fetchOwnedObject(objectKey)
-  if (isInlineSource(source)) return fetchSourceBlob(source)
+  const runtime = runtimeImageBlob(source)
+  if (runtime) return runtime
+  if (objectKey) return readOwnedImage({ objectKey }, options)
+  if (isInlineSource(source)) return fetchSourceBlob(source, options.signal)
   throw new Error('读取图片失败')
 }
 
@@ -80,6 +84,6 @@ export async function downloadImageAsset(asset: ImageAsset, filename?: string) {
       height: asset.height,
       mimeType: asset.mimeType,
     }),
-    asset.objectKey,
+    asset.objectKey ?? asset.storage?.objectKey,
   )
 }

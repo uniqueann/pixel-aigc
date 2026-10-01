@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const downloadBlob = vi.fn()
 vi.mock('@/pages/Toolbox/shared/zip', () => ({ downloadBlob: (...args: unknown[]) => downloadBlob(...args) }))
 const fetchOwnedObject = vi.fn()
-vi.mock('@/services/api/objects', () => ({
-  fetchOwnedObject: (...args: unknown[]) => fetchOwnedObject(...args),
+vi.mock('@/services/api/ownedImages', () => ({
+  readOwnedImage: (reference: { objectKey: string }) => fetchOwnedObject(reference.objectKey),
 }))
 
 import {
@@ -47,7 +47,7 @@ describe('读取结果图片', () => {
     fetchOwnedObject.mockReset()
   })
 
-  it('有对象 key 时走同域 /api/objects，不直接 fetch 签名 URL', async () => {
+  it('有对象 key 时走共享读取层', async () => {
     const blob = new Blob(['png'], { type: 'image/png' })
     fetchOwnedObject.mockResolvedValue(blob)
     await expect(blobFromImageSource('https://r2.example/generated/a.png?X-Amz-Signature=x', 'generated/user/job/0.png'))

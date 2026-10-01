@@ -1,9 +1,14 @@
-// @vitest-environment jsdom
+// @vitest-environment node
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Capability } from '@/types'
 import { resolveWorkstationHistoryOwner } from './historyOwner'
 import {
+  openHistoryDatabase,
+  listHistoryMetadata,
+  listHistoryPreviews,
+  listHistoryDeletions,
+  readHistoryImage,
   clearWorkstationHistory,
   deleteWorkstationHistory,
   listWorkstationHistory,
@@ -30,6 +35,7 @@ const OWNER_B = '22222222-2222-4222-8222-222222222222'
 
 describe('工作站本地历史', () => {
   beforeEach(async () => {
+    await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase('pixel-aigc-history-v2'); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error) })
     await clearWorkstationHistory(OWNER_A)
     await clearWorkstationHistory(OWNER_B)
   })
@@ -49,7 +55,7 @@ describe('工作站本地历史', () => {
     await recordWorkstationHistory(OWNER_A, { ...legacy, result: new Blob([bytes], { type: 'image/png' }) })
     expect((await listWorkstationHistory(OWNER_A))[0].mimeType).toBe('image/jpeg')
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('pixel-aigc-history-v2', 1)
+      const request = indexedDB.open('pixel-aigc-history-v2', 2)
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })
@@ -127,4 +133,80 @@ describe('工作站本地历史', () => {
     expect((await listWorkstationHistory(OWNER_A))).toEqual([])
     await clearWorkstationHistory('anonymous')
   })
+  it('轻量列表不读取原图；新原图以 Blob 保存，不调用完整 arrayBuffer', async () => {
+    const source = record('large', '2026-09-30T12:00:00.000Z')
+    const read = vi.spyOn(source.result, 'arrayBuffer')
+    await recordWorkstationHistory(OWNER_A, source)
+    expect(read).not.toHaveBeenCalled()
+    const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+    const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+    const items = await listHistoryPreviews(OWNER_A)
+    expect(items).toHaveLength(1)
+    expect(items[0]).not.toHaveProperty('result')
+    expect(get.mock.contexts.some(store => (store as unknown as IDBObjectStore).name === 'workstationResults')).toBe(false)
+    expect(getAll.mock.contexts.some(store => (store as unknown as IDBObjectStore).name === 'workstationResults')).toBe(false)
+    get.mockRestore(); getAll.mockRestore()
+  })
+  it('保存空间不足回滚整个事务，原历史保留', async () => {
+    await recordWorkstationHistory(OWNER_A, record('keep', '2026-09-30T12:00:00.000Z'))
+    const original = IDBObjectStore.prototype.put
+    const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, ...args) {
+      if (this.name === 'workstationResults') throw new DOMException('空间不足', 'QuotaExceededError')
+      return original.apply(this, args)
+    })
+    await expect(recordWorkstationHistory(OWNER_A, record('new', '2026-09-30T13:00:00.000Z'))).rejects.toMatchObject({ name: 'QuotaExceededError' })
+    put.mockRestore()
+    expect((await listHistoryMetadata(OWNER_A)).map(item => item.id)).toEqual(['keep'])
+    expect((await readHistoryImage(OWNER_A, { id: 'keep' }))?.size).toBe(4)
+  })
+  it('主动删除保留对象标记，正常 50 条淘汰不写删除标记', async () => {
+    await recordWorkstationHistory(OWNER_A, { ...record('result', '2026-09-30T12:00:00.000Z'), objectKey: 'key', taskId: 'task', ordinal: 2 })
+    await deleteWorkstationHistory(OWNER_A, 'result')
+    expect(await listHistoryDeletions(OWNER_A)).toEqual([expect.objectContaining({ id: 'result', objectKey: 'key', taskId: 'task' })])
+    await recordWorkstationHistory(OWNER_A, record('result', '2026-09-30T12:00:00.000Z'))
+    expect(await listHistoryMetadata(OWNER_A)).toEqual([])
+  })
+  it('旧库升级被中断后重试继续，ArrayBuffer 原图完整保留', async () => {
+    await new Promise<void>(resolve => { const request = indexedDB.deleteDatabase('pixel-aigc-history-v2'); request.onsuccess = () => resolve() })
+    const db = await new Promise<IDBDatabase>(resolve => {
+      const request = indexedDB.open('pixel-aigc-history-v2', 1)
+      request.onupgradeneeded = () => { const store = request.result.createObjectStore('workstationResults', { keyPath: ['ownerId', 'id'] }); store.createIndex('ownerId', 'ownerId') }
+      request.onsuccess = () => resolve(request.result)
+    })
+    const bytes = new Uint8Array([255, 216, 255, 224])
+    await new Promise<void>(resolve => {
+      const tx = db.transaction('workstationResults', 'readwrite')
+      const { result: _result, ...fields } = record('old', '2026-09-30T12:00:00.000Z'); void _result
+      tx.objectStore('workstationResults').put({ ...fields, ownerId: OWNER_A, resultBytes: bytes.buffer }); tx.oncomplete = () => resolve()
+    })
+    db.close()
+    await new Promise<void>(resolve => {
+      const request = indexedDB.open('pixel-aigc-history-v2', 2)
+      request.onupgradeneeded = () => request.transaction!.abort()
+      request.onerror = () => resolve()
+    })
+    expect((await listHistoryMetadata(OWNER_A)).map(item => item.id)).toEqual(['old'])
+    expect(new Uint8Array(await (await readHistoryImage(OWNER_A, { id: 'old' }))!.arrayBuffer())).toEqual(bytes)
+  })
+  it('多标签页升级阻塞有明确提示，关闭旧连接后可以重试', async () => {
+    await new Promise<void>(resolve => { const request = indexedDB.deleteDatabase('pixel-aigc-history-v2'); request.onsuccess = () => resolve() })
+    const held = await new Promise<IDBDatabase>(resolve => {
+      const request = indexedDB.open('pixel-aigc-history-v2', 1)
+      request.onupgradeneeded = () => { const store = request.result.createObjectStore('workstationResults', { keyPath: ['ownerId', 'id'] }); store.createIndex('ownerId', 'ownerId') }
+      request.onsuccess = () => resolve(request.result)
+    })
+    await expect(openHistoryDatabase()).rejects.toThrow('请关闭其他页面')
+    held.close()
+    expect(await listHistoryMetadata(OWNER_A)).toEqual([])
+  })
+
+  it('同一对象保留已有 ID，删除后换 ID 补记也不能复活', async () => {
+    await recordWorkstationHistory(OWNER_A, { ...record('legacy:0', '2026-09-30T12:00:00.000Z'), objectKey: 'stable-key' })
+    await recordWorkstationHistory(OWNER_A, { ...record('new:o2', '2026-09-30T12:00:00.000Z'), objectKey: 'stable-key' })
+    expect((await listHistoryMetadata(OWNER_A)).map(item => item.id)).toEqual(['legacy:0'])
+    await deleteWorkstationHistory(OWNER_A, 'legacy:0')
+    await recordWorkstationHistory(OWNER_A, { ...record('new:o2', '2026-09-30T12:00:00.000Z'), objectKey: 'stable-key' })
+    expect(await listHistoryMetadata(OWNER_A)).toEqual([])
+  })
+
 })

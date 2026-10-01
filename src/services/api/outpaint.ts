@@ -1,3 +1,4 @@
+import type { ImageResultReadOptions } from './image-transfer'
 import { normalizeImageBlob } from '@shared/image-format'
 import { paddingAround, type PixelPadding } from '../../../shared/outpaint'
 import {
@@ -10,7 +11,7 @@ export { paddingAround }
 export type { PixelPadding }
 
 /** 按原图和四边留白提交扩图，返回原图尺寸加留白的 JPEG。 */
-export async function requestOutpaint(image: Blob | null, mimeType: string, padding: PixelPadding, sourceObjectKey?: string) {
+export async function requestOutpaint(image: Blob | null, mimeType: string, padding: PixelPadding, sourceObjectKey?: string, resultOptions: ImageResultReadOptions = {}) {
   if (padding.left + padding.right + padding.top + padding.bottom <= 0) throw new Error('没有需要扩展的边缘')
   if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')
   const prepareStarted = performance.now()
@@ -37,5 +38,5 @@ export async function requestOutpaint(image: Blob | null, mimeType: string, padd
     const payload = await response.json().catch(() => null) as { error?: string } | null
     throw new Error(payload?.error || '扩图失败')
   }
-  return readImageResult(response, '扩图')
+  return readImageResult(response, '扩图', resultOptions)
 }

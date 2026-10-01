@@ -1,3 +1,4 @@
+import type { ImageResultReadOptions } from './image-transfer'
 import { normalizeImageBlob } from '@shared/image-format'
 import {
   clientTiming, fileToBase64, imageAuthHeader, imageMimeType, MAX_IMAGE_BYTES,
@@ -6,7 +7,7 @@ import {
 import { uploadTaskInput } from './upload'
 
 /** 原图加同尺寸黑白蒙版，返回未涂抹区域保持原像素的 JPEG。 */
-export async function requestRepaint(image: Blob | null, mask: Blob | string, prompt: string, sourceObjectKey?: string) {
+export async function requestRepaint(image: Blob | null, mask: Blob | string, prompt: string, sourceObjectKey?: string, resultOptions: ImageResultReadOptions = {}) {
   const text = prompt.trim().slice(0, 800)
   if (!text) throw new Error('请先填写重绘描述')
   const prepareStarted = performance.now()
@@ -41,5 +42,5 @@ export async function requestRepaint(image: Blob | null, mask: Blob | string, pr
     const payload = await response.json().catch(() => null) as { error?: string } | null
     throw new Error(payload?.error || '重绘失败')
   }
-  return readImageResult(response, '重绘')
+  return readImageResult(response, '重绘', resultOptions)
 }

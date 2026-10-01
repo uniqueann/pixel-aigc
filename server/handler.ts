@@ -430,6 +430,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path[0] === 'objects' && path.length === 1 && method === 'GET') {
       const key = url.searchParams.get('key') ?? ''
       if (url.searchParams.get('mode') === 'url') {
+        res.setHeader('Cache-Control', 'private, no-store')
         res.status(200).json(await signOwnedObjectRead(user, key))
         return
       }
