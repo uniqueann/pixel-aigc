@@ -43,6 +43,32 @@ describe('工作站本地历史', () => {
     expect(items[0].mimeType).toBe('image/jpeg')
   })
 
+  it('读取旧库中标成 PNG 的 JPEG，并在新写入时纠正格式', async () => {
+    const bytes = new Uint8Array([255, 216, 255, 224, 0, 16])
+    const legacy = { ...record('legacy-jpeg', '2026-09-27T12:00:00.000Z'), mimeType: 'image/png' }
+    await recordWorkstationHistory(OWNER_A, { ...legacy, result: new Blob([bytes], { type: 'image/png' }) })
+    expect((await listWorkstationHistory(OWNER_A))[0].mimeType).toBe('image/jpeg')
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('pixel-aigc-history-v2', 1)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const { result: _result, ...fields } = legacy
+    void _result
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('workstationResults', 'readwrite')
+      tx.objectStore('workstationResults').put({ ...fields, ownerId: OWNER_A, resultBytes: bytes.buffer })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+    const restored = (await listWorkstationHistory(OWNER_A))[0]
+    expect(restored.id).toBe('legacy-jpeg')
+    expect(restored.mimeType).toBe('image/jpeg')
+    expect(restored.result.type).toBe('image/jpeg')
+    expect(restored.result.size).toBe(bytes.length)
+  })
+
   it('可删除单条记录', async () => {
     await recordWorkstationHistory(OWNER_A, record('keep', '2026-09-27T12:00:00.000Z'))
     await recordWorkstationHistory(OWNER_A, record('drop', '2026-09-27T13:00:00.000Z'))

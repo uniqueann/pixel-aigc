@@ -1,3 +1,4 @@
+import { normalizeImageBlob } from '@shared/image-format'
 import {
   clientTiming, fileToBase64, imageAuthHeader, imageMimeType, MAX_IMAGE_BYTES,
   pngMaskBlob, readImageResult, shouldUseInlineImageTransport,
@@ -20,6 +21,7 @@ export async function requestErase(
   const painted = pngMaskBlob(mask, '请先涂抹要消除的区域', '消除蒙版无效，请重新涂抹')
   if (!painted.size || painted.size > MAX_IMAGE_BYTES) throw new Error('消除蒙版不能超过 20 MB')
   if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')
+  if (image && !sourceObjectKey) image = await normalizeImageBlob(image)
   const inline = image && shouldUseInlineEraseTransport(image.size, painted.size, prompt, sourceObjectKey)
   let body: Record<string, unknown>
   let uploadMs = 0

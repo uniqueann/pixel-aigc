@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from './http'
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn(),
   repaintWithBailian: vi.fn(), expandWithBailian: vi.fn(),
-  getObject: vi.fn(), loadEraseStoredImage: vi.fn(), loadStoredSyncImage: vi.fn(), putObject: vi.fn(), signRead: vi.fn(),
+  getObject: vi.fn(), loadEraseStoredImage: vi.fn(), loadStoredSyncImage: vi.fn(), validateSyncImage: vi.fn(), metrics: [] as unknown[], putObject: vi.fn(), signRead: vi.fn(),
 }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
 vi.mock('./db', () => ({ runtimeScope: () => 'local', withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
@@ -20,9 +20,9 @@ vi.mock('./bailian-outpaint', async importOriginal => ({
   ...(await importOriginal<typeof import('./bailian-outpaint')>()), expandWithBailian: mocks.expandWithBailian,
 }))
 vi.mock('./erase-storage', () => ({
-  loadEraseStoredImage: mocks.loadEraseStoredImage, loadStoredSyncImage: mocks.loadStoredSyncImage,
+  loadEraseStoredImage: mocks.loadEraseStoredImage, loadStoredSyncImage: mocks.loadStoredSyncImage, validateSyncImage: mocks.validateSyncImage,
 }))
-vi.mock('./sync-limits', () => ({ withSyncLimit: (_user: unknown, _bucket: string, action: () => Promise<unknown>) => action() }))
+vi.mock('./sync-limits', () => ({ withSyncLimit: (_user: unknown, _bucket: string, action: () => Promise<unknown>, metrics?: unknown) => { mocks.metrics.push(metrics); return action() } }))
 import handler from './handler'
 import { HttpError } from './errors'
 const draft = { prompt: '',presetKey: '1:1',count: 1,durationSeconds: 5 }
@@ -36,6 +36,7 @@ async function request(payload: unknown, method='PUT', url='/api/projects/p') {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.metrics.length = 0
   mocks.eraseWithBailian.mockReset()
   mocks.repaintWithBailian.mockReset()
   mocks.expandWithBailian.mockReset()
@@ -279,13 +280,27 @@ describe('API 认证、版本和写入边界', () => {
     const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
     res.status.mockReturnValue(res)
     await handler(req, res as unknown as VercelResponse)
-    expect(mocks.loadStoredSyncImage).toHaveBeenCalledWith('owner', 'temporary/task-inputs/owner/source', 'source', expect.any(AbortSignal))
+    expect(mocks.loadStoredSyncImage).toHaveBeenCalledWith('owner', 'temporary/task-inputs/owner/source', 'source', expect.any(AbortSignal), expect.objectContaining({ maxPixels: 64_000_000, onRead: expect.any(Function), onValidate: expect.any(Function) }))
     expect(mocks.expandWithBailian).toHaveBeenCalledWith(Buffer.from('source'), padding, expect.objectContaining({
       deadlineAt: expect.any(Number),
     }))
     expect(res.end).toHaveBeenCalledWith(Buffer.from('result'))
     if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
     else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('扩图对象格式校验失败仍保留读取字节数及校验耗时，不提交百炼', async () => {
+    vi.stubEnv('DASHSCOPE_API_KEY', 'sk-test')
+    mocks.loadStoredSyncImage.mockImplementation(async (_owner, _key, _kind, _signal, options) => {
+      options.onRead(1024, 7)
+      options.onValidate({ stage: 'imageValidate', ms: 3, valid: false })
+      throw new HttpError(400, '图片文件损坏或无法解码', 'INVALID_IMAGE')
+    })
+    const res = await request({ sourceImageKey: 'temporary/task-inputs/owner/broken', padding: { left: 5, right: 0, top: 0, bottom: 0 } }, 'POST', '/api/outpaint')
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(mocks.expandWithBailian).not.toHaveBeenCalled()
+    expect(mocks.metrics.at(-1)).toMatchObject({ inputBytes: 1024, stageMs: { objectRead: 7, imageValidate: 3 } })
+    vi.unstubAllEnvs()
   })
 
   it('GET /api/objects 按当前用户读私有对象，不走浏览器直连 R2', async () => {

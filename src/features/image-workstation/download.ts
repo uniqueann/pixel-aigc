@@ -1,3 +1,4 @@
+import { normalizeImageBlob } from '@shared/image-format'
 import { downloadBlob } from '@/pages/Toolbox/shared/zip'
 import type { ImageAsset } from '@/editor/types'
 import { fetchOwnedObject } from '@/services/api/objects'
@@ -63,7 +64,8 @@ export async function blobFromImageSource(source: Blob | string, objectKey?: str
 
 export async function downloadImageSource(source: Blob | string, filename: string, objectKey?: string) {
   try {
-    downloadBlob(await blobFromImageSource(source, objectKey), filename)
+    const blob = await normalizeImageBlob(await blobFromImageSource(source, objectKey))
+    downloadBlob(blob, filenameWithMimeExtension(filename, blob.type))
   } catch (error) {
     throw Object.assign(new Error(downloadFailureMessage(error)), { cause: error })
   }

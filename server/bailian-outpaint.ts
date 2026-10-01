@@ -1,3 +1,4 @@
+import { blendOutpaintEdges } from './outpaint-blend.js'
 import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { HttpError } from './errors.js'
@@ -94,6 +95,7 @@ export async function cropOutpaintResult(
   modelImage: Buffer,
   plan: BailianOutpaintPlan,
   source?: { image: Buffer; padding: PixelPadding },
+  options: { log?: OutpaintLog; deadlineAt?: number } = {},
 ) {
   const meta = await sharp(modelImage, { failOn: 'none' }).metadata()
   const actualWidth = meta.width ?? 0
@@ -105,18 +107,33 @@ export async function cropOutpaintResult(
   const top = Math.min(Math.max(0, Math.round(plan.crop.top * scaleY)), actualHeight - 1)
   const width = Math.min(Math.max(1, Math.round(plan.crop.width * scaleX)), actualWidth - left)
   const height = Math.min(Math.max(1, Math.round(plan.crop.height * scaleY)), actualHeight - top)
-  const background = sharp(modelImage, { failOn: 'none' })
+  let background = sharp(modelImage, { failOn: 'error' })
     .extract({ left, top, width, height })
     .resize(plan.targetWidth, plan.targetHeight, { fit: 'fill' })
   if (source) {
-    // 模型只负责新背景。原图在最终画布上按原尺寸放回，保留商品细节。
-    const original = await sharp(source.image, { failOn: 'none' }).rotate().png().toBuffer()
-    background.composite([{ input: original, left: source.padding.left, top: source.padding.top }])
+    try {
+      const original = await sharp(source.image, { failOn: 'error' }).rotate().toColourspace('srgb').raw().toBuffer({ resolveWithObject: true })
+      const generated = await background.toColourspace('srgb').flatten({ background: '#fff' }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+      const blended = await blendOutpaintEdges(
+        { data: original.data, width: original.info.width, height: original.info.height, channels: original.info.channels as 3 | 4 },
+        { data: generated.data, width: generated.info.width, height: generated.info.height, channels: 3 },
+        source.padding, options.log, options.deadlineAt, true,
+      )
+      background = sharp(blended.data, { raw: { width: blended.width, height: blended.height, channels: 3 } })
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('合成超时')) throw new HttpError(504, error.message, 'OUTPAINT_TIMEOUT', { stage: 'seamBlend' })
+      throw new HttpError(502, '扩图结果合成失败，请重试', 'OUTPAINT_COMPOSITE_FAILED', { cause: error, stage: 'seamBlend' })
+    }
   }
+  const encodeStarted = Date.now()
   // 最终结果还要保存为资产；只降低 JPEG 编码质量，不再次缩小主体像素。
   for (const quality of [92, 82, 72, 62]) {
+    if (options.deadlineAt && Date.now() >= options.deadlineAt) throw new HttpError(504, '扩图结果编码超时，请重试', 'OUTPAINT_TIMEOUT', { stage: 'encode' })
     const output = await background.clone().jpeg({ quality }).toBuffer()
-    if (output.length <= 20 * 1024 * 1024) return output
+    if (output.length <= 20 * 1024 * 1024) {
+      options.log?.({ stage: 'encode', ms: Date.now() - encodeStarted, quality, bytes: output.length })
+      return output
+    }
   }
   throw new HttpError(413, '扩图结果超过 20 MB，请缩小扩图范围或选择按平台尺寸输出', 'OUTPAINT_RESULT_TOO_LARGE')
 }
@@ -239,7 +256,7 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
     if (index < plan.passes.length - 1) current = await encodePassInput(current)
   }
   const cropStarted = now()
-  const output = await cropOutpaintResult(current, plan, { image, padding })
+  const output = await cropOutpaintResult(current, plan, { image, padding }, { log, deadlineAt: deps.deadlineAt })
   log({
     requestId: deps.requestId, stage: 'crop', ms: now() - cropStarted,
     bytes: output.length, targetWidth: plan.targetWidth, targetHeight: plan.targetHeight, sourceRestored: true,

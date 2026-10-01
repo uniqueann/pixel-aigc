@@ -13,7 +13,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 it('5.1 MB 原图保留分辨率时不经缩放画布，原文件直传 R2 后只提交对象键', async () => {
   Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: () => new AbortController().signal })
-  const file = new File([new Uint8Array(Math.ceil(5.1 * 1024 * 1024))], '大图.jpg', { type: 'image/jpeg' })
+  const file = new File([new Uint8Array([255, 216, 255]), new Uint8Array(Math.ceil(5.1 * 1024 * 1024) - 3)], '大图.jpg', { type: 'image/jpeg' })
   const image: BatchImage = { id: 'large', file, sourceMime: 'image/jpeg', sourceUrl: '', width: 3200, height: 5035, status: 'pending' }
   const plan = expansionPlan(3200, 5035, 1600, 1600, 'original')
   mocks.uploadTaskInput.mockResolvedValue('temporary/task-inputs/user/original')

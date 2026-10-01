@@ -11,7 +11,7 @@ import BatchImageQueue from './BatchImageQueue'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import { invalidateBatch, processBatch } from './aspect-ratio/batch'
-import { createAspectRatioZip, downloadBlob, namesForImages } from './aspect-ratio/download'
+import { createAspectRatioZip, downloadBlob, namesForImages, normalizedDownloadImages } from './aspect-ratio/download'
 import { fitScale } from './aspect-ratio/geometry'
 import { setOutpaintHandoff } from './aspect-ratio/handoff'
 import { expansionPlan, outpaintProgressLabel, processOutpaintBatch } from './aspect-ratio/expansion'
@@ -341,11 +341,14 @@ export default function AspectRatioTool() {
     navigate('/image-workstation/outpaint')
   }
 
-  function downloadOne(id: string) {
+  async function downloadOne(id: string) {
     const item = itemsRef.current.find(candidate => candidate.id === id)
     if (!item?.output) return
-    const names = namesForImages(itemsRef.current.filter(candidate => candidate.status === 'succeeded'), preset.id)
-    downloadBlob(item.output, names.get(id)!)
+    try {
+      const normalized = await normalizedDownloadImages(itemsRef.current.filter(candidate => candidate.status === 'succeeded'))
+      const names = namesForImages(normalized, preset.id)
+      downloadBlob(normalized.find(candidate => candidate.id === id)!.output!, names.get(id)!)
+    } catch (error) { message.error(errorMessage(error)) }
   }
 
   async function downloadAll() {

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const downloadBlob = vi.fn()
+vi.mock('@/pages/Toolbox/shared/zip', () => ({ downloadBlob: (...args: unknown[]) => downloadBlob(...args) }))
 const fetchOwnedObject = vi.fn()
 vi.mock('@/services/api/objects', () => ({
   fetchOwnedObject: (...args: unknown[]) => fetchOwnedObject(...args),
@@ -8,6 +10,7 @@ vi.mock('@/services/api/objects', () => ({
 import {
   blobFromImageSource,
   downloadFailureMessage,
+  downloadImageSource,
   extensionForMime,
   filenameForWorkstationResult,
   filenameWithMimeExtension,
@@ -59,6 +62,15 @@ describe('读取结果图片', () => {
     await expect(blobFromImageSource('data:image/png;base64,xx')).resolves.toBeInstanceOf(Blob)
     await expect(blobFromImageSource('result.png')).resolves.toBeInstanceOf(Blob)
     vi.unstubAllGlobals()
+  })
+
+  it('旧 PNG 文件名与 MIME 不覆盖实际 JPEG 字节，下载扩展名自动纠正', async () => {
+    const bytes = new Uint8Array([255, 216, 255, 224, 0, 16])
+    await downloadImageSource(new Blob([bytes], { type: 'image/png' }), '扩图_5035x5035.png')
+    expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), '扩图_5035x5035.jpg')
+    const blob = downloadBlob.mock.calls[downloadBlob.mock.calls.length - 1][0] as Blob
+    expect(blob.type).toBe('image/jpeg')
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes)
   })
 
   it('远程签名 URL 没有对象 key 时直接拒绝，避免浏览器 CORS 静默失败', async () => {

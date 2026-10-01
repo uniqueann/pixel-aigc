@@ -1,3 +1,5 @@
+import { normalizeImageBlob } from '@shared/image-format'
+import { readResultImage } from '../imageMetadata'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
 import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
@@ -181,7 +183,7 @@ export function useImageWorkstationController({
           : note
     void Promise.all(assets.map(async (asset, index) => {
       const objectKey = asset.objectKey ?? completedTask.resultImages?.[index]?.objectKey
-      const result = await blobFromImageSource(asset.url, objectKey)
+      const result = await normalizeImageBlob(await blobFromImageSource(asset.url, objectKey))
       if (!isCurrentWorkstationHistoryOwner(ownerId)) return
       await recordWorkstationHistory(ownerId, {
         id: `${completedTask.id}:${index}`,
@@ -190,7 +192,7 @@ export function useImageWorkstationController({
         prompt,
         width: asset.width,
         height: asset.height,
-        mimeType: asset.mimeType || result.type || 'image/jpeg',
+        mimeType: result.type,
         result,
         createdAt: completedTask.createdAt,
         updatedAt: completedTask.updatedAt,
@@ -250,18 +252,21 @@ export function useImageWorkstationController({
         ? await fetchOwnedObjectDirect(sourceKey)
         : await blobFromAsset(sourceAsset, '读取原图失败')
       const result = await requestRepaint(sourceKey ? null : original, maskDataUrl, promptText, sourceKey)
+      const measured = await readResultImage(result)
+      const resultUrl = URL.createObjectURL(measured.blob)
       const now = new Date().toISOString()
       const completed: GenerationTask<InpaintTaskParams> = {
         id: crypto.randomUUID(),
         capability: Capability.Inpaint,
         status: 'succeeded',
         params: { sourceImageUrl: sourceAsset.url, maskUrl: maskDataUrl, mode: 'repaint', prompt: promptText },
-        resultUrls: [URL.createObjectURL(result)],
+        resultUrls: [resultUrl],
+        resultImages: [{ url: resultUrl, width: measured.width, height: measured.height, mimeType: measured.mimeType }],
         creditsCost: 0,
         createdAt: now,
         updatedAt: now,
       }
-      const outputSize = { width: sourceAsset.width, height: sourceAsset.height }
+      const outputSize = { width: measured.width, height: measured.height }
       const options: SubmissionContext['options'] = {
         inputAssetIds: [sourceAsset.id],
         parentGenerationId,
@@ -317,13 +322,17 @@ export function useImageWorkstationController({
       const result = hasPad
         ? await requestOutpaint(sourceKey && !needsScale ? null : input, 'image/jpeg', padding, needsScale ? undefined : sourceKey)
         : input
+      const measured = await readResultImage(result)
+      if (measured.width !== targetSize.width || measured.height !== targetSize.height) throw new Error('扩图结果尺寸与目标不一致，请重试')
+      const resultUrl = URL.createObjectURL(measured.blob)
       const now = new Date().toISOString()
       const completed: GenerationTask<OutpaintTaskParams> = {
         id: crypto.randomUUID(),
         capability: Capability.Outpaint,
         status: 'succeeded',
         params: { sourceImageUrl: sourceAsset.url, targetSize, originOffset, sourceSize },
-        resultUrls: [URL.createObjectURL(result)],
+        resultUrls: [resultUrl],
+        resultImages: [{ url: resultUrl, width: measured.width, height: measured.height, mimeType: measured.mimeType }],
         creditsCost: 0,
         createdAt: now,
         updatedAt: now,
@@ -373,8 +382,10 @@ export function useImageWorkstationController({
         ? await fetchOwnedObjectDirect(sourceKey)
         : await blobFromAsset(sourceAsset, '读取原图失败')
       const result = await requestErase(sourceKey ? null : original, original.type || 'image/jpeg', maskDataUrl, prompt, sourceKey)
+      const measured = await readResultImage(result)
+      const resultUrl = URL.createObjectURL(measured.blob)
       const now = new Date().toISOString()
-      const outputSize = { width: sourceAsset.width, height: sourceAsset.height }
+      const outputSize = { width: measured.width, height: measured.height }
       const completed: GenerationTask<InpaintTaskParams> = {
         id: crypto.randomUUID(),
         capability: Capability.Inpaint,
@@ -385,7 +396,8 @@ export function useImageWorkstationController({
           mode: 'remove',
           prompt: prompt || undefined,
         },
-        resultUrls: [URL.createObjectURL(result)],
+        resultUrls: [resultUrl],
+        resultImages: [{ url: resultUrl, width: measured.width, height: measured.height, mimeType: measured.mimeType }],
         creditsCost: 0,
         createdAt: now,
         updatedAt: now,

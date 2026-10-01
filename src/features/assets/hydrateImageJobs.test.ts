@@ -53,7 +53,7 @@ describe('从图片任务补记我的资产', () => {
     mocks.recordWorkstationHistory.mockReset()
     mocks.isCurrentOwner.mockReset()
     mocks.isCurrentOwner.mockReturnValue(true)
-    mocks.blobFromImageSource.mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
+    mocks.blobFromImageSource.mockResolvedValue(new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' }))
     mocks.listWorkstationHistory.mockResolvedValue([])
     mocks.recordWorkstationHistory.mockResolvedValue(undefined)
   })

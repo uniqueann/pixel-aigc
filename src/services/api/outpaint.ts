@@ -1,3 +1,4 @@
+import { normalizeImageBlob } from '@shared/image-format'
 import { paddingAround, type PixelPadding } from '../../../shared/outpaint'
 import {
   clientTiming, fileToBase64, imageAuthHeader, imageMimeType, MAX_IMAGE_BYTES,
@@ -13,6 +14,7 @@ export async function requestOutpaint(image: Blob | null, mimeType: string, padd
   if (padding.left + padding.right + padding.top + padding.bottom <= 0) throw new Error('没有需要扩展的边缘')
   if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')
   const prepareStarted = performance.now()
+  if (image && !sourceObjectKey) image = await normalizeImageBlob(image)
   const inline = image && shouldUseInlineImageTransport(image.size, 0, '', sourceObjectKey)
   let body: Record<string, unknown>
   let uploadMs = 0

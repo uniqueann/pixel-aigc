@@ -53,7 +53,7 @@ describe('重绘与扩图的大图请求', () => {
       headers: { 'Content-Type': 'image/jpeg' },
     }))
     vi.stubGlobal('fetch', fetchMock)
-    const input = new Blob([new Uint8Array(3 * 1024 * 1024)], { type: 'image/jpeg' })
+    const input = new Blob([new Uint8Array([255, 216, 255]), new Uint8Array(3 * 1024 * 1024 - 3)], { type: 'image/jpeg' })
     await requestOutpaint(input, 'image/jpeg', { left: 100, right: 0, top: 0, bottom: 0 })
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const body = JSON.parse(String(init.body)) as Record<string, unknown>

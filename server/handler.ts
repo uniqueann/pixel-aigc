@@ -1,3 +1,4 @@
+import { MAX_OUTPAINT_OUTPUT_PIXELS } from '../shared/outpaint.js'
 import type { VercelRequest, VercelResponse } from './http.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
@@ -16,7 +17,7 @@ import { handleTaskInputs } from './task-inputs.js'
 import { loadOwnedObject, objectContentDisposition, signOwnedObjectRead } from './objects.js'
 import { detectGoodsSubject, goodsMatting, tencentCiConfig } from './tencent-ci.js'
 import { eraseWithBailian } from './bailian-erase.js'
-import { loadEraseStoredImage, loadStoredSyncImage } from './erase-storage.js'
+import { loadEraseStoredImage, loadStoredSyncImage, validateSyncImage } from './erase-storage.js'
 import { createDashScopeLog } from './dashscope.js'
 import { bailianConfig, expandWithBailian } from './bailian-outpaint.js'
 import { repaintWithBailian } from './bailian-repaint.js'
@@ -186,14 +187,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (objectTransport) {
           const readStarted = Date.now()
           const signal = AbortSignal.timeout(Math.max(1, start + SYNC_PROVIDER_DEADLINE_MS - Date.now()))
-          image = (await loadStoredSyncImage(user.id, input.sourceImageKey, 'source', signal)).bytes
-          metrics.stageMs.objectRead = Date.now() - readStarted
+          image = (await loadStoredSyncImage(user.id, input.sourceImageKey, 'source', signal, {
+            maxPixels: MAX_OUTPAINT_OUTPUT_PIXELS,
+            onRead: (bytes, ms) => { metrics.inputBytes = bytes; metrics.stageMs.objectRead = ms },
+            onValidate: entry => { outpaintLog({ requestId, ...entry }); recordSyncTiming(metrics, entry) },
+          })).bytes
+          metrics.stageMs.objectRead ??= Date.now() - readStarted
         } else {
           image = Buffer.from(input.dataBase64, 'base64')
         }
         metrics.inputBytes = image.length
         if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
         const processStarted = Date.now()
+        if (!objectTransport) {
+          const validateStarted = Date.now()
+          try { await validateSyncImage(image, 'source', input.mimeType, MAX_OUTPAINT_OUTPUT_PIXELS) }
+          finally { metrics.stageMs.imageValidate = Date.now() - validateStarted }
+        }
         const jpeg = await expandWithBailian(image, input.padding, {
           requestId, deadlineAt: start + SYNC_PROVIDER_DEADLINE_MS,
           log: entry => { outpaintLog(entry); recordSyncTiming(metrics, entry) },
