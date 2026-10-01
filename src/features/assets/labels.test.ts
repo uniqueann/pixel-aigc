@@ -16,5 +16,7 @@ describe('资产列表文案', () => {
     expect(workstationSlugForCapability(Capability.Variation)).toBe('variation')
     expect(workstationSlugForCapability(Capability.ImageEdit)).toBe('smart-edit')
     expect(taskStatusLabel('succeeded')).toBe('已完成')
+    expect(workstationToolLabel('bg-remove')).toBe('智能抠图')
+    expect(capabilityLabel(Capability.BgRemove, 'bg-remove')).toBe('智能抠图')
   })
 })

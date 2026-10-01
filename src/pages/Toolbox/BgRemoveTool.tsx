@@ -14,20 +14,36 @@ import { requestMatte } from './bg-remove/client'
 import { compositeMatte } from './bg-remove/composite'
 import { createBgRemoveZip, downloadBlob, namesForImages } from './bg-remove/download'
 import { canRefineEdge } from './bg-remove/edgeRefine'
+import { bgRemoveHistoryOwner, persistBgRemoveQueue, persistBgRemoveResult, restoreBgRemoveItems } from './bg-remove/history'
 import { readPrefs, writePrefs } from './bg-remove/prefs'
 import { applyEdgeRefineResult, loadBgRemoveSession, saveBgRemoveSession, setEdgeRefineHandoff, takeEdgeRefineResult } from './bg-remove/session'
 import { DEFAULT_BG_REMOVE_SETTINGS, PREVIEW_MAX_DIMENSION, type BatchImage, type BgRemoveSettings } from './bg-remove/types'
+import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败'
 }
 
+function composeSucceededMattes(
+  items: BatchImage[],
+  background: string,
+  update: (id: string, patch: Partial<BatchImage>) => void,
+  onError: (error: unknown) => void,
+) {
+  if (!items.some(item => item.matte && !item.output && item.status === 'succeeded')) return
+  void recompositeBatch(items, (_image, matte) => compositeMatte(matte, background), update).catch(onError)
+}
+
 export default function BgRemoveTool() {
   const navigate = useNavigate()
   const { message } = App.useApp()
-  const scope = useUserStore(state => state.userId ?? 'local')
+  const userId = useUserStore(state => state.userId)
+  const scope = userId ?? 'local'
+  const historyOwner = bgRemoveHistoryOwner(userId)
   const scopeRef = useRef(scope)
+  const historyOwnerRef = useRef(historyOwner)
+  const bootDoneRef = useRef(false)
   const [items, setItems] = useState<BatchImage[]>([])
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
@@ -53,8 +69,9 @@ export default function BgRemoveTool() {
 
   const selected = items.find(item => item.id === selectedId)
   const completed = items.filter(item => item.status === 'succeeded')
+  const downloadable = completed.filter(item => item.output)
   const failed = items.filter(item => item.status === 'failed')
-  const outputBytes = completed.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
+  const outputBytes = downloadable.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
   const busy = processing || adding || packaging
   const controlsLocked = processing || packaging
 
@@ -70,6 +87,20 @@ export default function BgRemoveTool() {
     setPreviewUrl(next)
   }
 
+  function persistQueue() {
+    void persistBgRemoveQueue(scopeRef.current, itemsRef.current, selectedIdRef.current).catch(() => undefined)
+  }
+
+  function persistItem(item: BatchImage) {
+    void persistBgRemoveResult({
+      ownerId: historyOwnerRef.current,
+      prefsScope: scopeRef.current,
+      items: itemsRef.current,
+      selectedId: selectedIdRef.current,
+      item,
+    }).catch(() => undefined)
+  }
+
   useEffect(() => {
     let active = true
     void loadBgRemoveConfigured().then(ready => { if (active) setServiceReady(ready) })
@@ -79,49 +110,82 @@ export default function BgRemoveTool() {
   useEffect(() => {
     mountedRef.current = true
     scopeRef.current = scope
+    historyOwnerRef.current = historyOwner
+    bootDoneRef.current = false
     let active = true
-    const saved = loadBgRemoveSession(scope)
-    if (saved) {
-      restoredRef.current = true
-      itemsRef.current = saved.items
-      settingsRef.current = saved.settings
-      selectedIdRef.current = saved.selectedId
-      queueMicrotask(() => {
+
+    async function boot() {
+      const saved = loadBgRemoveSession(scope)
+      if (saved) {
+        restoredRef.current = true
+        itemsRef.current = saved.items
+        settingsRef.current = saved.settings
+        selectedIdRef.current = saved.selectedId
         if (!active) return
         setItems(saved.items)
         setSettings(saved.settings)
         setSelectedId(saved.selectedId)
-      })
-    } else {
+        const edgeResult = takeEdgeRefineResult()
+        const refined = applyEdgeRefineResult(itemsRef.current, edgeResult)
+        if (refined !== itemsRef.current) {
+          itemsRef.current = refined
+          if (active) setItems(refined)
+          try {
+            await recompositeBatch(
+              refined,
+              (_image, matte) => compositeMatte(matte, settingsRef.current.background),
+              (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
+            )
+            const item = itemsRef.current.find(candidate => candidate.id === edgeResult?.itemId)
+            if (item) persistItem(item)
+          } catch (error) {
+            if (mountedRef.current) message.error(errorMessage(error))
+          }
+        }
+        bootDoneRef.current = true
+        return
+      }
+
+      restoredRef.current = false
       itemsRef.current = []
       selectedIdRef.current = null
       settingsRef.current = DEFAULT_BG_REMOVE_SETTINGS
-      restoredRef.current = false
-      queueMicrotask(() => {
-        if (active) { setItems([]); setSelectedId(null); setSettings(DEFAULT_BG_REMOVE_SETTINGS) }
-      })
+      if (active) { setItems([]); setSelectedId(null); setSettings(DEFAULT_BG_REMOVE_SETTINGS) }
+      try {
+        const restored = await restoreBgRemoveItems(scope, historyOwner)
+        if (!active) {
+          for (const item of restored.items) URL.revokeObjectURL(item.sourceUrl)
+          return
+        }
+        itemsRef.current = restored.items
+        selectedIdRef.current = restored.selectedId
+        setItems(restored.items)
+        setSelectedId(restored.selectedId)
+        composeSucceededMattes(
+          itemsRef.current,
+          settingsRef.current.background,
+          (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
+          error => { if (mountedRef.current) message.error(errorMessage(error)) },
+        )
+      } catch (error) {
+        if (active) message.warning(`恢复上次抠图结果失败：${errorMessage(error)}`)
+      }
+      bootDoneRef.current = true
     }
-    const refined = applyEdgeRefineResult(itemsRef.current, takeEdgeRefineResult())
-    if (refined !== itemsRef.current) {
-      itemsRef.current = refined
-      queueMicrotask(() => { if (active) setItems(refined) })
-      void recompositeBatch(
-        refined,
-        (_image, matte) => compositeMatte(matte, settingsRef.current.background),
-        (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
-      ).catch(error => {
-        if (mountedRef.current) message.error(errorMessage(error))
-      })
-    }
+
+    void boot()
     return () => {
       active = false
       mountedRef.current = false
       cancelledRef.current = true
       batchAbortRef.current?.abort()
-      saveBgRemoveSession({ ownerId: scope, items: itemsRef.current, settings: settingsRef.current, selectedId: selectedIdRef.current })
+      if (bootDoneRef.current) {
+        saveBgRemoveSession({ ownerId: scope, items: itemsRef.current, settings: settingsRef.current, selectedId: selectedIdRef.current })
+        void persistBgRemoveQueue(scope, itemsRef.current, selectedIdRef.current).catch(() => undefined)
+      }
       if (previewRef.current) URL.revokeObjectURL(previewRef.current)
     }
-  }, [message, scope])
+  }, [historyOwner, message, scope])
 
   useEffect(() => {
     let active = true
@@ -132,6 +196,12 @@ export default function BgRemoveTool() {
         setSettings(stored)
       }
       setPrefsReady(true)
+      composeSucceededMattes(
+        itemsRef.current,
+        settingsRef.current.background,
+        (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
+        error => { if (mountedRef.current) message.error(errorMessage(error)) },
+      )
     }).catch(error => {
       if (active) message.warning(`读取上次选择失败：${errorMessage(error)}`)
       setPrefsReady(true)
@@ -223,6 +293,7 @@ export default function BgRemoveTool() {
       selectedIdRef.current = next[0]?.id ?? null
       setSelectedId(selectedIdRef.current)
     }
+    persistQueue()
   }
 
   function clearFiles() {
@@ -232,6 +303,7 @@ export default function BgRemoveTool() {
     selectedIdRef.current = null
     setSelectedId(null)
     replacePreview(null)
+    persistQueue()
   }
 
   function selectImage(id: string) {
@@ -266,7 +338,17 @@ export default function BgRemoveTool() {
           onTransfer: transfer => commitItems(itemsRef.current.map(item => item.id === image.id ? { ...item, transfer } : item)),
         }),
         compose: (_image, matte) => compositeMatte(matte, settingsRef.current.background),
-        update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
+        update: (id, patch) => {
+          const next = itemsRef.current.map(item => {
+            if (item.id !== id) return item
+            const merged = { ...item, ...patch }
+            if (patch.status === 'succeeded' && !merged.createdAt) merged.createdAt = new Date().toISOString()
+            return merged
+          })
+          commitItems(next)
+          const item = next.find(candidate => candidate.id === id)
+          if (item?.status === 'succeeded' && item.matte) persistItem(item)
+        },
         shouldStop: () => abort.signal.aborted || cancelledRef.current || !mountedRef.current,
       })
     } finally {
@@ -296,7 +378,7 @@ export default function BgRemoveTool() {
     setPackaging(true)
     try {
       const blob = await createBgRemoveZip(itemsRef.current)
-      downloadBlob(blob, `cutout_${new Date().toISOString().slice(0, 10)}.zip`)
+      downloadBlob(blob, `${datedDownloadName('cutout')}.zip`)
     } catch (error) {
       message.error(errorMessage(error))
     } finally {
@@ -359,7 +441,7 @@ export default function BgRemoveTool() {
           {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
         </div>
         <div className="toolbox-footer-actions">
-          <Button icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
+          <Button icon={<DownloadOutlined />} disabled={!downloadable.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
           {failed.length > 0 && !processing && <Button disabled={busy || !serviceReady} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>}
           {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
             <Button type="primary" disabled={!serviceReady || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</Button>

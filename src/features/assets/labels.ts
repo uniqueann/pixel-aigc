@@ -14,9 +14,15 @@ const CAPABILITY_LABELS: Partial<Record<Capability, string>> = {
   [Capability.ImageEdit]: '智能编辑',
   [Capability.Variation]: '裂变',
   [Capability.EmailAssist]: '邮件助手',
+  [Capability.BgRemove]: '智能抠图',
+}
+
+const TOOLBOX_HISTORY_LABELS: Record<string, string> = {
+  'bg-remove': '智能抠图',
 }
 
 export function workstationToolLabel(slug?: string) {
+  if (slug && TOOLBOX_HISTORY_LABELS[slug]) return TOOLBOX_HISTORY_LABELS[slug]
   return WORKSTATION_TOOLS.find((tool) => tool.slug === slug)?.label ?? '图片工作站'
 }
 

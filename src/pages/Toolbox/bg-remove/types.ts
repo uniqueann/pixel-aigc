@@ -21,6 +21,8 @@ export interface BatchImage {
   outputMime?: string
   error?: string
   transfer?: { ownerId: string; sourceImageKey?: string; result?: SyncImageObjectResult }
+  restored?: boolean
+  createdAt?: string
 }
 
 export const PREVIEW_MAX_DIMENSION = 800
