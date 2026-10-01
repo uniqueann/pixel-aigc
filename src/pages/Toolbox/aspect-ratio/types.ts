@@ -1,4 +1,5 @@
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import type { OutpaintOutputMode } from '@shared/outpaint'
 
 export type FitStrategy = 'letterbox' | 'crop' | 'outpaint'
 export type BatchStatus = 'pending' | 'processing' | 'succeeded' | 'failed'
@@ -27,6 +28,7 @@ export interface AspectRatioSettings {
   background: string
   fx: number
   fy: number
+  outpaintOutputMode?: OutpaintOutputMode
 }
 
 export const DEFAULT_ASPECT_RATIO_SETTINGS: AspectRatioSettings = {
@@ -35,6 +37,7 @@ export const DEFAULT_ASPECT_RATIO_SETTINGS: AspectRatioSettings = {
   background: '#ffffff',
   fx: 0.5,
   fy: 0.5,
+  outpaintOutputMode: 'platform',
 }
 
 export interface BatchImage {

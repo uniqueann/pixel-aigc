@@ -8,7 +8,7 @@ import { uploadTaskInput } from './upload'
 export { paddingAround }
 export type { PixelPadding }
 
-/** 把按留白坐标缩放好的原图交给服务端扩图，返回精确目标尺寸的 JPEG。 */
+/** 按原图和四边留白提交扩图，返回原图尺寸加留白的 JPEG。 */
 export async function requestOutpaint(image: Blob | null, mimeType: string, padding: PixelPadding, sourceObjectKey?: string) {
   if (padding.left + padding.right + padding.top + padding.bottom <= 0) throw new Error('没有需要扩展的边缘')
   if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')

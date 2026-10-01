@@ -11,6 +11,20 @@ import {
 const SOURCE = { width: 2048, height: 1365 }
 
 describe('工作站扩图几何', () => {
+  it('保留分辨率时大图扩成 5035 方图，主体区域仍为 3200×5035', () => {
+    const geo = presetOutpaintGeometry(3200, 5035, 1600, 1600, 'original')
+    expect(geo).toEqual({
+      targetSize: { width: 5035, height: 5035 },
+      sourceSize: { width: 3200, height: 5035 },
+      originOffset: { x: 917, y: 0 },
+    })
+    const padding = paddingAround(3200, 5035, 917, 0, 5035, 5035)
+    const plan = planBailianOutpaint(3200, 5035, padding)
+    expect(plan.inputHeight).toBe(4096)
+    expect(plan.targetWidth).toBe(5035)
+    expect(plan.targetHeight).toBe(5035)
+  })
+
   it.each(PLATFORM_SIZE_PRESETS.map(preset => [preset.id, preset.width, preset.height] as const))(
     '%s 对 2048×1365 输出精确 preset 尺寸，并 contain 居中',
     (_id, presetWidth, presetHeight) => {

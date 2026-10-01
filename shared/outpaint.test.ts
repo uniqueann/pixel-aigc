@@ -3,9 +3,26 @@ import {
   addedPixels,
   expandScale,
   paddingAround,
+  presetOutpaintSize,
   planBailianOutpaint,
   sizeAfterExpand,
+  validateOutpaintOutputSize,
 } from './outpaint'
+
+describe('扩图输出尺寸', () => {
+  it('大图按平台比例扩画布，保留原图像素；平台模式仍用指定尺寸', () => {
+    expect(presetOutpaintSize(3200, 5035, 1600, 1600, 'original')).toEqual({ width: 5035, height: 5035 })
+    expect(presetOutpaintSize(3200, 5035, 1600, 1600, 'platform')).toEqual({ width: 1600, height: 1600 })
+    expect(presetOutpaintSize(800, 400, 1600, 1600, 'original')).toEqual({ width: 800, height: 800 })
+  })
+
+  it('非方形预设的整数画布完整包含原图，超大合成画布明确拒绝', () => {
+    const size = presetOutpaintSize(3200, 5035, 1080, 1440, 'original')
+    expect(size).toEqual({ width: 3776, height: 5035 })
+    expect(() => validateOutpaintOutputSize(5035, 5035)).not.toThrow()
+    expect(() => validateOutpaintOutputSize(10000, 10000)).toThrow(/6400 万像素/)
+  })
+})
 
 describe('四边留白', () => {
   it('用原图在目标画布中的位置算出四边像素', () => {

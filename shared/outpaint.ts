@@ -6,6 +6,37 @@ export interface PixelPadding {
   bottom: number
 }
 
+export type OutpaintOutputMode = 'original' | 'platform'
+
+/** 限制最终合成画布，避免超大图片耗尽同步处理的内存。 */
+export const MAX_OUTPAINT_OUTPUT_PIXELS = 64_000_000
+
+export function validateOutpaintOutputSize(width: number, height: number) {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
+    throw new Error('扩图目标尺寸无效')
+  }
+  if (width * height > MAX_OUTPAINT_OUTPUT_PIXELS) {
+    throw new Error('扩图结果不能超过 6400 万像素，请缩小扩图范围或选择按平台尺寸输出')
+  }
+}
+
+/** 保留分辨率时只扩大画布到目标比例，不缩放原图；平台模式使用精确预设尺寸。 */
+export function presetOutpaintSize(
+  sourceWidth: number, sourceHeight: number,
+  presetWidth: number, presetHeight: number,
+  mode: OutpaintOutputMode,
+) {
+  if (![sourceWidth, sourceHeight, presetWidth, presetHeight].every(value => Number.isFinite(value) && value > 0)) {
+    throw new Error('扩图尺寸无效')
+  }
+  if (mode === 'platform') return { width: presetWidth, height: presetHeight }
+  const scale = Math.max(sourceWidth / presetWidth, sourceHeight / presetHeight)
+  return {
+    width: Math.max(sourceWidth, Math.round(presetWidth * scale)),
+    height: Math.max(sourceHeight, Math.round(presetHeight * scale)),
+  }
+}
+
 export interface OutpaintCrop {
   left: number
   top: number
@@ -53,7 +84,7 @@ function scalePad(value: number, source: number, sent: number) {
   return Math.max(1, Math.round(value * sent / source))
 }
 
-function fittedInput(width: number, height: number) {
+export function fitBailianOutpaintInput(width: number, height: number) {
   const minSide = Math.min(width, height)
   const maxSide = Math.max(width, height)
   let scale = 1
@@ -176,7 +207,8 @@ export function planBailianOutpaint(sourceWidth: number, sourceHeight: number, p
   if (paddingSum(requested) === 0) throw new Error('没有需要扩展的边缘')
   const targetWidth = Math.round(sourceWidth) + requested.left + requested.right
   const targetHeight = Math.round(sourceHeight) + requested.top + requested.bottom
-  const input = fittedInput(sourceWidth, sourceHeight)
+  validateOutpaintOutputSize(targetWidth, targetHeight)
+  const input = fitBailianOutpaintInput(sourceWidth, sourceHeight)
   const fittedPadding = {
     left: scalePad(requested.left, sourceWidth, input.width),
     right: scalePad(requested.right, sourceWidth, input.width),

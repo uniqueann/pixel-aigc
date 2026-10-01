@@ -1,5 +1,6 @@
 import { containRect, sameAspect } from './geometry'
 import type { AspectRatioSettings, BatchImage, RenderResult } from './types'
+import { presetOutpaintSize, validateOutpaintOutputSize, type OutpaintOutputMode } from '@shared/outpaint'
 
 /** 万相 wanx2.1-imageedit 创建任务 RPS 是 2，同时处理中的任务最多 2 个。 */
 export const OUTPAINT_CONCURRENCY = 2
@@ -15,6 +16,7 @@ export interface ExpansionPlan {
   mode: 'local' | 'remote'
   originOffset: { x: number; y: number }
   sourceSize: { width: number; height: number }
+  targetSize: { width: number; height: number }
 }
 
 export function expansionPlan(
@@ -22,16 +24,23 @@ export function expansionPlan(
   sourceHeight: number,
   targetWidth: number,
   targetHeight: number,
+  outputMode: OutpaintOutputMode = 'platform',
 ): ExpansionPlan {
+  const targetSize = presetOutpaintSize(sourceWidth, sourceHeight, targetWidth, targetHeight, outputMode)
+  targetWidth = targetSize.width
+  targetHeight = targetSize.height
   if (sameAspect(sourceWidth, sourceHeight, targetWidth, targetHeight)) {
-    return { mode: 'local', originOffset: { x: 0, y: 0 }, sourceSize: { width: targetWidth, height: targetHeight } }
+    return { mode: 'local', originOffset: { x: 0, y: 0 }, sourceSize: targetSize, targetSize }
   }
-  const fitted = containRect(sourceWidth, sourceHeight, targetWidth, targetHeight)
+  const fitted = outputMode === 'original'
+    ? { width: sourceWidth, height: sourceHeight, x: Math.floor((targetWidth - sourceWidth) / 2), y: Math.floor((targetHeight - sourceHeight) / 2) }
+    : containRect(sourceWidth, sourceHeight, targetWidth, targetHeight)
   const fillsCanvas = fitted.width === targetWidth && fitted.height === targetHeight
   return {
     mode: fillsCanvas ? 'local' : 'remote',
     originOffset: { x: fitted.x, y: fitted.y },
     sourceSize: { width: fitted.width, height: fitted.height },
+    targetSize,
   }
 }
 
@@ -42,14 +51,14 @@ interface OutpaintRun {
   targetHeight: number
   ids?: string[]
   concurrency?: number
-  renderLocal: (image: BatchImage) => Promise<RenderResult>
+  renderLocal: (image: BatchImage, plan: ExpansionPlan) => Promise<RenderResult>
   expandRemote: (image: BatchImage, plan: ExpansionPlan) => Promise<RenderResult>
   update: (id: string, patch: Partial<BatchImage>) => void
   shouldStop: () => boolean
 }
 
 export async function processOutpaintBatch({
-  images, targetWidth, targetHeight, ids, concurrency = OUTPAINT_CONCURRENCY,
+  images, settings, targetWidth, targetHeight, ids, concurrency = OUTPAINT_CONCURRENCY,
   renderLocal, expandRemote, update, shouldStop,
 }: OutpaintRun) {
   const targets = images.filter(item => ids ? ids.includes(item.id) : item.status !== 'succeeded')
@@ -63,10 +72,11 @@ export async function processOutpaintBatch({
     active += 1
     peak = Math.max(peak, active)
     try {
-      const plan = expansionPlan(item.width, item.height, targetWidth, targetHeight)
-      const result = plan.mode === 'local' ? await renderLocal(item) : await expandRemote(item, plan)
+      const plan = expansionPlan(item.width, item.height, targetWidth, targetHeight, settings.outpaintOutputMode)
+      if (plan.mode === 'remote') validateOutpaintOutputSize(plan.targetSize.width, plan.targetSize.height)
+      const result = plan.mode === 'local' ? await renderLocal(item, plan) : await expandRemote(item, plan)
       if (shouldStop()) { update(item.id, { status: 'pending' }); return }
-      if (result.width !== targetWidth || result.height !== targetHeight) throw new Error('输出尺寸与目标平台不一致')
+      if (result.width !== plan.targetSize.width || result.height !== plan.targetSize.height) throw new Error('输出尺寸与预计尺寸不一致')
       update(item.id, { status: 'succeeded', output: result.blob, outputMime: result.mimeType, error: undefined })
     } catch (error) {
       if (shouldStop()) { update(item.id, { status: 'pending' }); return }

@@ -3,6 +3,7 @@ import sharp from 'sharp'
 import { HttpError } from './errors.js'
 import {
   DEFAULT_EXPAND_PROMPT,
+  fitBailianOutpaintInput,
   planBailianOutpaint,
   type PixelPadding,
   type BailianExpandScales,
@@ -85,18 +86,15 @@ async function encodeInput(image: Buffer, width: number, height: number) {
 
 async function encodePassInput(image: Buffer) {
   const meta = await sharp(image, { failOn: 'none' }).metadata()
-  if (meta.format === 'jpeg' && image.length <= 9_000_000) return image
-  let quality = 90
-  let encoded = await sharp(image, { failOn: 'none' }).jpeg({ quality }).toBuffer()
-  while (encoded.length > 9_000_000 && quality > 60) {
-    quality -= 10
-    encoded = await sharp(image, { failOn: 'none' }).jpeg({ quality }).toBuffer()
-  }
-  if (encoded.length > 10_000_000) throw new HttpError(413, '图片压缩后仍超过扩图服务的 10 MB 限制')
-  return encoded
+  const size = fitBailianOutpaintInput(meta.autoOrient.width, meta.autoOrient.height)
+  return encodeInput(image, size.width, size.height)
 }
 
-export async function cropOutpaintResult(modelImage: Buffer, plan: BailianOutpaintPlan) {
+export async function cropOutpaintResult(
+  modelImage: Buffer,
+  plan: BailianOutpaintPlan,
+  source?: { image: Buffer; padding: PixelPadding },
+) {
   const meta = await sharp(modelImage, { failOn: 'none' }).metadata()
   const actualWidth = meta.width ?? 0
   const actualHeight = meta.height ?? 0
@@ -107,11 +105,20 @@ export async function cropOutpaintResult(modelImage: Buffer, plan: BailianOutpai
   const top = Math.min(Math.max(0, Math.round(plan.crop.top * scaleY)), actualHeight - 1)
   const width = Math.min(Math.max(1, Math.round(plan.crop.width * scaleX)), actualWidth - left)
   const height = Math.min(Math.max(1, Math.round(plan.crop.height * scaleY)), actualHeight - top)
-  return sharp(modelImage, { failOn: 'none' })
+  const background = sharp(modelImage, { failOn: 'none' })
     .extract({ left, top, width, height })
     .resize(plan.targetWidth, plan.targetHeight, { fit: 'fill' })
-    .jpeg({ quality: 92 })
-    .toBuffer()
+  if (source) {
+    // 模型只负责新背景。原图在最终画布上按原尺寸放回，保留商品细节。
+    const original = await sharp(source.image, { failOn: 'none' }).rotate().png().toBuffer()
+    background.composite([{ input: original, left: source.padding.left, top: source.padding.top }])
+  }
+  // 最终结果还要保存为资产；只降低 JPEG 编码质量，不再次缩小主体像素。
+  for (const quality of [92, 82, 72, 62]) {
+    const output = await background.clone().jpeg({ quality }).toBuffer()
+    if (output.length <= 20 * 1024 * 1024) return output
+  }
+  throw new HttpError(413, '扩图结果超过 20 MB，请缩小扩图范围或选择按平台尺寸输出', 'OUTPAINT_RESULT_TOO_LARGE')
 }
 
 async function submitExpand(
@@ -179,7 +186,8 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
   const started = now()
   let size: { width?: number; height?: number }
   try {
-    size = await sharp(image, { failOn: 'none' }).rotate().metadata()
+    const meta = await sharp(image, { failOn: 'none' }).metadata()
+    size = meta.autoOrient
   } catch {
     throw new HttpError(400, '无法读取图片', 'INVALID_IMAGE')
   }
@@ -231,10 +239,10 @@ export async function expandWithBailian(image: Buffer, padding: PixelPadding, de
     if (index < plan.passes.length - 1) current = await encodePassInput(current)
   }
   const cropStarted = now()
-  const output = await cropOutpaintResult(current, plan)
+  const output = await cropOutpaintResult(current, plan, { image, padding })
   log({
     requestId: deps.requestId, stage: 'crop', ms: now() - cropStarted,
-    bytes: output.length, targetWidth: plan.targetWidth, targetHeight: plan.targetHeight,
+    bytes: output.length, targetWidth: plan.targetWidth, targetHeight: plan.targetHeight, sourceRestored: true,
   })
   log({
     requestId: deps.requestId, stage: 'total', ms: now() - started, passes: plan.passes.length, bytes: output.length,

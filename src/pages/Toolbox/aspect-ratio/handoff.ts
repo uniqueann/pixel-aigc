@@ -1,8 +1,10 @@
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import type { OutpaintOutputMode } from '@shared/outpaint'
 
 export interface OutpaintHandoff {
   file: File
   presetId: string
+  outputMode?: OutpaintOutputMode
 }
 
 let pending: OutpaintHandoff | null = null

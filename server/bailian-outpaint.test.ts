@@ -53,6 +53,59 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe('万相扩图调用', () => {
+  it('低分辨率模型背景合成回大画布后，原图的细小纹理仍按原像素保留', async () => {
+    const sourceWidth = 3200
+    const sourceHeight = 5035
+    const padding = { left: 917, right: 918, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(sourceWidth, sourceHeight, padding)
+    const texture = Buffer.alloc(128 * 128 * 3)
+    for (let y = 0; y < 128; y += 1) {
+      for (let x = 0; x < 128; x += 1) {
+        const value = Math.floor(x / 4) % 2 === 0 ? 25 : 225
+        texture.fill(value, (y * 128 + x) * 3, (y * 128 + x + 1) * 3)
+      }
+    }
+    const source = await sharp({ create: { width: sourceWidth, height: sourceHeight, channels: 3, background: '#555555' } })
+      .composite([{ input: texture, raw: { width: 128, height: 128, channels: 3 }, left: 1500, top: 2400 }]).png().toBuffer()
+    const model = await sharp({ create: { width: 512, height: 512, channels: 3, background: '#cccccc' } }).jpeg().toBuffer()
+    const output = await cropOutpaintResult(model, plan, { image: source, padding })
+    const meta = await sharp(output).metadata()
+    expect({ width: meta.width, height: meta.height }).toEqual({ width: 5035, height: 5035 })
+    const patch = await sharp(output).extract({ left: 917 + 1500, top: 2400, width: 128, height: 128 }).removeAlpha().raw().toBuffer()
+    const averageError = patch.reduce((sum, value, index) => sum + Math.abs(value - texture[index]), 0) / texture.length
+    expect(averageError).toBeLessThan(5)
+    const background = await sharp(output).extract({ left: 100, top: 2500, width: 1, height: 1 }).removeAlpha().raw().toBuffer()
+    expect(background[0]).toBeGreaterThan(190)
+  })
+
+  it('两轮扩图中首轮结果超过 4096 时，第二轮输入会重新适配尺寸并走签名地址', async () => {
+    storageMocks.signRead.mockImplementation(async (key: string) => ({ url: `https://r2.test/${key}?signed=1` }))
+    const source = await sharp({ create: { width: 2000, height: 1000, channels: 3, background: '#224466' } }).jpeg().toBuffer()
+    const padding = { left: 3000, right: 3000, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(2000, 1000, padding)
+    const first = await sharp({ create: { width: plan.passes[0].modelWidth, height: plan.passes[0].modelHeight, channels: 3, background: '#556677' } }).jpeg().toBuffer()
+    const second = await sharp({ create: { width: 1024, height: Math.round(1024 * plan.modelHeight / plan.modelWidth), channels: 3, background: '#8899aa' } }).jpeg().toBuffer()
+    let submits = 0
+    const output = await expandWithBailian(source, padding, {
+      env: { DASHSCOPE_API_KEY: 'test', DASHSCOPE_OUTPAINT_INPUT_MODE: 'url' }, sleep: async () => {}, now: () => 0,
+      fetch: async input => {
+        const url = String(input)
+        if (url.endsWith('/image-synthesis')) return jsonResponse({ output: { task_id: `pass-${++submits}` } })
+        if (url.includes('/tasks/')) return jsonResponse({ output: { task_status: 'SUCCEEDED', results: [{ url: `https://result.test/${submits}.jpg` }] } })
+        return new Response(submits === 1 ? first : second)
+      },
+    })
+    expect(submits).toBe(2)
+    const secondInput = storageMocks.putObject.mock.calls[1][1] as Buffer
+    const inputMeta = await sharp(secondInput).metadata()
+    expect(inputMeta.width).toBe(4096)
+    expect(inputMeta.height).toBeGreaterThanOrEqual(512)
+    expect(inputMeta.height).toBeLessThanOrEqual(4096)
+    expect(storageMocks.putObject.mock.calls[0][0]).not.toBe(storageMocks.putObject.mock.calls[1][0])
+    const outputMeta = await sharp(output).metadata()
+    expect({ width: outputMeta.width, height: outputMeta.height }).toEqual({ width: 8000, height: 1000 })
+  })
+
   it('总截止时间到达后停止连接重试并返回超时', async () => {
     let clock = 0
     let attempts = 0
