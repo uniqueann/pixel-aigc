@@ -15,7 +15,7 @@
 
 ## 观测
 
-`aigc.sync_requests` 对消除请求保留 7 天，其他同步请求仍保留 2 小时。`transport` 为 `inline` 或 `object`；`stage_ms` 包含客户端准备与上传、服务端 R2 读取、百炼处理、R2 写入等阶段。`created_at` 到 `completed_at` 是服务端总耗时，不含浏览器下载结果的时间。
+`aigc.sync_requests` 对消除、重绘、扩图请求保留 7 天，其他同步请求仍保留 2 小时。`transport` 为 `inline` 或 `object`；`stage_ms` 包含客户端准备与上传、服务端 R2 读取、百炼处理、R2 写入等阶段。`created_at` 到 `completed_at` 是服务端总耗时，不含浏览器下载结果的时间。
 
 ```sql
 select date_trunc('day', created_at) as day, transport,

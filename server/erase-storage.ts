@@ -11,17 +11,23 @@ const MIME_BY_FORMAT: Record<string, string> = {
   webp: 'image/webp',
 }
 
-export interface EraseStoredImage {
+export interface StoredSyncImage {
   bytes: Buffer
   width: number
   height: number
 }
 
-export async function loadEraseStoredImage(userId: string, key: string, kind: 'source' | 'mask'): Promise<EraseStoredImage> {
+export async function loadStoredSyncImage(userId: string, key: string, kind: 'source' | 'mask', signal?: AbortSignal): Promise<StoredSyncImage> {
   if (!isSafeObjectKey(userId, key) || (kind === 'mask' && !key.startsWith(`temporary/task-inputs/${userId}/`))) {
     throw new HttpError(400, '图片对象无效或无权访问', 'INVALID_SOURCE')
   }
-  const object = await getObjectLimited(key, MAX_IMAGE_BYTES)
+  let object: Awaited<ReturnType<typeof getObjectLimited>>
+  try {
+    object = signal ? await getObjectLimited(key, MAX_IMAGE_BYTES, signal) : await getObjectLimited(key, MAX_IMAGE_BYTES)
+  } catch (error) {
+    if (signal?.aborted) throw new HttpError(504, '读取临时图片超时，请重试', 'IMAGE_READ_TIMEOUT', { cause: error, stage: 'objectRead' })
+    throw error
+  }
   let metadata: { width?: number; height?: number; pages?: number; format?: string }
   try {
     metadata = await sharp(object.bytes, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'error' }).metadata()
@@ -37,3 +43,5 @@ export async function loadEraseStoredImage(userId: string, key: string, kind: 's
   }
   return { bytes: object.bytes, width, height }
 }
+
+export const loadEraseStoredImage = loadStoredSyncImage

@@ -1,12 +1,20 @@
 import sharp from 'sharp'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+const storageMocks = vi.hoisted(() => ({ putObject: vi.fn(), signRead: vi.fn() }))
+vi.mock('./storage', () => ({ putObject: storageMocks.putObject, signRead: storageMocks.signRead }))
 import {
   bailianConfig, CONNECT_TIMEOUT_MS, connectRetryDelay, cropOutpaintResult, dashScopeHost, DEFAULT_DEADLINE_MS,
   expandWithBailian, FINISH_RESERVE_MS, GET_ATTEMPTS, isTransientConnectError, OUTPAINT_WAIT_TIMEOUT_MESSAGE,
   outpaintPollDelay, passWaitDeadline, SUBMIT_ATTEMPTS,
 } from './bailian-outpaint'
 import { HttpError } from './errors'
+import { callDashScope } from './dashscope'
 import { DEFAULT_EXPAND_PROMPT, planBailianOutpaint } from '../shared/outpaint'
+
+beforeEach(() => {
+  storageMocks.putObject.mockReset()
+  storageMocks.signRead.mockReset()
+})
 
 describe('百炼扩图配置', () => {
   it('有 API Key 才算已配置，请求地址可以改成业务空间域名', () => {
@@ -45,6 +53,21 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe('万相扩图调用', () => {
+  it('总截止时间到达后停止连接重试并返回超时', async () => {
+    let clock = 0
+    let attempts = 0
+    const fetchImpl: typeof fetch = async () => {
+      attempts += 1
+      clock = 100
+      throw Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT' })
+    }
+    await expect(callDashScope(fetchImpl, 'https://example.test', undefined, 'submit', 3, 35_000,
+      async () => {}, () => {}, { now: () => clock }, '连接失败', 'OUTPAINT_FAILED',
+      { at: 100, message: '扩图超时', code: 'OUTPAINT_TIMEOUT' },
+    )).rejects.toMatchObject({ status: 504, code: 'OUTPAINT_TIMEOUT' })
+    expect(attempts).toBe(1)
+  })
+
   it('提交 wanx2.1-imageedit expand，取回结果后裁成精确目标尺寸', async () => {
     const source = await sharp({
       create: { width: 1000, height: 800, channels: 3, background: { r: 10, g: 20, b: 30 } },
@@ -146,6 +169,7 @@ describe('万相扩图调用', () => {
   })
 
   it('单边超过 2 倍时会再提交一次 expand', async () => {
+    storageMocks.signRead.mockImplementation(async (key: string) => ({ url: `https://r2.test/${key}?signed=1` }))
     const source = await sharp({
       create: { width: 800, height: 800, channels: 3, background: { r: 10, g: 20, b: 30 } },
     }).jpeg().toBuffer()
@@ -158,10 +182,12 @@ describe('万相扩图调用', () => {
       create: { width: plan.modelWidth, height: plan.modelHeight, channels: 3, background: { r: 4, g: 5, b: 6 } },
     }).jpeg().toBuffer()
     let submits = 0
-    const fetchImpl: typeof fetch = async (input) => {
+    const submittedInputs: string[] = []
+    const fetchImpl: typeof fetch = async (input, init) => {
       const url = String(input)
       if (url.endsWith('/image-synthesis')) {
         submits += 1
+        submittedInputs.push((JSON.parse(String(init?.body)) as { input: { base_image_url: string } }).input.base_image_url)
         return jsonResponse({ output: { task_id: `task-${submits}`, task_status: 'PENDING' } })
       }
       if (url.endsWith('/tasks/task-1')) {
@@ -175,11 +201,17 @@ describe('万相扩图调用', () => {
     }
     const output = await expandWithBailian(source, padding, {
       fetch: fetchImpl,
-      env: { DASHSCOPE_API_KEY: 'sk-test' },
+      env: { DASHSCOPE_API_KEY: 'sk-test', DASHSCOPE_OUTPAINT_INPUT_MODE: 'url' },
+      requestId: 'outpaint-request',
       sleep: async () => {},
       now: () => 0,
     })
     expect(submits).toBe(2)
+    expect(submittedInputs).toEqual([
+      'https://r2.test/temporary/dashscope-inputs/outpaint/outpaint-request/1/source.jpg?signed=1',
+      'https://r2.test/temporary/dashscope-inputs/outpaint/outpaint-request/2/source.jpg?signed=1',
+    ])
+    expect(storageMocks.putObject).toHaveBeenCalledTimes(2)
     const meta = await sharp(output).metadata()
     expect(meta.width).toBe(4800)
     expect(meta.height).toBe(800)

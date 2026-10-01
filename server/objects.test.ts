@@ -44,5 +44,10 @@ describe('同域读取私有对象', () => {
     })
     expect(signRead).toHaveBeenCalledWith('temporary/erase-results/user-1/1.jpg', 900)
     await expect(signOwnedObjectRead(user, 'temporary/erase-results/other/1.jpg')).rejects.toBeInstanceOf(HttpError)
+    for (const route of ['repaint', 'outpaint']) {
+      const key = `temporary/${route}-results/user-1/1.jpg`
+      await expect(signOwnedObjectRead(user, key)).resolves.toMatchObject({ url: 'https://r2.test/result' })
+      await expect(signOwnedObjectRead(user, `temporary/${route}-results/other/1.jpg`)).rejects.toBeInstanceOf(HttpError)
+    }
   })
 })

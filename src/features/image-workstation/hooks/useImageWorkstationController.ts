@@ -244,8 +244,11 @@ export function useImageWorkstationController({
     setSubmissionError(undefined)
     setProtocolError(undefined)
     try {
-      const original = await blobFromAsset(sourceAsset, '读取原图失败')
-      const result = await requestRepaint(original, maskDataUrl, promptText)
+      const sourceKey = imageObjectKey(sourceAsset)
+      const original = sourceKey
+        ? await fetchOwnedObjectDirect(sourceKey)
+        : await blobFromAsset(sourceAsset, '读取原图失败')
+      const result = await requestRepaint(sourceKey ? null : original, maskDataUrl, promptText, sourceKey)
       const now = new Date().toISOString()
       const completed: GenerationTask<InpaintTaskParams> = {
         id: crypto.randomUUID(),
@@ -300,13 +303,18 @@ export function useImageWorkstationController({
     setProtocolError(undefined)
     try {
       const padding = paddingAround(sourceSize.width, sourceSize.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
-      const original = await blobFromAsset(sourceAsset, '读取原图失败')
+      const sourceKey = imageObjectKey(sourceAsset)
+      const original = sourceKey
+        ? await fetchOwnedObjectDirect(sourceKey)
+        : await blobFromAsset(sourceAsset, '读取原图失败')
       const needsScale = sourceSize.width !== sourceAsset.width || sourceSize.height !== sourceAsset.height
       const input = needsScale
         ? await renderScaledSource(new File([original], sourceAsset.name || 'source.jpg', { type: original.type || 'image/jpeg' }), sourceSize.width, sourceSize.height)
         : original
       const hasPad = padding.left + padding.right + padding.top + padding.bottom > 0
-      const result = hasPad ? await requestOutpaint(input, 'image/jpeg', padding) : input
+      const result = hasPad
+        ? await requestOutpaint(sourceKey && !needsScale ? null : input, 'image/jpeg', padding, needsScale ? undefined : sourceKey)
+        : input
       const now = new Date().toISOString()
       const completed: GenerationTask<OutpaintTaskParams> = {
         id: crypto.randomUUID(),
