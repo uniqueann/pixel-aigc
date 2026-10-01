@@ -14,7 +14,10 @@ export async function removeBackground(image: Buffer, options: {
   const prepared = await prepareMattingImage(image, { deadlineAt: options.deadlineAt })
   options.log({ stage: 'inputPrepare', ms: Date.now() - started, width: prepared.width, height: prepared.height,
     workWidth: prepared.workWidth, workHeight: prepared.workHeight, inputBytes: image.length,
-    providerInputBytes: prepared.bytes.length, inputTransport: 'url', providerMime: prepared.mimeType })
+    providerInputBytes: prepared.bytes.length, inputTransport: 'url', providerMime: prepared.mimeType,
+    orientationPolicy: 'upright', contentWidth: prepared.contentWidth, contentHeight: prepared.contentHeight,
+    scaleX: prepared.contentWidth / prepared.width, scaleY: prepared.contentHeight / prepared.height,
+    reusableSource: prepared.reusableSource })
   let sourceKey = prepared.reusableSource ? options.sourceImageKey : undefined
   if (!sourceKey) {
     sourceKey = `temporary/tencent-inputs/bg-remove/${options.userId}/${options.requestId}.${prepared.mimeType === 'image/png' ? 'png' : 'jpg'}`

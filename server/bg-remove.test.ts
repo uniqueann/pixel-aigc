@@ -33,6 +33,22 @@ describe('抠图 R2 送模与蒙版恢复链路', () => {
     expect(mocks.put).toHaveBeenCalledWith('temporary/tencent-inputs/bg-remove/u/r.jpg', expect.any(Buffer), 'image/jpeg', expect.any(AbortSignal))
     expect(await sharp(result).metadata()).toMatchObject({ width: 64, height: 40, hasAlpha: true })
   })
+  it('超高竖图上传直立工作副本，腾讯只调用一次并记录朝向与缩放比例', async () => {
+    const image = await sharp({ create: { width: 320, height: 5035, channels: 3, background: '#aa2211' } }).jpeg().toBuffer()
+    mocks.provider.mockImplementation(async () => {
+      const uploaded = mocks.put.mock.calls[0][1] as Buffer
+      const metadata = await sharp(uploaded).metadata()
+      expect(metadata).toMatchObject({ width: 275, height: 4320 })
+      return sharp({ create: { width: metadata.width!, height: metadata.height!, channels: 4, background: '#ffffff' } }).png().toBuffer()
+    })
+    const log = vi.fn()
+    const result = await removeBackground(image, { userId: 'u', requestId: 'r', sourceImageKey: 'temporary/task-inputs/u/portrait', deadlineAt: Date.now() + 5000, log })
+    expect(mocks.sign).toHaveBeenCalledWith('temporary/tencent-inputs/bg-remove/u/r.jpg', 3600)
+    expect(mocks.provider).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'inputPrepare', orientationPolicy: 'upright',
+      contentWidth: 275, contentHeight: 4320, scaleX: 275 / 320, scaleY: 4320 / 5035, reusableSource: false }))
+    expect(await sharp(result).metadata()).toMatchObject({ width: 320, height: 5035, hasAlpha: true })
+  })
   it('副本写入失败不调用腾讯', async () => {
     mocks.put.mockRejectedValue(new Error('network'))
     const image = await sharp({ create: { width: 64, height: 40, channels: 4, background: '#fff' } }).png().toBuffer()
