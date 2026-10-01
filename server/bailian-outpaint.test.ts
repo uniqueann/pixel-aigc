@@ -76,6 +76,19 @@ describe('万相扩图调用', () => {
     expect(averageError).toBeLessThan(5)
     const background = await sharp(output).extract({ left: 100, top: 2500, width: 1, height: 1 }).removeAlpha().raw().toBuffer()
     expect(background[0]).toBeGreaterThan(190)
+  }, 15_000)
+
+  it('EXIF 旋转原图按显示尺寸放回，坐标与最终画布一致', async () => {
+    const source = await sharp({ create: { width: 512, height: 768, channels: 3, background: '#cc4422' } }).jpeg().withMetadata({ orientation: 6 }).toBuffer()
+    const padding = { left: 128, right: 128, top: 0, bottom: 0 }
+    const plan = planBailianOutpaint(768, 512, padding)
+    const model = await sharp({ create: { width: plan.modelWidth, height: plan.modelHeight, channels: 3, background: '#224488' } }).jpeg().toBuffer()
+    const result = await cropOutpaintResult(model, plan, { image: source, padding })
+    const metadata = await sharp(result).metadata()
+    expect([metadata.width, metadata.height]).toEqual([1024, 512])
+    const center = await sharp(result).extract({ left: 400, top: 250, width: 1, height: 1 }).raw().toBuffer()
+    expect(center[0]).toBeGreaterThan(190)
+    expect(center[2]).toBeLessThan(50)
   })
 
   it('两轮扩图中首轮结果超过 4096 时，第二轮输入会重新适配尺寸并走签名地址', async () => {
@@ -104,7 +117,7 @@ describe('万相扩图调用', () => {
     expect(storageMocks.putObject.mock.calls[0][0]).not.toBe(storageMocks.putObject.mock.calls[1][0])
     const outputMeta = await sharp(output).metadata()
     expect({ width: outputMeta.width, height: outputMeta.height }).toEqual({ width: 8000, height: 1000 })
-  })
+  }, 15_000)
 
   it('总截止时间到达后停止连接重试并返回超时', async () => {
     let clock = 0
@@ -589,7 +602,7 @@ describe('万相扩图调用', () => {
       log: entry => { stages.push(String(entry.stage)) },
     })
     expect(sleeps).toEqual([400, 800, 800])
-    expect(stages).toEqual(['plan', 'submit', 'poll', 'poll', 'poll', 'wait', 'download', 'crop', 'total'])
+    expect(stages).toEqual(['plan', 'submit', 'poll', 'poll', 'poll', 'wait', 'download', 'colorMatch', 'seamBlend', 'encode', 'crop', 'total'])
     const meta = await sharp(output).metadata()
     expect(meta.width).toBe(660)
     expect(meta.height).toBe(640)

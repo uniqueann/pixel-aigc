@@ -1,3 +1,5 @@
+import { normalizeImageBlob } from '@shared/image-format'
+import { filenameWithMimeExtension } from '@/features/image-workstation/download'
 import type { CloudAsset } from '../../shared/cloud'
 import type { ProjectSnapshot } from '@/editor/persistence/types'
 import { cloudRequest } from './client'
@@ -11,6 +13,8 @@ export async function accessAssets(projectId: string, assetIds: string[]) {
   return items
 }
 export async function uploadCloudImage(projectId: string, assetId: string, file: File): Promise<CloudAsset> {
+  const normalized = await normalizeImageBlob(file)
+  file = new File([normalized], filenameWithMimeExtension(file.name, normalized.type), { type: normalized.type, lastModified: file.lastModified })
   const result = await cloudRequest<{ uploadUrl?: string; asset?: CloudAsset }>('/assets/uploads', 'POST', {
     projectId, assetId, name: file.name, mimeType: file.type, size: file.size,
   })

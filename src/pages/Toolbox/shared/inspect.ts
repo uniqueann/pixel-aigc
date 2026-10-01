@@ -1,3 +1,4 @@
+import { detectImageMime, equalsAscii } from '@shared/image-format'
 export const MAX_FILES = 20
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 export const MAX_BATCH_BYTES = 150 * 1024 * 1024
@@ -14,17 +15,6 @@ export function queueLimitMessage(file: File, queuedCount: number, queuedBytes: 
 }
 
 export type SupportedMime = 'image/jpeg' | 'image/png' | 'image/webp'
-
-function equalsAscii(bytes: Uint8Array, offset: number, value: string) {
-  return [...value].every((char, index) => bytes[offset + index] === char.charCodeAt(0))
-}
-
-function detectType(bytes: Uint8Array): SupportedMime | null {
-  if (bytes.length >= 8 && bytes[0] === 137 && equalsAscii(bytes, 1, 'PNG\r\n\x1a\n')) return 'image/png'
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
-  if (bytes.length >= 16 && equalsAscii(bytes, 0, 'RIFF') && equalsAscii(bytes, 8, 'WEBP')) return 'image/webp'
-  return null
-}
 
 async function isAnimatedPng(file: File) {
   let offset = 8
@@ -70,8 +60,8 @@ export async function inspectImage(file: File) {
   if (file.size === 0) throw new Error('图片文件为空')
   if (file.size > MAX_IMAGE_BYTES) throw new Error('单张图片不能超过 20 MB')
   const head = new Uint8Array(await file.slice(0, 32).arrayBuffer())
-  const mimeType = detectType(head)
-  if (!mimeType || (file.type && file.type !== mimeType)) throw new Error('仅支持静态 JPG、PNG、WebP 图片')
+  const mimeType = detectImageMime(head)
+  if (!mimeType) throw new Error('仅支持静态 JPG、PNG、WebP 图片')
   if ((mimeType === 'image/png' && await isAnimatedPng(file)) ||
       (mimeType === 'image/webp' && await isAnimatedWebp(file))) {
     throw new Error('暂不支持动图，请使用静态图片')
@@ -95,7 +85,7 @@ export async function inspectImage(file: File) {
 export async function inspectLogo(file: File) {
   if (file.size === 0 || file.size > MAX_LOGO_BYTES) throw new Error('Logo 不能超过 10 MB')
   const head = new Uint8Array(await file.slice(0, 32).arrayBuffer())
-  const mimeType = detectType(head)
+  const mimeType = detectImageMime(head)
   if (mimeType !== 'image/png' && mimeType !== 'image/webp') throw new Error('Logo 仅支持透明 PNG 或 WebP')
   if (mimeType === 'image/png' && await isAnimatedPng(file)) throw new Error('Logo 不支持动图')
   if (mimeType === 'image/webp' && await isAnimatedWebp(file)) throw new Error('Logo 不支持动图')

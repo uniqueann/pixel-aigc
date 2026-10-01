@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   uploadTaskInput: vi.fn(async () => 'temporary/task-inputs/user/source-1'),
   requestErase: vi.fn(),
   requestRepaint: vi.fn(),
+  requestOutpaint: vi.fn(),
   polling: { data: undefined as GenerationTask<unknown> | undefined },
 }))
 
@@ -43,6 +44,9 @@ vi.mock('@/features/assets/historyOwner', async () => {
     isCurrentWorkstationHistoryOwner: (ownerId: string) => currentOwner() === ownerId,
   }
 })
+vi.mock('@/services/api/outpaint', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/services/api/outpaint')>()), requestOutpaint: mocks.requestOutpaint,
+}))
 vi.mock('@/services/api/repaint', () => ({
   requestRepaint: mocks.requestRepaint,
 }))
@@ -135,9 +139,11 @@ describe('useImageWorkstationController 集成流程', () => {
     mocks.uploadDataUrl.mockImplementation(async (url: string) => url)
     mocks.uploadTaskInput.mockReset()
     mocks.uploadTaskInput.mockResolvedValue('temporary/task-inputs/user/source-1')
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 640, height: 480, close: vi.fn() })))
     vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }))))
     mocks.requestErase.mockReset()
     mocks.requestRepaint.mockReset()
+    mocks.requestOutpaint.mockReset()
     mocks.polling.data = undefined
     useEditorStore.setState({
       project: null,
@@ -385,7 +391,7 @@ describe('useImageWorkstationController 集成流程', () => {
     mocks.liveCapabilityReady.mockReturnValue(false)
     const bytes = new Uint8Array([255, 216, 255, 1, 2, 3, 4, 5])
     mocks.requestRepaint.mockImplementation(async (image: Blob) => image)
-    const fetchMock = vi.fn(async () => new Response(new Blob([bytes], { type: 'image/jpeg' })))
+    const fetchMock = vi.fn(async () => new Response(bytes, { headers: { 'Content-Type': 'image/jpeg' } }))
     vi.stubGlobal('fetch', fetchMock)
     if (!URL.createObjectURL) {
       Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:repaint-echo' })
@@ -426,6 +432,8 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(mocks.createTask).not.toHaveBeenCalled()
     expect(currentController.activeTask?.capability).toBe(Capability.Inpaint)
     expect(currentController.activeTask?.status).toBe('succeeded')
+    expect(currentController.activeTask?.resultImages?.[0]).toMatchObject({ mimeType: 'image/jpeg', width: 640, height: 480 })
+    expect(currentController.outputAssets[0].mimeType).toBe('image/jpeg')
     vi.unstubAllGlobals()
   })
 
@@ -453,6 +461,29 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(mocks.createTask).not.toHaveBeenCalled()
     expect(currentController.activeTask?.capability).toBe(Capability.Inpaint)
     expect(currentController.activeTask?.status).toBe('succeeded')
+    expect(currentController.activeTask?.resultImages?.[0]).toMatchObject({ mimeType: 'image/jpeg', width: 640, height: 480 })
+    expect(currentController.outputAssets[0].mimeType).toBe('image/jpeg')
+    vi.unstubAllGlobals()
+  })
+
+  it('同步扩图记录实际 JPEG 格式，结果可直接进行下一轮，并拒绝错误结果尺寸', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    mocks.requestOutpaint.mockResolvedValue(new Blob([new Uint8Array([255, 216, 255, 224, 0, 16])], { type: 'image/png' }))
+    vi.mocked(createImageBitmap).mockResolvedValue({ width: 800, height: 480, close: vi.fn() } as unknown as ImageBitmap)
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn().mockReturnValueOnce('blob:outpaint-first').mockReturnValueOnce('blob:outpaint-second') })
+    await act(async () => root.render(<ControllerHarness tool="outpaint" onController={captureController} />))
+    const canvas = { ...canvasHandle, getTargetSize: () => ({ width: 800, height: 480 }), getOriginOffset: () => ({ x: 80, y: 0 }) }
+    await act(async () => { await currentController.generate(canvas) })
+    expect(currentController.activeTask?.resultImages?.[0]).toMatchObject({ width: 800, height: 480, mimeType: 'image/jpeg' })
+    expect(currentController.inputAsset?.mimeType).toBe('image/jpeg')
+    expect(currentController.inputAsset?.width).toBe(800)
+    vi.mocked(createImageBitmap).mockResolvedValue({ width: 960, height: 480, close: vi.fn() } as unknown as ImageBitmap)
+    await act(async () => { await currentController.generate({ ...canvas, getTargetSize: () => ({ width: 960, height: 480 }) }) })
+    expect(mocks.requestOutpaint).toHaveBeenLastCalledWith(expect.any(Blob), 'image/jpeg', { left: 80, right: 80, top: 0, bottom: 0 }, undefined)
+    expect(currentController.inputAsset?.width).toBe(960)
+    await act(async () => {
+      await expect(currentController.generate({ ...canvas, getTargetSize: () => ({ width: 1120, height: 480 }) })).rejects.toThrow('尺寸与目标不一致')
+    })
     vi.unstubAllGlobals()
   })
 

@@ -29,7 +29,7 @@ describe('消除客户端请求', () => {
       headers: { 'Content-Type': 'image/jpeg' },
     }))
     vi.stubGlobal('fetch', fetchMock)
-    const image = new Blob([new Uint8Array([9, 8, 7])], { type: 'image/jpeg' })
+    const image = new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' })
     await requestErase(image, 'image/jpeg', 'data:image/png;base64,QUFB', '浅色墙面')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
@@ -67,7 +67,7 @@ describe('消除客户端请求', () => {
       })
     })
     vi.stubGlobal('fetch', fetchMock)
-    const result = await requestErase(new Blob([new Uint8Array(3 * 1024 * 1024)], { type: 'image/jpeg' }),
+    const result = await requestErase(new Blob([new Uint8Array([255, 216, 255]), new Uint8Array(3 * 1024 * 1024 - 3)], { type: 'image/jpeg' }),
       'image/jpeg', 'data:image/png;base64,QUFB', '移除物体')
     expect(result.type).toBe('image/jpeg')
     expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(2)

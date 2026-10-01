@@ -1,3 +1,4 @@
+import { detectImageMime, readBlobBytes } from '@shared/image-format'
 import { Capability } from '@/types'
 
 const DATABASE_NAME = 'pixel-aigc-history-v2'
@@ -62,22 +63,15 @@ function runStore<T>(mode: IDBTransactionMode, operation: (store: IDBObjectStore
 function toRecord(stored: StoredHistoryRecord): WorkstationHistoryRecord {
   const { ownerId: _ownerId, resultBytes, ...record } = stored
   void _ownerId
-  return { ...record, result: new Blob([resultBytes], { type: stored.mimeType }) }
-}
-
-function readBlobBytes(blob: Blob): Promise<ArrayBuffer> {
-  if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer()
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as ArrayBuffer)
-    reader.onerror = () => reject(reader.error ?? new Error('读取结果失败'))
-    reader.readAsArrayBuffer(blob)
-  })
+  const mimeType = detectImageMime(new Uint8Array(resultBytes, 0, Math.min(32, resultBytes.byteLength))) ?? stored.mimeType
+  return { ...record, mimeType, result: new Blob([resultBytes], { type: mimeType }) }
 }
 
 async function toStored(ownerId: string, record: WorkstationHistoryRecord): Promise<StoredHistoryRecord> {
   const { result, ...fields } = record
-  return { ...fields, ownerId, resultBytes: await readBlobBytes(result) }
+  const resultBytes = await readBlobBytes(result)
+  const mimeType = detectImageMime(new Uint8Array(resultBytes, 0, Math.min(32, resultBytes.byteLength))) ?? fields.mimeType
+  return { ...fields, mimeType, ownerId, resultBytes }
 }
 
 export async function listWorkstationHistory(ownerId: string): Promise<WorkstationHistoryRecord[]> {

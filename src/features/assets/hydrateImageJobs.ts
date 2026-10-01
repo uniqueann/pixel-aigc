@@ -1,3 +1,4 @@
+import { normalizeImageBlob } from '@shared/image-format'
 import { Capability, type GenerationTask } from '@/types'
 import { getTask, listTasks } from '@/services/api/task'
 import { blobFromImageSource } from '@/features/image-workstation/download'
@@ -35,7 +36,7 @@ export async function historyRecordsFromImageTask(task: GenerationTask<unknown>)
     ? task.resultImages
     : (task.resultUrls ?? []).map((url) => ({ url, width: 0, height: 0, mimeType: 'image/png', objectKey: undefined }))
   return Promise.all(images.map(async (image, index) => {
-    const result = await blobFromImageSource(image.url, image.objectKey)
+    const result = await normalizeImageBlob(await blobFromImageSource(image.url, image.objectKey))
     return {
       id: `${task.id}:${index}`,
       toolSlug: slug,
@@ -43,7 +44,7 @@ export async function historyRecordsFromImageTask(task: GenerationTask<unknown>)
       prompt,
       width: image.width || 0,
       height: image.height || 0,
-      mimeType: image.mimeType || result.type || 'image/jpeg',
+      mimeType: result.type,
       result,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
