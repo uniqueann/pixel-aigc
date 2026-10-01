@@ -10,8 +10,8 @@ export interface ContainRect {
   height: number
 }
 
-export function canRefineEdge(item: { matte?: Blob; status: string }) {
-  return Boolean(item.matte) && item.status === 'succeeded'
+export function canRefineEdge(item: { matte?: Blob; status: string; restored?: boolean }) {
+  return Boolean(item.matte) && item.status === 'succeeded' && !item.restored
 }
 
 export function containRect(canvasWidth: number, canvasHeight: number, imageWidth: number, imageHeight: number): ContainRect {

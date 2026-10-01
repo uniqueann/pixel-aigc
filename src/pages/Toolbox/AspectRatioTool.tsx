@@ -22,6 +22,7 @@ import { AspectRatioRenderer } from './aspect-ratio/renderer'
 import { detectImageSubject } from './aspect-ratio/subjectClient'
 import { cropProgressLabel } from './aspect-ratio/subjectFocus'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
+import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
 const focuses = [
@@ -356,7 +357,7 @@ export default function AspectRatioTool() {
     setPackaging(true)
     try {
       const blob = await createAspectRatioZip(itemsRef.current, preset.id)
-      downloadBlob(blob, `aspect-ratio_${preset.id}_${new Date().toISOString().slice(0, 10)}.zip`)
+      downloadBlob(blob, `${datedDownloadName(`aspect-ratio_${preset.id}`)}.zip`)
     } catch (error) {
       message.error(errorMessage(error))
     } finally {

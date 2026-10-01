@@ -67,6 +67,12 @@ export function takeEdgeRefineResult() {
 export function applyEdgeRefineResult(items: BatchImage[], next: EdgeRefineResult | null) {
   if (!next || next.cancelled || !next.matte) return items
   return items.map(item => item.id === next.itemId
-    ? { ...item, matte: next.matte!, output: undefined, outputMime: undefined }
+    ? {
+      ...item,
+      matte: next.matte!,
+      output: undefined,
+      outputMime: undefined,
+      transfer: item.transfer ? { ...item.transfer, result: undefined } : undefined,
+    }
     : item)
 }

@@ -10,6 +10,7 @@ import { createWatermarkZip, downloadBlob, namesForImages } from './watermark/do
 import { deletePreset, listPresets, savePreset, type WatermarkPreset } from './watermark/presets'
 import { WatermarkRenderer } from './watermark/renderer'
 import { DEFAULT_WATERMARK_SETTINGS, type BatchImage, type WatermarkAnchor, type WatermarkSettings } from './watermark/types'
+import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, inspectLogo, MAX_ZIP_BYTES, queueLimitMessage } from './watermark/validation'
 
 const anchors: { value: WatermarkAnchor; label: string }[] = [
@@ -237,7 +238,7 @@ export default function WatermarkTool() {
     setPackaging(true)
     try {
       const blob = await createWatermarkZip(itemsRef.current)
-      downloadBlob(blob, `watermarked_${new Date().toISOString().slice(0, 10)}.zip`)
+      downloadBlob(blob, `${datedDownloadName('watermarked')}.zip`)
     } catch (error) {
       message.error(errorMessage(error))
     } finally {

@@ -34,6 +34,7 @@ describe('边缘精修像素', () => {
     expect(canRefineEdge({ status: 'succeeded' })).toBe(false)
     expect(canRefineEdge({ status: 'failed', matte: new Blob(['m']) })).toBe(false)
     expect(canRefineEdge({ status: 'succeeded', matte: new Blob(['m']) })).toBe(true)
+    expect(canRefineEdge({ status: 'succeeded', matte: new Blob(['m']), restored: true })).toBe(false)
   })
 })
 
@@ -65,6 +66,17 @@ describe('边缘精修交接', () => {
     expect(remove).not.toHaveBeenCalled()
     expect(compose).toHaveBeenCalledWith(expect.objectContaining({ matte: nextMatte }), nextMatte)
     expect(images[0].output).toBe(nextMatte)
+  })
+
+  it('精修后不再指向旧的结果对象，避免把新透明底写成旧 R2 图', () => {
+    const image: BatchImage = {
+      id: 'a', file: new File(['s'], 'a.png'), sourceMime: 'image/png', sourceUrl: 'blob:a',
+      width: 2, height: 2, status: 'succeeded', matte: new Blob(['old']),
+      transfer: { ownerId: 'u', result: { objectKey: 'temporary/bg-remove-results/u/old.png', url: 'https://r2.test/old', mimeType: 'image/png' } },
+    }
+    const updated = applyEdgeRefineResult([image], { itemId: 'a', matte: new Blob(['new']), cancelled: false })
+    expect(updated[0].transfer?.sourceImageKey).toBeUndefined()
+    expect(updated[0].transfer?.result).toBeUndefined()
   })
 
   it('离开抠图页后队列还在，交接只取一次', () => {
