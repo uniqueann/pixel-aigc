@@ -23,7 +23,6 @@ export interface PreparedMattingImage {
   workHeight: number
   contentWidth: number
   contentHeight: number
-  rotation: 0 | 90
   reusableSource: boolean
 }
 
@@ -43,21 +42,18 @@ export async function prepareMattingImage(image: Buffer, options: PrepareOptions
   const maxWidth = options.maxWidth ?? 7680
   const maxHeight = options.maxHeight ?? 4320
   const maxBytes = options.maxBytes ?? TENCENT_MATTING_MAX_BYTES
-  // 超高竖图转成横向工作图，避免为了符合高度限制而额外缩小。
-  const rotation = height > maxHeight && height > width ? 90 : 0
-  const rotatedWidth = rotation ? height : width
-  const rotatedHeight = rotation ? width : height
-  const scale = Math.min(1, maxWidth / rotatedWidth, maxHeight / rotatedHeight)
-  let contentWidth = Math.max(1, Math.round(rotatedWidth * scale))
-  let contentHeight = Math.max(1, Math.round(rotatedHeight * scale))
+  // 保持 EXIF 校正后的商品朝向；额外旋转可能让识别模型误删商品部件。
+  const scale = Math.min(1, maxWidth / width, maxHeight / height)
+  let contentWidth = Math.max(1, Math.round(width * scale))
+  let contentHeight = Math.max(1, Math.round(height * scale))
   const actualMime = detectImageMime(image)
   const reusableSource = (actualMime === 'image/jpeg' || actualMime === 'image/png') && image.length <= maxBytes
     && !metadata.hasAlpha && (!metadata.orientation || metadata.orientation === 1)
-    && rotation === 0 && scale === 1 && width >= 32 && height >= 32
+    && scale === 1 && width >= 32 && height >= 32
   if (reusableSource) {
     assertMattingDeadline(options.deadlineAt)
     return { originalRgba: decoded.data, width, height, bytes: image, mimeType: actualMime,
-      workWidth: width, workHeight: height, contentWidth: width, contentHeight: height, rotation, reusableSource }
+      workWidth: width, workHeight: height, contentWidth: width, contentHeight: height, reusableSource }
   }
   for (;;) {
     const workWidth = Math.max(32, contentWidth)
@@ -65,14 +61,13 @@ export async function prepareMattingImage(image: Buffer, options: PrepareOptions
     for (const quality of [95, 90, 85, 80, 75, 70]) {
       assertMattingDeadline(options.deadlineAt)
       const bytes = await sharp(decoded.data, { raw: { width, height, channels: 4 } })
-        .rotate(rotation)
         .resize(contentWidth, contentHeight, { fit: 'fill' })
         .flatten({ background: '#ffffff' })
         .extend({ top: 0, left: 0, right: workWidth - contentWidth, bottom: workHeight - contentHeight, background: '#ffffff' })
         .jpeg({ quality }).toBuffer()
       assertMattingDeadline(options.deadlineAt)
       if (bytes.length <= maxBytes) return { originalRgba: decoded.data, width, height, bytes, mimeType: 'image/jpeg',
-        workWidth, workHeight, contentWidth, contentHeight, rotation, reusableSource: false }
+        workWidth, workHeight, contentWidth, contentHeight, reusableSource: false }
     }
     const nextWidth = Math.max(1, Math.floor(contentWidth * 0.85))
     const nextHeight = Math.max(1, Math.floor(contentHeight * 0.85))
@@ -98,11 +93,10 @@ export async function restoreMattingImage(png: Buffer, prepared: PreparedMatting
   }
   let alpha: Buffer
   try {
-    // 先单独裁出 Alpha，再旋转缩放，避免 RGBA 预乘和操作重排影响蒙版。
+    // 先单独裁出 Alpha，再恢复尺寸，避免 RGBA 预乘和操作重排影响蒙版。
     const workAlpha = await result.extract({ left: 0, top: 0, width: prepared.contentWidth, height: prepared.contentHeight })
       .extractChannel('alpha').raw().toBuffer()
     alpha = await sharp(workAlpha, { raw: { width: prepared.contentWidth, height: prepared.contentHeight, channels: 1 } })
-      .rotate(prepared.rotation ? 270 : 0)
       .resize(prepared.width, prepared.height, { fit: 'fill', kernel: 'linear' })
       .toColourspace('b-w').raw().toBuffer()
   } catch {

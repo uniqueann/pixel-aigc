@@ -25,7 +25,7 @@ describe('抠图工作副本与原尺寸透明度恢复', () => {
     const source = await sharp(await fixture(64, 40)).removeAlpha().jpeg().toBuffer()
     const prepared = await prepareMattingImage(source)
     expect(prepared.bytes).toBe(source)
-    expect(prepared).toMatchObject({ reusableSource: true, width: 64, height: 40, workWidth: 64, workHeight: 40, rotation: 0 })
+    expect(prepared).toMatchObject({ reusableSource: true, width: 64, height: 40, workWidth: 64, workHeight: 40 })
   })
 
   it('恢复经过缩小的 Alpha，商品 RGB 使用原图，保留半透明像素', async () => {
@@ -43,14 +43,37 @@ describe('抠图工作副本与原尺寸透明度恢复', () => {
     expect(edge.some(alpha => alpha > 0 && alpha < 64)).toBe(true)
   })
 
-  it('竖图旋转并补白后恢复到底部区域，没有坐标错位', async () => {
+  it('超高竖图保持朝向并等比缩小，补白和 Alpha 恢复不改变商品位置', async () => {
     const prepared = await prepareMattingImage(await fixture(12, 40), { maxWidth: 64, maxHeight: 32 })
-    expect(prepared).toMatchObject({ width: 12, height: 40, rotation: 90, contentWidth: 40, contentHeight: 12, workWidth: 40, workHeight: 32 })
-    const result = await restoreMattingImage(await matte(40, 32, (x, y) => x < 10 && y < 12 ? 255 : 0), prepared)
+    expect(prepared).toMatchObject({ width: 12, height: 40, contentWidth: 10, contentHeight: 32, workWidth: 32, workHeight: 32 })
+    const work = await sharp(prepared.bytes).raw().toBuffer()
+    // 用原图颜色定位上下，验证识别副本内的商品保持直立。
+    expect(work[(4 * 32 + 5) * 3 + 1]).toBeLessThan(50)
+    expect(work[(27 * 32 + 5) * 3 + 1]).toBeGreaterThan(150)
+    const result = await restoreMattingImage(await matte(32, 32, (x, y) => x >= 10 ? 255 : y >= 24 ? 128 : 0), prepared)
     const decoded = await sharp(result).raw().toBuffer()
-    expect(decoded[(35 * 12 + 5) * 4 + 3]).toBe(255)
+    expect(decoded[(35 * 12 + 5) * 4 + 3]).toBe(128)
     expect(decoded[(5 * 12 + 5) * 4 + 3]).toBe(0)
+    expect(decoded[(5 * 12 + 11) * 4 + 3]).toBe(0)
     expect([...decoded.subarray((35 * 12 + 5) * 4, (35 * 12 + 5) * 4 + 3)]).toEqual([25, 175, 123])
+  })
+
+  it('3200×5035 大图使用 2746×4320 直立副本，恢复原尺寸和原图 RGB', async () => {
+    const image = await sharp({ create: { width: 3200, height: 5035, channels: 3, background: '#aa2211' } }).jpeg().toBuffer()
+    const prepared = await prepareMattingImage(image)
+    expect(prepared).toMatchObject({ width: 3200, height: 5035, workWidth: 2746, workHeight: 4320,
+      contentWidth: 2746, contentHeight: 4320, reusableSource: false })
+    expect(await sharp(prepared.bytes).metadata()).toMatchObject({ width: 2746, height: 4320 })
+    const result = await restoreMattingImage(await matte(2746, 4320, (x, y) =>
+      x > 686 && x < 2060 && y > 1080 && y < 3240 ? 255 : 0), prepared)
+    const decoded = await sharp(result).raw().toBuffer({ resolveWithObject: true })
+    expect(decoded.info).toMatchObject({ width: 3200, height: 5035, channels: 4 })
+    expect(decoded.data[(2500 * 3200 + 1600) * 4 + 3]).toBe(255)
+    expect(decoded.data[(500 * 3200 + 1600) * 4 + 3]).toBe(0)
+    expect(decoded.data[(2500 * 3200 + 300) * 4 + 3]).toBe(0)
+    const original = await sharp(image).ensureAlpha().raw().toBuffer()
+    const offset = (2500 * 3200 + 1600) * 4
+    expect(decoded.data.subarray(offset, offset + 3)).toEqual(original.subarray(offset, offset + 3))
   })
 
   it('EXIF 方向以浏览器看到的尺寸为准，WebP 自动转换', async () => {

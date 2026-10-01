@@ -57,7 +57,7 @@ beforeAll(async () => {
     '20260929233436_aigc_credit_adjust.sql',
     '20260930115938_erase_transfer_metrics.sql',
     '20260930234407_sync_image_transfer_retention.sql',
-    '20261001104554_bg_remove_transfer_retention.sql',
+    '20261001120433_bg_remove_transfer_retention.sql',
   ]) await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
   await db.query('insert into aigc.members(user_id) values($1)', [userId])
 }, 30000)
