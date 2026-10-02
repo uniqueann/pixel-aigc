@@ -11,6 +11,8 @@ import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
 import type { ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
+import { useFusionImageSelection } from '@/features/image-workstation/hooks/useFusionImageSelection'
+import { isPreparationCancelled } from '@/features/image-workstation/fusionInputs'
 import {
   COMING_SOON_SUBMIT_MESSAGE,
   WORKSTATION_TOOLS,
@@ -32,6 +34,7 @@ import { Capability } from '@/types'
 import { downloadFailureMessage, downloadImageAsset, filenameForWorkstationResult } from '@/features/image-workstation/download'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
+import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
 import { workstationGenerateBlockReason } from './utils/generateGate'
 import { presetOutpaintGeometry } from './utils/outpaintGeometry'
@@ -51,8 +54,6 @@ export default function ImageWorkstation() {
   const [retouchNote, setRetouchNote] = useState('')
   const [fusionNote, setFusionNote] = useState('')
   const [retouchDirections, setRetouchDirections] = useState<RetouchDirection[]>([])
-  const [fusionProduct, setFusionProduct] = useState<ImageAsset>()
-  const [fusionReference, setFusionReference] = useState<ImageAsset>()
   const [editCount, setEditCount] = useState(1)
   const [variationCount, setVariationCount] = useState(2)
   const [retouchCount, setRetouchCount] = useState(1)
@@ -81,6 +82,10 @@ export default function ImageWorkstation() {
   const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
+  const fusionSelection = useFusionImageSelection(activeTool.slug)
+  const fusionProduct = fusionSelection.product
+  const fusionReference = fusionSelection.reference
+  const fusionLoading = fusionSelection.loading.product || fusionSelection.loading.reference
   const capabilityReady = useCallback((capability: Capability) => {
     if (capability === Capability.ImageEdit || capability === Capability.Retouch || capability === Capability.Fusion || capability === Capability.Relight) return imageEditReady
     if (capability === Capability.Variation) return variationReady
@@ -167,7 +172,7 @@ export default function ImageWorkstation() {
   const previewItems = sourcePreviewItem ? [sourcePreviewItem, ...resultPreviewItems] : resultPreviewItems
   const { openAt, galleryProps } = usePreviewGallery(previewItems)
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
-  const generateBlockReason = workstationGenerateBlockReason({
+  const generateBlockReason = fusionTool && fusionLoading ? '请等待图片载入完成' : workstationGenerateBlockReason({
     toolReady,
     hasInput: fusionTool ? Boolean(fusionProduct && fusionReference) : Boolean(controller.inputAsset),
     formLocked: controller.formLocked,
@@ -184,26 +189,16 @@ export default function ImageWorkstation() {
     canvasHandleRef.current = handle
   }, [])
 
-  const handleFusionUpload = useCallback(async (slot: 'product' | 'reference', file: File) => {
-    setUploading(true)
+  const handleFusionUpload = async (slot: 'product' | 'reference', file: File) => {
+    controller.modifyParameters()
     try {
-      const uploaded = await uploadImage(file)
-      const asset = createImageAsset({
-        name: uploaded.name,
-        url: uploaded.url,
-        width: uploaded.width,
-        height: uploaded.height,
-        source: 'upload',
-      })
-      if (slot === 'product') setFusionProduct(asset)
-      else setFusionReference(asset)
-      message.success(slot === 'product' ? '商品图已上传' : '场景图已上传')
+      await fusionSelection.load(slot, file)
+      message.success(slot === 'product' ? '商品图已载入' : '场景图已载入')
     } catch (error) {
+      if (isPreparationCancelled(error)) return
       message.error(error instanceof Error ? error.message : '图片上传失败')
-    } finally {
-      setUploading(false)
     }
-  }, [message])
+  }
 
   const handleImageUpload = useCallback(async (file: File) => {
     setUploading(true)
@@ -339,6 +334,7 @@ export default function ImageWorkstation() {
       await controller.generate(canvasHandleRef.current)
       message.success('任务已提交')
     } catch (error) {
+      if (isPreparationCancelled(error)) return
       const description = error instanceof Error ? error.message : '请检查 API 服务是否已启动'
       const emptyMask = description.includes('请先涂抹')
       if (emptyMask) message.warning(description)
@@ -369,7 +365,16 @@ export default function ImageWorkstation() {
       await controller.retry()
       message.success(controller.activeTask?.status === 'succeeded' ? '已重试读取已有结果' : '已按原参数重新提交')
     } catch (error) {
+      if (isPreparationCancelled(error)) return
       message.error(error instanceof Error ? error.message : '任务重试失败')
+    }
+  }
+  const handleRetryInputs = async () => {
+    try {
+      const result = await controller.retryInputPreparation()
+      if (result) message.success('任务已提交')
+    } catch (error) {
+      if (!isPreparationCancelled(error)) message.error(error instanceof Error ? error.message : '输入重试失败')
     }
   }
 
@@ -408,6 +413,7 @@ export default function ImageWorkstation() {
             onOutpaintTargetSizeChange={setOutpaintTargetSize}
             compareMode={compareMode}
             uploading={uploading}
+            fusionUploading={fusionSelection.loading}
             uploadDisabled={controller.formLocked || Boolean(edgeRefine)}
             refineMode={Boolean(edgeRefine)}
             onCompareModeChange={setCompareMode}
@@ -478,9 +484,10 @@ export default function ImageWorkstation() {
           ) : (
             <p className="toolbox-hint toolbox-warning">{COMING_SOON_SUBMIT_MESSAGE}。</p>
           )}
+          {fusionTool ? <FusionInputStatus state={controller.inputPreparation} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}
           <GenerationTaskStatus
             task={controller.activeTask}
-            submitting={controller.submitting}
+            submitting={controller.submitting && !controller.inputPreparation}
             active={controller.active}
             polling={controller.polling}
             summary={taskSummary}
@@ -529,7 +536,7 @@ export default function ImageWorkstation() {
                 <Button
                   type="primary"
                   loading={controller.submitting}
-                  disabled={Boolean(generateBlockReason)}
+                  disabled={Boolean(generateBlockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                   onClick={handleGenerate}
                 >
                   生成

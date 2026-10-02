@@ -33,6 +33,7 @@ import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
 import { isExactlySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
 import { finalizeWorkstationResults } from '../results'
 import { COMING_SOON_SUBMIT_MESSAGE, isWorkstationToolReady } from '../tools/registry'
+import { FusionInputPreparation, fusionAbortError, isFusionInputPreparationError, isPreparationCancelled, sameFusionInput, type FusionPreparationState } from '../fusionInputs'
 import type {
   WorkstationCanvasHandle,
   WorkstationGenerationRequest,
@@ -61,6 +62,14 @@ interface SubmissionContext {
   options: TaskAdapterOptions & { inputAssetIds: AssetId[] }
   ownerId: string
   epoch: number
+  referenceAsset?: ImageAsset
+}
+interface InputRetryContext {
+  ownerId: string
+  request: WorkstationGenerationRequest
+  sourceAsset: ImageAsset
+  referenceAsset: ImageAsset
+  parentGenerationId?: GenerationId
 }
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
@@ -83,6 +92,7 @@ async function blobFromAsset(asset: ImageAsset, message: string, options?: { own
   try {
     return await blobFromImageSource(asset.url, imageObjectKey(asset), options)
   } catch {
+    if (options?.signal.aborted) throw fusionAbortError()
     throw new Error(message)
   }
 }
@@ -97,7 +107,6 @@ async function taskInputKey(asset: ImageAsset, message: string, options?: { owne
 async function prepareImageEditRequest(
   request: WorkstationGenerationRequest,
   sourceAsset: ImageAsset,
-  referenceAsset?: ImageAsset,
   options?: { ownerId: string; signal: AbortSignal },
 ): Promise<WorkstationGenerationRequest> {
   const uploadsSource = request.capability === Capability.ImageEdit || request.capability === Capability.Variation
@@ -107,9 +116,6 @@ async function prepareImageEditRequest(
   params.sourceWidth = sourceAsset.width
   params.sourceHeight = sourceAsset.height
   if (isInlineUrl(params.sourceImageUrl)) delete params.sourceImageUrl
-  if (referenceAsset) {
-    params.referenceImageKey ??= await taskInputKey(referenceAsset, '读取场景图失败', options)
-  }
   if (isInlineUrl(params.referenceImageUrl)) delete params.referenceImageUrl
   return { ...request, params }
 }
@@ -154,6 +160,15 @@ export function useImageWorkstationController({
   const [historySaved, setHistorySaved] = useState(false)
   const failedSavesRef = useRef(new Map<string, { ownerId: string; record: WorkstationHistoryRecord; epoch: number }>())
   const syncRecoveryRef = useRef<{ descriptor: SyncImageObjectResult; complete: (blob: Blob) => Promise<GenerationTask<unknown>>; epoch: number; ownerId: string }>()
+  const fusionInputsRef = useRef(new FusionInputPreparation())
+  const inputRetryRef = useRef<InputRetryContext>()
+  const submissionGateRef = useRef<number>()
+  const inputPreparationRef = useRef<FusionPreparationState>()
+  const [inputPreparation, setInputPreparation] = useState<FusionPreparationState>()
+  const updateInputPreparation = useCallback((value?: FusionPreparationState) => {
+    inputPreparationRef.current = value
+    setInputPreparation(value)
+  }, [])
   const beginOperation = useCallback(() => {
     abandonPendingRuntimeImages(runtimeUserRef.current)
     readAbortRef.current.abort()
@@ -165,18 +180,32 @@ export function useImageWorkstationController({
     failedSavesRef.current.clear()
     setResultReadError(undefined); setHistoryError(undefined); setHistorySaved(false); setReadingResults(false)
     setSubmissionError(undefined); setProtocolError(undefined)
+    inputRetryRef.current = undefined
+    submissionGateRef.current = undefined
+    updateInputPreparation(undefined)
+    setSubmitting(false)
     return epochRef.current
-  }, [])
+  }, [updateInputPreparation])
   useEffect(() => {
     const epochState = epochRef
     const readState = readAbortRef
     const unsubscribe = useUserStore.subscribe((state, previous) => {
       if (state.userId !== previous.userId) {
+        fusionInputsRef.current.clear()
         beginOperation(); setTask(undefined); setActiveTaskId(undefined); setOutputAssetIds([]); setInputAssetId(undefined)
       }
     })
-    return () => { unsubscribe(); epochState.current++; readState.current.abort() }
+    const fusionInputs = fusionInputsRef.current
+    return () => { unsubscribe(); epochState.current++; readState.current.abort(); fusionInputs.clear() }
   }, [beginOperation])
+  const inputIdentityRef = useRef({ tool: activeTool.slug, product: productAsset, reference: referenceAsset })
+  useEffect(() => {
+    const previous = inputIdentityRef.current
+    const changed = previous.tool !== activeTool.slug || (activeTool.slug === 'fusion' && (!sameFusionInput(previous.product, productAsset) || !sameFusionInput(previous.reference, referenceAsset)))
+    inputIdentityRef.current = { tool: activeTool.slug, product: productAsset, reference: referenceAsset }
+    fusionInputsRef.current.syncInputs(productAsset, referenceAsset)
+    if (changed) beginOperation()
+  }, [activeTool.slug, beginOperation, productAsset, referenceAsset])
 
   useEffect(() => {
     if (!useEditorStore.getState().project) createProject('图片工作台')
@@ -410,27 +439,54 @@ export function useImageWorkstationController({
     request: WorkstationGenerationRequest,
     sourceAsset: ImageAsset,
     parentGenerationId: GenerationId | undefined,
+    fusionReference?: ImageAsset,
   ) => {
+    if (submissionGateRef.current !== undefined) throw new Error('请等待当前提交完成')
     const ownerId = currentWorkstationHistoryOwner()
     const epoch = beginOperation()
     const signal = readAbortRef.current.signal
+    const isCurrent = () => epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId) && !signal.aborted
+    submissionGateRef.current = epoch
     setSubmitting(true)
     const options: SubmissionContext['options'] = {
-      inputAssetIds: [sourceAsset.id],
+      inputAssetIds: fusionReference ? [sourceAsset.id, fusionReference.id] : [sourceAsset.id],
       parentGenerationId,
       outputSize: request.outputSize,
     }
+    const snapshot: InputRetryContext | undefined = fusionReference ? {
+      ownerId, request: { ...request, modelProfileId: request.modelProfileId ?? modelProfileId, params: { ...request.params } },
+      sourceAsset: { ...sourceAsset }, referenceAsset: { ...fusionReference }, parentGenerationId,
+    } : undefined
     try {
-      const prepared = await prepareImageEditRequest(request, sourceAsset, referenceAsset, { ownerId, signal })
-      if (epoch !== epochRef.current || !isCurrentWorkstationHistoryOwner(ownerId) || signal.aborted) throw new DOMException('提交已取消', 'AbortError')
+      let prepared: WorkstationGenerationRequest
+      if (snapshot && !useMockGateway) {
+        updateInputPreparation({ phase: 'preparing', product: { stage: 'reading' }, reference: { stage: 'reading' } })
+        const params = { ...(snapshot.request.params as ImageEditTaskParams) }
+        const keys = await fusionInputsRef.current.prepare(snapshot.sourceAsset, snapshot.referenceAsset, {
+          ownerId, signal, isCurrent,
+          onStatus: (role, status) => {
+            if (isCurrent() && inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, [role]: status })
+          },
+        }, { product: params.sourceImageKey, reference: params.referenceImageKey })
+        params.sourceImageKey = keys.product
+        params.referenceImageKey = keys.reference
+        params.sourceWidth = sourceAsset.width
+        params.sourceHeight = sourceAsset.height
+        if (isInlineUrl(params.sourceImageUrl)) delete params.sourceImageUrl
+        if (isInlineUrl(params.referenceImageUrl)) delete params.referenceImageUrl
+        prepared = { ...snapshot.request, params }
+        if (inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, phase: 'submitting' })
+      } else prepared = await prepareImageEditRequest(request, sourceAsset, { ownerId, signal })
+      if (!isCurrent()) throw fusionAbortError()
       const result = await service.submit({
         capability: prepared.capability,
         requestId: crypto.randomUUID(),
         params: prepared.params,
         modelProfileId: prepared.modelProfileId ?? modelProfileId,
-      }, { ...options, deferAssets: true })
-      if (epoch !== epochRef.current || !isCurrentWorkstationHistoryOwner(ownerId)) return result.task
-      submissionsRef.current.set(result.task.id, { request: prepared, options, ownerId, epoch })
+      }, { ...options, deferAssets: true, canApply: isCurrent })
+      if (!isCurrent()) throw fusionAbortError()
+      if (inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, phase: 'submitted' })
+      submissionsRef.current.set(result.task.id, { request: prepared, options, ownerId, epoch, referenceAsset: fusionReference })
       setTask(result.task as GenerationTask<unknown>)
       upsertTask(result.task as GenerationTask<unknown>)
       setActiveTaskId(result.task.id)
@@ -441,15 +497,35 @@ export function useImageWorkstationController({
       )
       return result.task
     } catch (error) {
-      const message = error instanceof Error ? error.message : '生成任务提交失败'
-      if (epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId)) setSubmissionError(message)
+      if (!isCurrent() || isPreparationCancelled(error)) throw fusionAbortError()
+      if (isFusionInputPreparationError(error) && snapshot) {
+        inputRetryRef.current = snapshot
+        if (inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, phase: 'failed' })
+      } else {
+        updateInputPreparation(undefined)
+        setSubmissionError(error instanceof Error ? error.message : '生成任务提交失败')
+      }
       throw error
     } finally {
-      if (epoch === epochRef.current) setSubmitting(false)
+      if (epoch === epochRef.current) { submissionGateRef.current = undefined; setSubmitting(false) }
     }
-  }, [applyCompletedTask, beginOperation, modelProfileId, referenceAsset, service, upsertTask])
+  }, [applyCompletedTask, beginOperation, modelProfileId, service, updateInputPreparation, upsertTask])
+
+  const retryInputPreparation = useCallback(async () => {
+    const snapshot = inputRetryRef.current
+    if (!snapshot || submissionGateRef.current !== undefined || !isCurrentWorkstationHistoryOwner(snapshot.ownerId)) return
+    if (!capabilityReady(Capability.Fusion)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
+    return submitRequest(snapshot.request, snapshot.sourceAsset, snapshot.parentGenerationId, snapshot.referenceAsset)
+  }, [capabilityReady, submitRequest])
+  const cancelInputPreparation = useCallback(() => {
+    const state = inputPreparationRef.current
+    if (state?.phase !== 'preparing') return
+    beginOperation()
+    updateInputPreparation({ ...state, phase: 'cancelled', product: state.product.stage === 'ready' ? state.product : { stage: 'cancelled' }, reference: state.reference.stage === 'ready' ? state.reference : { stage: 'cancelled' } })
+  }, [beginOperation, updateInputPreparation])
 
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
+    if (submissionGateRef.current !== undefined) throw new Error('请等待当前提交完成')
     const sourceOwner = currentWorkstationHistoryOwner()
     const sourceEpoch = epochRef.current
     if (!isWorkstationToolReady(activeTool, capabilityReady)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
@@ -459,7 +535,7 @@ export function useImageWorkstationController({
     }
     if (!product) throw new Error('请先上传需要编辑的图片')
     registerAsset(useEditorStore.getState().project?.assets[product.id] ?? product)
-    if (referenceAsset) registerAsset(referenceAsset)
+    if (activeTool.slug === 'fusion' && referenceAsset) registerAsset(referenceAsset)
     const initialContext = {
       sourceAsset: product,
       referenceAsset,
@@ -516,7 +592,7 @@ export function useImageWorkstationController({
     }
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
-    return submitRequest({ ...request, modelProfileId }, product, product.generationId)
+    return submitRequest({ ...request, modelProfileId }, product, product.generationId, activeTool.slug === 'fusion' ? referenceAsset : undefined)
   }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, productAsset, prompt, referenceAsset, registerAsset, relight, resolution, retouchDirections, submitRequest, useProductAsset])
 
   const retry = useCallback(async () => {
@@ -553,7 +629,7 @@ export function useImageWorkstationController({
         context.options.parentGenerationId,
       )
     }
-    return submitRequest(context.request, sourceAsset, context.options.parentGenerationId)
+    return submitRequest(context.request, sourceAsset, context.options.parentGenerationId, context.referenceAsset)
   }, [capabilityReady, completeErase, completeOutpaint, completeRepaint, submitRequest, task, retryRead])
 
   const modifyParameters = useCallback(() => {
@@ -596,6 +672,10 @@ export function useImageWorkstationController({
     retryRead,
     retrySave,
     submissionError,
+    inputPreparation,
+    canRetryInputPreparation: inputPreparation?.phase === 'failed' && !submitting,
+    retryInputPreparation,
+    cancelInputPreparation,
     protocolError,
     pollError: taskQuery.error,
     polling: taskQuery.isFetching,

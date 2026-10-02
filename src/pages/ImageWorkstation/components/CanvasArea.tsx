@@ -26,6 +26,7 @@ interface Props {
   onOutpaintTargetSizeChange?: (size: { width: number; height: number }) => void
   compareMode: 'original' | 'effect'
   uploading?: boolean
+  fusionUploading?: { product: boolean; reference: boolean }
   uploadDisabled?: boolean
   refineMode?: boolean
   onCompareModeChange: (mode: 'original' | 'effect') => void
@@ -64,7 +65,7 @@ function FusionSlot({
         <>
           <img src={imageUrl} alt={label} />
           <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} disabled={uploading || disabled} beforeUpload={beforeUpload}>
-            <Button size="small" icon={<UploadOutlined />} loading={uploading}>替换</Button>
+            <Button size="small" icon={<UploadOutlined />} disabled={disabled} loading={uploading}>替换</Button>
           </Upload>
         </>
       ) : (
@@ -97,6 +98,7 @@ export default function CanvasArea({
   onOutpaintTargetSizeChange,
   compareMode,
   uploading = false,
+  fusionUploading,
   uploadDisabled = false,
   refineMode = false,
   onCompareModeChange,
@@ -152,7 +154,7 @@ export default function CanvasArea({
             label="商品"
             hint="要保留的商品图"
             imageUrl={imageUrl}
-            uploading={uploading}
+            uploading={fusionUploading?.product ?? uploading}
             disabled={uploadDisabled}
             onUpload={onImageUpload}
           />
@@ -160,7 +162,7 @@ export default function CanvasArea({
             label="场景或参考"
             hint="提供背景或参考的图"
             imageUrl={referenceImageUrl}
-            uploading={uploading}
+            uploading={fusionUploading?.reference ?? uploading}
             disabled={uploadDisabled}
             onUpload={onReferenceImageUpload ?? onImageUpload}
           />
