@@ -45,6 +45,14 @@ describe('智能选区也算已涂抹', () => {
 })
 
 describe('生成按钮禁用原因', () => {
+  it('加载中和请求失败不会提示能力即将上线', () => {
+    const input = {
+      toolReady: false, hasInput: true, formLocked: false,
+      maskRequired: false, hasMaskPaint: false, repaintBlocked: false,
+    }
+    expect(workstationGenerateBlockReason({ ...input, configurationPending: true })).toBe('正在加载功能配置，请稍候')
+    expect(workstationGenerateBlockReason({ ...input, configurationError: true })).toBe('功能配置加载失败，请重试')
+  })
   it('有蒙版时可点生成，没有蒙版则给出涂抹提示', () => {
     expect(workstationGenerateBlockReason({
       toolReady: true,

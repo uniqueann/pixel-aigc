@@ -32,7 +32,6 @@ interface Props {
   onErasePromptChange: (prompt: string) => void
   repaintPrompt: string
   onRepaintPromptChange: (prompt: string) => void
-  repaintReady?: boolean
   outpaintMode: 'free' | 'preset'
   onOutpaintModeChange: (mode: 'free' | 'preset') => void
   outpaintOutputMode?: OutpaintOutputMode
@@ -67,7 +66,6 @@ export default function ParamPanel({
   onErasePromptChange,
   repaintPrompt,
   onRepaintPromptChange,
-  repaintReady = true,
   outpaintMode,
   onOutpaintModeChange,
   outpaintOutputMode = 'original',
@@ -275,11 +273,6 @@ export default function ParamPanel({
             autoSize={{ minRows: 4, maxRows: 8 }}
           />
         </div>
-        {!repaintReady && (
-          <p className="toolbox-warning" style={{ margin: 0, fontSize: 12 }}>
-            重绘还不能用。请确认已开通万相 wanx2.1-imageedit，并配置 DASHSCOPE_API_KEY。
-          </p>
-        )}
       </Space>
     )
   }

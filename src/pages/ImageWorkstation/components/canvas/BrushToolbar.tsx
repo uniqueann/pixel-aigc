@@ -15,7 +15,8 @@ interface Props {
   brushSize: number
   tool: PaintTool
   smartSelectEnabled: boolean
-  smartSelectReady: boolean
+  smartSelectReady: boolean | undefined
+  smartSelectError?: boolean
   refineMode?: boolean
   canUndo: boolean
   canRedo: boolean
@@ -33,6 +34,7 @@ export default function BrushToolbar({
   tool,
   smartSelectEnabled,
   smartSelectReady,
+  smartSelectError = false,
   refineMode = false,
   canUndo,
   canRedo,
@@ -66,7 +68,9 @@ export default function BrushToolbar({
           onClick={() => onToolChange('eraser')}
         />
       </Tooltip>
-      <Tooltip title={refineMode ? '边缘精修请用画笔' : smartSelectReady ? '点击商品以选中轮廓' : '智能选区即将上线'}>
+      <Tooltip title={refineMode ? '边缘精修请用画笔' : smartSelectReady ? '点击商品以选中轮廓'
+        : smartSelectReady === false ? '智能选区即将上线'
+        : smartSelectError ? '智能选区配置加载失败，请重试' : '正在加载智能选区配置…'}>
         <span>
           <Button
             aria-label="智能选区"

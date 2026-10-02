@@ -3,9 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { App, Button, ColorPicker, Input, Progress, Radio, Select } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
-import { loadOutpaintConfigured } from '@/services/api/capabilities'
-import { liveCapabilityReady } from '@/services/api/task'
-import { Capability } from '@/types'
+import { useCapabilities } from '@/hooks/useCapabilities'
+import CapabilityStatus from '@/components/CapabilityStatus'
 import { useUserStore } from '@/store/useUserStore'
 import BatchImageQueue from './BatchImageQueue'
 import PreviewGallery from '@/components/PreviewGallery'
@@ -75,7 +74,7 @@ export default function AspectRatioTool() {
   const pendingBytesRef = useRef(0)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
-  const [outpaintReady, setOutpaintReady] = useState(() => liveCapabilityReady(Capability.Outpaint))
+  const { capabilities: { outpaint: outpaintReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
   const [presets, setPresets] = useState<AspectRatioPreset[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [presetName, setPresetName] = useState('')
@@ -112,12 +111,6 @@ export default function AspectRatioTool() {
     if (!rendererRef.current) rendererRef.current = new AspectRatioRenderer()
     return rendererRef.current
   }
-
-  useEffect(() => {
-    let active = true
-    void loadOutpaintConfigured().then(ready => { if (active) setOutpaintReady(ready) })
-    return () => { active = false }
-  }, [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -301,7 +294,8 @@ export default function AspectRatioTool() {
     const targets = itemsRef.current.filter(item => (onlyIds ? onlyIds.includes(item.id) : item.status !== 'succeeded'))
     if (!targets.length) return
     if (settings.strategy === 'outpaint' && !outpaintReady) {
-      message.warning('智能扩展还没配好阿里云百炼 API Key')
+      message.warning(outpaintReady === false ? '智能扩展还没配好阿里云百炼 API Key'
+        : capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
       return
     }
     processingRef.current = true
@@ -461,9 +455,9 @@ export default function AspectRatioTool() {
               </p>
             </>
           )}
-          {settings.strategy === 'outpaint' && !outpaintReady && (
-            <p className="toolbox-hint toolbox-warning">智能扩展还不能用。请在服务端配置阿里云百炼的 DASHSCOPE_API_KEY（华北2北京）。</p>
-          )}
+          {settings.strategy === 'outpaint' && <CapabilityStatus ready={outpaintReady} error={capabilityError}
+            unavailableMessage="智能扩展还不能用。请在服务端配置阿里云百炼的 DASHSCOPE_API_KEY（华北2北京）。"
+            onRetry={() => void refetchCapabilities()} />}
           {settings.strategy === 'letterbox' && (
             <>
               <div className="toolbox-field-row">
