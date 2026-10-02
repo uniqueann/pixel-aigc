@@ -11,6 +11,7 @@ import { RELIGHT_DEFAULT, type RelightOptions } from '@shared/relight'
 import { getWorkstationTool } from '../tools/registry'
 import type { WorkstationCanvasHandle } from '../types'
 import { useImageWorkstationController } from './useImageWorkstationController'
+import type { TaskInputUploadOptions } from '@/services/api/upload'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -18,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
   liveCapabilityReady: vi.fn(() => true),
   uploadDataUrl: vi.fn(async (url: string) => url),
-  uploadTaskInput: vi.fn(async () => 'temporary/task-inputs/user/source-1'),
+  uploadTaskInput: vi.fn<(blob: Blob, mimeType?: string, signal?: AbortSignal, options?: TaskInputUploadOptions) => Promise<string>>(async () => 'temporary/task-inputs/user/source-1'),
   requestErase: vi.fn(),
   requestRepaint: vi.fn(),
   requestOutpaint: vi.fn(),
@@ -89,6 +90,7 @@ function ControllerHarness({
   prompt,
   count,
   resolution,
+  modelProfileId,
   capabilityReady,
   retouchDirections,
   productAsset,
@@ -102,6 +104,7 @@ function ControllerHarness({
   prompt?: string
   count?: number
   resolution?: '2k' | '4k'
+  modelProfileId?: string
   capabilityReady?: (capability: Capability) => boolean
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
   productAsset?: typeof initialAsset
@@ -117,6 +120,7 @@ function ControllerHarness({
     prompt,
     count,
     resolution,
+    modelProfileId,
     capabilityReady,
     retouchDirections,
     productAsset,
@@ -880,6 +884,121 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(mocks.createTask).not.toHaveBeenCalled()
     expect(currentController.inputAsset).toBeUndefined()
     expect(currentController.submissionError).toBeUndefined()
+  })
+
+  const scene = { ...initialAsset, id: 'fusion-scene', url: 'scene.png' }
+  const submittedFusion: GenerationTask = { id: 'fusion-task', capability: Capability.ImageEdit, params: {}, status: 'processing', creditsCost: 1, createdAt: '2026-10-02', updatedAt: '2026-10-02' }
+  async function mountFusion(prompt = '原始描述', modelProfileId = 'original-model', selectedScene = scene) {
+    await act(async () => root.render(<ControllerHarness tool="fusion" productAsset={initialAsset} referenceAsset={selectedScene} useProductAsset prompt={prompt} modelProfileId={modelProfileId} count={1} onController={captureController} />))
+  }
+  function deferredUploads() {
+    let product!: (key: string) => void
+    let reference!: (key: string) => void
+    mocks.uploadTaskInput.mockImplementationOnce(() => new Promise(resolve => { product = resolve }))
+      .mockImplementationOnce(() => new Promise(resolve => { reference = resolve }))
+    return { product: (key = 'product-key') => product(key), reference: (key = 'scene-key') => reference(key) }
+  }
+
+  it('融合双图同时准备，场景先完成也保持对象身份；重复生成被拦截', async () => {
+    const uploads = deferredUploads()
+    mocks.createTask.mockResolvedValue(submittedFusion)
+    await mountFusion()
+    let generation!: Promise<unknown>
+    await act(async () => { generation = currentController.generate(null) })
+    await vi.waitFor(() => expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(2))
+    await expect(currentController.generate(null)).rejects.toThrow('等待当前提交')
+    await act(async () => { uploads.reference() })
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    await act(async () => { uploads.product(); await generation })
+    expect(mocks.createTask).toHaveBeenCalledTimes(1)
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({ params: expect.objectContaining({ sourceImageKey: 'product-key', referenceImageKey: 'scene-key' }) }))
+    expect(useEditorStore.getState().project?.generations['generation:fusion-task'].inputAssetIds).toEqual([initialAsset.id, scene.id])
+  })
+
+  it('上传失败后只重传失败项，另一图未完成时不能重试；重试保留原参数', async () => {
+    let finishProduct!: (key: string) => void
+    mocks.uploadTaskInput.mockImplementationOnce(() => new Promise(resolve => { finishProduct = resolve }))
+      .mockRejectedValueOnce(new Error('场景上传断开'))
+    mocks.createTask.mockResolvedValue(submittedFusion)
+    await mountFusion()
+    let failed!: Promise<unknown>
+    await act(async () => { failed = currentController.generate(null).catch(error => error) })
+    await vi.waitFor(() => expect(currentController.inputPreparation?.reference.stage).toBe('failed'))
+    expect(currentController.canRetryInputPreparation).toBe(false)
+    await act(async () => { await currentController.retryInputPreparation() })
+    expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(2)
+    await act(async () => { finishProduct('product-key'); await failed })
+    expect(currentController.canRetryInputPreparation).toBe(true)
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    await mountFusion('后来修改的描述', 'new-model')
+    mocks.uploadTaskInput.mockResolvedValueOnce('scene-key')
+    await act(async () => { await currentController.retryInputPreparation() })
+    expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(3)
+    expect(mocks.createTask).toHaveBeenCalledTimes(1)
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({ modelProfileId: 'original-model', params: expect.objectContaining({ prompt: '原始描述', sourceImageKey: 'product-key', referenceImageKey: 'scene-key' }) }))
+  })
+
+  it('取消中止旧轮次且不提交，下一轮保留已经成功的商品上传', async () => {
+    const uploads = deferredUploads()
+    await mountFusion()
+    let first!: Promise<unknown>
+    await act(async () => { first = currentController.generate(null).catch(error => error) })
+    await vi.waitFor(() => expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(2))
+    await act(async () => { uploads.product() })
+    await act(async () => { currentController.cancelInputPreparation() })
+    expect(currentController.inputPreparation?.phase).toBe('cancelled')
+    expect(currentController.submitting).toBe(false)
+    expect(mocks.uploadTaskInput.mock.calls[1][2]?.aborted).toBe(true)
+    await act(async () => { uploads.reference(); await first })
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    mocks.uploadTaskInput.mockResolvedValueOnce('new-scene-key')
+    mocks.createTask.mockResolvedValue(submittedFusion)
+    await act(async () => { await currentController.generate(null) })
+    expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(3)
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({ params: expect.objectContaining({ sourceImageKey: 'product-key', referenceImageKey: 'new-scene-key' }) }))
+  })
+
+  it('准备期间换图或换工具，旧上传晚到不会提交旧任务', async () => {
+    const uploads = deferredUploads()
+    await mountFusion()
+    let first!: Promise<unknown>
+    await act(async () => { first = currentController.generate(null).catch(error => error) })
+    await vi.waitFor(() => expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(2))
+    await mountFusion('新描述', 'original-model', { ...scene, id: 'replacement', url: 'replacement.png' })
+    await act(async () => { uploads.product(); uploads.reference(); await first })
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    expect(currentController.submissionError).toBeUndefined()
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白背景" onController={captureController} referenceAsset={scene} />))
+    mocks.createTask.mockResolvedValue({ ...submittedFusion, id: 'smart-task' })
+    await act(async () => { await currentController.generate(null) })
+    expect(mocks.createTask.mock.calls[0][0].params.referenceImageKey).toBeUndefined()
+  })
+
+  it('任务创建响应晚于账号切换，不登记旧账号生成记录', async () => {
+    let finish!: (task: GenerationTask) => void
+    mocks.createTask.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    await mountFusion()
+    let first!: Promise<unknown>
+    await act(async () => { first = currentController.generate(null).catch(error => error) })
+    await vi.waitFor(() => expect(mocks.createTask).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      useUserStore.getState().setUser('22222222-2222-4222-8222-222222222222', 'free')
+      finish(submittedFusion)
+      await first
+    })
+    expect(currentController.activeTask).toBeUndefined()
+    expect(useEditorStore.getState().project?.generations['generation:fusion-task']).toBeUndefined()
+    expect(currentController.submissionError).toBeUndefined()
+  })
+
+  it('生成接口失败不提供输入重试，也不自动创建第二个任务', async () => {
+    mocks.createTask.mockRejectedValue(new Error('提交响应中断'))
+    await mountFusion()
+    await act(async () => { await currentController.generate(null).catch(() => undefined) })
+    expect(currentController.canRetryInputPreparation).toBe(false)
+    expect(currentController.submissionError).toBe('提交响应中断')
+    await act(async () => { await currentController.retryInputPreparation() })
+    expect(mocks.createTask).toHaveBeenCalledTimes(1)
   })
 
 })

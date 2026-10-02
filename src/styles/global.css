@@ -704,6 +704,19 @@ a {
   gap: 8px;
 }
 
+.fusion-input-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.fusion-input-status-error {
+  width: 100%;
+  color: var(--color-error, #ff7875);
+}
+
 .image-workstation-page {
   display: flex;
   height: 100%;

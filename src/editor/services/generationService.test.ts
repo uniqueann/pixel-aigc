@@ -4,6 +4,16 @@ import type { CreateTaskPayload } from '@/services/api/task'
 import { GenerationService } from './generationService'
 
 describe('GenerationService', () => {
+  it('任务请求返回时已失效，不注册迟到的生成或素材', async () => {
+    const task: GenerationTask = { id: 'late-task', capability: Capability.ImageEdit, params: {}, status: 'succeeded', resultUrls: ['result.png'], creditsCost: 1, createdAt: '2026-10-02', updatedAt: '2026-10-02' }
+    const registerAsset = vi.fn()
+    const registerGeneration = vi.fn()
+    const service = new GenerationService({ registerAsset, registerGeneration }, async <T,>() => task as GenerationTask<T>)
+    const result = await service.submit({ capability: Capability.ImageEdit, requestId: 'request', params: {} }, { inputAssetIds: ['product', 'scene'], canApply: () => false })
+    expect(result.task).toBe(task)
+    expect(registerGeneration).not.toHaveBeenCalled()
+    expect(registerAsset).not.toHaveBeenCalled()
+  })
   it('提交任务后分别注册 GenerationJob 和输出 Asset', async () => {
     const params: InpaintTaskParams = {
       sourceImageUrl: 'source.png',

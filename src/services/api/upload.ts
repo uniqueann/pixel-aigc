@@ -20,23 +20,53 @@ export function uploadDataUrl(dataUrl: string): Promise<string> {
   return Promise.resolve(dataUrl)
 }
 
-export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image/jpeg', signal?: AbortSignal) {
-  if (file.size > MAX_IMAGE_BYTES) throw new Error('图片大小不能超过 20 MB')
-  file = await normalizeImageBlob(file)
-  mimeType = file.type
-  const signed = await apiClient.post<unknown, { uploadUrl: string; objectKey: string }>('/task-inputs', {
-    mimeType,
-    size: file.size,
-  }, ...(signal ? [{ signal }] : []))
-  if (!signed.uploadUrl || !signed.objectKey) throw new Error('未获得原图上传地址')
-  const uploaded = await fetch(signed.uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': mimeType },
-    body: file,
-    signal,
-  })
-  if (!uploaded.ok) throw new Error('原图上传失败，请重试')
-  return signed.objectKey
+export type TaskInputUploadPhase = 'validating' | 'signing' | 'uploading'
+export interface TaskInputUploadMetrics {
+  validateMs: number
+  signMs: number
+  uploadMs: number
+  inputBytes: number
+  uploadedBytes: number
+  outcome: 'success' | 'failed' | 'cancelled'
+}
+export interface TaskInputUploadOptions {
+  onPhase?: (phase: TaskInputUploadPhase) => void
+  onMetrics?: (metrics: TaskInputUploadMetrics) => void
+}
+
+export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image/jpeg', signal?: AbortSignal, options: TaskInputUploadOptions = {}) {
+  const metrics: TaskInputUploadMetrics = { validateMs: 0, signMs: 0, uploadMs: 0, inputBytes: file.size, uploadedBytes: 0, outcome: 'failed' }
+  const check = () => { if (signal?.aborted) throw signal.reason ?? new DOMException('上传已取消', 'AbortError') }
+  const stage = async <T>(phase: TaskInputUploadPhase, operation: () => Promise<T>) => {
+    check()
+    options.onPhase?.(phase)
+    const started = performance.now()
+    try { return await operation() }
+    finally { metrics[phase === 'validating' ? 'validateMs' : phase === 'signing' ? 'signMs' : 'uploadMs'] = Math.round(performance.now() - started) }
+  }
+  try {
+    check()
+    if (!file.size) throw new Error('图片文件不能为空')
+    if (file.size > MAX_IMAGE_BYTES) throw new Error('图片大小不能超过 20 MB')
+    file = await stage('validating', () => normalizeImageBlob(file))
+    mimeType = file.type
+    const signed = await stage('signing', () => apiClient.post<unknown, { uploadUrl: string; objectKey: string }>('/task-inputs', {
+      mimeType, size: file.size,
+    }, ...(signal ? [{ signal }] : [])))
+    check()
+    if (!signed.uploadUrl || !signed.objectKey) throw new Error('未获得原图上传地址')
+    const uploaded = await stage('uploading', () => fetch(signed.uploadUrl, {
+      method: 'PUT', headers: { 'Content-Type': mimeType }, body: file, signal, credentials: 'omit',
+    }))
+    check()
+    if (!uploaded.ok) throw new Error('原图上传失败，请重试')
+    metrics.outcome = 'success'
+    metrics.uploadedBytes = file.size
+    return signed.objectKey
+  } catch (error) {
+    if (signal?.aborted) { metrics.outcome = 'cancelled'; throw signal.reason ?? new DOMException('上传已取消', 'AbortError') }
+    throw error
+  } finally { options.onMetrics?.(metrics) }
 }
 
 /** 上传图片并返回可注册到 AssetRegistry 的元数据。 */

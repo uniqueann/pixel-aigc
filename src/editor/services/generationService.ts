@@ -18,10 +18,10 @@ export class GenerationService {
 
   async submit<TParams>(
     payload: CreateTaskPayload<TParams>,
-    options: TaskAdapterOptions & { inputAssetIds: AssetId[] },
+    options: TaskAdapterOptions & { inputAssetIds: AssetId[]; canApply?: () => boolean },
   ) {
     const task = await this.createTaskRequest(payload)
-    const adapted = this.reconcile(task, options)
+    const adapted = options.canApply && !options.canApply() ? adaptGenerationTask(task, options) : this.reconcile(task, options)
     return { task, ...adapted }
   }
 
