@@ -1,8 +1,11 @@
 import { assetPlaceholder } from '@/cloud/assets'
 import { deserializeCommand, type SerializedEditorCommand } from '@/editor/commands'
-import type { Asset, PixelProject } from '@/editor/types'
+import { MAX_PERSISTED_HISTORY } from '@/editor/store/historySlice'
+import type { Asset, EditorNode, PixelProject } from '@/editor/types'
 import { Capability } from '@/types'
 import { defaultDrafts, type ProjectHistory, type ProjectSnapshot } from './types'
+
+const MEDIA_PREFIX = '/__aigc_media__/'
 
 function object(value: unknown): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('项目字段必须是对象')
@@ -201,7 +204,9 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
   if ('schemaVersion' in value && value.history !== undefined) {
     snapshot.history = parseHistory(value.history, project)
   }
-  return structuredClone(snapshot)
+  const restored = structuredClone(snapshot)
+  expandSharedMedia(restored.project)
+  return restored
 }
 
 function parseHistory(value: unknown, project: PixelProject): ProjectHistory {
@@ -261,6 +266,172 @@ function validateSerializedCommand(value: unknown, project: PixelProject): Seria
   throw new Error('不支持的历史命令')
 }
 
+function contentHash(payload: string) {
+  const prime = 0x100000001b3n
+  const mask = (1n << 64n) - 1n
+  let high = 0xcbf29ce484222325n
+  let low = 0x84222325cbf29ce4n
+  for (let index = 0; index < payload.length; index += 1) {
+    const code = BigInt(payload.charCodeAt(index))
+    high = ((high ^ code) * prime) & mask
+    low = ((low ^ code) * prime) & mask
+  }
+  return high.toString(16).padStart(16, '0') + low.toString(16).padStart(16, '0')
+}
+
+function dataPayload(url: string) {
+  if (!url.startsWith('data:')) return undefined
+  const comma = url.indexOf(',')
+  if (comma < 0) return undefined
+  return url.slice(comma + 1)
+}
+
+function expandSharedMedia(project: PixelProject) {
+  const canonical = new Map<string, string>()
+  for (const asset of Object.values(project.assets)) {
+    const payload = dataPayload(asset.url)
+    if (payload === undefined) continue
+    const hash = contentHash(payload)
+    const current = canonical.get(hash)
+    if (!current || dataPayload(current) === payload) canonical.set(hash, current ?? asset.url)
+  }
+  for (const asset of Object.values(project.assets)) {
+    if (!asset.url.startsWith(MEDIA_PREFIX)) continue
+    const url = canonical.get(asset.url.slice(MEDIA_PREFIX.length))
+    if (url) asset.url = url
+  }
+}
+
+function shareEmbeddedBytes(assets: Record<string, Asset>) {
+  const canonical = new Map<string, { id: string; url: string }>()
+  for (const asset of Object.values(assets)) {
+    if (durableObjectKey(asset)) continue
+    const payload = dataPayload(asset.url)
+    if (payload === undefined) continue
+    const hash = contentHash(payload)
+    const current = canonical.get(hash)
+    if (!current) {
+      canonical.set(hash, { id: asset.id, url: asset.url })
+      continue
+    }
+    if (asset.id === current.id || dataPayload(current.url) !== payload) continue
+    asset.url = `${MEDIA_PREFIX}${hash}`
+  }
+}
+
+function durableObjectKey(asset: Asset) {
+  const key = asset.objectKey ?? asset.storage?.objectKey
+  if (!key || key.startsWith('temporary/')) return undefined
+  return key
+}
+
+function referenceCloudAssets(assets: Record<string, Asset>) {
+  for (const asset of Object.values(assets)) {
+    const key = durableObjectKey(asset)
+    if (!key) continue
+    asset.objectKey = key
+    asset.url = assetPlaceholder(asset.id)
+    delete asset.accessExpiresAt
+  }
+}
+
+function collectNodeRefs(node: unknown, assets: Set<string>, generations: Set<string>) {
+  if (!node || typeof node !== 'object') return
+  const value = node as Partial<EditorNode> & { assetId?: string; outputAssetId?: string }
+  if (typeof value.assetId === 'string') assets.add(value.assetId)
+  if (typeof value.outputAssetId === 'string') assets.add(value.outputAssetId)
+  if (value.type === 'generation' && typeof value.generationId === 'string') generations.add(value.generationId)
+}
+
+function collectCommandRefs(command: SerializedEditorCommand, assets: Set<string>, generations: Set<string>, embedded: Asset[]) {
+  if (command.type === 'add-node') collectNodeRefs(command.node, assets, generations)
+  if (command.type === 'remove-node') collectNodeRefs(command.removedNode, assets, generations)
+  if (command.type === 'update-node') {
+    collectNodeRefs(command.previous, assets, generations)
+    collectNodeRefs(command.changes, assets, generations)
+  }
+  if (command.type === 'insert-generated') {
+    collectNodeRefs(command.node, assets, generations)
+    assets.add(command.asset.id)
+    embedded.push(command.asset)
+  }
+  if (command.type === 'resolve-generation') {
+    for (const output of command.outputs) {
+      collectNodeRefs(output.node, assets, generations)
+      assets.add(output.asset.id)
+      embedded.push(output.asset)
+    }
+  }
+}
+
+function sourceImageKey(input: unknown) {
+  if (!input || typeof input !== 'object') return undefined
+  const key = (input as { sourceImageKey?: unknown }).sourceImageKey
+  if (typeof key !== 'string' || !key.trim() || key.startsWith('temporary/')) return undefined
+  return key
+}
+
+/** 只保留当前画布、有限撤销历史和仍需要的生成记录引用的素材。不删除我的资产或 R2。 */
+function compactSnapshot(snapshot: ProjectSnapshot) {
+  const project = snapshot.project
+  const undo = (snapshot.history?.undo ?? []).slice(-MAX_PERSISTED_HISTORY)
+  const redo = (snapshot.history?.redo ?? []).slice(-MAX_PERSISTED_HISTORY)
+  snapshot.history = { undo, redo }
+  const keepAssets = new Set<string>()
+  const keepGenerations = new Set<string>()
+  const embedded: Asset[] = []
+  for (const scene of project.document.scenes) {
+    for (const node of scene.nodes) collectNodeRefs(node, keepAssets, keepGenerations)
+  }
+  for (const command of [...undo, ...redo]) collectCommandRefs(command, keepAssets, keepGenerations, embedded)
+  if (snapshot.drafts.derived) keepAssets.add(snapshot.drafts.derived.sourceAssetId)
+  for (const recovery of Object.values(snapshot.recoveries)) {
+    for (const assetId of recovery.context.inputAssetIds) keepAssets.add(assetId)
+    if (recovery.context.parentGenerationId) keepGenerations.add(recovery.context.parentGenerationId)
+    if (recovery.context.retryOfGenerationId) keepGenerations.add(recovery.context.retryOfGenerationId)
+    if (recovery.backendTaskId) keepGenerations.add(`generation:${recovery.backendTaskId}`)
+  }
+  for (const asset of embedded) {
+    if (!keepAssets.has(asset.id)) continue
+    const key = asset.objectKey ?? asset.storage?.objectKey
+    const live = project.assets[asset.id]
+    if (!live) {
+      project.assets[asset.id] = { ...asset }
+      continue
+    }
+    if (key && !key.startsWith('temporary/') && !live.objectKey && !live.storage?.objectKey) live.objectKey = key
+    if (!live.storage && asset.storage?.provider === 'r2') live.storage = { ...asset.storage }
+  }
+  for (const id of [...keepAssets]) {
+    const generationId = project.assets[id]?.generationId
+    if (generationId) keepGenerations.add(generationId)
+  }
+  for (const generationId of [...keepGenerations]) {
+    const job = project.generations[generationId]
+    if (!job) continue
+    for (const assetId of [...job.inputAssetIds, ...job.outputAssetIds]) keepAssets.add(assetId)
+    const key = sourceImageKey(job.input)
+    if (!key || job.inputAssetIds.length !== 1) continue
+    const asset = project.assets[job.inputAssetIds[0]]
+    if (asset && !asset.objectKey && !asset.storage?.objectKey) asset.objectKey = key
+  }
+  for (const id of Object.keys(project.generations)) {
+    if (!keepGenerations.has(id)) delete project.generations[id]
+  }
+  for (const id of Object.keys(project.assets)) {
+    if (!keepAssets.has(id)) delete project.assets[id]
+  }
+  for (const asset of Object.values(project.assets)) {
+    if (asset.generationId && !project.generations[asset.generationId]) delete asset.generationId
+  }
+  for (const job of Object.values(project.generations)) {
+    if (job.parentGenerationId && !project.generations[job.parentGenerationId]) delete job.parentGenerationId
+    if (job.retryOfGenerationId && !project.generations[job.retryOfGenerationId]) delete job.retryOfGenerationId
+    job.inputAssetIds = job.inputAssetIds.filter(id => project.assets[id])
+    job.outputAssetIds = job.outputAssetIds.filter(id => project.assets[id])
+  }
+}
+
 function persistableAsset(asset: Asset, assets: Record<string, Asset> = {}): Asset {
   const source = assets[asset.id] ?? asset
   const copy = { ...source }
@@ -300,13 +471,8 @@ function persistableCommand(command: SerializedEditorCommand, assets: Record<str
 
 export function persistableSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
   const copy = parseSnapshot(snapshot)
+  compactSnapshot(copy)
   const assets = copy.project.assets
-  for (const asset of Object.values(assets)) {
-    if (asset.storage?.provider === 'r2' || asset.objectKey) {
-      asset.url = assetPlaceholder(asset.id)
-      delete asset.accessExpiresAt
-    }
-  }
   for (const job of Object.values(copy.project.generations)) {
     const input = job.input
     if (!input || typeof input !== 'object') continue
@@ -321,10 +487,13 @@ export function persistableSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot 
     if (next === undefined) delete params.sourceImageUrl
     else if (typeof next === 'string') params.sourceImageUrl = next
   }
+  referenceCloudAssets(assets)
+  shareEmbeddedBytes(assets)
   copy.history = {
     undo: (copy.history?.undo ?? []).map(item => persistableCommand(item, assets)),
     redo: (copy.history?.redo ?? []).map(item => persistableCommand(item, assets)),
   }
+  parseSnapshot(structuredClone(copy))
   return copy
 }
 

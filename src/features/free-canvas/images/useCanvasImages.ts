@@ -9,6 +9,10 @@ import { readResultImage } from '@/features/image-workstation/imageMetadata'
 import type { Asset, Scene } from '@/editor/types'
 import { useUserStore } from '@/store/useUserStore'
 
+function hasDisplayableUrl(url: string) {
+  return url.startsWith('data:') || url.startsWith('blob:')
+}
+
 /** 运行时读取私有媒体，不把 Blob 地址或过期签名写进项目存档。 */
 export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | undefined, sourceAssetId?: string, previewAssetIds: string[] = []) {
   useUserStore(state => state.userId)
@@ -32,7 +36,7 @@ export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | un
     const current = () => !controller.signal.aborted && isCurrentWorkstationHistoryOwner(ownerId) && useEditorStore.getState().project?.id === projectId && usePersistenceStore.getState().epoch === epoch
     for (const id of ids) {
       const asset = assets[id]
-      if (asset?.type !== 'image' || !(asset.objectKey ?? asset.storage?.objectKey) || runtimeImageBlob(withRuntimeImage(asset, ownerId).url)) continue
+      if (asset?.type !== 'image' || !(asset.objectKey ?? asset.storage?.objectKey) || hasDisplayableUrl(asset.url) || runtimeImageBlob(withRuntimeImage(asset, ownerId).url)) continue
       const objectKey = asset.objectKey ?? asset.storage!.objectKey
       void readOwnedImage({ objectKey, url: asset.url.startsWith('/__aigc_asset__/') ? undefined : asset.url, expiresAt: asset.accessExpiresAt }, { ownerId, signal: controller.signal })
         .then(readResultImage)
@@ -54,7 +58,7 @@ export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | un
   const renderAssets = useMemo(() => {
     void version
     return Object.fromEntries(Object.entries(assets).map(([id, asset]) => {
-      if (asset.type !== 'image' || !(asset.objectKey ?? asset.storage?.objectKey)) return [id, asset]
+      if (asset.type !== 'image' || !(asset.objectKey ?? asset.storage?.objectKey) || hasDisplayableUrl(asset.url)) return [id, asset]
       const runtime = withRuntimeImage(asset, ownerId)
       return [id, { ...runtime, missing: !runtimeImageBlob(runtime.url) }]
     })) as Record<string, Asset>

@@ -146,6 +146,138 @@ export function overlapsBounds(a: NodeBounds, b: NodeBounds, padding = 0) {
     && a.bottom + padding > b.top
 }
 
+/** 新节点允许略微压住已有内容，但仍优先留在画板内。 */
+export const ARTBOARD_OVERLAP_TOLERANCE = 0.2
+const ARTBOARD_FIT_SCALES = [0.85, 0.7, 0.55, 0.4, 0.3, 0.2]
+
+function intersectionArea(a: NodeBounds, b: NodeBounds) {
+  const width = Math.min(a.right, b.right) - Math.max(a.left, b.left)
+  const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
+  if (width <= 0 || height <= 0) return 0
+  return width * height
+}
+
+function overlapRatio(placement: GenerationPlacement, occupied: NodeBounds[]) {
+  const bounds = boundsFromPlacement(placement)
+  const area = Math.max(1, placement.width * placement.height)
+  return occupied.reduce((covered, item) => covered + intersectionArea(bounds, item), 0) / area
+}
+
+function placementInsideArtboard(
+  placement: GenerationPlacement,
+  occupied: NodeBounds[],
+  scene: { width: number; height: number },
+  maxOverlap: number,
+) {
+  if (!fitsScene([placement], scene)) return false
+  if (maxOverlap <= 0) return !occupied.some(item => overlapsBounds(boundsFromPlacement(placement), item))
+  return overlapRatio(placement, occupied) <= maxOverlap
+}
+
+function directionalPlacements(
+  anchor: NodeBounds,
+  size: { width: number; height: number },
+  scene: { width: number; height: number },
+): GenerationPlacement[] {
+  const raw = [
+    { x: anchor.right + GENERATION_NODE_GAP, y: anchor.top },
+    { x: anchor.left, y: anchor.bottom + GENERATION_NODE_GAP },
+    { x: anchor.left - GENERATION_NODE_GAP - size.width, y: anchor.top },
+    { x: anchor.left, y: anchor.top - GENERATION_NODE_GAP - size.height },
+  ]
+  return raw.flatMap((origin) => {
+    const clamped = {
+      x: Math.min(Math.max(0, origin.x), Math.max(0, scene.width - size.width)),
+      y: Math.min(Math.max(0, origin.y), Math.max(0, scene.height - size.height)),
+    }
+    return [origin, clamped].map(point => ({
+      x: round(point.x),
+      y: round(point.y),
+      width: size.width,
+      height: size.height,
+    }))
+  })
+}
+
+function gridPlacements(
+  size: { width: number; height: number },
+  scene: { width: number; height: number },
+): GenerationPlacement[] {
+  const stepX = Math.max(GENERATION_NODE_GAP, Math.round(size.width / 2))
+  const stepY = Math.max(GENERATION_NODE_GAP, Math.round(size.height / 2))
+  const maxX = Math.max(0, scene.width - size.width)
+  const maxY = Math.max(0, scene.height - size.height)
+  const points: GenerationPlacement[] = []
+  for (let y = 0; y <= maxY + 0.01; y += stepY) {
+    for (let x = 0; x <= maxX + 0.01; x += stepX) {
+      points.push({
+        x: round(Math.min(x, maxX)),
+        y: round(Math.min(y, maxY)),
+        width: size.width,
+        height: size.height,
+      })
+    }
+  }
+  points.push(
+    { x: 0, y: 0, width: size.width, height: size.height },
+    { x: round(maxX), y: 0, width: size.width, height: size.height },
+    { x: 0, y: round(maxY), width: size.width, height: size.height },
+    { x: round(maxX), y: round(maxY), width: size.width, height: size.height },
+  )
+  return points
+}
+
+function placementsForSize(
+  preferred: GenerationPlacement,
+  size: { width: number; height: number },
+  occupied: NodeBounds[],
+  scene: { width: number; height: number },
+  anchor: NodeBounds | undefined,
+  includePreferred: boolean,
+) {
+  const anchorBounds = anchor ?? unionBounds(occupied) ?? boundsFromPlacement({ ...preferred, ...size })
+  return [
+    ...(includePreferred ? [preferred] : []),
+    ...directionalPlacements(anchorBounds, size, scene),
+    ...occupied.flatMap(item => directionalPlacements(item, size, scene)),
+    ...gridPlacements(size, scene),
+  ]
+}
+
+/**
+ * 先在画板内按右、下、左、上找空位；允许少量重叠或缩小后仍放不下，才放到画板外。
+ * `outside` 为真时调用方应平移视口把新节点露出来。
+ */
+export function findArtboardPlacement(
+  preferred: GenerationPlacement,
+  occupied: NodeBounds[],
+  scene: { width: number; height: number },
+  anchor?: NodeBounds,
+): GenerationPlacement & { outside: boolean } {
+  for (const maxOverlap of [0, ARTBOARD_OVERLAP_TOLERANCE]) {
+    for (const placement of placementsForSize(preferred, preferred, occupied, scene, anchor, true)) {
+      if (placementInsideArtboard(placement, occupied, scene, maxOverlap)) return { ...placement, outside: false }
+    }
+  }
+  for (const scale of ARTBOARD_FIT_SCALES) {
+    const size = { width: round(preferred.width * scale), height: round(preferred.height * scale) }
+    if (size.width < MIN_NODE_SIZE || size.height < MIN_NODE_SIZE) continue
+    if (size.width > scene.width || size.height > scene.height) continue
+    for (const maxOverlap of [0, ARTBOARD_OVERLAP_TOLERANCE]) {
+      for (const placement of placementsForSize(preferred, size, occupied, scene, anchor, false)) {
+        if (placementInsideArtboard(placement, occupied, scene, maxOverlap)) return { ...placement, outside: false }
+      }
+    }
+  }
+  const outside = offsetPlacementToAvoidOverlap({
+    x: round(Math.min(Math.max(0, preferred.x), Math.max(0, scene.width - preferred.width))),
+    y: round(scene.height + GENERATION_NODE_GAP),
+    width: round(preferred.width),
+    height: round(preferred.height),
+  }, occupied)
+  return { ...outside, outside: true }
+}
+
 export function offsetPlacementToAvoidOverlap(
   placement: GenerationPlacement,
   occupied: NodeBounds[],
@@ -225,9 +357,12 @@ export function calculateDerivedPlacements(
   if (!options.occupied?.length && !options.scene) return preferred
   const occupied = [...(options.occupied ?? [])]
   return preferred.map((placement) => {
-    const next = offsetPlacementToAvoidOverlap(placement, occupied)
-    occupied.push(boundsFromPlacement(next))
-    return options.scene ? clampPlacementToScene(next, options.scene) : next
+    const next = options.scene
+      ? findArtboardPlacement(placement, occupied, options.scene, bounds)
+      : offsetPlacementToAvoidOverlap(placement, occupied)
+    const stored = { x: next.x, y: next.y, width: next.width, height: next.height }
+    occupied.push(boundsFromPlacement(stored))
+    return stored
   })
 }
 

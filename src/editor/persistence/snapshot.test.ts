@@ -4,7 +4,7 @@ import { DEMO_IMAGE_ASSET } from '@/editor/services/demoImageAsset'
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
 import { Capability } from '@/types'
 import { defaultDrafts, type ProjectSnapshot } from './types'
-import { parseSnapshot, persistableSnapshot, serializeSnapshot } from './snapshot'
+import { parseSnapshot, persistableSnapshot, restoreHistoryCommands, serializeSnapshot } from './snapshot'
 import { restoreTaskDrafts } from './restoreDrafts'
 
 let snapshot: ProjectSnapshot
@@ -197,5 +197,90 @@ describe('项目快照校验与迁移', () => {
       expect(persisted.history.undo[0].asset.url).toBe(`/__aigc_asset__/${encodeURIComponent(asset.id)}`)
     }
     expect(parseSnapshot(serializeSnapshot(persisted)).history?.undo).toHaveLength(1)
+  })
+
+  it('重复字节只保留一份，云端图不内嵌，无人引用的素材在导出时丢弃，撤销仍能恢复', () => {
+    const scene = snapshot.project.document.scenes[0]
+    const source = scene.nodes[0]
+    if (source.type !== 'image') throw new Error('测试数据类型错误')
+    const payloadC = `data:image/jpeg;base64,${'C'.repeat(2000)}`
+    const payloadD = `data:image/jpeg;base64,${'D'.repeat(1500)}`
+    const payloadB = `data:image/jpeg;base64,${'B'.repeat(1800)}`
+    const payloadRemoved = 'data:image/png;base64,removed-unique'
+    const image = (id: string, url: string, objectKey?: string) => ({
+      id, name: id, type: 'image' as const, source: 'upload' as const, createdAt: '2026-01-01T00:00:00.000Z',
+      width: 40, height: 30, mimeType: 'image/jpeg', url, ...(objectKey ? { objectKey } : {}),
+    })
+    const node = (id: string, assetId: string, x: number) => ({ ...source, id, assetId, name: id, x, y: 20 })
+    const removed = node('node-removed', 'asset-removed', 12)
+    snapshot.project.assets = {
+      'asset-a': image('asset-a', payloadC),
+      'asset-b': image('asset-b', payloadC),
+      'asset-cloud': image('asset-cloud', payloadB, 'generated/demo/0.jpg'),
+      'asset-orphan': { ...image('asset-orphan', payloadD), generationId: 'gen-stale' },
+      'asset-removed': image('asset-removed', payloadRemoved),
+    }
+    snapshot.project.generations = {
+      'gen-stale': {
+        id: 'gen-stale', capability: Capability.Variation, status: 'succeeded', input: {},
+        inputAssetIds: [], outputAssetIds: ['asset-orphan'], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    }
+    scene.nodes = [node('node-a', 'asset-a', 10), node('node-b', 'asset-b', 80), node('node-cloud', 'asset-cloud', 160)]
+    snapshot.history = {
+      undo: [{ type: 'remove-node', id: 'cmd-remove', sceneId: scene.id, nodeId: removed.id, removedNode: removed }],
+      redo: [],
+    }
+    const json = serializeSnapshot(snapshot)
+    expect(json.split(payloadC).length - 1).toBe(1)
+    expect(json).not.toContain(payloadD)
+    expect(json).not.toContain(payloadB)
+    expect(json.split(payloadRemoved).length - 1).toBe(1)
+    expect(json).toContain('generated/demo/0.jpg')
+    expect(json).toContain(`/__aigc_asset__/${encodeURIComponent('asset-cloud')}`)
+    expect(json).not.toContain('gen-stale')
+    const restored = parseSnapshot(json)
+    expect(restored.project.assets['asset-a'].url).toBe(payloadC)
+    expect(restored.project.assets['asset-b'].url).toBe(payloadC)
+    expect(restored.project.assets['asset-orphan']).toBeUndefined()
+    expect(restored.project.assets['asset-cloud']).toMatchObject({ objectKey: 'generated/demo/0.jpg', url: `/__aigc_asset__/${encodeURIComponent('asset-cloud')}` })
+    expect(restored.project.document.scenes[0].nodes.map(item => ({ id: item.id, x: item.x, y: item.y }))).toEqual([
+      { id: 'node-a', x: 10, y: 20 },
+      { id: 'node-b', x: 80, y: 20 },
+      { id: 'node-cloud', x: 160, y: 20 },
+    ])
+    expect(serializeSnapshot(restored)).toBe(json)
+    useEditorStore.getState().loadProject(restored.project)
+    const history = restoreHistoryCommands(restored.history, restored.project.assets)
+    useEditorStore.getState().restoreHistory(history.undo, history.redo)
+    useEditorStore.getState().undo()
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes.some(item => item.id === 'node-removed')).toBe(true)
+    expect(useEditorStore.getState().project?.assets['asset-orphan']).toBeUndefined()
+  })
+
+  it('超过 40 条的历史不再保留更早命令独占的素材', () => {
+    const scene = snapshot.project.document.scenes[0]
+    const source = scene.nodes[0]
+    if (source.type !== 'image') throw new Error('测试数据类型错误')
+    const commands = Array.from({ length: 41 }, (_, index) => {
+      const id = `old-asset-${index}`
+      snapshot.project.assets[id] = {
+        id, name: id, type: 'image', source: 'upload', createdAt: '2026-01-01T00:00:00.000Z',
+        width: 20, height: 20, mimeType: 'image/png', url: `data:image/png;base64,old-${index}`,
+      }
+      return {
+        type: 'remove-node' as const,
+        id: `cmd-${index}`,
+        sceneId: scene.id,
+        nodeId: `old-node-${index}`,
+        removedNode: { ...source, id: `old-node-${index}`, assetId: id },
+      }
+    })
+    snapshot.history = { undo: commands, redo: [] }
+    const persisted = persistableSnapshot(snapshot)
+    expect(persisted.history?.undo).toHaveLength(40)
+    expect(persisted.project.assets['old-asset-0']).toBeUndefined()
+    expect(persisted.project.assets['old-asset-1']).toBeDefined()
+    expect(persisted.project.assets[DEMO_IMAGE_ASSET.id]).toBeDefined()
   })
 })

@@ -5,8 +5,9 @@ import { AddNodeCommand } from '@/editor/commands'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
 import type { ImageNode } from '@/editor/types'
+import { Capability } from '@/types'
 import * as database from './database'
-import { defaultDrafts } from './types'
+import { defaultDrafts, type ProjectSnapshot } from './types'
 import { usePersistenceStore } from './persistenceStore'
 import { currentSnapshot, flushProject, initializePersistence, newProject, replaceSnapshot, updateRuntimeAssetAccess } from './projectPersistence'
 
@@ -104,6 +105,33 @@ describe('IndexedDB 项目保存与恢复', () => {
     expect(usePersistenceStore.getState().drafts['text-to-image'].modelProfileId).toBeUndefined()
     expect(usePersistenceStore.getState().drafts['text-to-image'].resolution).toBeUndefined()
     expect(await database.readCurrentSnapshot()).toEqual(currentSnapshot())
+  })
+
+  it('再次打开时去掉重复和无人引用的内嵌图，画布节点保持不变', async () => {
+    const current = currentSnapshot()
+    const payload = `data:image/png;base64,${'Q'.repeat(4000)}`
+    const orphan = `data:image/png;base64,${'Z'.repeat(2500)}`
+    const scene = current.project.document.scenes[0]
+    const node = (id: string, assetId: string, x: number): ImageNode => ({
+      id, type: 'image', assetId, name: id, x, y: 10, width: 40, height: 30, rotation: 0, opacity: 1, visible: true, locked: false, zIndex: 1,
+    })
+    current.project.assets['keep-a'] = createImageAsset({ id: 'keep-a', name: 'keep-a', url: payload, width: 40, height: 30 })
+    current.project.assets['keep-b'] = createImageAsset({ id: 'keep-b', name: 'keep-b', url: payload, width: 40, height: 30 })
+    current.project.assets.orphan = createImageAsset({ id: 'orphan', name: 'orphan', url: orphan, width: 40, height: 30, generationId: 'gen-orphan' })
+    current.project.generations['gen-orphan'] = {
+      id: 'gen-orphan', capability: Capability.TextToImage, status: 'succeeded', input: {},
+      inputAssetIds: [], outputAssetIds: ['orphan'], createdAt: current.project.createdAt, updatedAt: current.project.updatedAt,
+    }
+    scene.nodes = [node('n1', 'keep-a', 10), node('n2', 'keep-b', 80)]
+    await database.writeCurrentSnapshot(current)
+    await initializePersistence()
+    const saved = await database.readCurrentSnapshot() as ProjectSnapshot
+    const json = JSON.stringify(saved)
+    expect(json.split(payload).length - 1).toBe(1)
+    expect(json).not.toContain(orphan)
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes.map(item => item.id)).toEqual(['n1', 'n2'])
+    expect(useEditorStore.getState().project?.assets['keep-a'].url).toBe(payload)
+    expect(useEditorStore.getState().project?.assets['keep-b'].url).toBe(payload)
   })
 
   it('损坏本地数据进入恢复页，不静默创建或覆盖项目', async () => {
