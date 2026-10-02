@@ -301,7 +301,6 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
             const preview = item.record ? (
               <button className="assets-cover" type="button" aria-label={`查看${item.title}大图`} title="查看大图" onClick={() => openAt(item.id)}>
                 {item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : <span>查看原图</span>}
-                <span className="assets-preview-hint" aria-hidden="true"><ZoomInOutlined /></span>
               </button>
             ) : null
             return (
