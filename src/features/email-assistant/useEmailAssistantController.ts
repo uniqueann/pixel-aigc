@@ -37,6 +37,8 @@ export function useEmailAssistantController() {
   const pendingEditRef = useRef<{ taskId: string; text: string }>()
   const saveChainRef = useRef<Promise<unknown>>(Promise.resolve())
   const touchedRef = useRef(false)
+  const selectionEpochRef = useRef(0)
+  const selectedTaskIdRef = useRef<string>()
 
   const handleTask = useCallback((nextTask: GenerationTask<unknown>) => {
     if (!isEmailAssistTask(nextTask)) return
@@ -56,7 +58,10 @@ export function useEmailAssistantController() {
     setProtocolError(undefined)
   }, [upsertTask])
 
-  const taskQuery = useTaskPolling(activeTaskId, handleTask)
+  const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
+    if (selectedTaskIdRef.current === nextTask.id) handleTask(nextTask)
+  }, [handleTask])
+  const taskQuery = useTaskPolling(activeTaskId, handlePolledTask)
 
   const refreshHistory = useCallback(async () => {
     if (!authEnabled) return []
@@ -77,8 +82,11 @@ export function useEmailAssistantController() {
 
   const openTask = useCallback(async (id: string) => {
     touchedRef.current = true
+    const epoch = ++selectionEpochRef.current
+    selectedTaskIdRef.current = id
+    handledVersionsRef.current.clear()
     const nextTask = await getTask(id)
-    handleTask(nextTask)
+    if (epoch === selectionEpochRef.current) handleTask(nextTask)
     return nextTask
   }, [handleTask])
 
@@ -94,14 +102,22 @@ export function useEmailAssistantController() {
   const flushEdit = useCallback(async () => {
     if (editTimerRef.current) clearTimeout(editTimerRef.current)
     const pending = pendingEditRef.current
-    if (!pending) return
+    if (!pending) {
+      try { await saveChainRef.current; return !pendingEditRef.current }
+      catch { return false }
+    }
     pendingEditRef.current = undefined
     setSavingEdit(true)
     try {
       saveChainRef.current = saveChainRef.current.catch(() => undefined).then(() => saveTaskEdit(pending.taskId, pending.text))
       await saveChainRef.current
+      return true
     }
-    catch (error) { setSubmissionError(error instanceof Error ? `修改稿保存失败：${error.message}` : '修改稿保存失败') }
+    catch (error) {
+      if (!pendingEditRef.current) pendingEditRef.current = pending
+      setSubmissionError(error instanceof Error ? `修改稿保存失败：${error.message}` : '修改稿保存失败')
+      return false
+    }
     finally { setSavingEdit(false) }
   }, [])
 
@@ -113,9 +129,23 @@ export function useEmailAssistantController() {
     editTimerRef.current = setTimeout(() => { void flushEdit() }, 600)
   }, [flushEdit, task])
 
+  const newTask = useCallback(async () => {
+    touchedRef.current = true
+    if (!await flushEdit()) throw new Error('修改稿保存失败，请重试后新建任务')
+    ++selectionEpochRef.current
+    selectedTaskIdRef.current = undefined
+    setTask(undefined)
+    setActiveTaskId(undefined)
+    setResultText('')
+    setSubmissionError(undefined)
+    setProtocolError(undefined)
+  }, [flushEdit])
+
   const generate = useCallback(async (params: EmailAssistTaskParams, modelProfileId?: string) => {
     touchedRef.current = true
-    await flushEdit()
+    if (!await flushEdit()) throw new Error('修改稿保存失败，请重试后生成')
+    const epoch = ++selectionEpochRef.current
+    selectedTaskIdRef.current = undefined
     setSubmitting(true)
     setSubmissionError(undefined)
     setProtocolError(undefined)
@@ -128,14 +158,20 @@ export function useEmailAssistantController() {
         requestId,
         modelProfileId,
       })
-      handleTask(nextTask as GenerationTask<unknown>)
+      if (epoch === selectionEpochRef.current) {
+        selectedTaskIdRef.current = nextTask.id
+        handleTask(nextTask as GenerationTask<unknown>)
+      }
       await refreshHistory().catch(() => undefined)
       return nextTask
     } catch (error) {
       if (authEnabled) {
         try {
           const recovered = await getTaskByRequest(requestId)
-          handleTask(recovered)
+          if (epoch === selectionEpochRef.current) {
+            selectedTaskIdRef.current = recovered.id
+            handleTask(recovered)
+          }
           await refreshHistory().catch(() => undefined)
           return recovered
         } catch { /* 任务尚未创建时显示原始错误。 */ }
@@ -151,6 +187,8 @@ export function useEmailAssistantController() {
   const retry = useCallback(() => task ? generate(task.params, task.modelProfileId) : Promise.resolve(undefined), [generate, task])
 
   const modifyParameters = useCallback(() => {
+    ++selectionEpochRef.current
+    selectedTaskIdRef.current = undefined
     void flushEdit()
     setTask(undefined)
     setActiveTaskId(undefined)
@@ -169,6 +207,7 @@ export function useEmailAssistantController() {
 
   const status = task?.status
   return {
+    newTask,
     task,
     resultText,
     history,
@@ -176,7 +215,7 @@ export function useEmailAssistantController() {
     submitting,
     savingEdit,
     active: !!status && ACTIVE_STATUSES.has(status),
-    formLocked: !!status && ACTIVE_STATUSES.has(status),
+    formLocked: submitting || (!!status && ACTIVE_STATUSES.has(status)),
     submissionError,
     protocolError,
     pollError: taskQuery.error,

@@ -10,9 +10,11 @@ import { invalidateBatch, processBatch } from './watermark/batch'
 import { createWatermarkZip, downloadBlob, namesForImages } from './watermark/download'
 import { deletePreset, listPresets, savePreset, type WatermarkPreset } from './watermark/presets'
 import { WatermarkRenderer } from './watermark/renderer'
-import { DEFAULT_WATERMARK_SETTINGS, type BatchImage, type WatermarkAnchor, type WatermarkSettings } from './watermark/types'
+import { type BatchImage, type WatermarkAnchor, type WatermarkSettings } from './watermark/types'
 import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, inspectLogo, MAX_ZIP_BYTES, queueLimitMessage } from './watermark/validation'
+import { usePreferencesStore } from '@/features/preferences/store'
+import { initialWatermarkSettings, watermarkMemory } from '@/features/preferences/toolParameters'
 
 const anchors: { value: WatermarkAnchor; label: string }[] = [
   { value: 'top-left', label: '左上' },
@@ -49,7 +51,7 @@ export default function WatermarkTool() {
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [settings, setSettings] = useState<WatermarkSettings>(DEFAULT_WATERMARK_SETTINGS)
+  const [settings, setSettings] = useState<WatermarkSettings>(() => initialWatermarkSettings(usePreferencesStore.getState().preferences))
   const [previewState, setPreviewState] = useState<PreviewState | null>(null)
   const previewUrlRef = useRef<string | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -142,7 +144,9 @@ export default function WatermarkTool() {
 
   function updateSettings(patch: Partial<WatermarkSettings>) {
     if (processingRef.current || packaging) return
-    setSettings(previous => ({ ...previous, ...patch }))
+    const next = { ...settings, ...patch }
+    setSettings(next)
+    usePreferencesStore.getState().remember('watermark', watermarkMemory(next))
     setSelectedPresetId(null)
     if (itemsRef.current.some(item => item.status !== 'pending')) {
       commitItems(invalidateBatch(itemsRef.current))

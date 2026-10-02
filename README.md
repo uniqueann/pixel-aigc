@@ -46,6 +46,7 @@ src/
 当前已完成：
 
 - 页面框架、嵌套路由、可折叠导航和账号设置弹层。
+- 个性化支持工作台默认入口、资产布局、图片默认数量与分辨率、工具参数记忆、邮件默认选项；登录后按账号和环境同步，离线修改可重试，未登录保存在本机。详见[个性化说明](docs/personalization.md)。
 - 图片工作站的蒙版涂抹、橡皮擦、局部撤销/重做、智能选区 mock、重绘描述、扩图边界和平台预设。
 - `PixelProject / PixelDocument / Scene / Asset / EditorNode / GenerationJob` 领域契约。
 - Editor Store、节点 Command History、Generation Lineage selectors 及核心单元测试。

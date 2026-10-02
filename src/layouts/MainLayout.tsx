@@ -2,7 +2,7 @@ import { authEnabled, cloudRequest, supabase } from '@/cloud/client'
 import { flushProject } from '@/editor/persistence/projectPersistence'
 import { useCloudStore } from '@/cloud/sync'
 import { useEffect, useState } from 'react'
-import { App, Avatar, Breadcrumb, Button, Dropdown, Input, Layout, Menu, Modal, Space, Switch } from 'antd'
+import { Alert, App, Avatar, Breadcrumb, Button, Dropdown, Input, Layout, Menu, Modal, Space, Switch } from 'antd'
 import {
   AppstoreOutlined,
   MailOutlined,
@@ -17,12 +17,16 @@ import {
   SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons'
-import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { NAV_META, SUB_ROUTE_LABELS } from '@/router/meta'
 import { useUserStore } from '@/store/useUserStore'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import CreditsLedgerDrawer from '@/features/credits/CreditsLedgerDrawer'
 import ModelSettingsPanel from '@/features/model-settings/ModelSettingsPanel'
+import PersonalizationPanel from '@/features/preferences/PersonalizationPanel'
+import { usePreferencesStore } from '@/features/preferences/store'
+import { readSidebarState, writeSidebarState } from '@/features/preferences/storage'
+import { isPreferencePage, resolveStartPage } from '@shared/preferences'
 
 const { Sider, Content, Header } = Layout
 
@@ -51,14 +55,34 @@ function getActiveTopKey(pathname: string) {
 
 export default function MainLayout() {
   const location = useLocation()
+  const [startupTarget, setStartupTarget] = useState(() => location.pathname === '/' && !location.search ? resolveStartPage(usePreferencesStore.getState().preferences) : '/')
+  useEffect(() => {
+    if (startupTarget !== '/' && location.pathname !== '/') queueMicrotask(() => setStartupTarget('/'))
+  }, [location.pathname, startupTarget])
+  if (location.pathname === '/' && startupTarget !== '/') return <Navigate to={startupTarget} replace />
+  return <MainLayoutContent />
+}
+
+function MainLayoutContent() {
+  const location = useLocation()
   const navigate = useNavigate()
   const { message } = App.useApp()
-  const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia('(max-width: 720px)').matches)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (window.matchMedia('(max-width: 720px)').matches) return false
+    const state = usePreferencesStore.getState()
+    return state.preferences.workbench.rememberSidebar ? readSidebarState(state.owner) ?? true : true
+  })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
   const [creditsOpen, setCreditsOpen] = useState(false)
   const account = useUserStore((s) => s.account)
   const credits = useUserStore((s) => s.credits)
+  const preferencesError = usePreferencesStore(state => state.error)
+  const toggleSidebar = (open: boolean) => {
+    setSidebarOpen(open)
+    const state = usePreferencesStore.getState()
+    if (state.preferences.workbench.rememberSidebar && !window.matchMedia('(max-width: 720px)').matches) writeSidebarState(state.owner, open)
+  }
 
   const segments = location.pathname.split('/').filter(Boolean)
   const topKey = getActiveTopKey(location.pathname)
@@ -70,6 +94,10 @@ export default function MainLayout() {
   }, [topTitle, subTitle])
 
   useEffect(() => {
+    if (isPreferencePage(location.pathname)) usePreferencesStore.getState().update({ recent: { page: location.pathname } })
+  }, [location.pathname])
+
+  useEffect(() => {
     const narrowScreen = window.matchMedia('(max-width: 720px)')
     const collapseOnNarrowScreen = (event: MediaQueryListEvent) => { if (event.matches) setSidebarOpen(false) }
     narrowScreen.addEventListener('change', collapseOnNarrowScreen)
@@ -77,9 +105,10 @@ export default function MainLayout() {
   }, [])
 
   const handleAccountMenu = ({ key }: { key: string }) => {
-    if (key === 'settings') {
-      setSettingsSection('general')
+    if (key === 'settings' || key === 'personalization') {
+      setSettingsSection(key === 'personalization' ? 'personalization' : 'general')
       setSettingsOpen(true)
+      void usePreferencesStore.getState().refresh()
       return
     }
     if (key === 'logout' && authEnabled) {
@@ -113,12 +142,12 @@ export default function MainLayout() {
                 <span className="app-brand-mark">P</span>
                 <span>Pixel AIGC</span>
               </button>
-              <button className="sidebar-icon-button" type="button" onClick={() => setSidebarOpen(false)} aria-label="收起侧边栏">
+              <button className="sidebar-icon-button" type="button" onClick={() => toggleSidebar(false)} aria-label="收起侧边栏">
                 <MenuFoldOutlined />
               </button>
             </>
           ) : (
-            <button className="collapsed-brand-toggle" type="button" onClick={() => setSidebarOpen(true)} aria-label="展开侧边栏">
+            <button className="collapsed-brand-toggle" type="button" onClick={() => toggleSidebar(true)} aria-label="展开侧边栏">
               <span className="app-brand-mark collapsed-brand-mark">P</span>
               <MenuUnfoldOutlined className="collapsed-brand-icon" />
             </button>
@@ -178,6 +207,7 @@ export default function MainLayout() {
           </Space>
         </Header>
         <Content className="app-main-content">
+          {preferencesError ? <Alert className="preferences-global-error" type="warning" showIcon message={preferencesError} action={<Button size="small" onClick={() => void usePreferencesStore.getState().retry()}>重试同步</Button>} /> : null}
           <ErrorBoundary key={location.pathname}>
             <Outlet context={{ openModelSettings: () => { setSettingsSection('models'); setSettingsOpen(true) } }} />
           </ErrorBoundary>
@@ -198,7 +228,7 @@ export default function MainLayout() {
             mode="inline"
             selectedKeys={[settingsSection]}
             items={SETTINGS_ITEMS}
-            onClick={({ key }) => setSettingsSection(key)}
+            onClick={({ key }) => { setSettingsSection(key); if (key === 'personalization') void usePreferencesStore.getState().refresh() }}
             className="settings-menu"
           />
           <div className="settings-content">
@@ -213,7 +243,7 @@ export default function MainLayout() {
 function SettingsContent({ section }: { section: string }) {
   if (section === 'models') return <ModelSettingsPanel />
   if (section === 'personalization') {
-    return <SettingsPanel title="个性化" description="管理生成偏好、默认风格和工作台习惯。" />
+    return <PersonalizationPanel />
   }
   if (section === 'data') {
     return (

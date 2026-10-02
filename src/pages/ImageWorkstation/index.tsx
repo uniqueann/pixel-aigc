@@ -28,8 +28,7 @@ import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, take
 import { listImageModels, type PublicImageModel } from '@/services/api/imageModels'
 import { liveCapabilityReady } from '@/services/api/task'
 import { defaultImageModel, publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
-import { RELIGHT_DEFAULT, type RelightOptions } from '@shared/relight'
-import { normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
+import { normalizeRetouchDirections } from '@shared/retouch'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
 import { downloadFailureMessage, downloadImageAsset, filenameForWorkstationResult } from '@/features/image-workstation/download'
@@ -39,7 +38,8 @@ import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
 import { workstationGenerateBlockReason } from './utils/generateGate'
 import { presetOutpaintGeometry } from './utils/outpaintGeometry'
-import type { OutpaintOutputMode } from '@shared/outpaint'
+import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
+import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
@@ -54,15 +54,7 @@ export default function ImageWorkstation() {
   const [variationPrompt, setVariationPrompt] = useState('')
   const [retouchNote, setRetouchNote] = useState('')
   const [fusionNote, setFusionNote] = useState('')
-  const [retouchDirections, setRetouchDirections] = useState<RetouchDirection[]>([])
-  const [editCount, setEditCount] = useState(1)
-  const [variationCount, setVariationCount] = useState(2)
-  const [retouchCount, setRetouchCount] = useState(1)
-  const [fusionCount, setFusionCount] = useState(1)
-  const [relightCount, setRelightCount] = useState(2)
   const [relightNote, setRelightNote] = useState('')
-  const [relightOptions, setRelightOptions] = useState<RelightOptions>(RELIGHT_DEFAULT)
-  const [editResolution, setEditResolution] = useState<'1k' | '2k' | '4k'>('2k')
   const [imageModels, setImageModels] = useState<PublicImageModel[]>(() =>
     IMAGE_MODEL_PROFILES.filter(profile => profile.operations.includes('image_edit')).map(publicImageModel))
   const [variationModels, setVariationModels] = useState<PublicImageModel[]>(() =>
@@ -71,16 +63,15 @@ export default function ImageWorkstation() {
   const [variationModelId, setVariationModelId] = useState(() => defaultImageModel('variation')?.id)
   const [erasePrompt, setErasePrompt] = useState('')
   const [repaintPrompt, setRepaintPrompt] = useState('')
-  const [outpaintMode, setOutpaintMode] = useState<'free' | 'preset'>('free')
-  const [outpaintOutputMode, setOutpaintOutputMode] = useState<OutpaintOutputMode>('original')
   const [outpaintTargetSize, setOutpaintTargetSize] = useState<{ width: number; height: number }>()
-  const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
   const { capabilities: { repaint: repaintReady, imageEdit: imageEditReady, variation: variationReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
   const [hasMaskPaint, setHasMaskPaint] = useState(false)
   const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
+  const { parameters, update: updateParameters } = useWorkstationParameters(activeTool.slug)
+  const { retouchDirections, relight: relightOptions, count: activeCount, resolution: editResolution, outpaintMode, outpaintOutputMode, presetPlatform } = parameters
   const fusionSelection = useFusionImageSelection(activeTool.slug)
   const fusionProduct = fusionSelection.product
   const fusionReference = fusionSelection.reference
@@ -112,7 +103,6 @@ export default function ImageWorkstation() {
         : activeTool.slug === 'remove'
           ? erasePrompt
           : repaintPrompt
-  const activeCount = relightTool ? relightCount : fusionTool ? fusionCount : retouchTool ? retouchCount : variationTool ? variationCount : editCount
   const activeModelId = variationTool ? variationModelId : modelProfileId
   const activeModels = variationTool ? variationModels : imageModels
   const controller = useImageWorkstationController({
@@ -122,6 +112,7 @@ export default function ImageWorkstation() {
     count: activeCount,
     resolution: editResolution,
     modelProfileId: activeModelId,
+    modelUi: (activeModels.find(model => model.id === activeModelId) ?? activeModels[0])?.ui,
     capabilityReady,
     retouchDirections,
     relight: relightOptions,
@@ -129,6 +120,7 @@ export default function ImageWorkstation() {
     referenceAsset: fusionReference,
     useProductAsset: fusionTool,
   })
+  const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, (activeModels.find(model => model.id === activeModelId) ?? activeModels[0])?.ui)
   const replaceSourceAsset = controller.replaceSourceAsset
 
   const inpaintMode = activeTool.slug === 'repaint' ? 'repaint' : activeTool.slug === 'remove' ? 'remove' : undefined
@@ -256,15 +248,13 @@ export default function ImageWorkstation() {
     let active = true
     queueMicrotask(() => {
       if (!active || !preset) return
-      setOutpaintMode('preset')
-      setOutpaintOutputMode(handoff.outputMode ?? 'platform')
-      setPresetPlatform(preset.platform)
+      updateParameters({ outpaintMode: 'preset', outpaintOutputMode: handoff.outputMode ?? 'platform', presetPlatform: preset.platform }, false)
     })
     void uploadRef.current(handoff.file).finally(() => {
       if (!active) setOutpaintHandoff(handoff)
     })
     return () => { active = false }
-  }, [activeTool.slug])
+  }, [activeTool.slug, updateParameters])
 
   useEffect(() => {
     if (activeTool.slug !== 'remove') {
@@ -462,14 +452,14 @@ export default function ImageWorkstation() {
               mode={inpaintMode}
               smartEditPrompt={relightTool ? relightNote : fusionTool ? fusionNote : retouchTool ? retouchNote : variationTool ? variationPrompt : smartEditPrompt}
               onSmartEditPromptChange={relightTool ? setRelightNote : fusionTool ? setFusionNote : retouchTool ? setRetouchNote : variationTool ? setVariationPrompt : setSmartEditPrompt}
-              count={activeCount}
-              onCountChange={relightTool ? setRelightCount : fusionTool ? setFusionCount : retouchTool ? setRetouchCount : variationTool ? setVariationCount : setEditCount}
+              count={effectiveParameters.count}
+              onCountChange={count => updateParameters({ count })}
               relight={relightOptions}
-              onRelightChange={setRelightOptions}
+              onRelightChange={relight => updateParameters({ relight })}
               retouchDirections={retouchDirections}
-              onRetouchDirectionsChange={setRetouchDirections}
-              resolution={editResolution}
-              onResolutionChange={setEditResolution}
+              onRetouchDirectionsChange={retouchDirections => updateParameters({ retouchDirections })}
+              resolution={effectiveParameters.resolution}
+              onResolutionChange={resolution => updateParameters({ resolution })}
               models={activeModels}
               modelProfileId={activeModelId}
               onModelProfileIdChange={variationTool ? setVariationModelId : setModelProfileId}
@@ -481,17 +471,15 @@ export default function ImageWorkstation() {
               onRepaintPromptChange={setRepaintPrompt}
               outpaintMode={outpaintMode}
               onOutpaintModeChange={mode => {
-                setOutpaintMode(mode)
-                if (mode === 'free') setOutpaintOutputMode('original')
+                updateParameters({ outpaintMode: mode, ...(mode === 'free' ? { outpaintOutputMode: 'original' as const } : {}) })
               }}
               outpaintOutputMode={outpaintOutputMode}
               onOutpaintOutputModeChange={mode => {
-                setOutpaintOutputMode(mode)
-                if (mode === 'platform') setOutpaintMode('preset')
+                updateParameters({ outpaintOutputMode: mode, ...(mode === 'platform' ? { outpaintMode: 'preset' as const } : {}) })
               }}
               outpaintTargetSize={predictedOutpaintSize}
               presetPlatform={presetPlatform}
-              onPresetPlatformChange={setPresetPlatform}
+              onPresetPlatformChange={presetPlatform => updateParameters({ presetPlatform })}
             />
           ) : null}
           {fusionTool ? <FusionInputStatus state={controller.inputPreparation} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}

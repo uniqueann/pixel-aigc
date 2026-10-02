@@ -16,12 +16,13 @@ import { fitScale } from './aspect-ratio/geometry'
 import { setOutpaintHandoff } from './aspect-ratio/handoff'
 import { expansionPlan, outpaintProgressLabel, processOutpaintBatch } from './aspect-ratio/expansion'
 import { expandRemoteImage } from './aspect-ratio/outpaintClient'
-import { readPrefs, writePrefs } from './aspect-ratio/prefs'
+import { usePreferencesStore } from '@/features/preferences/store'
+import { initialAspectRatioSettings, aspectRatioMemory } from '@/features/preferences/toolParameters'
 import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
 import { SubjectDetectionCache } from './aspect-ratio/subjectCache'
 import { cropProgressLabel } from './aspect-ratio/subjectFocus'
-import { DEFAULT_ASPECT_RATIO_SETTINGS, PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
+import { PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
 import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
@@ -57,9 +58,8 @@ export default function AspectRatioTool() {
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [settings, setSettings] = useState<AspectRatioSettings>(DEFAULT_ASPECT_RATIO_SETTINGS)
+  const [settings, setSettings] = useState<AspectRatioSettings>(() => initialAspectRatioSettings(usePreferencesStore.getState().preferences))
   const settingsRef = useRef(settings)
-  const [prefsReady, setPrefsReady] = useState(false)
   const [previewState, setPreviewState] = useState<PreviewState | null>(null)
   const previewUrlRef = useRef<string | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -143,28 +143,12 @@ export default function AspectRatioTool() {
 
   useEffect(() => {
     let active = true
-    void readPrefs(scope).then(stored => {
-      if (!active) return
-      settingsRef.current = stored
-      setSettings(stored)
-      setPrefsReady(true)
-    }).catch(error => {
-      if (active) message.warning(`读取上次选择失败：${errorMessage(error)}`)
-      setPrefsReady(true)
-    })
     void listPresets(scope).then(records => {
       if (active) setPresets(records)
     }).catch(error => { if (active) message.warning(`读取本机模板失败：${errorMessage(error)}`) })
     return () => { active = false }
   }, [scope, message])
 
-  useEffect(() => {
-    if (!prefsReady) return
-    const timer = window.setTimeout(() => {
-      void writePrefs(scope, settingsRef.current).catch(() => undefined)
-    }, 300)
-    return () => window.clearTimeout(timer)
-  }, [settings, prefsReady, scope])
 
   useEffect(() => {
     let cancelled = false
@@ -209,6 +193,7 @@ export default function AspectRatioTool() {
     const next = { ...settingsRef.current, ...patch }
     settingsRef.current = next
     setSettings(next)
+    usePreferencesStore.getState().remember('aspect-ratio', aspectRatioMemory(next))
     setSelectedTemplateId(null)
     if (itemsRef.current.some(item => item.status !== 'pending')) commitItems(invalidateBatch(itemsRef.current))
   }
@@ -232,6 +217,7 @@ export default function AspectRatioTool() {
     const next = preset.settings
     settingsRef.current = next
     setSettings(next)
+    usePreferencesStore.getState().remember('aspect-ratio', aspectRatioMemory(next))
     setSelectedTemplateId(id)
     if (itemsRef.current.some(item => item.status !== 'pending')) commitItems(invalidateBatch(itemsRef.current))
   }

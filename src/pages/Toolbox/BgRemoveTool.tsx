@@ -15,9 +15,10 @@ import { compositeMatte } from './bg-remove/composite'
 import { createBgRemoveZip, downloadBlob, namesForImages } from './bg-remove/download'
 import { canRefineEdge } from './bg-remove/edgeRefine'
 import { bgRemoveHistoryOwner, persistBgRemoveQueue, persistBgRemoveResult, restoreBgRemoveItems } from './bg-remove/history'
-import { readPrefs, writePrefs } from './bg-remove/prefs'
+import { usePreferencesStore } from '@/features/preferences/store'
+import { initialBgRemoveSettings } from '@/features/preferences/toolParameters'
 import { applyEdgeRefineResult, loadBgRemoveSession, saveBgRemoveSession, setEdgeRefineHandoff, takeEdgeRefineResult } from './bg-remove/session'
-import { DEFAULT_BG_REMOVE_SETTINGS, PREVIEW_MAX_DIMENSION, type BatchImage, type BgRemoveSettings } from './bg-remove/types'
+import { PREVIEW_MAX_DIMENSION, type BatchImage, type BgRemoveSettings } from './bg-remove/types'
 import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
@@ -49,9 +50,8 @@ export default function BgRemoveTool() {
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
-  const [settings, setSettings] = useState<BgRemoveSettings>(DEFAULT_BG_REMOVE_SETTINGS)
+  const [settings, setSettings] = useState<BgRemoveSettings>(() => initialBgRemoveSettings(usePreferencesStore.getState().preferences))
   const settingsRef = useRef(settings)
-  const [prefsReady, setPrefsReady] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const previewRef = useRef<string | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -59,7 +59,6 @@ export default function BgRemoveTool() {
   const cancelledRef = useRef(false)
   const batchAbortRef = useRef<AbortController | null>(null)
   const mountedRef = useRef(true)
-  const restoredRef = useRef(false)
   const addChainRef = useRef<Promise<void>>(Promise.resolve())
   const addingCountRef = useRef(0)
   const pendingBytesRef = useRef(0)
@@ -110,8 +109,7 @@ export default function BgRemoveTool() {
 
     async function boot() {
       const saved = loadBgRemoveSession(scope)
-      if (saved) {
-        restoredRef.current = true
+      if (saved && saved.items.length > 0) {
         itemsRef.current = saved.items
         settingsRef.current = saved.settings
         selectedIdRef.current = saved.selectedId
@@ -140,11 +138,10 @@ export default function BgRemoveTool() {
         return
       }
 
-      restoredRef.current = false
       itemsRef.current = []
       selectedIdRef.current = null
-      settingsRef.current = DEFAULT_BG_REMOVE_SETTINGS
-      if (active) { setItems([]); setSelectedId(null); setSettings(DEFAULT_BG_REMOVE_SETTINGS) }
+      settingsRef.current = initialBgRemoveSettings(usePreferencesStore.getState().preferences)
+      if (active) { setItems([]); setSelectedId(null); setSettings(settingsRef.current) }
       try {
         const restored = await restoreBgRemoveItems(scope, historyOwner)
         if (!active) {
@@ -181,35 +178,6 @@ export default function BgRemoveTool() {
     }
   }, [historyOwner, message, scope])
 
-  useEffect(() => {
-    let active = true
-    void readPrefs(scope).then(stored => {
-      if (!active) return
-      if (!restoredRef.current) {
-        settingsRef.current = stored
-        setSettings(stored)
-      }
-      setPrefsReady(true)
-      composeSucceededMattes(
-        itemsRef.current,
-        settingsRef.current.background,
-        (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
-        error => { if (mountedRef.current) message.error(errorMessage(error)) },
-      )
-    }).catch(error => {
-      if (active) message.warning(`读取上次选择失败：${errorMessage(error)}`)
-      setPrefsReady(true)
-    })
-    return () => { active = false }
-  }, [scope, message])
-
-  useEffect(() => {
-    if (!prefsReady) return
-    const timer = window.setTimeout(() => {
-      void writePrefs(scope, settingsRef.current).catch(() => undefined)
-    }, 300)
-    return () => window.clearTimeout(timer)
-  }, [settings, prefsReady, scope])
 
   useEffect(() => {
     let cancelled = false
@@ -234,6 +202,7 @@ export default function BgRemoveTool() {
     const next = { background }
     settingsRef.current = next
     setSettings(next)
+    usePreferencesStore.getState().remember('bg-remove', { background: next.background })
     const ready = itemsRef.current.filter(item => item.matte)
     if (!ready.length) return
     try {

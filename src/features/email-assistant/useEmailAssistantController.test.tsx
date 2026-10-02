@@ -11,6 +11,7 @@ import { useEmailAssistantController } from './useEmailAssistantController'
 
 const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
+  getTask: vi.fn(),
   polling: {
     data: undefined as GenerationTask<unknown> | undefined,
     error: null as Error | null,
@@ -19,7 +20,7 @@ const mocks = vi.hoisted(() => ({
   refetch: vi.fn(),
 }))
 
-vi.mock('@/services/api/task', () => ({ createTask: mocks.createTask }))
+vi.mock('@/services/api/task', () => ({ createTask: mocks.createTask, getTask: mocks.getTask }))
 vi.mock('@/hooks/useTaskPolling', async () => {
   const { useEffect: useReactEffect } = await import('react')
   return {
@@ -63,6 +64,31 @@ describe('useEmailAssistantController', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+  })
+
+  it('新建任务不会被迟到的历史读取重新填充', async () => {
+    let resolveHistory!: (task: GenerationTask<EmailAssistTaskParams>) => void
+    mocks.getTask.mockReturnValue(new Promise(resolve => { resolveHistory = resolve }))
+    let opening!: Promise<unknown>
+    await act(async () => { opening = controller.openTask('old-email') })
+    await act(async () => { await controller.newTask() })
+    await act(async () => {
+      resolveHistory({ id: 'old-email', capability: Capability.EmailAssist, status: 'succeeded', params: { sourceText: '旧邮件', operation: 'reply', language: 'zh' }, resultText: '旧结果', creditsCost: 1, createdAt: '2026-10-01', updatedAt: '2026-10-01' })
+      await opening
+    })
+    expect(controller.task).toBeUndefined()
+    expect(controller.resultText).toBe('')
+  })
+
+  it('新建任务保留历史，之后仍可重新打开同一任务', async () => {
+    const task: GenerationTask<EmailAssistTaskParams> = { id: 'saved-email', capability: Capability.EmailAssist, status: 'succeeded', params: { sourceText: '历史邮件', operation: 'reply', language: 'zh' }, resultText: '回复结果', creditsCost: 1, createdAt: '2026-10-01', updatedAt: '2026-10-01' }
+    mocks.getTask.mockResolvedValue(task)
+    await act(async () => { await controller.openTask(task.id) })
+    await act(async () => { await controller.newTask() })
+    expect(controller.resultText).toBe('')
+    expect(useTaskStore.getState().tasks[task.id].resultText).toBe('回复结果')
+    await act(async () => { await controller.openTask(task.id) })
+    expect(controller.resultText).toBe('回复结果')
   })
 
   it('提交、轮询并允许编辑单条文本结果', async () => {
