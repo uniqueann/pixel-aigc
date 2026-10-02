@@ -1319,19 +1319,6 @@ a {
   outline-offset: -2px;
 }
 
-.assets-preview-hint {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, .65);
-  color: #fff;
-}
-
 .assets-card-list .ant-card-body {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr) auto;

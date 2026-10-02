@@ -26,12 +26,9 @@
 }
 .workstation-result-item:hover .preview-zoom-button,
 .workstation-result-item:focus-within .preview-zoom-button,
-.assets-card:hover .preview-zoom-button,
-.assets-card:focus-within .preview-zoom-button,
 .toolbox-queue-card:hover .preview-zoom-button,
 .toolbox-queue-card:focus-within .preview-zoom-button { opacity: 1; }
 @media (hover: none) { .preview-zoom-button { opacity: 1; } }
-.assets-cover { position: relative; }
 .preview-result-strip { display: flex; gap: 8px; overflow-x: auto; }
 .preview-result-tile { position: relative; flex: 0 0 58px; height: 58px; }
 .preview-result-tile img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
