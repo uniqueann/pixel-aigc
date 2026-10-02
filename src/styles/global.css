@@ -340,8 +340,17 @@ a {
   color: var(--color-danger);
 }
 
+.settings-modal-wrap {
+  overflow-x: hidden;
+}
+
+.settings-modal {
+  max-width: calc(100vw - 24px);
+}
+
 .settings-modal .ant-modal-content {
   padding: 0;
+  max-width: 100%;
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: 16px;
@@ -359,8 +368,17 @@ a {
 
 .settings-layout {
   display: grid;
+  min-width: 0;
+  max-width: 100%;
   min-height: 430px;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 180px minmax(0, 1fr);
+}
+
+.settings-menu-shell,
+.settings-menu,
+.settings-content {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .settings-menu {
@@ -373,6 +391,53 @@ a {
   margin-inline: 0;
   width: 100%;
   border-radius: 8px;
+}
+
+.settings-layout.is-narrow {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-layout.is-narrow .setting-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.settings-layout.is-narrow .preference-control {
+  flex-basis: auto;
+  width: 100%;
+}
+
+.settings-layout.is-narrow .preferences-counts {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-menu-shell.is-narrow,
+.settings-menu.is-narrow {
+  display: flex;
+  flex-wrap: wrap;
+  min-height: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  border-inline-end: 0 !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.settings-menu-shell.is-narrow::-webkit-scrollbar,
+.settings-menu.is-narrow::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.settings-menu.is-narrow .ant-menu-item {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  padding-inline: 12px !important;
 }
 
 .settings-content {
@@ -401,12 +466,12 @@ a {
   border-top: 1px solid var(--color-border);
 }
 
-.settings-modal .ant-modal-body { max-height: calc(100dvh - 160px); overflow-y: auto; overscroll-behavior: contain; }
+.settings-modal .ant-modal-body { max-height: calc(100dvh - 160px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .preferences-group-title { margin: 24px 0 12px; font-size: 14px; }
 .preferences-sync-status { margin: -12px 0 16px; color: var(--color-text-secondary); font-size: 12px; }
 .personalization-panel .setting-row { padding-block: 14px; }
-.preference-control { flex: 0 0 180px; min-width: 0; }
-.preference-control > .ant-select { width: 100%; }
+.preference-control { flex: 0 0 180px; min-width: 0; max-width: 100%; }
+.preference-control > .ant-select { width: 100%; max-width: 100%; }
 .preferences-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .preferences-counts label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
 .preferences-counts .ant-select { width: 100%; }
@@ -416,14 +481,21 @@ a {
 .preferences-global-error { margin-bottom: 16px; }
 
 @media (max-width: 720px) {
-  .personalization-panel .setting-row { flex-direction: column; align-items: stretch; gap: 10px; }
-  .preference-control { flex-basis: auto; }
+  .personalization-panel .setting-row,
+  .settings-layout.is-narrow .setting-row,
+  .setting-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .preference-control { flex-basis: auto; width: 100%; }
   .preferences-footer { flex-direction: column; align-items: flex-start; }
-  .settings-modal .ant-modal-body { max-height: calc(100dvh - 130px); }
+  .settings-modal .ant-modal-body { max-height: calc(100dvh - 130px); overflow-x: hidden; }
+}
+
+@media (max-width: 420px) {
+  .preferences-counts { grid-template-columns: minmax(0, 1fr); }
 }
 
 .setting-row {
   display: flex;
+  min-width: 0;
   min-height: 68px;
   align-items: center;
   justify-content: space-between;
@@ -1027,27 +1099,42 @@ a {
 }
 
 @media (max-width: 720px) {
-  .settings-layout {
-    grid-template-columns: 1fr;
+  .settings-layout,
+  .settings-layout.is-narrow {
+    grid-template-columns: minmax(0, 1fr);
   }
 
+  .settings-menu-shell.is-narrow,
+  .settings-menu.is-narrow,
   .settings-menu {
     display: flex;
+    flex-wrap: wrap;
     min-height: auto;
     min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
-    white-space: nowrap;
     overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     border-right: 0 !important;
     border-bottom: 1px solid var(--color-border) !important;
   }
 
-  .settings-menu .ant-menu-item {
+  .settings-menu-shell.is-narrow::-webkit-scrollbar,
+  .settings-menu.is-narrow::-webkit-scrollbar,
+  .settings-menu::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  .settings-menu .ant-menu-item,
+  .settings-menu.is-narrow .ant-menu-item {
     flex: 0 0 auto;
     width: auto;
-    min-width: max-content;
-    padding-inline: 14px !important;
+    min-width: 0;
+    padding-inline: 12px !important;
   }
 
   .settings-menu .ant-menu-title-content {
@@ -1057,6 +1144,7 @@ a {
 
   .settings-content {
     padding: 22px;
+    overflow-x: hidden;
   }
 
   .free-canvas-page {

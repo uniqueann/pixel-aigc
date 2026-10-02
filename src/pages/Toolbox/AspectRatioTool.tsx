@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { App, Button, ColorPicker, Input, Progress, Radio, Select } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
@@ -58,8 +58,15 @@ export default function AspectRatioTool() {
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
   const [settings, setSettings] = useState<AspectRatioSettings>(() => initialAspectRatioSettings(usePreferencesStore.getState().preferences))
+  const [appliedMemoryEpoch, setAppliedMemoryEpoch] = useState(memoryEpoch)
   const settingsRef = useRef(settings)
+  if (appliedMemoryEpoch !== memoryEpoch) {
+    const next = initialAspectRatioSettings(usePreferencesStore.getState().preferences)
+    setSettings(next)
+    setAppliedMemoryEpoch(memoryEpoch)
+  }
   const [previewState, setPreviewState] = useState<PreviewState | null>(null)
   const previewUrlRef = useRef<string | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -107,6 +114,10 @@ export default function AspectRatioTool() {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     previewUrlRef.current = next
   }
+
+  useLayoutEffect(() => {
+    settingsRef.current = settings
+  })
 
   function renderer() {
     if (!rendererRef.current) rendererRef.current = new AspectRatioRenderer()

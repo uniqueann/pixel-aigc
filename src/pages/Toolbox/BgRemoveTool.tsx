@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { App, Button, ColorPicker, Progress, Radio } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
@@ -50,8 +50,14 @@ export default function BgRemoveTool() {
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
+  const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
   const [settings, setSettings] = useState<BgRemoveSettings>(() => initialBgRemoveSettings(usePreferencesStore.getState().preferences))
+  const [appliedMemoryEpoch, setAppliedMemoryEpoch] = useState(memoryEpoch)
   const settingsRef = useRef(settings)
+  if (appliedMemoryEpoch !== memoryEpoch) {
+    setSettings(initialBgRemoveSettings(usePreferencesStore.getState().preferences))
+    setAppliedMemoryEpoch(memoryEpoch)
+  }
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const previewRef = useRef<string | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -73,6 +79,10 @@ export default function BgRemoveTool() {
   const outputBytes = downloadable.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
   const busy = processing || adding || packaging
   const controlsLocked = processing || packaging
+
+  useLayoutEffect(() => {
+    settingsRef.current = settings
+  })
 
   function commitItems(next: BatchImage[]) {
     if (!mountedRef.current) return
@@ -177,7 +187,6 @@ export default function BgRemoveTool() {
       if (previewRef.current) URL.revokeObjectURL(previewRef.current)
     }
   }, [historyOwner, message, scope])
-
 
   useEffect(() => {
     let cancelled = false

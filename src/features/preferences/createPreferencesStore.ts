@@ -12,6 +12,7 @@ interface Dependencies {
   loadCache: (owner: string) => PreferencesCache | undefined
   saveCache: (owner: string, cache: PreferencesCache) => boolean
   legacy: (owner: string) => Promise<PreferencesPatch>
+  clearLegacy: (owner: string) => Promise<void>
 }
 export interface PreferencesState {
   owner: string
@@ -19,9 +20,11 @@ export interface PreferencesState {
   ready: boolean
   status: 'loading' | 'saving' | 'saved' | 'local' | 'error'
   error: string | null
+  memoryEpoch: number
   initialize: (owner: string, remote: boolean) => Promise<void>
   update: (patch: PreferencesPatch) => void
   remember: <T extends ImageMemoryTool>(tool: T, value: NonNullable<ImageMemory[T]>) => void
+  clearImageMemory: () => Promise<void>
   flush: () => Promise<void>
   refresh: () => Promise<void>
   retry: () => Promise<void>
@@ -77,7 +80,7 @@ export function createPreferencesStore(dependencies: Dependencies) {
     }
 
     return {
-      owner: 'local', preferences: defaultPreferences(), ready: false, status: 'loading', error: null,
+      owner: 'local', preferences: defaultPreferences(), ready: false, status: 'loading', error: null, memoryEpoch: 0,
       initialize(owner, useRemote) {
         if (initialized && owner === get().owner && remote === useRemote) return initializing ?? Promise.resolve()
         clearTimeout(timer)
@@ -120,6 +123,28 @@ export function createPreferencesStore(dependencies: Dependencies) {
       },
       remember(tool, value) {
         if (get().preferences.image.rememberParameters) get().update({ image: { lastUsed: { [tool]: value } } })
+      },
+      async clearImageMemory() {
+        const empty = Object.keys(get().preferences.image.lastUsed).length === 0
+        if (!empty) {
+          const patch = preferencesPatchSchema.parse({ image: { lastUsed: null } })
+          revision++
+          pending.push(patch)
+          set({
+            preferences: applyPreferencesPatch(get().preferences, patch),
+            status: remote ? 'saving' : 'local',
+            error: null,
+            memoryEpoch: get().memoryEpoch + 1,
+          })
+        } else {
+          set({ memoryEpoch: get().memoryEpoch + 1, error: null })
+        }
+        await dependencies.clearLegacy(get().owner)
+        if (!remote) { localSaved(); return }
+        cache()
+        clearTimeout(timer)
+        await get().flush()
+        if (get().status === 'error') throw new Error(get().error ?? '清除图片参数记忆失败')
       },
       flush() {
         clearTimeout(timer)
@@ -166,7 +191,8 @@ export function createPreferencesStore(dependencies: Dependencies) {
       reset() {
         clearTimeout(timer); revision++
         pending = []; resetPending = true
-        set({ preferences: defaultPreferences(), status: remote ? 'saving' : 'local', error: null })
+        set({ preferences: defaultPreferences(), status: remote ? 'saving' : 'local', error: null, memoryEpoch: get().memoryEpoch + 1 })
+        void dependencies.clearLegacy(get().owner)
         if (!remote) localSaved()
         else { cache(); void get().flush() }
       },

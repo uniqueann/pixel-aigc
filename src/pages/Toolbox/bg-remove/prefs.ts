@@ -106,6 +106,10 @@ export async function writePrefs(scope: string, settings: BgRemoveSettings): Pro
   await mergeRecord(scope, { settings: normalizeSettings(settings) })
 }
 
+export async function clearPrefs(scope: string): Promise<void> {
+  await mergeRecord(scope, { settings: DEFAULT_BG_REMOVE_SETTINGS })
+}
+
 export async function readQueue(scope: string): Promise<{ queue?: BgRemoveQueueSnapshot[]; selectedId: string | null }> {
   const record = await readRecord(scope)
   return {

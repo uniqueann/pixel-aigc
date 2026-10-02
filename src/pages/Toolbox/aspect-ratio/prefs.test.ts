@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
-import { normalizeSettings, readPrefs, writePrefs } from './prefs'
+import { clearPrefs, normalizeSettings, readPrefs, writePrefs } from './prefs'
 import { DEFAULT_ASPECT_RATIO_SETTINGS } from './types'
 
 describe('转比例上次选择', () => {
@@ -16,5 +16,11 @@ describe('转比例上次选择', () => {
     expect(await readPrefs('user-b')).toEqual(DEFAULT_ASPECT_RATIO_SETTINGS)
     await writePrefs('user-a', { ...DEFAULT_ASPECT_RATIO_SETTINGS, selectedPresetId: 'removed-platform' })
     expect((await readPrefs('user-a')).selectedPresetId).toBe(DEFAULT_ASPECT_RATIO_SETTINGS.selectedPresetId)
+  })
+
+  it('清除本机记忆后回到默认平台', async () => {
+    await writePrefs('user-a', { ...DEFAULT_ASPECT_RATIO_SETTINGS, selectedPresetId: 'temu-main', strategy: 'crop' })
+    await clearPrefs('user-a')
+    expect(await readPrefs('user-a')).toEqual(DEFAULT_ASPECT_RATIO_SETTINGS)
   })
 })
