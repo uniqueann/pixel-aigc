@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { DownloadOutlined, DeleteOutlined, ZoomInOutlined } from '@ant-design/icons'
-import { App, Alert, Button, Card, Segmented, Space, Spin } from 'antd'
+import { AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, UnorderedListOutlined, ZoomInOutlined } from '@ant-design/icons'
+import { App, Alert, Button, Card, Segmented, Space, Spin, Tooltip } from 'antd'
 import EmptyState from '@/components/EmptyState'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import { usePreviewGallery } from '@/components/usePreviewGallery'
@@ -28,6 +28,16 @@ import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 
 type Filter = 'all' | 'workstation' | 'email'
+type ViewMode = 'grid' | 'list'
+const VIEW_MODE_KEY = 'pixel:assets-view-mode:v1'
+
+function initialViewMode(): ViewMode {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === 'list' ? 'list' : 'grid'
+  } catch {
+    return 'grid'
+  }
+}
 
 interface LibraryItem {
   id: string
@@ -62,6 +72,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const [filter, setFilter] = useState<Filter>('all')
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode)
   const [loading, setLoading] = useState(true)
   const [historyError, setHistoryError] = useState<string>()
   const lifetimeAbortRef = useRef(new AbortController())
@@ -73,6 +84,13 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const previewUrlsRef = useRef<Record<string, string>>({})
   const refreshVersionRef = useRef(0)
   const [downloadingId, setDownloadingId] = useState<string>()
+
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode)
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode)
+    } catch { /* 浏览器禁用存储时，仍可切换当前页面的展示样式。 */ }
+  }
 
   const refresh = useCallback(async (isActive: () => boolean, showLoading = true) => {
     const version = ++refreshVersionRef.current
@@ -235,7 +253,6 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   return (
     <div className="assets-page">
       <div className="assets-page-header">
-        <h2>我的资产</h2>
         <Segmented
           value={filter}
           onChange={(value) => setFilter(value as Filter)}
@@ -245,6 +262,26 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
             { label: '邮件助手', value: 'email' },
           ]}
         />
+        <Space.Compact className="assets-view-switch" role="group" aria-label="展示样式">
+          <Tooltip title="列表视图">
+            <Button
+              icon={<UnorderedListOutlined />}
+              aria-label="列表视图"
+              aria-pressed={viewMode === 'list'}
+              type={viewMode === 'list' ? 'primary' : 'default'}
+              onClick={() => changeViewMode('list')}
+            />
+          </Tooltip>
+          <Tooltip title="网格视图">
+            <Button
+              icon={<AppstoreOutlined />}
+              aria-label="网格视图"
+              aria-pressed={viewMode === 'grid'}
+              type={viewMode === 'grid' ? 'primary' : 'default'}
+              onClick={() => changeViewMode('grid')}
+            />
+          </Tooltip>
+        </Space.Compact>
       </div>
       {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>重试历史读取与保存</Button>} /> : null}
       {loading ? (
@@ -259,35 +296,47 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           action={<Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : '/image-workstation/repaint')}>去生成</Button>}
         />
       ) : (
-        <div className="assets-grid">
-          {visible.map((item) => (
-            <Card
-              key={item.id}
-              className="assets-card"
-              cover={item.record ? <div className="assets-cover">{item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : <span>图片已保存在本地</span>}<Button className="preview-zoom-button" type="text" size="small" icon={<ZoomInOutlined />} aria-label={`放大${item.title}`} onClick={() => openAt(item.id)} /></div> : undefined}
-            >
-              <div className="assets-card-title">{item.title}</div>
-              <div className="assets-card-meta">{formatTime(item.createdAt)} · {taskStatusLabel(item.status)}</div>
-              <div className="assets-card-subtitle">{item.subtitle}</div>
-              <Space>
-                {item.record ? (
-                  <Button
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    loading={downloadingId === item.id}
-                    onClick={() => void downloadRecord(item.record!)}
-                  >
-                    下载
-                  </Button>
-                ) : (
-                  <Button size="small" onClick={() => navigate('/email')}>查看邮件</Button>
-                )}
-                {item.record ? (
-                  <Button size="small" danger icon={<DeleteOutlined />} onClick={() => void removeRecord(item.id)}>删除</Button>
-                ) : null}
-              </Space>
-            </Card>
-          ))}
+        <div className={viewMode === 'grid' ? 'assets-grid' : 'assets-list'}>
+          {visible.map((item) => {
+            const preview = item.record ? (
+              <button className="assets-cover" type="button" aria-label={`查看${item.title}大图`} title="查看大图" onClick={() => openAt(item.id)}>
+                {item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : <span>查看原图</span>}
+                <span className="assets-preview-hint" aria-hidden="true"><ZoomInOutlined /></span>
+              </button>
+            ) : null
+            return (
+              <Card
+                key={item.id}
+                className={`assets-card${viewMode === 'list' ? ' assets-card-list' : ''}`}
+                cover={viewMode === 'grid' ? preview : undefined}
+              >
+                {viewMode === 'list' ? preview ?? <div className="assets-email-cover" aria-hidden="true"><MailOutlined /></div> : null}
+                <div className="assets-card-details">
+                  <div className="assets-card-title">{item.title}</div>
+                  <div className="assets-card-meta">{formatTime(item.createdAt)} · {taskStatusLabel(item.status)}</div>
+                  <div className="assets-card-subtitle" title={item.subtitle}>{item.subtitle}</div>
+                </div>
+                <Space className="assets-card-actions" wrap>
+                  {item.record ? <Button size="small" icon={<ZoomInOutlined />} onClick={() => openAt(item.id)}>查看大图</Button> : null}
+                  {item.record ? (
+                    <Button
+                      size="small"
+                      icon={<DownloadOutlined />}
+                      loading={downloadingId === item.id}
+                      onClick={() => void downloadRecord(item.record!)}
+                    >
+                      下载
+                    </Button>
+                  ) : (
+                    <Button size="small" onClick={() => navigate('/email')}>查看邮件</Button>
+                  )}
+                  {item.record ? (
+                    <Button size="small" danger icon={<DeleteOutlined />} onClick={() => void removeRecord(item.id)}>删除</Button>
+                  ) : null}
+                </Space>
+              </Card>
+            )
+          })}
         </div>
       )}
       <PreviewGallery {...galleryProps} onDownload={item => {

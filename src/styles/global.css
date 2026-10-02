@@ -1253,10 +1253,16 @@ a {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
-.assets-page-header h2 {
-  margin: 0;
+.assets-view-switch {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.assets-page > .ant-alert {
+  margin-bottom: 16px;
 }
 
 .assets-loading {
@@ -1269,15 +1275,91 @@ a {
 
 .assets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
 }
 
-.assets-card .ant-card-cover img {
+.assets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assets-card {
+  min-width: 0;
+}
+
+.assets-card .ant-card-body {
+  padding: 16px;
+}
+
+.assets-cover {
+  position: relative;
+  display: grid;
+  place-items: center;
   width: 100%;
-  height: 160px;
-  object-fit: cover;
+  height: 180px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
   background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  cursor: zoom-in;
+}
+
+.assets-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.assets-cover:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.assets-preview-hint {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .65);
+  color: #fff;
+}
+
+.assets-card-list .ant-card-body {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.assets-card-list .assets-cover,
+.assets-email-cover {
+  width: 96px;
+  height: 80px;
+  border-radius: 6px;
+}
+
+.assets-email-cover {
+  display: grid;
+  place-items: center;
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  font-size: 28px;
+}
+
+.assets-card-details {
+  min-width: 0;
+}
+
+.assets-card-list .assets-card-subtitle {
+  margin-bottom: 0;
 }
 
 .assets-card-title {
@@ -1298,6 +1380,11 @@ a {
 }
 
 @media (max-width: 560px) {
+  .assets-grid { grid-template-columns: minmax(0, 1fr); }
+  .assets-card-list .ant-card-body { grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
+  .assets-card-list .assets-cover,
+  .assets-email-cover { width: 72px; height: 72px; }
+  .assets-card-list .assets-card-actions { grid-column: 1 / -1; }
   .app-main-content { padding: 12px; }
   .toolbox-preview-panel,
   .toolbox-settings-panel,
