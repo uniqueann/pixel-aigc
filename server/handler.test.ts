@@ -177,7 +177,7 @@ describe('API 认证、版本和写入边界', () => {
     process.env.DRAGONCODE_API_KEY = 'sk-test'
     const res = await request(undefined, 'GET', '/api/capabilities')
     expect(res.status).toHaveBeenCalledWith(200)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ imageEdit: true, variation: true }))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ imageEdit: true, variation: true, textToImage: true }))
     const models = await request(undefined, 'GET', '/api/image-models?operation=image_edit')
     expect(models.json).toHaveBeenCalledWith(expect.objectContaining({
       items: expect.arrayContaining([expect.objectContaining({ id: 'dragoncode:gpt-image-2' })]),
@@ -191,9 +191,20 @@ describe('API 认证、版本和写入边界', () => {
     process.env.DASHSCOPE_API_KEY = 'sk-test'
     const res = await request(undefined, 'GET', '/api/capabilities')
     expect(res.status).toHaveBeenCalledWith(200)
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ outpaint: true, erase: true, imageEdit: false }))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ outpaint: true, erase: true, imageEdit: false, textToImage: false }))
     if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
     else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('文生图进入独立参数校验，视频能力继续返回未接入', async () => {
+    const invalidText = await request({ capability: 'text_to_image', requestId: '00000000-0000-4000-8000-000000000203', params: {
+      prompt: '  ', size: { width: 1600, height: 900 }, count: 2, resolution: '2k',
+    } }, 'POST', '/api/tasks')
+    expect(invalidText.status).toHaveBeenCalledWith(400)
+    expect(invalidText.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'INVALID_REQUEST' }))
+    const video = await request({ capability: 'text_to_video', params: {} }, 'POST', '/api/tasks')
+    expect(video.status).toHaveBeenCalledWith(501)
+    expect(video.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'CAPABILITY_UNAVAILABLE' }))
   })
 
   it('capabilities 在配置腾讯云后打开智能选区', async () => {

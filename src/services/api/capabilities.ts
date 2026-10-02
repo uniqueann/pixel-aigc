@@ -9,6 +9,7 @@ export interface CapabilityFlags {
   repaint?: boolean
   imageEdit?: boolean
   variation?: boolean
+  textToImage?: boolean
   smartSelect?: boolean
 }
 

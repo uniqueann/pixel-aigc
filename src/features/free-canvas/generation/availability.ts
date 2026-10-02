@@ -3,9 +3,12 @@ import { authEnabled, cloudEnabled } from '@/cloud/client'
 import { useUserStore } from '@/store/useUserStore'
 import type { PublicImageModel } from '@/services/api/imageModels'
 
-export const useCanvasVariationConfiguration = create<{
+interface CanvasImageConfiguration {
   ready: boolean; loading: boolean; models: PublicImageModel[]; error?: string
-}>(() => ({ ready: false, loading: true, models: [] }))
+}
+
+export const useCanvasVariationConfiguration = create<CanvasImageConfiguration>(() => ({ ready: false, loading: true, models: [] }))
+export const useCanvasTextToImageConfiguration = create<CanvasImageConfiguration>(() => ({ ready: false, loading: true, models: [] }))
 
 interface VariationGateInput {
   generationMode?: string
@@ -27,3 +30,12 @@ export function isFreeCanvasVariationEntryEnabled(input?: VariationGateInput) {
 }
 
 export const canSubmitFreeCanvasVariation = isFreeCanvasVariationEntryEnabled
+
+/** 文生图配置独立于裂变，避免其他能力就绪时误开放文生图。 */
+export function isFreeCanvasTextToImageEntryEnabled(input?: VariationGateInput) {
+  if (isCanvasMockGateway(input)) return true
+  return (input?.authenticated ?? (authEnabled && !!useUserStore.getState().userId))
+    && (input?.configured ?? useCanvasTextToImageConfiguration.getState().ready)
+}
+
+export const canSubmitFreeCanvasTextToImage = isFreeCanvasTextToImageEntryEnabled

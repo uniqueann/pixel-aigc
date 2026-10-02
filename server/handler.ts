@@ -138,6 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         repaint: bailianConfig() !== null,
         imageEdit: imageModelsAvailable('image_edit'),
         variation: imageModelsAvailable('variation'),
+        textToImage: imageModelsAvailable('text_to_image'),
         smartSelect: segmentConfigured(),
       })
       return

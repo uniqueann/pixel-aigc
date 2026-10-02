@@ -67,6 +67,14 @@ afterEach(() => {
 })
 
 describe('DragonCode 客户端', () => {
+  it('文生图省略 image_urls，仍调用现有图片生成接口', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(submitSuccess))
+    await provider.submit!({ ...input, prompt: '浅色木桌上的香水瓶', images: [] }, context(fetchImpl))
+    const [url, request] = fetchImpl.mock.calls[0]
+    expect(url).toBe('https://dragoncode.codes/gpt-image/v1/images/generations')
+    expect(JSON.parse(request.body)).toEqual({ model: 'gpt-image-2', prompt: '浅色木桌上的香水瓶', n: 1, size: '3:2', resolution: '2k' })
+  })
+
   it('提交时映射为官方 JSON，并从 data[0].task_id 读取任务号', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(submitSuccess, 200, { 'X-Request-Id': 'dc-submit-1' }))
     const ctx = context(fetchImpl)

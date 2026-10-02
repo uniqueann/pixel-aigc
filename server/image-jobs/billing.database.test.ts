@@ -36,10 +36,10 @@ async function asUser<T>(action: (sql: Transaction) => Promise<T>, scope = 'prod
   }
 }
 
-async function insertJob(sql: Transaction, id: string, reserved: number, count = 2) {
+async function insertJob(sql: Transaction, id: string, reserved: number, count = 2, capability = 'image_edit') {
   await sql`insert into aigc.image_jobs(id,user_id,scope,request_id,request_fingerprint,capability,model_profile_id,
     provider,params,provider_params,requested_count,status,credits_reserved,billing_state,deadline_at)
-    values(${id},${userId},'production',${randomUUID()},'hash','image_edit','dragoncode:gpt-image-2',
+    values(${id},${userId},'production',${randomUUID()},'hash',${capability},'dragoncode:gpt-image-2',
       'dragoncode','{}','{}',${count},'processing',${reserved},'reserved',now()+interval '5 minutes')`
 }
 
@@ -336,5 +336,20 @@ describe('积分账本与同步请求限流', () => {
     const next = await asUser(sql => listCreditLedger(sql, page.nextCursor, 20))
     expect(next.items.some(item => item.id === jobRow?.id)).toBe(false)
     expect(next.items.filter(item => item.summary.includes('预扣') && item.label.includes('2K'))).toHaveLength(0)
+  })
+
+  it('既有数据库支持文生图并沿用部分成功结算，无需新增迁移', async () => {
+    const id = randomUUID()
+    await asUser(async sql => {
+      const billing = createSqlBilling(sql)
+      expect(await billing.reserve({ userId, jobId: id, amount: 6, meta: { capability: 'text_to_image', resolution: '2k', unitPrice: 3 } })).toEqual({ ok: true })
+      await insertJob(sql, id, 6, 2, 'text_to_image')
+      await billing.settle({ jobId: id, charged: 3 })
+      await billing.settle({ jobId: id, charged: 3 })
+    })
+    const job = await db.query('select capability,billing_state,credits_charged from aigc.image_jobs where id=$1', [id])
+    expect(job.rows).toEqual([{ capability: 'text_to_image', billing_state: 'settled', credits_charged: 3 }])
+    const ledger = await db.query('select kind,delta from aigc.credit_ledger where job_id=$1 order by created_at', [id])
+    expect(ledger.rows).toEqual([{ kind: 'reserve', delta: -6 }, { kind: 'settle', delta: 3 }])
   })
 })

@@ -9,6 +9,7 @@ const EMAIL_OPERATIONS: Record<string, string> = {
 }
 
 const CAPABILITY_LABELS: Partial<Record<Capability, string>> = {
+  [Capability.TextToImage]: '文生图',
   [Capability.Inpaint]: '图片工作站',
   [Capability.Outpaint]: '扩图',
   [Capability.ImageEdit]: '智能编辑',
@@ -19,6 +20,7 @@ const CAPABILITY_LABELS: Partial<Record<Capability, string>> = {
 
 const TOOLBOX_HISTORY_LABELS: Record<string, string> = {
   'bg-remove': '智能抠图',
+  'text-to-image': '文生图',
 }
 
 export function workstationToolLabel(slug?: string) {
@@ -27,6 +29,7 @@ export function workstationToolLabel(slug?: string) {
 }
 
 export function workstationSlugForCapability(capability: Capability) {
+  if (capability === Capability.TextToImage) return 'text-to-image'
   if (capability === Capability.ImageEdit) return 'smart-edit'
   if (capability === Capability.Variation) return 'variation'
   if (capability === Capability.Outpaint) return 'outpaint'

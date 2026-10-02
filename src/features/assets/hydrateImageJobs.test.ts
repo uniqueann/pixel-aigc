@@ -32,7 +32,7 @@ vi.mock('./workstationHistory', () => ({
 }))
 vi.mock('./historyOwner', () => ({ isCurrentWorkstationHistoryOwner: mocks.isCurrentOwner, currentWorkstationHistoryOwner: () => '11111111-1111-4111-8111-111111111111' }))
 
-import { historyRecordsFromImageTask, hydrateWorkstationHistoryFromImageJobs } from './hydrateImageJobs'
+import { historyRecordsFromImageTask, hydrateWorkstationHistoryFromImageJobs, metadataFromImageTask } from './hydrateImageJobs'
 
 const variationTask: GenerationTask = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -123,6 +123,37 @@ describe('从图片任务补记我的资产', () => {
       height: 2048,
     })])
     expect(mocks.readOwnedImage).toHaveBeenCalledWith(expect.objectContaining({ objectKey: 'generated/user/job/0.png' }), expect.objectContaining({ ownerId: OWNER }))
+  })
+
+  it('文生图保留实际结果序号和用户提示词，不依赖工作站工具', () => {
+    const task = { ...variationTask, capability: Capability.TextToImage, params: { prompt: '  夜晚的城市  ' },
+      resultImages: [{ ...variationTask.resultImages![0], ordinal: 2 }],
+    }
+    expect(metadataFromImageTask(task)).toEqual([expect.objectContaining({
+      id: `${task.id}:o2`, ordinal: 2, toolSlug: 'text-to-image', capability: Capability.TextToImage, prompt: '夜晚的城市',
+    })])
+  })
+
+  it('跨设备补记文生图时只读取缺失结果，已删除对象和稳定序号不会复活或重复', async () => {
+    const task = { ...variationTask, capability: Capability.TextToImage,
+      resultImages: [0, 2].map(ordinal => ({ ...variationTask.resultImages![0], objectKey: `text-image-${ordinal}`, ordinal })),
+    }
+    const local: Array<{ id: string; objectKey: string; taskId: string; createdAt: string }> = []
+    mocks.listWorkstationHistory.mockImplementation(async () => local)
+    mocks.listHistoryDeletions.mockResolvedValue([{ id: `${task.id}:o0`, taskId: task.id, objectKey: 'text-image-0' }])
+    mocks.listTasks.mockImplementation(async ({ capability }: { capability: Capability }) => ({
+      items: capability === Capability.TextToImage ? [{ id: task.id, capability, status: 'succeeded', updatedAt: task.updatedAt }] : [],
+      total: capability === Capability.TextToImage ? 1 : 0,
+    }))
+    mocks.getTask.mockResolvedValue(task)
+    mocks.recordWorkstationHistory.mockImplementation(async (_owner, record) => { local.push(record) })
+    await hydrateWorkstationHistoryFromImageJobs(OWNER)
+    expect(mocks.listTasks).toHaveBeenCalledWith({ capability: Capability.TextToImage, page: 1 })
+    expect(mocks.readOwnedImage.mock.calls.map(([image]) => image.objectKey)).toEqual(['text-image-2'])
+    expect(mocks.recordWorkstationHistory).toHaveBeenCalledWith(OWNER, expect.objectContaining({ id: `${task.id}:o2`, toolSlug: 'text-to-image' }))
+    await hydrateWorkstationHistoryFromImageJobs(OWNER)
+    expect(mocks.readOwnedImage).toHaveBeenCalledTimes(1)
+    expect(mocks.recordWorkstationHistory).toHaveBeenCalledTimes(1)
   })
 
   it('已有本地记录时不再重复拉取', async () => {

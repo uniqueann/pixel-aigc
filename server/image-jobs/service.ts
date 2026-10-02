@@ -73,18 +73,19 @@ export const IMAGE_HOURLY_LIMIT = 20
 export const IMAGE_USER_CONCURRENCY = 2
 export const IMAGE_GLOBAL_CONCURRENCY = 20
 export const IMAGE_LEASE_MS = 30_000
-export const IMAGE_TASK_CAPABILITIES = new Set(['image_edit', 'variation'])
+export const IMAGE_TASK_CAPABILITIES = new Set(['image_edit', 'variation', 'text_to_image'])
 
 const uuid = z.uuid()
+const imageSize = z.object({
+  width: z.number().int().positive().max(20000),
+  height: z.number().int().positive().max(20000),
+})
 const imageSourceParams = {
   sourceImageKey: z.string().trim().min(1).max(512),
   sourceImageUrl: z.string().max(4000).optional(),
   count: z.number().int().min(1).max(4),
   resolution: z.enum(['1k', '2k', '4k']),
-  size: z.object({
-    width: z.number().int().positive().max(20000),
-    height: z.number().int().positive().max(20000),
-  }).optional(),
+  size: imageSize.optional(),
   sourceWidth: z.number().int().positive().max(20000).optional(),
   sourceHeight: z.number().int().positive().max(20000).optional(),
   extra: z.record(z.string(), z.unknown()).optional(),
@@ -140,6 +141,12 @@ const variationParams = z.object({
   ...imageSourceParams,
   prompt: z.string().trim().max(VARIATION_USER_PROMPT_MAX).optional(),
 }).strict()
+const textToImageParams = z.object({
+  prompt: z.string().trim().min(1, '请填写画面描述').max(4000, '画面描述不能超过 4000 字'),
+  size: imageSize.strict(),
+  count: z.number().int().min(1).max(4),
+  resolution: z.enum(['1k', '2k', '4k']),
+}).strict()
 
 export const createImageTaskSchema = z.discriminatedUnion('capability', [
   z.object({
@@ -154,12 +161,18 @@ export const createImageTaskSchema = z.discriminatedUnion('capability', [
     params: variationParams,
     modelProfileId: z.string().optional(),
   }).strict(),
+  z.object({
+    capability: z.literal('text_to_image'),
+    requestId: uuid,
+    params: textToImageParams,
+    modelProfileId: z.string().optional(),
+  }).strict(),
 ])
 
-type ImageTaskCapability = 'image_edit' | 'variation'
+type ImageTaskCapability = 'image_edit' | 'variation' | 'text_to_image'
 type StoredImageParams = {
   prompt?: string
-  sourceImageKey: string
+  sourceImageKey?: string
   referenceImageKey?: string
   sourceWidth?: number
   sourceHeight?: number
@@ -309,8 +322,13 @@ function sourceDimensions(params: StoredImageParams) {
 }
 
 function imageModelUnavailable(operation: ImageTaskCapability) {
-  const label = operation === 'variation' ? '裂变' : '智能编辑'
-  return new HttpError(503, `${label}尚未配置可用的图片模型`, operation === 'variation' ? 'VARIATION_UNAVAILABLE' : 'IMAGE_EDIT_UNAVAILABLE')
+  const labels = {
+    variation: ['裂变', 'VARIATION_UNAVAILABLE'],
+    image_edit: ['智能编辑', 'IMAGE_EDIT_UNAVAILABLE'],
+    text_to_image: ['文生图', 'TEXT_TO_IMAGE_UNAVAILABLE'],
+  } as const
+  const [label, code] = labels[operation]
+  return new HttpError(503, `${label}尚未配置可用的图片模型`, code)
 }
 
 function providerContext(runtime: ImageJobRuntime, requestId?: string): ProviderContext {
@@ -386,6 +404,7 @@ export async function createImageJobInStore(
   const isFusion = referenceKey.length > 0
   const relight = parsed.capability === 'image_edit' ? readRelight(parsed.params) : undefined
   const isRelight = relight !== undefined
+  const sourceKey = parsed.capability === 'text_to_image' ? undefined : parsed.params.sourceImageKey
   if (isRelight && (isRetouch || isFusion)) throw new HttpError(400, '不能同时提交重新打光和其他编辑', 'INVALID_PARAMS')
   if (isFusion && isRetouch) throw new HttpError(400, '不能同时提交精修和融合', 'INVALID_PARAMS')
   if (parsed.capability === 'variation' && userPrompt.length > VARIATION_USER_PROMPT_MAX) {
@@ -406,7 +425,10 @@ export async function createImageJobInStore(
   if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && !isRelight && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
     throw new HttpError(400, '编辑要求过长', 'INVALID_PARAMS')
   }
-  if (isFusion && referenceKey === parsed.params.sourceImageKey) {
+  if (parsed.capability === 'text_to_image' && (!userPrompt || userPrompt.length > (profile.ui.promptMaxLength ?? 4000))) {
+    throw new HttpError(400, userPrompt ? '画面描述过长' : '请填写画面描述', 'INVALID_PARAMS')
+  }
+  if (isFusion && referenceKey === sourceKey) {
     throw new HttpError(400, '商品图和场景图不能是同一张', 'INVALID_SOURCE')
   }
   if (isFusion && !isSafeObjectKey(user.id, referenceKey)) {
@@ -444,24 +466,27 @@ export async function createImageJobInStore(
   if (parsed.params.count > profile.ui.maxCount) {
     throw new HttpError(400, `最多生成 ${profile.ui.maxCount} 张`, 'INVALID_PARAMS')
   }
-  if (!isSafeObjectKey(user.id, parsed.params.sourceImageKey)) {
+  if (parsed.capability === 'text_to_image' && !profile.ui.resolutions.includes(parsed.params.resolution)) {
+    throw new HttpError(400, '当前模型不支持所选分辨率，请重新选择', 'INVALID_PARAMS')
+  }
+  if (parsed.capability !== 'text_to_image' && (!sourceKey || !isSafeObjectKey(user.id, sourceKey))) {
     throw new HttpError(400, '原图对象无效或无权访问', 'INVALID_SOURCE')
   }
   const dimensions = sourceDimensions(parsed.params)
   const normalized: NormalizedImageRequest = {
     operation: parsed.capability,
     prompt,
-    images: [
+    images: sourceKey ? [
       {
-        source: { kind: 'r2', objectKey: parsed.params.sourceImageKey },
+        source: { kind: 'r2', objectKey: sourceKey },
         width: dimensions.width,
         height: dimensions.height,
       },
       ...(isFusion ? [{ source: { kind: 'r2' as const, objectKey: referenceKey } }] : []),
-    ],
+    ] : [],
     target: { size: parsed.params.size, resolution: parsed.params.resolution },
     count: parsed.params.count,
-    extra: parsed.params.extra,
+    extra: parsed.capability === 'text_to_image' ? undefined : parsed.params.extra,
   }
   const mapped = provider.mapRequest(normalized, profile.model)
   if (parsed.capability === 'variation' || isRetouch || isFusion || isRelight) {
@@ -472,7 +497,7 @@ export async function createImageJobInStore(
   })).digest('hex')
   const existing = await store.findByRequestId(parsed.requestId)
   if (existing) {
-    if (existing.request_fingerprint !== fingerprint) {
+    if (existing.capability !== parsed.capability || existing.request_fingerprint !== fingerprint) {
       throw new HttpError(409, '请求标识已用于其他图片任务', 'REQUEST_CONFLICT')
     }
     return { bundle: { job: existing, items: await store.listItems(existing.id) }, created: false, provider }
@@ -542,17 +567,18 @@ export async function runProviderSubmits(
   runtime: ImageJobRuntime,
 ): Promise<SubmitOutcome[]> {
   const params = bundle.job.params as StoredImageParams
-  if (!isSafeObjectKey(userId, params.sourceImageKey)) {
+  const isTextToImage = bundle.job.capability === 'text_to_image'
+  if (!isTextToImage && (!params.sourceImageKey || !isSafeObjectKey(userId, params.sourceImageKey))) {
     throw new HttpError(400, '原图对象无效或无权访问', 'INVALID_SOURCE')
   }
-  const referenceKey = params.referenceImageKey?.trim() ?? ''
+  const referenceKey = isTextToImage ? '' : params.referenceImageKey?.trim() ?? ''
   if (referenceKey && referenceKey === params.sourceImageKey) {
     throw new HttpError(400, '商品图和场景图不能是同一张', 'INVALID_SOURCE')
   }
   if (referenceKey && !isSafeObjectKey(userId, referenceKey)) {
     throw new HttpError(400, '场景图对象无效或无权访问', 'INVALID_SOURCE')
   }
-  const sourceUrl = await resolveInputUrl(params.sourceImageKey, runtime)
+  const sourceUrl = !isTextToImage && params.sourceImageKey ? await resolveInputUrl(params.sourceImageKey, runtime) : undefined
   const referenceUrl = referenceKey ? await resolveInputUrl(referenceKey, runtime) : undefined
   const prompt = submittedPrompt(bundle.job.provider_params, params)
   const parallel = dragonCodeConfig()?.maxParallel ?? 4
@@ -565,7 +591,7 @@ export async function runProviderSubmits(
       const submitted = await provider.submit({
         model: String(bundle.job.provider_params.model ?? ''),
         prompt,
-        images: referenceUrl ? [{ url: sourceUrl }, { url: referenceUrl }] : [{ url: sourceUrl }],
+        images: sourceUrl ? [{ url: sourceUrl }, ...(referenceUrl ? [{ url: referenceUrl }] : [])] : [],
         providerParams: bundle.job.provider_params,
       }, ctx)
       return {
@@ -828,7 +854,8 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
     return withIdentity(user.id, user.email, async sql => {
       await requireActive(sql, user.id)
       const store = createSqlStore(sql, user.id)
-      const message = error instanceof ProviderError ? error.message : '图片源文件读取失败'
+      const message = error instanceof ProviderError ? error.message
+        : created.bundle.job.capability === 'text_to_image' ? '文生图任务提交失败' : '图片源文件读取失败'
       const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
       const finalized = await failImageJobBeforeSubmit(store, created.bundle, billingRuntime, message)
       return toClientImageTask(finalized, runtime)
@@ -884,14 +911,16 @@ export async function loadImageTaskByRequest(user: User, requestId: string, runt
   return loadImageTask(user, found.id, runtime)
 }
 
-export async function listImageTasks(user: User, page: number) {
+export async function listImageTasks(user: User, page: number, capability?: ImageTaskCapability) {
   return withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     const scope = runtimeScope()
     const [count] = await sql`select count(*)::integer as total from aigc.image_jobs
-      where user_id=${user.id} and scope=${scope} and expires_at>now()`
+      where user_id=${user.id} and scope=${scope} and expires_at>now()
+      and (${capability ?? null}::text is null or capability=${capability ?? null})`
     const rows = await sql`select id,status,model_profile_id,capability,left(params->>'prompt',80) as preview,created_at,updated_at
       from aigc.image_jobs where user_id=${user.id} and scope=${scope} and expires_at>now()
+      and (${capability ?? null}::text is null or capability=${capability ?? null})
       order by created_at desc limit 20 offset ${(page - 1) * 20}`
     return {
       items: rows.map(row => {

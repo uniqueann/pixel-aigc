@@ -9,6 +9,7 @@ import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import type { GenerationTask } from '@/types'
 import type { CanvasGenerationTaskParams } from './requestBuilder'
+import { resultAssetForTask } from './resultAsset'
 
 export type DerivedGenerationMode = 'variation' | 'image-to-video'
 
@@ -97,9 +98,9 @@ export default function DerivedGenerationPanel({
   const resultUrls = task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
   const previewItems = resultUrls.map((url, index) => {
     const image = task?.resultImages?.[index]
-    const asset = image?.objectKey ? Object.values(resultAssets ?? {}).find(item => item.objectKey === image.objectKey) : undefined
+    const asset = resultAssetForTask(task, index, resultAssets ?? {})
     const src = asset && !asset.missing ? asset.url : url
-    return { id: `${task?.id}:${index}`, thumbSrc: src, fullSrc: src, originalSrc: sourceAsset.missing ? undefined : sourceAsset.url, objectKey: image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: image?.expiresAt, title: `裂变结果 ${(image?.ordinal ?? index) + 1}` }
+    return { id: `${task?.id}:${index}`, thumbSrc: src, fullSrc: src, originalSrc: sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `裂变结果 ${(image?.ordinal ?? index) + 1}` }
   })
   const model = models.find(item => item.id === modelProfileId)
   const originalModel = models.find(item => item.id === task?.modelProfileId) ?? model
@@ -186,6 +187,7 @@ export default function DerivedGenerationPanel({
       {modelsLoading || imageToVideo ? null : generateDisabled ? (
         <p className="toolbox-hint">裂变模型尚未就绪，请检查登录与模型配置。</p>
       ) : null}
+      {imageToVideo && !mockGateway && <p className="toolbox-hint">视频真实生成尚未接入，目前仅支持模拟模式。</p>}
       <Button
         type="primary"
         block
@@ -220,7 +222,7 @@ export default function DerivedGenerationPanel({
       {task?.status === 'succeeded' && !imageToVideo && <PreviewResultStrip items={previewItems} onDownload={item => {
         const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
         const image = task.resultImages?.[index]
-        return downloadImageSource(item.fullSrc, `裂变结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, image?.objectKey)
+        return downloadImageSource(item.fullSrc, `裂变结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
       }} />}
 
       <p className="free-canvas-panel-hint">结果会落在画板内可见位置；生成后仍可继续作为新的派生起点。</p>

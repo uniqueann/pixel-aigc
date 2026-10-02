@@ -46,6 +46,21 @@ describe('createTask 真实模式接入检查', () => {
     }), { timeout: 55000 })
   })
 
+  it('文生图沿用图片任务接口，视频仍未开放真实提交', async () => {
+    expect(liveCapabilityReady(Capability.TextToImage, false)).toBe(false)
+    expect(canCreateLiveTask(Capability.TextToImage, false)).toBe(true)
+    const payload = {
+      capability: Capability.TextToImage,
+      requestId: '00000000-0000-4000-8000-000000000005',
+      modelProfileId: 'dragoncode:gpt-image-2',
+      params: { prompt: '雨夜城市', size: { width: 1024, height: 1024 }, count: 1, resolution: '1k' },
+    }
+    await expect(createTask(payload)).resolves.toMatchObject({ id: 'task-1' })
+    expect(post).toHaveBeenCalledWith('/tasks', payload, { timeout: 55000 })
+    await expect(createTask({ ...payload, capability: Capability.TextToVideo })).rejects.toThrow('该生成能力尚未接入真实服务')
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
   it('未接入的能力仍拒绝提交', async () => {
     for (const capability of [Capability.Relight, Capability.Fusion, Capability.Retouch, Capability.Inpaint]) {
       await expect(createTask({

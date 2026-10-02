@@ -29,6 +29,8 @@ export interface GenerationDraft {
   presetKey: string
   count: number
   durationSeconds: number
+  modelProfileId?: string
+  resolution?: '1k' | '2k' | '4k'
 }
 
 export interface CanvasDrafts {

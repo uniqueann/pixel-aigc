@@ -23,7 +23,10 @@ beforeEach(async () => {
 
 describe('IndexedDB 项目保存与恢复', () => {
   it('事务提交后保存完整快照，再初始化恢复相同项目和空历史', async () => {
-    usePersistenceStore.getState().setDrafts({ ...defaultDrafts(), 'text-to-video': { prompt: '视频草稿', count: 1, presetKey: '16:9', durationSeconds: 10 } })
+    usePersistenceStore.getState().setDrafts({ ...defaultDrafts(),
+      'text-to-image': { prompt: '文生图草稿', count: 2, presetKey: '16:9', durationSeconds: 5, modelProfileId: 'chosen-model', resolution: '4k' },
+      'text-to-video': { prompt: '视频草稿', count: 1, presetKey: '16:9', durationSeconds: 10 },
+    })
     const expected = currentSnapshot()
     await flushProject()
     expect(await database.readCurrentSnapshot()).toEqual(expected)
@@ -98,6 +101,8 @@ describe('IndexedDB 项目保存与恢复', () => {
     await newProject()
     expect(useEditorStore.getState().project?.id).not.toBe(original.project.id)
     expect(useEditorStore.getState().project?.document.scenes[0].nodes).toEqual([])
+    expect(usePersistenceStore.getState().drafts['text-to-image'].modelProfileId).toBeUndefined()
+    expect(usePersistenceStore.getState().drafts['text-to-image'].resolution).toBeUndefined()
     expect(await database.readCurrentSnapshot()).toEqual(currentSnapshot())
   })
 

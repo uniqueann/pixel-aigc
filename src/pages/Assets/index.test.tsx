@@ -37,6 +37,7 @@ vi.mock('@/features/assets/workstationHistory', () => ({
 
 import Assets from './index'
 import { usePreferencesStore } from '@/features/preferences/store'
+import { listHistoryPreviews } from '@/features/assets/workstationHistory'
 
 function renderAssets() {
   return render(
@@ -70,6 +71,7 @@ function expectThumbnailKeepsPreviewAccess(cover: HTMLElement) {
 describe('我的资产缩略图预览入口', () => {
   beforeEach(() => {
     openAt.mockReset()
+    vi.mocked(listHistoryPreviews).mockReset().mockResolvedValue([historyItem])
     localStorage.clear()
     usePreferencesStore.getState().reset()
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
@@ -104,5 +106,19 @@ describe('我的资产缩略图预览入口', () => {
 
     fireEvent.click(buttonByText('查看大图'))
     expect(openAt).toHaveBeenCalledWith('hist-1')
+  })
+
+  it('图片筛选同时显示文生图和工作站结果，文生图使用独立中文名称', async () => {
+    vi.mocked(listHistoryPreviews).mockResolvedValueOnce([historyItem, {
+      ...historyItem, id: 'text-image-1', toolSlug: 'text-to-image', capability: Capability.TextToImage, prompt: '夜晚的城市',
+    }])
+    renderAssets()
+    await waitForCover()
+    fireEvent.click(screen.getByText('图片'))
+    expect(screen.queryByText('图片工作站')).toBeNull()
+    const cover = screen.getByRole('button', { name: '查看文生图大图' })
+    expect(screen.getByRole('button', { name: '查看融合大图' })).toBeTruthy()
+    fireEvent.click(cover)
+    expect(openAt).toHaveBeenCalledWith('text-image-1')
   })
 })
