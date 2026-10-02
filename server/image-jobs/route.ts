@@ -19,7 +19,10 @@ export async function handleImageTaskRoute(user: User, method: string, path: str
   if (path.length === 1 && method === 'POST') return submitImageTask(user, body)
   if (path.length === 1 && method === 'GET') {
     const page = z.coerce.number().int().min(1).max(1000).parse(query.get('page') ?? '1')
-    return listImageTasks(user, page)
+    const capability = query.has('capability')
+      ? z.enum(['image_edit', 'variation', 'text_to_image']).parse(query.get('capability'))
+      : undefined
+    return listImageTasks(user, page, capability)
   }
   if (path[1] === 'by-request' && path.length === 3 && method === 'GET') {
     return loadImageTaskByRequest(user, uuid.parse(path[2]))

@@ -14,9 +14,10 @@ import DerivedGenerationPanel, {
 } from '@/features/free-canvas/generation/DerivedGenerationPanel'
 import GenerationPanel from '@/features/free-canvas/generation/GenerationPanel'
 import { resolveSelectedImageSource } from '@/features/free-canvas/generation/derivedSource'
-import { isFreeCanvasVariationEntryEnabled } from '@/features/free-canvas/generation/availability'
-import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
-import { useCanvasVariationModels } from '@/features/free-canvas/generation/useCanvasVariationModels'
+import { isCanvasMockGateway, isFreeCanvasTextToImageEntryEnabled, isFreeCanvasVariationEntryEnabled } from '@/features/free-canvas/generation/availability'
+import { useCanvasTextToImageModels, useCanvasVariationModels } from '@/features/free-canvas/generation/useCanvasVariationModels'
+import { resolveCanvasTextToImageParameters } from '@/features/free-canvas/generation/textToImageParameters'
+import { resultAssetForTask } from '@/features/free-canvas/generation/resultAsset'
 import { useCanvasImages } from '@/features/free-canvas/images/useCanvasImages'
 import CanvasAssetPicker from '@/features/free-canvas/images/CanvasAssetPicker'
 import { importCanvasFile, importCanvasHistory, type CanvasImageImportContext } from '@/features/free-canvas/images/importImage'
@@ -52,6 +53,7 @@ export default function FreeCanvas() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const configuration = useCanvasVariationModels()
+  const textToImageConfiguration = useCanvasTextToImageModels()
   const preferences = usePreferencesStore(state => state.preferences)
   const ownerId = currentWorkstationHistoryOwner()
   const epoch = usePersistenceStore(state => state.epoch)
@@ -94,12 +96,17 @@ export default function FreeCanvas() {
   const scene = project?.document.scenes.find((item) => item.id === activeSceneId)
   const generation = useFreeCanvasGenerationController(scene?.id)
   const foreignSubmission = !!generation.pendingSubmission?.ownerId && generation.pendingSubmission.ownerId !== ownerId
-  const images = useCanvasImages(project?.assets ?? EMPTY_ASSETS, scene, derivedDraft?.sourceAssetId)
+  const taskResultCount = generation.task?.resultImages?.length || generation.task?.resultUrls?.length || 0
+  const previewAssetIds = Array.from({ length: taskResultCount }, (_, index) => resultAssetForTask(generation.task, index, project?.assets ?? EMPTY_ASSETS)?.id).filter((id): id is string => !!id)
+  const images = useCanvasImages(project?.assets ?? EMPTY_ASSETS, scene, derivedDraft?.sourceAssetId, previewAssetIds)
   const model = configuration.models.find(item => item.id === derivedDraft?.modelProfileId)
     ?? configuration.models.find(item => item.defaultFor?.includes('variation')) ?? configuration.models[0]
   const requestedResolution = derivedDraft?.resolution ?? preferences.image.resolution
   const effective = effectiveImageParameters(variationCount, requestedResolution, derivedAsset?.type === 'image' ? derivedAsset : undefined, model?.ui)
   const estimatedCredits = effective.count * (model?.pricing?.creditsPerImage[effective.resolution] ?? 0)
+  const textToImageParameters = resolveCanvasTextToImageParameters(drafts['text-to-image'], preferences.image.resolution, textToImageConfiguration.models)
+  const mockGateway = isCanvasMockGateway()
+  const textToImageEntryEnabled = isFreeCanvasTextToImageEntryEnabled() && textToImageParameters.presets.length > 0 && (mockGateway || textToImageParameters.pricingReady)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -180,15 +187,33 @@ export default function FreeCanvas() {
   }, [])
 
   const handleGenerate = () => {
+    if (activeSlug === 'text-to-video' && !mockGateway) {
+      message.warning('视频真实生成尚未接入，目前仅支持模拟模式')
+      return
+    }
+    if (activeSlug === 'text-to-image' && !textToImageEntryEnabled) {
+      message.warning('请先确认登录与文生图模型配置')
+      return
+    }
+    const promptMaxLength = textToImageParameters.model?.ui.promptMaxLength
+    if (activeSlug === 'text-to-image' && promptMaxLength && prompt.trim().length > promptMaxLength) {
+      message.warning(`画面描述最多 ${promptMaxLength} 个字符`)
+      return
+    }
     const preset = IMAGE_SIZE_PRESETS.find((item) => item.key === presetKey) ?? IMAGE_SIZE_PRESETS[0]
     const center = stageRef.current?.getViewportCenter() ?? {
       x: scene?.width ? scene.width / 2 : 0,
       y: scene?.height ? scene.height / 2 : 0,
     }
-    const request = activeSlug === 'text-to-video'
-      ? buildTextToVideoRequest(prompt, preset, durationSeconds)
-      : buildTextToImageRequest(prompt, preset, count)
-    void generation.generate(request, center)
+    try {
+      const request = activeSlug === 'text-to-video'
+        ? buildTextToVideoRequest(prompt, preset, durationSeconds)
+        : buildTextToImageRequest(prompt, textToImageParameters.preset, textToImageParameters.count, { resolution: textToImageParameters.resolution, modelProfileId: textToImageParameters.model?.id })
+      if (activeSlug === 'text-to-image') {
+        updateDraft({ modelProfileId: textToImageParameters.model?.id, resolution: textToImageParameters.requestedResolution })
+      }
+      void generation.generate(request, center)
+    } catch (error) { message.error(error instanceof Error ? error.message : '生成参数无效') }
   }
 
   const handleNodeGenerationAction = useCallback((action: DerivedGenerationMode, nodeId: string) => {
@@ -219,6 +244,10 @@ export default function FreeCanvas() {
     const selected = resolveSelectedImageSource(scene, project?.assets, selectedNodeId)
     const source = selected ?? derivedContext?.source
     if (!derivedContext || !source) return
+    if (derivedContext.mode === 'image-to-video' && !mockGateway) {
+      message.warning('视频真实生成尚未接入，目前仅支持模拟模式')
+      return
+    }
     if (derivedContext.mode === 'variation' && !variationEntryEnabled) {
       message.warning('请先确认登录与裂变模型配置')
       return
@@ -283,6 +312,7 @@ export default function FreeCanvas() {
       }} />
       {images.error && <Alert type="warning" showIcon message="画布图片读取失败" description={images.error} action={<Button onClick={images.reload}>重试读取图片</Button>} />}
       {configuration.error && <Alert type="warning" showIcon message="裂变模型配置读取失败" description={configuration.error} action={<Button onClick={configuration.reload}>重新读取配置</Button>} />}
+      {textToImageConfiguration.error && <Alert type="warning" showIcon message="文生图模型配置读取失败" description={textToImageConfiguration.error} action={<Button onClick={textToImageConfiguration.reload}>重新读取文生图配置</Button>} />}
       {generation.pendingSubmission && !generation.submitting && <Alert type="warning" showIcon message={foreignSubmission ? '此任务属于其他账号' : '生成请求等待恢复'} description={foreignSubmission ? '当前账号无法续接此任务。放弃等待可清理本地占位，继续编辑画布。' : '继续操作会使用原幂等键确认同一次请求，避免重复生成；放弃后将清理本地等待状态。'} action={<Space>
         {!foreignSubmission && <Button onClick={() => { void generation.resumeSubmission() }}>继续原请求</Button>}
         <Button onClick={generation.abandonSubmission}>放弃等待</Button>
@@ -341,7 +371,7 @@ export default function FreeCanvas() {
             onPromptChange={(prompt) => updateDerived({ prompt })}
             onCountChange={(count) => updateDerived({ count })}
             onDurationChange={(durationSeconds) => updateDerived({ durationSeconds })}
-            generateDisabled={derivedContext.mode === 'variation' && !variationEntryEnabled && !configuration.loading}
+            generateDisabled={derivedContext.mode === 'variation' ? !variationEntryEnabled : !mockGateway}
             modelsLoading={derivedContext.mode === 'variation' && configuration.loading}
             onGenerate={handleDerivedGenerate}
             onRetry={() => { void generation.retry() }}
@@ -354,7 +384,7 @@ export default function FreeCanvas() {
             onResolutionChange={resolution => updateDerived({ resolution })}
             estimatedCredits={estimatedCredits}
             resolutionAdjusted={effective.resolution !== requestedResolution}
-            mockGateway={isCanvasMockGateway()}
+            mockGateway={mockGateway}
             preparationPhase={generation.preparationPhase}
             historyError={generation.historyError}
             historySaved={generation.historySaved}
@@ -365,8 +395,8 @@ export default function FreeCanvas() {
           <GenerationPanel
             mode={activeSlug}
             prompt={prompt}
-            presetKey={presetKey}
-            count={count}
+            presetKey={activeSlug === 'text-to-image' ? textToImageParameters.preset.key : presetKey}
+            count={activeSlug === 'text-to-image' ? textToImageParameters.count : count}
             durationSeconds={durationSeconds}
             task={generation.task}
             submitting={generation.submitting}
@@ -384,6 +414,22 @@ export default function FreeCanvas() {
             onRetry={() => { void generation.retry() }}
             onModifyParameters={generation.modifyParameters}
             onRefetch={() => { void generation.refetch() }}
+            models={textToImageConfiguration.models}
+            modelProfileId={textToImageParameters.model?.id}
+            resolution={textToImageParameters.resolution}
+            onModelChange={modelProfileId => updateDraft({ modelProfileId })}
+            onResolutionChange={resolution => updateDraft({ resolution })}
+            estimatedCredits={textToImageParameters.estimatedCredits}
+            resolutionAdjusted={textToImageParameters.resolutionAdjusted}
+            ratioAdjusted={textToImageParameters.ratioAdjusted}
+            countAdjusted={textToImageParameters.countAdjusted}
+            modelsLoading={textToImageConfiguration.loading}
+            generateDisabled={activeSlug === 'text-to-image' ? !textToImageEntryEnabled : !mockGateway}
+            mockGateway={mockGateway}
+            historyError={generation.historyError}
+            historySaved={generation.historySaved}
+            onRetrySave={generation.retryHistory}
+            resultAssets={images.assets}
           />
         )}
       </div>

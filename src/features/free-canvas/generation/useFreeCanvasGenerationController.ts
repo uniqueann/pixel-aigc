@@ -33,7 +33,7 @@ import {
 } from '@/types'
 import type { CanvasPoint, GenerationPlacement } from '../geometry'
 import { calculateDerivedPlacements, calculateGenerationPlacements, calculateNodeBounds } from '../geometry'
-import { canSubmitFreeCanvasVariation, isCanvasMockGateway } from './availability'
+import { canSubmitFreeCanvasTextToImage, canSubmitFreeCanvasVariation, isCanvasMockGateway } from './availability'
 import { saveCanvasTaskHistory } from './history'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
 
@@ -151,7 +151,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const unsavedHistoryRef = useRef(new Map<string, CanvasGenerationTask>())
   const savingHistoryRef = useRef(new Set<string>())
   const persistHistory = useCallback(async (completedTask: CanvasGenerationTask) => {
-    if (mockGateway || completedTask.capability !== Capability.Variation || !isCurrent() || savingHistoryRef.current.has(completedTask.id)) return
+    if (mockGateway || ![Capability.Variation, Capability.TextToImage].includes(completedTask.capability) || !isCurrent() || savingHistoryRef.current.has(completedTask.id)) return
     unsavedHistoryRef.current.set(completedTask.id, completedTask)
     savingHistoryRef.current.add(completedTask.id)
     try {
@@ -306,6 +306,10 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       setSubmissionError('裂变模型尚未就绪，请检查登录与模型配置')
       return
     }
+    if (initialRequest.capability === Capability.TextToImage && !confirmedTask && !canSubmitFreeCanvasTextToImage()) {
+      setSubmissionError('文生图模型尚未就绪，请检查登录与模型配置')
+      return
+    }
     submissionGateRef.current = true
     if (!initialContext.automaticRetry) setAutoRetrying(false)
     setSubmitting(true)
@@ -395,6 +399,9 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
 
     try {
       let prepared = initialRequest
+      if (!mockGateway && initialRequest.capability === Capability.TextToImage && !confirmedTask && !(initialRequest.params as TextToImageTaskParams).resolution) {
+        throw new Error('请选择生成分辨率')
+      }
       if (!mockGateway && initialRequest.capability === Capability.Variation && !confirmedTask) {
         const params = { ...initialRequest.params } as VariationTaskParams
         if (!params.sourceImageKey) {

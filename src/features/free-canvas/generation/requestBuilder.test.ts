@@ -26,6 +26,23 @@ describe('buildTextToImageRequest', () => {
   it('拒绝空提示词', () => {
     expect(() => buildTextToImageRequest('   ', IMAGE_SIZE_PRESETS[0], 1)).toThrow('请输入画面描述')
   })
+
+  it('真实文生图按分辨率缩放长边并记录模型，不附带源图片参数', () => {
+    const request = buildTextToImageRequest('纵向森林', IMAGE_SIZE_PRESETS[4], 2, { resolution: '2k', modelProfileId: 'chosen-model' })
+    expect(request).toMatchObject({ modelProfileId: 'chosen-model', params: {
+      prompt: '纵向森林', size: { width: 1152, height: 2048 }, count: 2, resolution: '2k',
+    } })
+    expect(request.params).not.toHaveProperty('sourceImageUrl')
+    expect(request.params).not.toHaveProperty('sourceWidth')
+    expect(request.params).not.toHaveProperty('sourceHeight')
+  })
+
+  it('四千分辨率保留宽屏比例，未指定模型时省略模型字段', () => {
+    expect(buildTextToImageRequest('宽屏森林', IMAGE_SIZE_PRESETS[3], 1, { resolution: '4k' })).toMatchObject({
+      params: { resolution: '4k', size: { width: 4096, height: 2304 }, count: 1 },
+    })
+    expect(buildTextToImageRequest('森林', IMAGE_SIZE_PRESETS[0], 1, { resolution: '1k' })).not.toHaveProperty('modelProfileId')
+  })
 })
 
 describe('buildTextToVideoRequest', () => {

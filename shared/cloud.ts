@@ -25,7 +25,8 @@ export const documentSchema = z.object({
     ctx.addIssue({ code: 'custom', message: '场景或节点 ID 无效' })
 })
 const draft = z.object({ prompt: z.string().max(20000), presetKey: z.enum(['1:1', '4:3', '3:4', '16:9', '9:16']),
-  count: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), durationSeconds: z.union([z.literal(5), z.literal(10)]) })
+  count: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), durationSeconds: z.union([z.literal(5), z.literal(10)]),
+  modelProfileId: identifier.optional(), resolution: z.enum(['1k', '2k', '4k']).optional() })
 export const draftsSchema = z.object({
   'text-to-image': draft, 'text-to-video': draft,
   derived: z.object({ mode: z.enum(['variation', 'image-to-video']), sourceNode: baseNode.extend({ type: z.literal('image'), assetId: identifier }),

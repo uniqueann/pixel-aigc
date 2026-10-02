@@ -29,6 +29,17 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
     } }
   }
   const mode = request.capability === Capability.TextToVideo ? 'text-to-video' : 'text-to-image'
-  const presetKey = IMAGE_SIZE_PRESETS.find((preset) => preset.width === params.size?.width && preset.height === params.size?.height)?.key ?? '1:1'
-  return { ...drafts, derived: undefined, [mode]: { prompt: params.prompt ?? '', presetKey, count: params.count ?? 1, durationSeconds: params.durationSeconds ?? 5 } }
+  // 分辨率只改变像素数量，按比例还原预设，兼容缩放后取整的尺寸。
+  const size = params.size
+  const presetKey = size?.width && size.height
+    ? IMAGE_SIZE_PRESETS.reduce((closest, preset) => (
+      Math.abs(Math.log((preset.width / preset.height) / (size.width / size.height)))
+        < Math.abs(Math.log((closest.width / closest.height) / (size.width / size.height))) ? preset : closest
+    )).key
+    : drafts[mode].presetKey
+  return { ...drafts, derived: undefined, [mode]: {
+    ...drafts[mode], prompt: params.prompt ?? '', presetKey, count: params.count ?? 1, durationSeconds: params.durationSeconds ?? 5,
+    ...(record?.request.modelProfileId ? { modelProfileId: record.request.modelProfileId } : {}),
+    ...(params.resolution ? { resolution: params.resolution } : {}),
+  } }
 }

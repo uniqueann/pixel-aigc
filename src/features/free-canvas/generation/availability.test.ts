@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { canSubmitFreeCanvasVariation, isFreeCanvasVariationEntryEnabled } from './availability'
+import {
+  canSubmitFreeCanvasTextToImage, canSubmitFreeCanvasVariation,
+  isFreeCanvasTextToImageEntryEnabled, isFreeCanvasVariationEntryEnabled,
+  useCanvasTextToImageConfiguration, useCanvasVariationConfiguration,
+} from './availability'
 
 describe('自由画布裂变开关', () => {
   it('未登录或配置未确认时关闭真实入口', () => {
@@ -26,5 +30,28 @@ describe('自由画布裂变开关', () => {
     expect(isFreeCanvasVariationEntryEnabled(ready)).toBe(true)
     expect(canSubmitFreeCanvasVariation({ ...ready, configured: false })).toBe(false)
     expect(canSubmitFreeCanvasVariation({ ...ready, authenticated: false })).toBe(false)
+  })
+})
+
+describe('自由画布文生图开关', () => {
+  it('真实入口同时要求登录和文生图配置就绪', () => {
+    const ready = { generationMode: 'real', authenticated: true, configured: true }
+    expect(isFreeCanvasTextToImageEntryEnabled(ready)).toBe(true)
+    expect(canSubmitFreeCanvasTextToImage(ready)).toBe(true)
+    expect(canSubmitFreeCanvasTextToImage({ ...ready, authenticated: false })).toBe(false)
+    expect(canSubmitFreeCanvasTextToImage({ ...ready, configured: false })).toBe(false)
+  })
+
+  it('云端关闭才允许模拟网关，不绕过真实能力门禁', () => {
+    expect(canSubmitFreeCanvasTextToImage({ generationMode: 'mock', cloud: false })).toBe(true)
+    expect(canSubmitFreeCanvasTextToImage({ generationMode: 'mock', cloud: true, authenticated: false, configured: false })).toBe(false)
+  })
+
+  it('裂变配置就绪不会打开未配置的文生图入口', () => {
+    useCanvasVariationConfiguration.setState({ ready: true })
+    useCanvasTextToImageConfiguration.setState({ ready: false })
+    expect(canSubmitFreeCanvasTextToImage({ generationMode: 'real', authenticated: true })).toBe(false)
+    expect(canSubmitFreeCanvasVariation({ generationMode: 'real', authenticated: true })).toBe(true)
+    useCanvasVariationConfiguration.setState({ ready: false })
   })
 })

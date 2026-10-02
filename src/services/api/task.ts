@@ -18,11 +18,11 @@ const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloud
 const LIVE_TASK_CAPABILITIES = new Set<Capability>([Capability.EmailAssist])
 
 /**
- * 工作站已接通、服务端 /tasks 会转到 image_jobs 的能力。
- * 不写入 LIVE_TASK_CAPABILITIES，工作站与画布分别检查自身的模型配置。
+ * 已接通、服务端 /tasks 会转到 image_jobs 的图片能力。
+ * 不写入 LIVE_TASK_CAPABILITIES，各业务入口分别检查自身的模型配置。
  */
-const WORKSTATION_TASK_CAPABILITIES = new Set<Capability>([Capability.Variation])
-const BILLED_TASK_CAPABILITIES = new Set<Capability>([Capability.ImageEdit, Capability.Variation])
+const IMAGE_TASK_CAPABILITIES = new Set<Capability>([Capability.Variation, Capability.TextToImage])
+const BILLED_TASK_CAPABILITIES = new Set<Capability>([Capability.ImageEdit, Capability.Variation, Capability.TextToImage])
 let creditRefreshSequence = 0
 
 async function refreshCredits() {
@@ -44,7 +44,7 @@ export function liveCapabilityReady(capability: Capability, mockGateway = useMoc
 }
 
 export function canCreateLiveTask(capability: Capability, mockGateway = useMockGateway) {
-  return liveCapabilityReady(capability, mockGateway) || WORKSTATION_TASK_CAPABILITIES.has(capability)
+  return liveCapabilityReady(capability, mockGateway) || IMAGE_TASK_CAPABILITIES.has(capability)
 }
 
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {

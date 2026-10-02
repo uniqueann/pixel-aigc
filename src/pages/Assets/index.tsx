@@ -252,7 +252,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           onChange={(value) => setFilter(value as Filter)}
           options={[
             { label: '全部', value: 'all' },
-            { label: '图片工作站', value: 'workstation' },
+            { label: '图片', value: 'workstation' },
             { label: '邮件助手', value: 'email' },
           ]}
         />

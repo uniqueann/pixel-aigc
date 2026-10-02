@@ -10,7 +10,7 @@ import type { Asset, Scene } from '@/editor/types'
 import { useUserStore } from '@/store/useUserStore'
 
 /** 运行时读取私有媒体，不把 Blob 地址或过期签名写进项目存档。 */
-export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | undefined, sourceAssetId?: string) {
+export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | undefined, sourceAssetId?: string, previewAssetIds: string[] = []) {
   useUserStore(state => state.userId)
   const ownerId = currentWorkstationHistoryOwner()
   const projectId = useEditorStore((state) => state.project?.id)
@@ -20,7 +20,7 @@ export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | un
   const [attempt, setAttempt] = useState(0)
   const [errors, setErrors] = useState<Record<string, { scope: string; message: string }>>({})
   const scope = JSON.stringify([ownerId, projectId, epoch])
-  const targets = JSON.stringify([...new Set([...(scene?.nodes.flatMap(node => node.type === 'image' ? [node.assetId] : []) ?? []), ...(sourceAssetId ? [sourceAssetId] : [])])].sort())
+  const targets = JSON.stringify([...new Set([...(scene?.nodes.flatMap(node => node.type === 'image' ? [node.assetId] : []) ?? []), ...(sourceAssetId ? [sourceAssetId] : []), ...previewAssetIds])].sort())
   useEffect(() => {
     const runtimeUser = user.current
     return () => { releaseRuntimeImageUser(runtimeUser) }

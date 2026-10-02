@@ -27,6 +27,54 @@ describe('项目快照校验与迁移', () => {
     expect(parseSnapshot(snapshot.project)).toEqual(snapshot)
   })
 
+  it('旧版草稿不强制写入模型或分辨率，新版字段保持第一版快照兼容', () => {
+    const legacy = parseSnapshot(serializeSnapshot(snapshot))
+    expect(legacy.schemaVersion).toBe(1)
+    expect(legacy.drafts['text-to-image'].modelProfileId).toBeUndefined()
+    expect(legacy.drafts['text-to-image'].resolution).toBeUndefined()
+    snapshot.drafts['text-to-image'] = { ...snapshot.drafts['text-to-image'], modelProfileId: 'chosen-model', resolution: '4k' }
+    expect(parseSnapshot(serializeSnapshot(snapshot)).drafts['text-to-image']).toEqual(snapshot.drafts['text-to-image'])
+  })
+
+  it.each([{ modelProfileId: '' }, { resolution: '8k' }])('拒绝无效的文生图草稿配置 %j', (invalid) => {
+    Object.assign(snapshot.drafts['text-to-image'], invalid)
+    expect(() => parseSnapshot(snapshot)).toThrow()
+  })
+
+  it.each([
+    ['1:1', 2048, 2048], ['4:3', 2048, 1536], ['3:4', 1536, 2048],
+    ['16:9', 4096, 2304], ['9:16', 2304, 4096], ['4:3', 1365, 1024],
+  ])('恢复高分辨率文生图时按比例还原 %s，并优先使用已提交模型和分辨率', (presetKey, width, height) => {
+    snapshot.drafts['text-to-image'] = { ...snapshot.drafts['text-to-image'], modelProfileId: 'old-model', resolution: '1k' }
+    snapshot.recoveries.request = {
+      projectId: snapshot.project.id, sceneId: snapshot.project.document.activeSceneId,
+      request: { capability: Capability.TextToImage, requestId: 'request', modelProfileId: 'chosen-model',
+        params: { prompt: '真实文生图', size: { width: Number(width), height: Number(height) }, count: 2, resolution: '4k' } },
+      context: { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
+      placements: [], replacedPlaceholderIds: [], applied: false,
+    }
+    const restored = parseSnapshot(serializeSnapshot(snapshot))
+    expect(restored.recoveries.request).toEqual(snapshot.recoveries.request)
+    expect(restoreTaskDrafts(restored)['text-to-image']).toMatchObject({
+      prompt: '真实文生图', presetKey, count: 2, modelProfileId: 'chosen-model', resolution: '4k',
+    })
+  })
+
+  it('旧文生图恢复请求没有新字段时，保留项目草稿中的模型和分辨率', () => {
+    snapshot.drafts['text-to-image'] = { ...snapshot.drafts['text-to-image'], modelProfileId: 'chosen-model', resolution: '2k' }
+    snapshot.recoveries.request = {
+      projectId: snapshot.project.id, sceneId: snapshot.project.document.activeSceneId,
+      request: { capability: Capability.TextToImage, requestId: 'request', params: { prompt: '旧任务', size: { width: 1024, height: 768 }, count: 1 } },
+      context: { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
+      placements: [], replacedPlaceholderIds: [], applied: false,
+    }
+    expect(restoreTaskDrafts(parseSnapshot(snapshot))['text-to-image']).toMatchObject({
+      prompt: '旧任务', presetKey: '4:3', modelProfileId: 'chosen-model', resolution: '2k',
+    })
+    Object.assign(snapshot.recoveries.request.request.params, { resolution: '8k' })
+    expect(() => parseSnapshot(snapshot)).toThrow('任务恢复分辨率无效')
+  })
+
   it('保留主动清空的画布，不重新插入示例', () => {
     snapshot.project.document.scenes[0].nodes = []
     useEditorStore.getState().loadProject(parseSnapshot(snapshot).project)

@@ -15,9 +15,9 @@ vi.mock('@/services/api/ownedImages', () => ({ readOwnedImage: mocks.read, inval
 vi.mock('@/features/image-workstation/imageMetadata', () => ({ readResultImage: async (blob: Blob) => ({ blob, width: 100, height: 100, mimeType: 'image/png' }) }))
 let rendered: ReturnType<typeof useCanvasImages>
 const EMPTY: Record<string, Asset> = {}
-function Harness() {
+function Harness({ previewAssetIds = [] }: { previewAssetIds?: string[] }) {
   const project = useEditorStore(state => state.project)
-  const images = useCanvasImages(project?.assets ?? EMPTY, project?.document.scenes[0])
+  const images = useCanvasImages(project?.assets ?? EMPTY, project?.document.scenes[0], undefined, previewAssetIds)
   useEffect(() => { rendered = images }, [images])
   return null
 }
@@ -64,6 +64,16 @@ describe('私有画布图片的运行时恢复', () => {
     expect(mocks.invalidate).toHaveBeenCalledWith('anonymous', 'owned-object')
     expect(rendered.error).toBeUndefined()
     expect(rendered.assets.owned.url).toBe('blob:canvas-0')
+  })
+
+  it('撤销画布节点后仍保留结果预览租约，关闭结果预览才释放', async () => {
+    await act(async () => root.render(<Harness previewAssetIds={['owned']} />))
+    await act(async () => useEditorStore.getState().removeNode(useEditorStore.getState().activeSceneId!, 'node'))
+    expect(rendered.assets.owned.url).toBe('blob:canvas-0')
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled()
+    expect(mocks.read).toHaveBeenCalledTimes(1)
+    await act(async () => root.render(<Harness />))
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:canvas-0')
   })
 
   it('切换项目后丢弃旧读取结果并取消原消费方', async () => {

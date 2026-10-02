@@ -99,6 +99,8 @@ export interface TextToImageTaskParams {
   prompt: string
   size: { width: number; height: number }
   count: number
+  /** 旧 Mock 请求可以缺省，真实文生图必须提交有效分辨率。 */
+  resolution?: '1k' | '2k' | '4k'
 }
 
 /** 自由画布文生视频任务参数 */

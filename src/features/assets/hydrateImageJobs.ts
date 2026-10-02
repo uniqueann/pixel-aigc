@@ -11,7 +11,7 @@ import { associateHistoryResult, compareHistory, HISTORY_LIMIT, listHistoryMetad
 import { isCurrentWorkstationHistoryOwner, currentWorkstationHistoryOwner } from './historyOwner'
 import { historyIdForResult, imageTaskResults } from './resultIdentity'
 
-const CAPABILITIES = [Capability.ImageEdit, Capability.Variation] as const
+const CAPABILITIES = [Capability.ImageEdit, Capability.Variation, Capability.TextToImage] as const
 export function metadataFromImageTask(task: GenerationTask<unknown>) {
   if (task.status !== 'succeeded') return []
   const directions = readRetouchDirections(task.params)
