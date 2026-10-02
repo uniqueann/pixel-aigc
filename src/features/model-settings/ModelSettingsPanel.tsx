@@ -1,32 +1,24 @@
-import { useEffect, useState } from 'react'
-import { App, Button, Input, Popconfirm, Select, Space, Spin, Tag } from 'antd'
+import { useState } from 'react'
+import { App, Alert, Button, Input, Popconfirm, Select, Space, Spin, Tag } from 'antd'
 import { authEnabled } from '@/cloud/client'
 import {
-  deleteDeepSeekKey, getModelProfiles, getModelSettings, saveDeepSeekKey,
-  saveDefaultEmailModel, testDeepSeekKey, type ModelProfile, type ModelSettings,
+  deleteDeepSeekKey, saveDeepSeekKey,
+  saveDefaultEmailModel, testDeepSeekKey, type ModelSettings,
 } from '@/services/api/modelSettings'
+import { useModelSettings } from './useModelSettings'
 
 export default function ModelSettingsPanel() {
   const { message } = App.useApp()
-  const [settings, setSettings] = useState<ModelSettings>()
-  const [profiles, setProfiles] = useState<ModelProfile[]>([])
+  const { settingsQuery, profilesQuery, updateSettings } = useModelSettings()
+  const settings = settingsQuery.data
+  const profiles = profilesQuery.data?.items ?? []
   const [apiKey, setApiKey] = useState('')
   const [busy, setBusy] = useState(false)
-  const [loading, setLoading] = useState(authEnabled)
-
-  useEffect(() => {
-    if (!authEnabled) return
-    void Promise.all([getModelSettings(), getModelProfiles()]).then(([value, catalog]) => {
-      setSettings(value)
-      setProfiles(catalog.items)
-    }).catch(error => message.error(error instanceof Error ? error.message : '模型设置加载失败'))
-      .finally(() => setLoading(false))
-  }, [message])
 
   const run = async (action: () => Promise<ModelSettings>, success: string) => {
     setBusy(true)
     try {
-      setSettings(await action())
+      await updateSettings(await action())
       window.dispatchEvent(new Event('pixel:model-settings-changed'))
       message.success(success)
     } catch (error) {
@@ -35,7 +27,12 @@ export default function ModelSettingsPanel() {
   }
 
   if (!authEnabled) return <section><h2>模型与密钥</h2><p className="settings-description">登录后即可配置自己的模型密钥。</p></section>
-  if (loading) return <Spin />
+  if (!settings || !profilesQuery.data) {
+    const error = settingsQuery.error ?? profilesQuery.error
+    if (error) return <section><h2>模型与密钥</h2><Alert type="error" showIcon message="模型设置加载失败，请重试"
+      action={<Button size="small" onClick={() => { void settingsQuery.refetch(); void profilesQuery.refetch() }}>重试</Button>} /></section>
+    return <Spin />
+  }
 
   return <section>
     <h2>模型与密钥</h2>

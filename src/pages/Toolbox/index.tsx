@@ -1,9 +1,7 @@
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ToolSwitcher from '@/components/ToolSwitcher'
-import { loadBgRemoveConfigured } from '@/services/api/capabilities'
-import { liveCapabilityReady } from '@/services/api/task'
-import { Capability } from '@/types'
+import { useCapabilities } from '@/hooks/useCapabilities'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { TOOLBOX_TOOLS } from './tools'
 
@@ -15,8 +13,7 @@ export default function Toolbox() {
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
   const activeSlug = TOOLBOX_TOOLS.find((t) => t.slug === tool)?.slug ?? TOOLBOX_TOOLS[0].slug
-  const [bgRemoveReady, setBgRemoveReady] = useState(() => liveCapabilityReady(Capability.BgRemove))
-  useEffect(() => { void loadBgRemoveConfigured().then(setBgRemoveReady) }, [])
+  const { capabilities: { bgRemove: bgRemoveReady } } = useCapabilities()
 
   return (
     <div>
@@ -24,7 +21,7 @@ export default function Toolbox() {
         options={TOOLBOX_TOOLS.map((t) => ({
           value: t.slug,
           label: t.label,
-          ready: t.slug !== 'bg-remove' || bgRemoveReady,
+          ready: t.slug === 'bg-remove' ? bgRemoveReady : true,
         }))}
         value={activeSlug}
         onChange={(slug) => navigate(`/toolbox/${slug}`)}

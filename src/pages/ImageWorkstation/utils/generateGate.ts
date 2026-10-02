@@ -3,6 +3,8 @@ import { emptyMaskMessage } from './maskExport'
 
 export function workstationGenerateBlockReason(input: {
   toolReady: boolean
+  configurationPending?: boolean
+  configurationError?: boolean
   hasInput: boolean
   formLocked: boolean
   submitting?: boolean
@@ -14,6 +16,8 @@ export function workstationGenerateBlockReason(input: {
   mode?: 'remove' | 'repaint'
 }): string | undefined {
   if (input.submitting) return undefined
+  if (input.configurationPending) return '正在加载功能配置，请稍候'
+  if (input.configurationError) return '功能配置加载失败，请重试'
   if (!input.toolReady) return COMING_SOON_SUBMIT_MESSAGE
   if (input.fusionBlocked) return '请先上传商品图和场景图'
   if (!input.hasInput) return '请先上传需要处理的图片'

@@ -5,6 +5,8 @@ import { App, Button, Tooltip } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import ToolSwitcher from '@/components/ToolSwitcher'
+import CapabilityStatus from '@/components/CapabilityStatus'
+import { useCapabilities } from '@/hooks/useCapabilities'
 import { usePreviewGallery } from '@/components/usePreviewGallery'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { createImageAsset } from '@/editor/services/assetService'
@@ -23,7 +25,6 @@ import {
 import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
 import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
-import { loadImageEditConfigured, loadRepaintConfigured, loadVariationConfigured } from '@/services/api/capabilities'
 import { listImageModels, type PublicImageModel } from '@/services/api/imageModels'
 import { liveCapabilityReady } from '@/services/api/task'
 import { defaultImageModel, publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
@@ -75,9 +76,7 @@ export default function ImageWorkstation() {
   const [outpaintTargetSize, setOutpaintTargetSize] = useState<{ width: number; height: number }>()
   const [presetPlatform, setPresetPlatform] = useState(PLATFORM_SIZE_PRESETS[0].platform)
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
-  const [repaintReady, setRepaintReady] = useState(() => liveCapabilityReady(Capability.Inpaint))
-  const [imageEditReady, setImageEditReady] = useState(() => liveCapabilityReady(Capability.ImageEdit))
-  const [variationReady, setVariationReady] = useState(() => liveCapabilityReady(Capability.Variation))
+  const { capabilities: { repaint: repaintReady, imageEdit: imageEditReady, variation: variationReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
   const [hasMaskPaint, setHasMaskPaint] = useState(false)
   const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
   const edgeRefineFinishedRef = useRef(false)
@@ -86,12 +85,15 @@ export default function ImageWorkstation() {
   const fusionProduct = fusionSelection.product
   const fusionReference = fusionSelection.reference
   const fusionLoading = fusionSelection.loading.product || fusionSelection.loading.reference
-  const capabilityReady = useCallback((capability: Capability) => {
+  const capabilityState = useCallback((capability: Capability) => {
     if (capability === Capability.ImageEdit || capability === Capability.Retouch || capability === Capability.Fusion || capability === Capability.Relight) return imageEditReady
     if (capability === Capability.Variation) return variationReady
     return liveCapabilityReady(capability)
   }, [imageEditReady, variationReady])
+  const capabilityReady = useCallback((capability: Capability) => capabilityState(capability) === true, [capabilityState])
   const toolReady = isWorkstationToolReady(activeTool, capabilityReady)
+  const toolState = toolReady ? true : isWorkstationToolReady(activeTool, capability => capabilityState(capability) !== false) ? undefined : false
+  const configurationReady = activeTool.slug === 'repaint' ? repaintReady : toolState
   const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode)
   const variationTool = activeTool.capability === Capability.Variation
   const retouchTool = activeTool.slug === 'retouch'
@@ -174,12 +176,14 @@ export default function ImageWorkstation() {
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
   const generateBlockReason = fusionTool && fusionLoading ? '请等待图片载入完成' : workstationGenerateBlockReason({
     toolReady,
+    configurationPending: configurationReady === undefined && !capabilityError,
+    configurationError: configurationReady === undefined && Boolean(capabilityError),
     hasInput: fusionTool ? Boolean(fusionProduct && fusionReference) : Boolean(controller.inputAsset),
     formLocked: controller.formLocked,
     submitting: controller.submitting,
     maskRequired,
     hasMaskPaint,
-    repaintBlocked: activeTool.slug === 'repaint' && !repaintReady,
+    repaintBlocked: activeTool.slug === 'repaint' && repaintReady === false,
     retouchBlocked: retouchTool && normalizeRetouchDirections(retouchDirections).length === 0,
     fusionBlocked: fusionTool && (!fusionProduct || !fusionReference),
     mode: inpaintMode,
@@ -227,9 +231,6 @@ export default function ImageWorkstation() {
 
   useEffect(() => {
     let active = true
-    void loadRepaintConfigured().then(ready => { if (active) setRepaintReady(ready) })
-    void loadImageEditConfigured().then(ready => { if (active) setImageEditReady(ready) })
-    void loadVariationConfigured().then(ready => { if (active) setVariationReady(ready) })
     void listImageModels('image_edit').then(items => {
       if (!active || !items.length) return
       setImageModels(items)
@@ -322,6 +323,10 @@ export default function ImageWorkstation() {
   }
 
   const handleGenerate = async () => {
+    if (configurationReady === undefined) {
+      message.warning(capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
+      return
+    }
     if (!toolReady) {
       message.warning(COMING_SOON_SUBMIT_MESSAGE)
       return
@@ -394,7 +399,7 @@ export default function ImageWorkstation() {
         options={WORKSTATION_TOOLS.map((item) => ({
           value: item.slug,
           label: item.label,
-          ready: isWorkstationToolReady(item, capabilityReady),
+          ready: isWorkstationToolReady(item, capability => capabilityState(capability) !== false),
         }))}
         value={activeTool.slug}
         onChange={(slug) => navigate(`/image-workstation/${slug}`)}
@@ -443,7 +448,15 @@ export default function ImageWorkstation() {
           }} />
         </div>
         <aside className="image-workstation-settings">
-          {toolReady ? (
+          <CapabilityStatus
+            ready={configurationReady}
+            error={capabilityError}
+            unavailableMessage={activeTool.slug === 'repaint'
+              ? '重绘还不能用。请确认已开通万相 wanx2.1-imageedit，并配置 DASHSCOPE_API_KEY。'
+              : `${COMING_SOON_SUBMIT_MESSAGE}。`}
+            onRetry={() => void refetchCapabilities()}
+          />
+          {toolState !== false ? (
             <ParamPanel
               capability={activeTool.capability}
               mode={inpaintMode}
@@ -466,7 +479,6 @@ export default function ImageWorkstation() {
               onErasePromptChange={setErasePrompt}
               repaintPrompt={repaintPrompt}
               onRepaintPromptChange={setRepaintPrompt}
-              repaintReady={repaintReady}
               outpaintMode={outpaintMode}
               onOutpaintModeChange={mode => {
                 setOutpaintMode(mode)
@@ -481,9 +493,7 @@ export default function ImageWorkstation() {
               presetPlatform={presetPlatform}
               onPresetPlatformChange={setPresetPlatform}
             />
-          ) : (
-            <p className="toolbox-hint toolbox-warning">{COMING_SOON_SUBMIT_MESSAGE}。</p>
-          )}
+          ) : null}
           {fusionTool ? <FusionInputStatus state={controller.inputPreparation} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}
           <GenerationTaskStatus
             task={controller.activeTask}

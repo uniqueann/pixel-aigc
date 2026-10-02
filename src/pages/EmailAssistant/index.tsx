@@ -6,7 +6,7 @@ import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import { buildEmailAssistRequest } from '@/features/email-assistant/requestBuilder'
 import { useEmailAssistantController } from '@/features/email-assistant/useEmailAssistantController'
 import { authEnabled } from '@/cloud/client'
-import { getModelProfiles, getModelSettings, type ModelProfile } from '@/services/api/modelSettings'
+import { useModelSettings } from '@/features/model-settings/useModelSettings'
 import type {
   EmailAssistLanguage,
   EmailAssistOperation,
@@ -35,22 +35,18 @@ export default function EmailAssistant() {
   const [operation, setOperation] = useState<EmailAssistOperation>('reply')
   const [language, setLanguage] = useState<EmailAssistLanguage>('zh')
   const [polishStyles, setPolishStyles] = useState<EmailPolishStyle[]>(['clear'])
-  const [profiles, setProfiles] = useState<ModelProfile[]>([])
-  const [modelProfileId, setModelProfileId] = useState('deepseek:deepseek-flash')
-  const [keyConfigured, setKeyConfigured] = useState(false)
+  const [modelProfileId, setModelProfileId] = useState<string>()
+  const { settingsQuery, profilesQuery } = useModelSettings()
+  const settings = settingsQuery.data
+  const profiles = profilesQuery.data?.items ?? []
+  const keyConfigured = settings
+    ? settings.deepseek.configured && settings.deepseek.verificationStatus === 'valid'
+    : undefined
+  const selectedModelProfileId = modelProfileId ?? settings?.defaultEmailModelId ?? 'deepseek:deepseek-flash'
+  const modelSettingsError = (settings ? null : settingsQuery.error) ?? (profilesQuery.data ? null : profilesQuery.error)
+  const modelSettingsLoading = authEnabled && (!settings || !profilesQuery.data) && !modelSettingsError
+  const modelSettingsReady = !authEnabled || Boolean(keyConfigured && profilesQuery.data)
   const controller = useEmailAssistantController()
-
-  useEffect(() => {
-    if (!authEnabled) return
-    const load = () => { void Promise.all([getModelProfiles(), getModelSettings()]).then(([catalog, settings]) => {
-        setProfiles(catalog.items)
-        setModelProfileId(settings.defaultEmailModelId)
-        setKeyConfigured(settings.deepseek.configured && settings.deepseek.verificationStatus === 'valid')
-      }).catch(error => message.error(error instanceof Error ? error.message : '模型设置加载失败')) }
-    load()
-    window.addEventListener('pixel:model-settings-changed', load)
-    return () => window.removeEventListener('pixel:model-settings-changed', load)
-  }, [message])
 
   useEffect(() => {
     const task = controller.task
@@ -83,9 +79,14 @@ export default function EmailAssistant() {
   }, [controller.resultText, controller.task])
 
   const handleGenerate = async () => {
+    if (!modelSettingsReady) {
+      message.warning(modelSettingsLoading ? '正在加载模型设置，请稍候'
+        : keyConfigured === false ? '请先配置自己的 DeepSeek API Key' : '模型设置加载失败，请重试')
+      return
+    }
     try {
       const request = buildEmailAssistRequest(currentParams)
-      const task = await controller.generate(request.params, modelProfileId)
+      const task = await controller.generate(request.params, selectedModelProfileId)
       if (task.status === 'succeeded') message.success('邮件内容已生成')
       else if (task.status === 'failed') {
         if (task.errorCode === 'INVALID_PROVIDER_KEY') window.dispatchEvent(new Event('pixel:model-settings-changed'))
@@ -118,7 +119,10 @@ export default function EmailAssistant() {
 
   return (
     <div className="email-assistant-page">
-      {authEnabled && !keyConfigured ? <Alert type="info" showIcon style={{ marginBottom: 16 }}
+      {authEnabled && modelSettingsError ? <Alert type="error" showIcon style={{ marginBottom: 16 }}
+        message="模型设置加载失败，请重试"
+        action={<Button size="small" onClick={() => { void settingsQuery.refetch(); void profilesQuery.refetch() }}>重试</Button>} />
+        : authEnabled && keyConfigured === false ? <Alert type="info" showIcon style={{ marginBottom: 16 }}
         message="配置自己的 DeepSeek API Key 后即可生成"
         description="邮件内容会发送到 DeepSeek；调用费用由你的 DeepSeek 账号承担。任务和修改稿保留 7 天。"
         action={<Button size="small" onClick={openModelSettings}>模型与密钥设置</Button>} /> : null}
@@ -186,7 +190,9 @@ export default function EmailAssistant() {
               {authEnabled ? <div>
                 <div className="field-label">本次使用的模型</div>
                 <Space>
-                  <Select style={{ width: 220 }} value={modelProfileId} disabled={controller.formLocked}
+                  <Select style={{ width: 220 }} value={profilesQuery.data ? selectedModelProfileId : undefined}
+                    placeholder="正在加载模型设置…" loading={modelSettingsLoading}
+                    disabled={controller.formLocked || modelSettingsLoading || Boolean(modelSettingsError)}
                     onChange={setModelProfileId} options={profiles.map(profile => ({ value: profile.id, label: profile.label }))} />
                   <Button size="small" onClick={openModelSettings}>设置</Button>
                 </Space>
@@ -194,7 +200,7 @@ export default function EmailAssistant() {
               <Button
                 type="primary"
                 loading={controller.submitting}
-                disabled={!sourceText.trim() || controller.formLocked || (authEnabled && !keyConfigured)}
+                disabled={!sourceText.trim() || controller.formLocked || !modelSettingsReady}
                 onClick={handleGenerate}
               >
                 生成
@@ -227,7 +233,7 @@ export default function EmailAssistant() {
                   size="small"
                   icon={<RedoOutlined />}
                   loading={controller.submitting}
-                  disabled={controller.formLocked}
+                  disabled={controller.formLocked || !modelSettingsReady}
                   onClick={handleGenerate}
                 >
                   重新生成
