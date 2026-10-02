@@ -74,4 +74,19 @@ describe('智能选区错误与缓存', () => {
       point: { x: 0.5, y: 0.5 },
     })).rejects.toMatchObject({ message: SMART_SELECT_TIMEOUT_MESSAGE })
   })
+  it('记录会话 POST 的真实 JSON 字节，日志不包含会话或令牌', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+    const session = { provider: 'tencent-goods', payload: '私有会话内容' }
+    storeSmartSelectSession('https://img/private.jpg', session)
+    let sent = ''
+    vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
+      sent = String(init.body)
+      return new Response(JSON.stringify({ maskBase64: 'png', width: 32, height: 32, bbox: { x: 0, y: 0, width: 0.5, height: 0.5 }, session, requestId: 'request-id' }))
+    }))
+    await requestSmartSelect({ imageUrl: 'https://img/private.jpg', naturalSize: { width: 32, height: 32 }, point: { x: 0.2, y: 0.2 } })
+    expect(debug).toHaveBeenCalledWith('[智能选区]', expect.objectContaining({ operation: 'post', source: 'session', requestCount: 1, requestBytes: new TextEncoder().encode(sent).byteLength, responseReadMs: expect.any(Number), requestId: 'request-id' }))
+    expect(debug).toHaveBeenCalledWith('[智能选区]', expect.objectContaining({ operation: 'complete', requestCount: 1, outcome: 'success' }))
+    expect(JSON.stringify(debug.mock.calls)).not.toMatch(/私有会话内容|https:|maskBase64|Authorization/)
+  })
+
 })

@@ -19,7 +19,7 @@ import { expandRemoteImage } from './aspect-ratio/outpaintClient'
 import { readPrefs, writePrefs } from './aspect-ratio/prefs'
 import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
-import { detectImageSubject } from './aspect-ratio/subjectClient'
+import { SubjectDetectionCache } from './aspect-ratio/subjectCache'
 import { cropProgressLabel } from './aspect-ratio/subjectFocus'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
 import { datedDownloadName } from './shared/dateStamp'
@@ -65,6 +65,9 @@ export default function AspectRatioTool() {
   const [processing, setProcessing] = useState(false)
   const processingRef = useRef(false)
   const cancelledRef = useRef(false)
+  const detectionCacheRef = useRef(new SubjectDetectionCache(scope))
+  const processingAbortRef = useRef(new AbortController())
+  const batchVersionRef = useRef(0)
   const mountedRef = useRef(true)
   const rendererRef = useRef<AspectRatioRenderer | null>(null)
   const addChainRef = useRef<Promise<void>>(Promise.resolve())
@@ -118,8 +121,24 @@ export default function AspectRatioTool() {
 
   useEffect(() => {
     mountedRef.current = true
+    const detectionCache = detectionCacheRef.current
+    const batchVersion = batchVersionRef
+    const unsubscribe = useUserStore.subscribe((state, previous) => {
+      if (state.userId === previous.userId) return
+      detectionCache.setOwner(state.userId ?? 'local')
+      batchVersion.current++
+      cancelledRef.current = true
+      processingAbortRef.current.abort()
+      rendererRef.current?.dispose()
+      rendererRef.current = null
+      commitItems(invalidateBatch(itemsRef.current))
+    })
     return () => {
+      unsubscribe()
       mountedRef.current = false
+      batchVersion.current++
+      processingAbortRef.current.abort()
+      detectionCache.clear()
       cancelledRef.current = true
       rendererRef.current?.dispose()
       rendererRef.current = null
@@ -262,7 +281,7 @@ export default function AspectRatioTool() {
   function removeFile(id: string) {
     if (processingRef.current) return
     const item = itemsRef.current.find(candidate => candidate.id === id)
-    if (item) URL.revokeObjectURL(item.sourceUrl)
+    if (item) { detectionCacheRef.current.remove(item.file); URL.revokeObjectURL(item.sourceUrl) }
     const next = itemsRef.current.filter(candidate => candidate.id !== id)
     commitItems(next)
     if (selectedId === id) setSelectedId(next[0]?.id ?? null)
@@ -270,6 +289,7 @@ export default function AspectRatioTool() {
 
   function clearFiles() {
     if (processingRef.current) return
+    detectionCacheRef.current.clear()
     for (const item of itemsRef.current) URL.revokeObjectURL(item.sourceUrl)
     commitItems([])
     setSelectedId(null)
@@ -286,6 +306,16 @@ export default function AspectRatioTool() {
     }
     processingRef.current = true
     cancelledRef.current = false
+    const version = ++batchVersionRef.current
+    const owner = useUserStore.getState().userId ?? 'local'
+    detectionCacheRef.current.setOwner(owner)
+    const abort = new AbortController()
+    processingAbortRef.current = abort
+    const current = () => mountedRef.current && version === batchVersionRef.current && owner === (useUserStore.getState().userId ?? 'local')
+    const shouldStop = () => cancelledRef.current || abort.signal.aborted || !current()
+    const update = (id: string, patch: Partial<BatchImage>) => {
+      if (current()) commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item))
+    }
     setProcessing(true)
     try {
       if (settings.strategy === 'outpaint') {
@@ -303,9 +333,8 @@ export default function AspectRatioTool() {
             targetWidth: plan.targetSize.width,
             targetHeight: plan.targetSize.height,
           }),
-          expandRemote: (image, plan) => expandRemoteImage(image, plan, () => cancelledRef.current || !mountedRef.current),
-          update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
-          shouldStop: () => cancelledRef.current || !mountedRef.current,
+          expandRemote: (image, plan) => expandRemoteImage(image, plan, shouldStop),
+          update, shouldStop,
         })
       } else {
         await processBatch({
@@ -314,23 +343,23 @@ export default function AspectRatioTool() {
           targetWidth: preset.width,
           targetHeight: preset.height,
           ids: onlyIds,
-          detect: image => detectImageSubject(image),
+          detect: image => detectionCacheRef.current.read(image, { signal: abort.signal }),
           render: request => renderer().render(request),
-          update: (id, patch) => commitItems(itemsRef.current.map(item => item.id === id ? { ...item, ...patch } : item)),
-          shouldStop: () => cancelledRef.current || !mountedRef.current,
+          update, shouldStop,
         })
       }
     } finally {
       processingRef.current = false
-      if (mountedRef.current) {
+      if (current()) {
         commitItems(itemsRef.current.map(item => item.status === 'processing' ? { ...item, status: 'pending' } : item))
-        setProcessing(false)
       }
+      if (mountedRef.current && processingAbortRef.current === abort) setProcessing(false)
     }
   }
 
   function cancelProcessing() {
     cancelledRef.current = true
+    processingAbortRef.current.abort()
     rendererRef.current?.dispose()
     rendererRef.current = null
   }

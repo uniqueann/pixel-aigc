@@ -1,5 +1,6 @@
 import sharp from 'sharp'
 import { HttpError } from '../errors.js'
+import { measureDetection, type DetectionObserver } from '../detection-timing.js'
 import { goodsMattingInline } from '../tencent-ci.js'
 import {
   ALPHA_THRESHOLD,
@@ -62,11 +63,11 @@ async function alphaFromMatting(png: Buffer, width: number, height: number) {
 
 export const tencentGoodsProvider: SegmentProvider = {
   id: 'tencent-goods',
-  async segmentGoods(image): Promise<GoodsAlpha> {
-    const prepared = await prepareGoodsMattingInput(image)
-    const png = await goodsMattingInline(prepared.jpeg)
+  async segmentGoods(image, log?: DetectionObserver): Promise<GoodsAlpha> {
+    const prepared = await measureDetection(log, 'imagePrepare', () => prepareGoodsMattingInput(image))
+    const png = await goodsMattingInline(prepared.jpeg, undefined, undefined, log)
     return {
-      alpha: await alphaFromMatting(png, prepared.width, prepared.height),
+      alpha: await measureDetection(log, 'alphaDecode', () => alphaFromMatting(png, prepared.width, prepared.height)),
       width: prepared.width,
       height: prepared.height,
       originWidth: prepared.originWidth,

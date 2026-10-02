@@ -27,6 +27,8 @@ import { segmentConfigured } from './segment/providers.js'
 import { selectSmartMask, SmartSelectFailure } from './segment/select.js'
 import { withSyncLimit } from './sync-limits.js'
 import type { SyncRequestMetrics } from './sync-limits.js'
+import { measureDetectionSync, type DetectionObserver } from './detection-timing.js'
+import { DETECTION_CLIENT_STAGES } from '../shared/detection.js'
 import { listCreditLedger } from './credits.js'
 import { ensureCreditAccount } from './image-jobs/billing.js'
 
@@ -36,6 +38,29 @@ const clientTimingSchema = z.object({
   prepare: z.number().int().min(0).max(300_000),
   upload: z.number().int().min(0).max(300_000),
 }).strict()
+
+const detectionClientTimingSchema = z.object(Object.fromEntries(DETECTION_CLIENT_STAGES.map(stage => [stage, z.number().int().min(0).max(300_000).optional()]))).strict()
+function detectionObserver(metrics: SyncRequestMetrics, userId: string): DetectionObserver {
+  return entry => {
+    if (typeof entry.stage === 'string' && typeof entry.ms === 'number') metrics.stageMs[entry.stage] = (metrics.stageMs[entry.stage] ?? 0) + entry.ms
+    console.info(JSON.stringify({ evt: 'detection-stage', route: metrics.route, requestId: metrics.requestId, userId, ...entry }))
+  }
+}
+function applyDetectionClientTiming(metrics: SyncRequestMetrics, timings?: Record<string, number | undefined>) {
+  for (const stage of DETECTION_CLIENT_STAGES) if (timings?.[stage] !== undefined) metrics.stageMs['client' + stage[0].toUpperCase() + stage.slice(1)] = timings[stage]!
+}
+async function detectionResponse<T>(metrics: SyncRequestMetrics, action: () => Promise<T>) {
+  try {
+    const result = await action()
+    metrics.outputBytes = Buffer.byteLength(JSON.stringify(result))
+    return result
+  } catch (error) {
+    const session = error instanceof SmartSelectFailure ? error.session : null
+    const invalid = error instanceof z.ZodError || error instanceof SyntaxError
+    metrics.outputBytes = Buffer.byteLength(JSON.stringify({ error: error instanceof HttpError ? error.message : invalid ? '请求参数无效' : '服务暂时不可用，请稍后重试', code: error instanceof HttpError ? error.code : invalid ? 'INVALID_REQUEST' : 'SERVER_ERROR', requestId: metrics.requestId, ...(error instanceof HttpError ? error.extra ?? {} : {}), ...(session ? { session } : {}) }))
+    throw error
+  }
+}
 
 function recordSyncTiming(metrics: SyncRequestMetrics, entry: Record<string, unknown>) {
   if (typeof entry.stage === 'string' && typeof entry.ms === 'number' && Number.isFinite(entry.ms) && entry.stage !== 'poll') {
@@ -189,10 +214,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dataBase64: z.string().min(1),
         width: z.number().int().positive().max(20000),
         height: z.number().int().positive().max(20000),
+        clientTimingMs: detectionClientTimingSchema.optional(),
       }).strict().parse(body)
-      const image = Buffer.from(input.dataBase64, 'base64')
+      const metrics: SyncRequestMetrics = { route: 'subject-detect', requestId, transport: 'inline', inputBytes: 0, maskBytes: 0, stageMs: {} }
+      applyDetectionClientTiming(metrics, input.clientTimingMs)
+      const log = detectionObserver(metrics, user.id)
+      const image = measureDetectionSync(log, 'inputParse', () => Buffer.from(input.dataBase64, 'base64'))
+      metrics.inputBytes = image.length
       if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-      res.status(200).json({ box: await withSyncLimit(user, 'detection', () => detectGoodsSubject(image, input.width, input.height)) })
+      log({ requestBytes: Buffer.byteLength(JSON.stringify(body)) })
+      const result = await withSyncLimit(user, 'detection', () => detectionResponse(metrics, async () => ({ box: await detectGoodsSubject(image, input.width, input.height, undefined, undefined, log), requestId })), metrics)
+      res.status(200).json(result)
+      log({ operation: 'complete', durationMs: Date.now() - start, outputBytes: metrics.outputBytes! })
       return
     }
     if (path.join('/') === 'outpaint' && method === 'POST') {
@@ -402,16 +435,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         point: z.object({ x: norm, y: norm }).strict(),
         box: z.object({ x: norm, y: norm, width: z.number().positive().max(1), height: z.number().positive().max(1) }).strict().optional(),
         session: z.object({ provider: z.string().min(1).max(64), payload: z.string().min(1).max(6_000_000) }).strict().optional(),
+        clientTimingMs: detectionClientTimingSchema.optional(),
       }).strict().parse(body)
       if (!input.dataBase64 && !input.session) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
-      const image = input.dataBase64 ? Buffer.from(input.dataBase64, 'base64') : undefined
+      const metrics: SyncRequestMetrics = { route: 'smart-select', requestId, transport: 'inline', inputBytes: 0, maskBytes: 0, stageMs: {} }
+      applyDetectionClientTiming(metrics, input.clientTimingMs)
+      const log = detectionObserver(metrics, user.id)
+      const image = measureDetectionSync(log, 'inputParse', () => input.dataBase64 ? Buffer.from(input.dataBase64, 'base64') : undefined)
+      metrics.inputBytes = (image?.length ?? 0) + (input.session ? Buffer.byteLength(input.session.payload) : 0)
       if (image && !image.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
-      const result = await withSyncLimit(user, 'detection', () => selectSmartMask({
+      log({ requestBytes: Buffer.byteLength(JSON.stringify(body)) })
+      const result = await withSyncLimit(user, 'detection', () => detectionResponse(metrics, async () => ({ ...await selectSmartMask({
         image,
         point: input.point,
         box: input.box,
         session: input.session,
-      }))
+      }, undefined, log), requestId })), metrics)
       res.status(200).json(result)
       console.info(JSON.stringify({
         evt: 'smart-select', requestId, userId, status: 200, route: 'smart-select',

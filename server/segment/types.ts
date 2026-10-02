@@ -1,4 +1,5 @@
 import type { NormBox, NormPoint, SegmentSession } from '../../shared/smart-select.js'
+import type { DetectionObserver } from '../detection-timing.js'
 
 export interface GoodsAlpha {
   alpha: Uint8Array
@@ -10,7 +11,7 @@ export interface GoodsAlpha {
 
 export interface SegmentProvider {
   id: string
-  segmentGoods(image: Buffer): Promise<GoodsAlpha>
+  segmentGoods(image: Buffer, log?: DetectionObserver): Promise<GoodsAlpha>
 }
 
 export interface SmartSelectRequest {

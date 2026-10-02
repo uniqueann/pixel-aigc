@@ -1,3 +1,4 @@
+import { measureDetection, measureDetectionSync, type DetectionObserver } from './detection-timing.js'
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
@@ -199,57 +200,57 @@ export function subjectFailure(error: unknown) {
   return new HttpError(status, message, 'SUBJECT_DETECT_FAILED')
 }
 
-export async function detectGoodsSubject(image: Buffer, width: number, height: number, config = tencentCiConfig(), cos = config ? clientFor(config) : undefined) {
+export async function detectGoodsSubject(image: Buffer, width: number, height: number, config = tencentCiConfig(), cos = config ? clientFor(config) : undefined, log?: DetectionObserver) {
   if (!config || !cos?.request) throw new HttpError(503, '主体检测即将上线，腾讯云配置还没填好', 'SUBJECT_DETECT_UNCONFIGURED')
   const sourceKey = `subject-detect/${randomUUID()}`
   const bucket = { Bucket: config.bucket, Region: config.region }
   try {
-    await call<UploadAck>(done => cos.putObject({ ...bucket, Key: sourceKey, Body: image }, done))
-    const detected = await call<unknown>(done => cos.request!({
+    await measureDetection(log, 'cosUpload', () => call<UploadAck>(done => cos.putObject({ ...bucket, Key: sourceKey, Body: image }, done)))
+    const detected = await measureDetection(log, 'subjectDetect', () => call<unknown>(done => cos.request!({
       ...bucket,
       Method: 'GET',
       Key: sourceKey,
       Query: { 'ci-process': 'AIObjectDetect' },
-    }, done))
-    const detectedBox = chooseSubjectBox(detected, width, height)
+    }, done)))
+    const detectedBox = measureDetectionSync(log, 'subjectParse', () => chooseSubjectBox(detected, width, height))
     if (detectedBox) return detectedBox
     // 扁平商品图上 AIObjectDetect 经常返回 Status 0。商品抠图仍能把商品和背景分开，用不透明区域反推主体框。
-    const matte = await call<{ Body?: Buffer }>(done => cos.request!({
+    const matte = await measureDetection(log, 'subjectFallback', () => call<{ Body?: Buffer }>(done => cos.request!({
       ...bucket,
       Method: 'GET',
       Key: sourceKey,
       Query: { 'ci-process': 'GoodsMatting', 'center-layout': '0' },
       RawBody: true,
-    }, (error, data) => done(error, data as { Body?: Buffer } | undefined)))
-    return subjectBoxFromMatte(matte?.Body)
+    }, (error, data) => done(error, data as { Body?: Buffer } | undefined))))
+    return measureDetection(log, 'fallbackParse', () => subjectBoxFromMatte(matte?.Body))
   } catch (error) {
     throw subjectFailure(error)
   } finally {
-    await call<void>(done => cos.deleteObject({ ...bucket, Key: sourceKey }, error => done(error, undefined))).catch(() => undefined)
+    await measureDetection(log, 'cosCleanup', () => call<void>(done => cos.deleteObject({ ...bucket, Key: sourceKey }, error => done(error, undefined)))).catch(() => undefined)
   }
 }
 
 /** 智能选区：只上传原图，用 GET ci-process 直接拿抠图，少一次结果对象读写。不改工具箱抠图路径。 */
-export async function goodsMattingInline(image: Buffer, config = tencentCiConfig(), cos = config ? clientFor(config) : undefined) {
+export async function goodsMattingInline(image: Buffer, config = tencentCiConfig(), cos = config ? clientFor(config) : undefined, log?: DetectionObserver) {
   if (!config || !cos) throw new HttpError(503, '智能抠图即将上线，腾讯云配置还没填好', 'BG_REMOVE_UNCONFIGURED')
   if (!cos.request) return goodsMatting(image, config, cos)
   const sourceKey = `smart-select/${randomUUID()}`
   const bucket = { Bucket: config.bucket, Region: config.region }
   try {
-    await call<UploadAck>(done => cos.putObject({ ...bucket, Key: sourceKey, Body: image }, done))
-    const matte = await call<{ Body?: Buffer }>(done => cos.request!({
+    await measureDetection(log, 'cosUpload', () => call<UploadAck>(done => cos.putObject({ ...bucket, Key: sourceKey, Body: image }, done)))
+    const matte = await measureDetection(log, 'matting', () => call<{ Body?: Buffer }>(done => cos.request!({
       ...bucket,
       Method: 'GET',
       Key: sourceKey,
       Query: { 'ci-process': 'GoodsMatting', 'center-layout': '0' },
       RawBody: true,
-    }, (error, data) => done(error, data as { Body?: Buffer } | undefined)))
+    }, (error, data) => done(error, data as { Body?: Buffer } | undefined))))
     if (!matte?.Body?.length) throw new HttpError(502, '腾讯云没有返回抠图结果', 'BG_REMOVE_EMPTY')
     return matte.Body
   } catch (error) {
     throw mattingFailure(error)
   } finally {
-    await call<void>(done => cos.deleteObject({ ...bucket, Key: sourceKey }, error => done(error, undefined))).catch(() => undefined)
+    await measureDetection(log, 'cosCleanup', () => call<void>(done => cos.deleteObject({ ...bucket, Key: sourceKey }, error => done(error, undefined)))).catch(() => undefined)
   }
 }
 

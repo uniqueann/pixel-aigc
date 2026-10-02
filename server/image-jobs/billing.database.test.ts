@@ -58,6 +58,7 @@ beforeAll(async () => {
     '20260930115938_erase_transfer_metrics.sql',
     '20260930234407_sync_image_transfer_retention.sql',
     '20261001120433_bg_remove_transfer_retention.sql',
+    '20261002031941_detection_metrics_retention.sql',
   ]) await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
   await db.query('insert into aigc.members(user_id) values($1)', [userId])
 }, 30000)
@@ -69,6 +70,24 @@ afterAll(async () => {
 })
 
 describe('积分账本与同步请求限流', () => {
+  it('主体检测和智能选区保留七天，旧检测记录和未知路由仍清理', async () => {
+    const ids: string[] = []
+    for (const route of ['subject-detect', 'smart-select']) {
+      for (const days of [3, 8]) {
+        const id = randomUUID(); ids.push(id)
+        await asUser(sql => sql`insert into aigc.sync_requests(id,user_id,scope,bucket,lease_until,completed_at,created_at,route)
+          values(${id},${userId},'production','detection',now()-interval '1 minute',now(),now()-${days}*interval '1 day',${route})`)
+      }
+    }
+    const unknown = randomUUID()
+    await asUser(async sql => {
+      await sql`insert into aigc.sync_requests(id,user_id,scope,bucket,lease_until,created_at,route)
+        values(${unknown},${userId},'production','detection',now()-interval '3 hours',now()-interval '3 hours','unknown')`
+      await sql`select aigc.purge_expired_sync_requests()`
+    })
+    const rows = await db.query<{ id: string }>('select id from aigc.sync_requests where id=any($1::uuid[])', [[...ids, unknown]])
+    expect(rows.rows.map(row => row.id).sort()).toEqual([ids[0], ids[2]].sort())
+  })
   it('四种同步图像工具的性能记录保留七天，其他同步记录仍按两小时清理', async () => {
     const recentErase = randomUUID()
     const recentRepaint = randomUUID()
