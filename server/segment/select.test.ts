@@ -114,6 +114,8 @@ describe('selectSmartMask', () => {
     const provider: SegmentProvider = { id: 'tencent-goods', segmentGoods }
     const first = await selectSmartMask({ image: Buffer.from('image'), point: { x: 0.4, y: 0.4 } }, provider)
     expect(segmentGoods).toHaveBeenCalledTimes(1)
+    expect('maskBase64' in first).toBe(true)
+    if (!('maskBase64' in first)) return
     expect(first.session?.provider).toBe('tencent-goods')
     expect(first.width).toBe(32)
     const png = Buffer.from(first.maskBase64, 'base64')
@@ -126,6 +128,8 @@ describe('selectSmartMask', () => {
       session: first.session,
     }, provider)
     expect(segmentGoods).toHaveBeenCalledTimes(1)
+    expect('bbox' in second).toBe(true)
+    if (!('bbox' in second)) return
     expect(second.bbox.width).toBeGreaterThan(0)
   })
 
@@ -133,9 +137,39 @@ describe('selectSmartMask', () => {
     const alpha = fill(32, 32, (x, y) => x >= 4 && x <= 10 && y >= 4 && y <= 10)
     const segmentGoods = vi.fn(async () => goods(alpha, 32, 32))
     const provider: SegmentProvider = { id: 'tencent-goods', segmentGoods }
-    const error = await selectSmartMask({ image: Buffer.from('image'), point: { x: 0.8, y: 0.8 } }, provider).catch(caught => caught)
-    expect(error).toMatchObject({ status: 422, code: 'SMART_SELECT_MISS' })
-    await selectSmartMask({ point: { x: 0.2, y: 0.2 }, session: error.session }, provider)
+    const miss = await selectSmartMask({ image: Buffer.from('image'), point: { x: 0.8, y: 0.8 } }, provider)
+    expect(miss).toMatchObject({ miss: true, code: 'SMART_SELECT_MISS', session: expect.objectContaining({ provider: 'tencent-goods' }) })
+    expect('maskBase64' in miss).toBe(false)
+    if (!('session' in miss) || !miss.session) throw new Error('expected restored session')
+    await selectSmartMask({ point: { x: 0.2, y: 0.2 }, session: miss.session }, provider)
+    expect(segmentGoods).toHaveBeenCalledTimes(1)
+  })
+
+  it('session-cache miss omits the session so the client keeps its copy', async () => {
+    const alpha = fill(32, 32, (x, y) => x >= 4 && x <= 10 && y >= 4 && y <= 10)
+    const segmentGoods = vi.fn(async () => goods(alpha, 32, 32))
+    const provider: SegmentProvider = { id: 'tencent-goods', segmentGoods }
+    const first = await selectSmartMask({ image: Buffer.from('image'), point: { x: 0.2, y: 0.2 } }, provider)
+    if (!('session' in first) || !first.session) throw new Error('expected session')
+    const miss = await selectSmartMask({ point: { x: 0.8, y: 0.8 }, session: first.session }, provider)
+    expect(miss).toEqual({ miss: true, code: 'SMART_SELECT_MISS', message: '没有点中商品，请点在商品上。水印和文字请用画笔' })
+    const again = await selectSmartMask({ point: { x: 0.2, y: 0.2 }, session: first.session }, provider)
+    expect('maskBase64' in again).toBe(true)
+    expect(segmentGoods).toHaveBeenCalledTimes(1)
+  })
+
+  it('session-restored miss still returns the session', async () => {
+    const alpha = fill(32, 32, (x, y) => x >= 4 && x <= 10 && y >= 4 && y <= 10)
+    const segmentGoods = vi.fn(async () => goods(alpha, 32, 32))
+    const provider: SegmentProvider = { id: 'tencent-goods', segmentGoods }
+    const first = await selectSmartMask({ image: Buffer.from('image'), point: { x: 0.2, y: 0.2 } }, provider)
+    if (!('session' in first) || !first.session) throw new Error('expected session')
+    clearSmartSelectGoodsCache()
+    const miss = await selectSmartMask({ point: { x: 0.8, y: 0.8 }, session: first.session }, provider)
+    expect(miss).toMatchObject({ miss: true, code: 'SMART_SELECT_MISS', session: first.session })
+    if (!miss.session) throw new Error('expected restored session')
+    const again = await selectSmartMask({ point: { x: 0.2, y: 0.2 }, session: miss.session }, provider)
+    expect('maskBase64' in again).toBe(true)
     expect(segmentGoods).toHaveBeenCalledTimes(1)
   })
 

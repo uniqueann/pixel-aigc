@@ -13,6 +13,8 @@ export const SELECT_FEATHER_RADIUS = 2
 /** 几乎铺满全图时，抠图没有把商品和背景分开。 */
 export const MAX_SUBJECT_RATIO = 0.985
 export const MIN_SUBJECT_PIXELS = 16
+export const SMART_SELECT_MISS_CODE = 'SMART_SELECT_MISS'
+export const SMART_SELECT_MISS_MESSAGE = '没有点中商品，请点在商品上。水印和文字请用画笔'
 
 export interface SegmentSession {
   provider: string
