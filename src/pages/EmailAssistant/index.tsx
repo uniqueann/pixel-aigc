@@ -7,6 +7,7 @@ import { buildEmailAssistRequest } from '@/features/email-assistant/requestBuild
 import { useEmailAssistantController } from '@/features/email-assistant/useEmailAssistantController'
 import { authEnabled } from '@/cloud/client'
 import { useModelSettings } from '@/features/model-settings/useModelSettings'
+import { usePreferencesStore } from '@/features/preferences/store'
 import type {
   EmailAssistLanguage,
   EmailAssistOperation,
@@ -32,9 +33,9 @@ export default function EmailAssistant() {
   const { openModelSettings } = useOutletContext<{ openModelSettings: () => void }>()
   const [sourceText, setSourceText] = useState('')
   const [instruction, setInstruction] = useState('')
-  const [operation, setOperation] = useState<EmailAssistOperation>('reply')
-  const [language, setLanguage] = useState<EmailAssistLanguage>('zh')
-  const [polishStyles, setPolishStyles] = useState<EmailPolishStyle[]>(['clear'])
+  const [operation, setOperation] = useState<EmailAssistOperation>(() => usePreferencesStore.getState().preferences.email.operation)
+  const [language, setLanguage] = useState<EmailAssistLanguage>(() => usePreferencesStore.getState().preferences.email.language)
+  const [polishStyles, setPolishStyles] = useState<EmailPolishStyle[]>(() => usePreferencesStore.getState().preferences.email.polishStyles)
   const [modelProfileId, setModelProfileId] = useState<string>()
   const { settingsQuery, profilesQuery } = useModelSettings()
   const settings = settingsQuery.data
@@ -117,6 +118,14 @@ export default function EmailAssistant() {
     }
   }
 
+  const handleNewTask = async () => {
+    await controller.newTask()
+    const defaults = usePreferencesStore.getState().preferences.email
+    setSourceText(''); setInstruction('')
+    setOperation(defaults.operation); setLanguage(defaults.language); setPolishStyles(defaults.polishStyles)
+    setModelProfileId(undefined)
+  }
+
   return (
     <div className="email-assistant-page">
       {authEnabled && modelSettingsError ? <Alert type="error" showIcon style={{ marginBottom: 16 }}
@@ -148,7 +157,7 @@ export default function EmailAssistant() {
           </Card>
         </Col>
         <Col xs={24} xl={12}>
-          <Card title="生成设置" size="small">
+          <Card title="生成设置" size="small" extra={<Button size="small" disabled={controller.formLocked} onClick={() => void handleNewTask().catch(error => message.error(error instanceof Error ? error.message : '新建任务失败'))}>新建任务</Button>}>
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <div>
                 <div className="field-label">操作类型</div>

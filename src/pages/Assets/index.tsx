@@ -26,17 +26,13 @@ import { readOwnedImage } from '@/services/api/ownedImages'
 import { listTasks, type TaskSummary } from '@/services/api/task'
 import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
+import { usePreferencesStore } from '@/features/preferences/store'
 
 type Filter = 'all' | 'workstation' | 'email'
 type ViewMode = 'grid' | 'list'
-const VIEW_MODE_KEY = 'pixel:assets-view-mode:v1'
-
 function initialViewMode(): ViewMode {
-  try {
-    return localStorage.getItem(VIEW_MODE_KEY) === 'list' ? 'list' : 'grid'
-  } catch {
-    return 'grid'
-  }
+  const { workbench, recent } = usePreferencesStore.getState().preferences
+  return workbench.assetsView === 'remember' ? recent.assetsView : workbench.assetsView
 }
 
 interface LibraryItem {
@@ -87,9 +83,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
 
   const changeViewMode = (mode: ViewMode) => {
     setViewMode(mode)
-    try {
-      localStorage.setItem(VIEW_MODE_KEY, mode)
-    } catch { /* 浏览器禁用存储时，仍可切换当前页面的展示样式。 */ }
+    usePreferencesStore.getState().update({ recent: { assetsView: mode } })
   }
 
   const refresh = useCallback(async (isActive: () => boolean, showLoading = true) => {

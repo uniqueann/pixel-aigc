@@ -36,6 +36,7 @@ vi.mock('@/features/assets/workstationHistory', () => ({
 }))
 
 import Assets from './index'
+import { usePreferencesStore } from '@/features/preferences/store'
 
 function renderAssets() {
   return render(
@@ -70,6 +71,7 @@ describe('我的资产缩略图预览入口', () => {
   beforeEach(() => {
     openAt.mockReset()
     localStorage.clear()
+    usePreferencesStore.getState().reset()
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
     URL.createObjectURL = vi.fn(() => 'blob:assets-thumb')
     URL.revokeObjectURL = vi.fn()

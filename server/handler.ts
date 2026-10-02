@@ -9,6 +9,7 @@ import { identifier, projectWriteSchema, uploadSchema } from '../shared/cloud.js
 import { readProject, requireProject, toAsset, validateReferences } from './projects.js'
 import { putObject, signRead, signUpload, verifyAndPromote } from './storage.js'
 import { handleModelRoute } from './model-settings.js'
+import { handlePreferencesRoute } from './preferences.js'
 import { handleEmailTaskRoute } from './email-tasks.js'
 import { handleImageTaskRoute, peekImageTask } from './image-jobs/route.js'
 import { IMAGE_TASK_CAPABILITIES } from './image-jobs/service.js'
@@ -461,6 +462,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         provider: result.session?.provider ?? null, durationMs: Date.now() - start,
         outcome: 'miss' in result && result.miss ? 'miss' : 'success',
       }))
+      return
+    }
+    if (path[0] === 'preferences') {
+      res.status(200).json(await handlePreferencesRoute(user, method, path, body))
       return
     }
     if (path[0] === 'model-settings' || path[0] === 'model-profiles') {

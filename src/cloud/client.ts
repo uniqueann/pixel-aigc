@@ -12,12 +12,14 @@ export const supabase = authEnabled && !cloudConfigurationError ? createClient(s
 export class CloudError extends Error {
   constructor(public status: number, message: string, public code = 'REQUEST_FAILED') { super(message) }
 }
-export async function cloudRequest<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+export async function cloudRequest<T>(path: string, method = 'GET', body?: unknown, options?: { timeoutMs?: number; expectedUserId?: string }): Promise<T> {
   if (!supabase) throw new CloudError(503, '账号服务未启用', 'AUTH_DISABLED')
   const { data } = await supabase!.auth.getSession()
+  if (options?.expectedUserId && data.session?.user.id !== options.expectedUserId)
+    throw new CloudError(401, '账号已切换，请重新读取个性化设置', 'ACCOUNT_CHANGED')
   const response = await fetch(`/api${path}`, { method,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token ?? ''}` },
-    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(60000),
+    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(options?.timeoutMs ?? 60000),
   })
   const result = await response.json().catch(() => ({ error: `服务接口异常（HTTP ${response.status}）`, code: 'SERVICE_UNAVAILABLE' }))
   if (!response.ok) throw new CloudError(response.status, result.error ?? '请求失败', result.code)

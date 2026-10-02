@@ -29,9 +29,24 @@ beforeAll(async () => {
   await db.exec(readFileSync('supabase/migrations/20260928120000_aigc_image_jobs.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20260929100000_aigc_credits_and_sync_limits.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20260929233436_aigc_credit_adjust.sql','utf8'))
+  await db.exec(readFileSync('supabase/migrations/20261002110638_aigc_user_preferences.sql','utf8'))
+  await db.exec(readFileSync('supabase/migrations/20261002111638_optimize_preferences_policy.sql','utf8'))
 }, 30000)
 afterAll(async () => { await db.close() })
 describe('aigc 数据库权限与隔离', () => {
+  it('个性化仅本人、同环境、有效账号可访问，身份不可冒用', async () => {
+    await asUser(alice, 'alice@example.com', () => db.query("insert into aigc.user_preferences(user_id,scope,preferences) values($1,'production','{}')", [alice]))
+    expect((await asUser(alice, 'alice@example.com', () => db.query('select * from aigc.user_preferences'))).rows).toHaveLength(1)
+    expect((await asUser(bob, 'bob@example.com', () => db.query('select * from aigc.user_preferences'))).rows).toHaveLength(0)
+    expect((await asUser(alice, 'alice@example.com', () => db.query('select * from aigc.user_preferences'), 'preview')).rows).toHaveLength(0)
+    expect((await asUser(bob, 'bob@example.com', () => db.query("update aigc.user_preferences set preferences='{}' returning user_id"))).rows).toHaveLength(0)
+    await expect(asUser(alice, 'alice@example.com', () => db.query("insert into aigc.user_preferences(user_id,scope,preferences) values($1,'production','{}')", [bob]))).rejects.toThrow()
+    await db.exec('begin; set local role authenticated;')
+    try { await expect(db.query('select * from aigc.user_preferences')).rejects.toThrow() } finally { await db.exec('rollback') }
+    await db.query("update aigc.members set status='disabled' where user_id=$1", [alice])
+    expect((await asUser(alice, 'alice@example.com', () => db.query('select * from aigc.user_preferences'))).rows).toHaveLength(0)
+    await db.query("update aigc.members set status='active' where user_id=$1", [alice])
+  })
   it('开放初始化幂等，存量项目归入个人空间', async () => {
     for (const [id,email] of [[alice,'alice@example.com'],[bob,'bob@example.com'],[alice,'alice@example.com']]) {
       const result = await asUser(id,email, () => db.query<{ allowed: boolean }>("select aigc.initialize_member('测试用户') as allowed"))

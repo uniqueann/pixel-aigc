@@ -9,6 +9,8 @@ import { runtimeImageBlob } from '@/services/api/imageRuntime'
 import { bindRuntimeImage, withRuntimeImage, setRuntimeImageUsers, releaseRuntimeImageUser, abandonPendingRuntimeImages } from '@/editor/runtimeImages'
 import { downloadImageResult, type ImageResultReadOptions } from '@/services/api/image-transfer'
 import type { SyncImageObjectResult } from '@shared/sync-image'
+import type { ImageModelUi } from '@shared/image-models'
+import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import { historyIdForResult } from '@/features/assets/resultIdentity'
 import { useUserStore } from '@/store/useUserStore'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
@@ -47,6 +49,7 @@ interface ControllerOptions {
   count?: number
   resolution?: '1k' | '2k' | '4k'
   modelProfileId?: string
+  modelUi?: ImageModelUi
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
   relight?: RelightOptions
   /** 融合使用独立的商品图，不沿用其他工具当前的原图。 */
@@ -127,6 +130,7 @@ export function useImageWorkstationController({
   count,
   resolution,
   modelProfileId,
+  modelUi,
   retouchDirections,
   relight,
   productAsset,
@@ -536,12 +540,13 @@ export function useImageWorkstationController({
     if (!product) throw new Error('请先上传需要编辑的图片')
     registerAsset(useEditorStore.getState().project?.assets[product.id] ?? product)
     if (activeTool.slug === 'fusion' && referenceAsset) registerAsset(referenceAsset)
+    const effective = effectiveImageParameters(count ?? 1, resolution ?? '2k', product, modelUi)
     const initialContext = {
       sourceAsset: product,
       referenceAsset,
       prompt,
-      count,
-      resolution,
+      count: effective.count,
+      resolution: effective.resolution,
       modelProfileId,
       retouchDirections,
       relight,
@@ -593,7 +598,7 @@ export function useImageWorkstationController({
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
     return submitRequest({ ...request, modelProfileId }, product, product.generationId, activeTool.slug === 'fusion' ? referenceAsset : undefined)
-  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, productAsset, prompt, referenceAsset, registerAsset, relight, resolution, retouchDirections, submitRequest, useProductAsset])
+  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, modelUi, productAsset, prompt, referenceAsset, registerAsset, relight, resolution, retouchDirections, submitRequest, useProductAsset])
 
   const retry = useCallback(async () => {
     if (task?.status === 'succeeded') return retryRead()
