@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Alert, App, Button, Popconfirm, Select, Space, Switch } from 'antd'
+import { App, Button, Popconfirm, Select, Space, Switch } from 'antd'
 import { defaultImageModel } from '@shared/image-models'
 import { COUNT_TOOLS, type CountTool } from '@shared/preferences'
 import { usePreferencesStore } from './store'
 import { clearSidebarState } from './storage'
+import { CLEAR_IMAGE_MEMORY_SUCCESS_DURATION, clearImageMemoryFailureMessage } from './errors'
+import PreferencesSyncAlert from './PreferencesSyncAlert'
 
 const toolLabels: Record<CountTool, string> = { 'smart-edit': '智能编辑', relight: '打光', variation: '裂变', fusion: '融合', retouch: '精修' }
 const startPages = [
@@ -20,21 +22,24 @@ function PreferenceRow({ label, detail, children }: { label: string; detail: str
 export default function PersonalizationPanel() {
   const preferences = usePreferencesStore(state => state.preferences)
   const status = usePreferencesStore(state => state.status)
-  const error = usePreferencesStore(state => state.error)
   const update = usePreferencesStore(state => state.update)
   const { message } = App.useApp()
   const [clearing, setClearing] = useState(false)
+  const [clearError, setClearError] = useState<string | null>(null)
   const { workbench, image, email } = preferences
   const hasMemory = Object.keys(image.lastUsed).length > 0
   const statusText = status === 'saving' ? '正在同步…' : status === 'saved' ? '已同步到账号' : status === 'local' ? '已保存到本机' : status === 'loading' ? '正在加载…' : '尚未同步'
-  const canClear = hasMemory || status === 'error'
+  const canClear = hasMemory || status === 'error' || Boolean(clearError)
   async function clearImageMemory() {
     setClearing(true)
     try {
       await usePreferencesStore.getState().clearImageMemory()
-      message.success('已清除图片参数记忆')
-    } catch (clearError) {
-      message.error(clearError instanceof Error ? clearError.message : '清除图片参数记忆失败，请重试')
+      setClearError(null)
+      message.success({ content: '已清除图片参数记忆', duration: CLEAR_IMAGE_MEMORY_SUCCESS_DURATION })
+    } catch (caught) {
+      const text = clearImageMemoryFailureMessage(caught)
+      setClearError(text)
+      message.error(text)
     } finally {
       setClearing(false)
     }
@@ -43,7 +48,7 @@ export default function PersonalizationPanel() {
     <h2>个性化</h2>
     <p className="settings-description">按你的习惯打开页面、处理图片和编写邮件。账号偏好可跨设备同步。</p>
     <div className="preferences-sync-status" role="status" aria-live="polite">{statusText}</div>
-    {error ? <Alert type="warning" showIcon message={error} action={<Button size="small" onClick={() => void usePreferencesStore.getState().retry()}>重试</Button>} /> : null}
+    <PreferencesSyncAlert className="preferences-panel-error" />
 
     <h3 className="preferences-group-title">工作台习惯</h3>
     <div className="settings-rows">
@@ -77,9 +82,17 @@ export default function PersonalizationPanel() {
     </div>
     <div className="preferences-memory-actions">
       <p>记忆范围为图片工作站和工具箱的可复用参数。上传文件、提示词、遮罩和结果由当前任务管理。</p>
-      <Popconfirm title="清除图片参数记忆？" description="下次进入工具时将使用个人默认值。" okText="清除" cancelText="取消" getPopupContainer={() => document.body} onConfirm={() => clearImageMemory()}>
-        <Button size="small" loading={clearing} disabled={!canClear || clearing}>清除图片参数记忆</Button>
-      </Popconfirm>
+      <div className="preferences-clear-actions">
+        <Popconfirm title="清除图片参数记忆？" description="下次进入工具时将使用个人默认值。" okText="清除" cancelText="取消" getPopupContainer={() => document.body} onConfirm={() => clearImageMemory()}>
+          <Button size="small" loading={clearing} disabled={!canClear || clearing}>清除图片参数记忆</Button>
+        </Popconfirm>
+        {clearError ? (
+          <>
+            <button type="button" className="preferences-clear-retry" disabled={clearing} onClick={() => void clearImageMemory()}>重试</button>
+            <span className="preferences-clear-error" role="alert">{clearError}</span>
+          </>
+        ) : null}
+      </div>
     </div>
 
     <h3 className="preferences-group-title">邮件助手</h3>

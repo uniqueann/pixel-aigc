@@ -3,7 +3,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { App } from 'antd'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
+import { usePreferencesStore } from '@/features/preferences/store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsDialog from './SettingsDialog'
 
@@ -77,11 +78,14 @@ describe('设置弹窗窄屏布局', () => {
     expect(SETTINGS_CSS).toContain('flex-wrap: wrap')
     expect(SETTINGS_CSS).toContain('.settings-modal-wrap')
     expect(SETTINGS_CSS).toMatch(/overflow-x:\s*hidden/)
+    expect(SETTINGS_CSS).toContain('.settings-modal .preferences-global-error')
+    expect(SETTINGS_CSS).toContain('position: sticky')
   })
 })
 
 describe('设置弹窗当前标签可见', () => {
   afterEach(() => {
+    usePreferencesStore.setState({ error: null, status: 'local' })
     cleanup()
     vi.unstubAllGlobals()
   })
@@ -97,5 +101,22 @@ describe('设置弹窗当前标签可见', () => {
     )
     await act(async () => undefined)
     expect(scrollIntoView).toHaveBeenCalled()
+  })
+
+  it('打开设置弹窗时仍能看到全局同步失败提示和重试同步', () => {
+    stubMatchMedia(true)
+    usePreferencesStore.setState({
+      status: 'error',
+      error: '个性化设置尚未同步：网络异常，请检查网络后重试',
+    })
+    render(
+      <App>
+        <SettingsDialog open section="personalization" narrow onClose={() => undefined} onSectionChange={() => undefined} />
+      </App>,
+    )
+    const banners = screen.getAllByText('个性化设置尚未同步：网络异常，请检查网络后重试')
+    expect(banners.length).toBeGreaterThanOrEqual(1)
+    expect(document.querySelector('.settings-modal .preferences-global-error')).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: '重试同步' }).length).toBeGreaterThanOrEqual(1)
   })
 })

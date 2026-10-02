@@ -28,8 +28,15 @@ function fixture() {
   }
   return { dependencies, caches, response, server: () => server, empty: () => { stored = false }, store: createPreferencesStore(dependencies) }
 }
-beforeEach(() => vi.useFakeTimers())
-afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
+})
+afterEach(() => {
+  vi.mocked(console.error).mockRestore()
+  vi.clearAllTimers()
+  vi.useRealTimers()
+})
 
 describe('个性化同步与恢复', () => {
   it('两台设备分别修改字段，刷新后得到合并结果', async () => {
@@ -68,9 +75,12 @@ describe('个性化同步与恢复', () => {
   })
   it('失败保留修改，重新打开后可重试同步', async () => {
     const f = fixture(); await f.store.getState().initialize('alice', true)
-    f.dependencies.save.mockRejectedValueOnce(new Error('网络断开'))
+    f.dependencies.save.mockRejectedValueOnce(new TypeError('Failed to fetch'))
     f.store.getState().update({ email: { language: 'ja' } }); await f.store.getState().flush()
-    expect(f.store.getState().status).toBe('error'); expect(f.caches.get('alice')?.patches).toHaveLength(1)
+    expect(f.store.getState().status).toBe('error')
+    expect(f.store.getState().error).toBe('个性化设置尚未同步：网络异常，请检查网络后重试')
+    expect(f.store.getState().preferences.email.language).toBe('ja')
+    expect(f.caches.get('alice')?.patches).toHaveLength(1)
     const restarted = createPreferencesStore(f.dependencies); await restarted.getState().initialize('alice', true)
     expect(restarted.getState().preferences.email.language).toBe('ja')
     await restarted.getState().retry()
@@ -143,35 +153,59 @@ describe('个性化同步与恢复', () => {
   })
   it('清除记忆立即提交且不受防抖影响，迟到读取不会回填', async () => {
     const f = fixture(); await f.store.getState().initialize('alice', true)
-    f.store.getState().remember('aspect-ratio', { selectedPresetId: 'temu-main', strategy: 'letterbox' })
+    const remembered = { selectedPresetId: 'temu-main', strategy: 'letterbox' as const }
+    f.store.getState().remember('aspect-ratio', remembered)
     await f.store.getState().flush()
     const read = deferred<PreferencesResponse>(); f.dependencies.read.mockReturnValueOnce(read.promise)
     const refreshing = f.store.getState().refresh(); await Promise.resolve()
+    const saveGate = deferred<void>()
+    const saveImpl = f.dependencies.save.getMockImplementation()!
+    f.dependencies.save.mockImplementationOnce(async (patches, initializeOnly, owner) => {
+      await saveGate.promise
+      return saveImpl(patches, initializeOnly, owner)
+    })
     const clearing = f.store.getState().clearImageMemory()
     await Promise.resolve()
     expect(f.dependencies.save).toHaveBeenCalledTimes(2)
-    expect(f.dependencies.clearLegacy).toHaveBeenCalledWith('alice')
-    expect(f.store.getState().preferences.image.lastUsed).toEqual({})
-    expect(initialAspectRatioSettings(f.store.getState().preferences).selectedPresetId).toBe(DEFAULT_ASPECT_RATIO_SETTINGS.selectedPresetId)
+    expect(f.dependencies.clearLegacy).not.toHaveBeenCalled()
+    expect(f.store.getState().preferences.image.lastUsed).toEqual({ 'aspect-ratio': remembered })
     const stale = f.response()
-    stale.preferences = applyPreferencesPatch(defaultPreferences(), { image: { lastUsed: { 'aspect-ratio': { selectedPresetId: 'temu-main', strategy: 'letterbox' } } } })
+    stale.preferences = applyPreferencesPatch(defaultPreferences(), { image: { lastUsed: { 'aspect-ratio': remembered } } })
     read.resolve(stale)
     await refreshing
+    expect(f.store.getState().preferences.image.lastUsed).toEqual({ 'aspect-ratio': remembered })
+    saveGate.resolve()
     await clearing
     expect(f.store.getState().preferences.image.lastUsed).toEqual({})
     expect(f.server().image.lastUsed).toEqual({})
+    expect(f.dependencies.clearLegacy).toHaveBeenCalledWith('alice')
+    expect(initialAspectRatioSettings(f.store.getState().preferences).selectedPresetId).toBe(DEFAULT_ASPECT_RATIO_SETTINGS.selectedPresetId)
     expect(f.store.getState().memoryEpoch).toBeGreaterThan(0)
   })
-  it('清除记忆失败后可立即重试', async () => {
+  it('PATCH 失败时回滚本地状态，工具页仍显示原记忆，重试成功后才清除', async () => {
     const f = fixture(); await f.store.getState().initialize('alice', true)
-    f.store.getState().remember('aspect-ratio', { selectedPresetId: 'temu-main', strategy: 'letterbox' })
+    const remembered = { selectedPresetId: 'temu-main', strategy: 'letterbox' as const }
+    f.store.getState().remember('aspect-ratio', remembered)
     await f.store.getState().flush()
-    f.dependencies.save.mockRejectedValueOnce(new Error('网络断开'))
-    await expect(f.store.getState().clearImageMemory()).rejects.toThrow(/网络断开/)
+    const epoch = f.store.getState().memoryEpoch
+    f.dependencies.save.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await expect(f.store.getState().clearImageMemory()).rejects.toThrow('清除失败，网络异常，请检查网络后重试')
     expect(f.store.getState().status).toBe('error')
-    expect(f.store.getState().preferences.image.lastUsed).toEqual({})
+    expect(f.store.getState().error).toMatch(/网络异常/)
+    expect(f.store.getState().error).not.toMatch(/Failed to fetch/)
+    expect(f.store.getState().preferences.image.lastUsed).toEqual({ 'aspect-ratio': remembered })
+    expect(f.caches.get('alice')?.preferences.image.lastUsed).toEqual({ 'aspect-ratio': remembered })
+    expect(f.caches.get('alice')?.patches.some(patch => patch.image?.lastUsed === null)).toBe(false)
+    expect(f.store.getState().memoryEpoch).toBe(epoch)
+    expect(f.dependencies.clearLegacy).not.toHaveBeenCalled()
+    expect(initialAspectRatioSettings(f.store.getState().preferences).selectedPresetId).toBe('temu-main')
+    expect(f.server().image.lastUsed).toEqual({ 'aspect-ratio': remembered })
     await f.store.getState().clearImageMemory()
     expect(f.server().image.lastUsed).toEqual({})
+    expect(f.store.getState().preferences.image.lastUsed).toEqual({})
     expect(f.store.getState().status).toBe('saved')
+    expect(f.store.getState().memoryEpoch).toBeGreaterThan(epoch)
+    expect(f.dependencies.clearLegacy).toHaveBeenCalledWith('alice')
+    expect(initialAspectRatioSettings(f.store.getState().preferences).selectedPresetId).toBe(DEFAULT_ASPECT_RATIO_SETTINGS.selectedPresetId)
   })
 })

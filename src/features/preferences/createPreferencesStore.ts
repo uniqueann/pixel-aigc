@@ -4,6 +4,7 @@ import {
   type ImageMemory, type ImageMemoryTool, type PersonalizationPreferences, type PreferencesPatch, type PreferencesResponse,
 } from '@shared/preferences'
 import type { PreferencesCache } from './storage'
+import { clearImageMemoryFailureMessage, preferenceUserMessage } from './errors'
 
 interface Dependencies {
   read: (owner?: string) => Promise<PreferencesResponse>
@@ -33,7 +34,8 @@ export interface PreferencesState {
 
 const applyAll = (base: PersonalizationPreferences, patches: PreferencesPatch[]) => patches.reduce(applyPreferencesPatch, base)
 const fullPatch = ({ workbench, image, email, recent }: PersonalizationPreferences): PreferencesPatch => ({ workbench, image, email, recent })
-const message = (error: unknown) => error instanceof Error ? error.message : '个性化设置同步失败'
+const isClearMemoryPatch = (patch: PreferencesPatch) => patch.image?.lastUsed === null
+const hasImageMemory = (value: PersonalizationPreferences) => Object.keys(value.image.lastUsed).length > 0
 
 export function createPreferencesStore(dependencies: Dependencies) {
   return create<PreferencesState>((set, get) => {
@@ -71,7 +73,12 @@ export function createPreferencesStore(dependencies: Dependencies) {
       }
       if (expectedEpoch !== epoch || expectedRevision !== revision) return
       const base = resetPending ? defaultPreferences() : normalizePreferences(result.preferences)
+      const previousLastUsed = get().preferences.image.lastUsed
       set({ preferences: applyAll(base, [...flight, ...pending]), error: null, status: pending.length || resetPending ? 'saving' : 'saved' })
+      if (Object.keys(previousLastUsed).length > 0 && !hasImageMemory(get().preferences)) {
+        set({ memoryEpoch: get().memoryEpoch + 1 })
+        void dependencies.clearLegacy(get().owner)
+      }
       cache()
     }
     const schedule = () => {
@@ -101,7 +108,7 @@ export function createPreferencesStore(dependencies: Dependencies) {
             if (expectedEpoch !== epoch) return
             if (!useRemote) localSaved()
           } catch (error) {
-            if (expectedEpoch === epoch) set({ status: 'error', error: `读取个性化设置失败，已使用本机偏好：${message(error)}` })
+            if (expectedEpoch === epoch) set({ status: 'error', error: `读取个性化设置失败，已使用本机偏好：${preferenceUserMessage(error)}` })
           } finally {
             if (expectedEpoch === epoch) {
               set({ ready: true })
@@ -125,26 +132,41 @@ export function createPreferencesStore(dependencies: Dependencies) {
         if (get().preferences.image.rememberParameters) get().update({ image: { lastUsed: { [tool]: value } } })
       },
       async clearImageMemory() {
-        const empty = Object.keys(get().preferences.image.lastUsed).length === 0
+        const snapshot = structuredClone(get().preferences.image.lastUsed)
+        const empty = Object.keys(snapshot).length === 0
+        const epochBefore = get().memoryEpoch
         if (!empty) {
           const patch = preferencesPatchSchema.parse({ image: { lastUsed: null } })
           revision++
           pending.push(patch)
-          set({
-            preferences: applyPreferencesPatch(get().preferences, patch),
-            status: remote ? 'saving' : 'local',
-            error: null,
-            memoryEpoch: get().memoryEpoch + 1,
-          })
-        } else {
-          set({ memoryEpoch: get().memoryEpoch + 1, error: null })
+          if (!remote) {
+            set({
+              preferences: applyPreferencesPatch(get().preferences, patch),
+              status: 'local',
+              error: null,
+              memoryEpoch: epochBefore + 1,
+            })
+            await dependencies.clearLegacy(get().owner)
+            localSaved()
+            return
+          }
+          set({ status: 'saving', error: null })
+          cache()
+        } else if (!remote) {
+          set({ memoryEpoch: epochBefore + 1, error: null })
+          await dependencies.clearLegacy(get().owner)
+          localSaved()
+          return
         }
-        await dependencies.clearLegacy(get().owner)
-        if (!remote) { localSaved(); return }
-        cache()
         clearTimeout(timer)
         await get().flush()
-        if (get().status === 'error') throw new Error(get().error ?? '清除图片参数记忆失败')
+        if (get().status === 'error') {
+          pending = pending.filter(patch => !isClearMemoryPatch(patch))
+          cache()
+          throw new Error(clearImageMemoryFailureMessage(get().error))
+        }
+        if (get().memoryEpoch === epochBefore) set({ memoryEpoch: epochBefore + 1 })
+        await dependencies.clearLegacy(get().owner)
       },
       flush() {
         clearTimeout(timer)
@@ -162,7 +184,13 @@ export function createPreferencesStore(dependencies: Dependencies) {
               if (expectedEpoch !== epoch) return
               flight = []; flightReset = false
               const base = resetPending ? defaultPreferences() : normalizePreferences(result.preferences)
-              set({ preferences: applyAll(base, pending) }); cache()
+              const previousLastUsed = get().preferences.image.lastUsed
+              set({ preferences: applyAll(base, pending) })
+              if (Object.keys(previousLastUsed).length > 0 && !hasImageMemory(get().preferences)) {
+                set({ memoryEpoch: get().memoryEpoch + 1 })
+                void dependencies.clearLegacy(get().owner)
+              }
+              cache()
             }
             if (expectedEpoch === epoch) set({ status: 'saved', error: null })
           } catch (error) {
@@ -170,7 +198,7 @@ export function createPreferencesStore(dependencies: Dependencies) {
             if (!resetPending) pending = [...flight, ...pending]
             resetPending = resetPending || flightReset
             flight = []; flightReset = false
-            set({ status: 'error', error: `个性化设置尚未同步：${message(error)}` }); cache()
+            set({ status: 'error', error: `个性化设置尚未同步：${preferenceUserMessage(error)}` }); cache()
           } finally { if (expectedEpoch === epoch) running = undefined }
         })()
         return running
@@ -181,7 +209,7 @@ export function createPreferencesStore(dependencies: Dependencies) {
         if (pending.length || resetPending || running) return
         const expectedEpoch = epoch
         try { await pull(expectedEpoch) }
-        catch (error) { if (expectedEpoch === epoch) set({ status: 'error', error: `刷新个性化设置失败：${message(error)}` }) }
+        catch (error) { if (expectedEpoch === epoch) set({ status: 'error', error: `刷新个性化设置失败：${preferenceUserMessage(error)}` }) }
       },
       async retry() {
         if (!remote) { localSaved(); return }

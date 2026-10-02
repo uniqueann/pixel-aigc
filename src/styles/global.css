@@ -477,8 +477,27 @@ a {
 .preferences-counts .ant-select { width: 100%; }
 .preferences-memory-actions { margin-top: 12px; }
 .preferences-memory-actions p, .preferences-footer > span { color: var(--color-text-secondary); font-size: 12px; line-height: 1.7; }
+.preferences-clear-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.preferences-clear-retry {
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  line-height: 22px;
+  cursor: pointer;
+}
+.preferences-clear-retry:disabled { opacity: 0.55; cursor: default; }
 .preferences-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; }
 .preferences-global-error { margin-bottom: 16px; }
+.preferences-panel-error { margin: 0 0 16px; }
+.settings-modal .preferences-global-error {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 0 16px;
+}
 
 @media (max-width: 720px) {
   .personalization-panel .setting-row,

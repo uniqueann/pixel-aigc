@@ -2,7 +2,7 @@ import { authEnabled, supabase } from '@/cloud/client'
 import { flushProject } from '@/editor/persistence/projectPersistence'
 import { useCloudStore } from '@/cloud/sync'
 import { useEffect, useState } from 'react'
-import { Alert, App, Avatar, Breadcrumb, Button, Dropdown, Layout, Menu, Space } from 'antd'
+import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu, Space } from 'antd'
 import {
   AppstoreOutlined,
   MailOutlined,
@@ -24,6 +24,7 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import CreditsLedgerDrawer from '@/features/credits/CreditsLedgerDrawer'
 import SettingsDialog from '@/layouts/SettingsDialog'
 import { usePreferencesStore } from '@/features/preferences/store'
+import PreferencesSyncAlert from '@/features/preferences/PreferencesSyncAlert'
 import { readSidebarState, writeSidebarState } from '@/features/preferences/storage'
 import { isPreferencePage, resolveStartPage } from '@shared/preferences'
 
@@ -69,7 +70,6 @@ function MainLayoutContent() {
   const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia('(max-width: 720px)').matches)
   const account = useUserStore((s) => s.account)
   const credits = useUserStore((s) => s.credits)
-  const preferencesError = usePreferencesStore(state => state.error)
   const toggleSidebar = (open: boolean) => {
     setSidebarOpen(open)
     const state = usePreferencesStore.getState()
@@ -202,7 +202,7 @@ function MainLayoutContent() {
           </Space>
         </Header>
         <Content className="app-main-content">
-          {preferencesError ? <Alert className="preferences-global-error" type="warning" showIcon message={preferencesError} action={<Button size="small" onClick={() => void usePreferencesStore.getState().retry()}>重试同步</Button>} /> : null}
+          <PreferencesSyncAlert />
           <ErrorBoundary key={location.pathname}>
             <Outlet context={{ openModelSettings: () => { setSettingsSection('models'); setSettingsOpen(true) } }} />
           </ErrorBoundary>
