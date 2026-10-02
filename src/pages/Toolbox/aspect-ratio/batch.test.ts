@@ -10,6 +10,27 @@ function item(id: string): BatchImage {
 }
 
 describe('转比例批量状态', () => {
+  it('检测期间取消不继续渲染，也不将取消降级为九宫格', async () => {
+    let stop = false
+    const render = vi.fn()
+    const update = vi.fn()
+    await processBatch({ images: [item('a')], settings: { ...DEFAULT_ASPECT_RATIO_SETTINGS, strategy: 'crop' },
+      targetWidth: 1600, targetHeight: 1600, render, update, shouldStop: () => stop,
+      detect: async () => { stop = true; throw new DOMException('已取消', 'AbortError') },
+    })
+    expect(render).not.toHaveBeenCalled()
+    expect(update).toHaveBeenLastCalledWith('a', { status: 'pending' })
+  })
+
+  it('正常检测完成后停止也不继续渲染', async () => {
+    let stop = false
+    const render = vi.fn()
+    await processBatch({ images: [item('a')], settings: { ...DEFAULT_ASPECT_RATIO_SETTINGS, strategy: 'crop' },
+      targetWidth: 1600, targetHeight: 1600, render, update: vi.fn(), shouldStop: () => stop,
+      detect: async () => { stop = true; return { box: null } },
+    })
+    expect(render).not.toHaveBeenCalled()
+  })
   it('单张失败不阻断后续图片，并可只重试失败项', async () => {
     let images = [item('a'), item('b')]
     const update = (id: string, patch: Partial<BatchImage>) => {

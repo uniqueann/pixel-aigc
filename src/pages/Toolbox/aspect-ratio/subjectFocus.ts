@@ -85,7 +85,8 @@ export async function cropFocusForImage(
     const focus = focusFromSubjectBox(detection.box, image.width, image.height, targetWidth, targetHeight)
     if (!focus) return { ...grid, note: gridCropNote(settings.fx, settings.fy) }
     return { ...focus, source: 'subject', note: SUBJECT_CROP_NOTE }
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error
     return { ...grid, note: gridCropNote(settings.fx, settings.fy, true) }
   }
 }

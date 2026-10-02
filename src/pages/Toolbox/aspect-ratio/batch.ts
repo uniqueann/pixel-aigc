@@ -32,6 +32,7 @@ export async function processBatch({
     update(item.id, { status: 'processing', error: undefined, cropFocus: undefined })
     try {
       const cropFocus = await cropFocusForImage(item, settings, targetWidth, targetHeight, detect)
+      if (shouldStop()) { update(item.id, { status: 'pending' }); return }
       const result = await render({
         file: item.file,
         settings: cropFocus ? { ...settings, fx: cropFocus.fx, fy: cropFocus.fy } : settings,

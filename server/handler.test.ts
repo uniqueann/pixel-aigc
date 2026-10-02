@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(), sql: vi.fn(), verify: vi.fn(), eraseWithBailian: vi.fn(),
   repaintWithBailian: vi.fn(), expandWithBailian: vi.fn(),
   removeBackground: vi.fn(),
+  detectSubject: vi.fn(), selectMask: vi.fn(),
   getObject: vi.fn(), loadEraseStoredImage: vi.fn(), loadStoredSyncImage: vi.fn(), validateSyncImage: vi.fn(), metrics: [] as unknown[], putObject: vi.fn(), signRead: vi.fn(),
 }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
@@ -18,6 +19,8 @@ vi.mock('./storage', () => ({
 vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
 vi.mock('./bailian-repaint', () => ({ repaintWithBailian: mocks.repaintWithBailian }))
 vi.mock('./bg-remove', () => ({ removeBackground: mocks.removeBackground }))
+vi.mock('./tencent-ci', async importOriginal => ({ ...await importOriginal<typeof import('./tencent-ci')>(), detectGoodsSubject: mocks.detectSubject }))
+vi.mock('./segment/select', async importOriginal => ({ ...await importOriginal<typeof import('./segment/select')>(), selectSmartMask: mocks.selectMask }))
 vi.mock('./bailian-outpaint', async importOriginal => ({
   ...(await importOriginal<typeof import('./bailian-outpaint')>()), expandWithBailian: mocks.expandWithBailian,
 }))
@@ -426,5 +429,42 @@ describe('API 认证、版本和写入边界', () => {
       code: 'RATE_LIMIT',
       retryAfterSeconds: 480,
     }))
+  })
+})
+
+describe('检测观测接口兼容', () => {
+  it('主体检测旧请求保持兼容，新请求保存客户端与外部调用阶段', async () => {
+    mocks.detectSubject.mockImplementation(async (_image, _width, _height, _config, _cos, log) => {
+      log({ stage: 'cosUpload', ms: 9 }); log({ stage: 'subjectDetect', ms: 15 })
+      return { x: 0.2, y: 0.1, width: 0.5, height: 0.5 }
+    })
+    const body = { mimeType: 'image/jpeg', dataBase64: 'aW1n', width: 100, height: 80 }
+    const old = await request(body, 'POST', '/api/subject-detect')
+    expect(old.status).toHaveBeenCalledWith(200)
+    expect(old.json).toHaveBeenCalledWith(expect.objectContaining({ box: expect.any(Object), requestId: expect.any(String) }))
+    await request({ ...body, clientTimingMs: { decode: 2, encode: 4, base64: 1 } }, 'POST', '/api/subject-detect')
+    expect(mocks.metrics.at(-1)).toMatchObject({ route: 'subject-detect', inputBytes: 3, outputBytes: expect.any(Number),
+      stageMs: { clientDecode: 2, clientEncode: 4, clientBase64: 1, cosUpload: 9, subjectDetect: 15 } })
+  })
+  it('选区会话请求记录字节和缓存来源，失败保留已完成阶段', async () => {
+    const debug = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    mocks.selectMask.mockImplementation(async (_input, _provider, log) => {
+      log({ stage: 'cacheLookup', ms: 2 }); log({ cacheSource: 'session-cache' })
+      throw new HttpError(422, '没有点中商品', 'SMART_SELECT_MISS')
+    })
+    const session = { provider: 'tencent-goods', payload: '测试会话' }
+    const response = await request({ session, point: { x: 0.1, y: 0.2 } }, 'POST', '/api/smart-select')
+    expect(response.status).toHaveBeenCalledWith(422)
+    expect(mocks.metrics.at(-1)).toMatchObject({ route: 'smart-select', inputBytes: Buffer.byteLength(session.payload), outputBytes: expect.any(Number), stageMs: { cacheLookup: 2 } })
+    const logs = debug.mock.calls.map(([value]) => JSON.parse(value))
+    expect(logs).toContainEqual(expect.objectContaining({ route: 'smart-select', cacheSource: 'session-cache', requestId: expect.any(String) }))
+    expect(JSON.stringify(logs)).not.toMatch(/测试会话|Bearer|dataBase64/)
+    debug.mockRestore()
+  })
+  it.each([{ decode: -1 }, { encode: Infinity }, { read: 300001 }, { other: 2 }])('拒绝无效客户端阶段 %j', async clientTimingMs => {
+    mocks.detectSubject.mockClear()
+    const response = await request({ mimeType: 'image/jpeg', dataBase64: 'aW1n', width: 100, height: 80, clientTimingMs }, 'POST', '/api/subject-detect')
+    expect(response.status).toHaveBeenCalledWith(400)
+    expect(mocks.detectSubject).not.toHaveBeenCalled()
   })
 })

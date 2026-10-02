@@ -1,5 +1,5 @@
 import sharp from 'sharp'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { HttpError } from './errors'
 import { chooseSubjectBox, detectGoodsSubject, goodsMatting, goodsMattingInline, mattingFailure, mattingOperations, processedObjectKey, subjectBoxFromMatte, subjectFailure, tencentCiConfig, type TencentCiConfig } from './tencent-ci'
 
@@ -91,6 +91,7 @@ describe('腾讯云抠图配置', () => {
 
   it('上传原图后请求主体检测，并删除临时对象', async () => {
     const calls: string[] = []
+    const log = vi.fn()
     const box = await detectGoodsSubject(Buffer.from('jpeg'), 1000, 500, config, {
       putObject(params, callback) {
         calls.push(`put:${params.Key}`)
@@ -105,7 +106,8 @@ describe('腾讯云抠图配置', () => {
         calls.push(`detect:${(params.Query as { 'ci-process': string })['ci-process']}`)
         callback(null, { RecognitionResult: { Status: 1, DetectMultiObj: { Location: { X: 100, Y: 50, Width: 200, Height: 100 } } } })
       },
-    })
+    }, log)
+    expect(log.mock.calls.map(([entry]) => entry.stage)).toEqual(['cosUpload', 'subjectDetect', 'subjectParse', 'cosCleanup'])
     expect(box).toEqual({ x: 0.1, y: 0.1, width: 0.2, height: 0.2 })
     expect(calls[0]).toMatch(/^put:subject-detect\//)
     expect(calls[1]).toBe('detect:AIObjectDetect')
@@ -143,12 +145,14 @@ describe('腾讯云抠图配置', () => {
 
   it('检测失败时仍删除临时对象', async () => {
     const deleted: string[] = []
+    const log = vi.fn()
     await expect(detectGoodsSubject(Buffer.from('jpeg'), 100, 100, config, {
       putObject(_params, callback) { callback(null, {}) },
       getObject(_params, callback) { callback(null, {}) },
       deleteObject(params, callback) { deleted.push(String(params.Key)); callback(null) },
       request(_params, callback) { callback(Object.assign(new Error('denied'), { code: 'AccessDenied' })) },
-    })).rejects.toMatchObject({ status: 502, message: '腾讯云主体检测失败：存储桶拒绝了主体检测请求' })
+    }, log)).rejects.toMatchObject({ status: 502, message: '腾讯云主体检测失败：存储桶拒绝了主体检测请求' })
+    expect(log.mock.calls.map(([entry]) => entry.stage)).toEqual(['cosUpload', 'subjectDetect', 'cosCleanup'])
     expect(deleted).toHaveLength(1)
     expect(subjectFailure(new HttpError(503, '未配置', 'SUBJECT_DETECT_UNCONFIGURED')).message).toBe('未配置')
   })

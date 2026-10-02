@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { HttpError } from '../errors.js'
+import { measureDetection, measureDetectionSync, type DetectionObserver } from '../detection-timing.js'
 import {
   alphaBBox,
   buildSelectionAlpha,
@@ -140,14 +141,17 @@ async function encodeSession(providerId: string, goods: GoodsAlpha): Promise<Seg
 async function loadGoods(
   input: SmartSelectRequest,
   provider: SegmentProvider | null,
+  log?: DetectionObserver,
 ): Promise<CachedGoods> {
   if (input.session) {
-    const cached = readCached(digestKey('session', input.session.payload))
-    if (cached) return cached
-    const decoded = await decodeSession(input.session)
+    log?.({ sessionBytes: Buffer.byteLength(input.session.payload) })
+    const cached = measureDetectionSync(log, 'cacheLookup', () => readCached(digestKey('session', input.session!.payload)))
+    if (cached) { log?.({ cacheSource: 'session-cache' }); return cached }
+    const decoded = await measureDetection(log, 'sessionDecode', () => decodeSession(input.session!))
     if (decoded) {
       const entry = { goods: decoded, session: input.session, provider: input.session.provider }
       rememberGoods(entry)
+      log?.({ cacheSource: 'session-restored' })
       return entry
     }
     if (!input.image?.length) {
@@ -156,11 +160,13 @@ async function loadGoods(
   }
   if (!input.image?.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
   if (input.image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-  const cached = readCached(digestKey('image', input.image))
-  if (cached) return cached
+  const cached = measureDetectionSync(log, 'cacheLookup', () => readCached(digestKey('image', input.image!)))
+  if (cached) { log?.({ cacheSource: 'image-cache' }); return cached }
   if (!provider) throw new HttpError(503, '智能选区尚未配置', 'SMART_SELECT_UNCONFIGURED')
-  const goods = await provider.segmentGoods(input.image)
-  const session = await encodeSession(provider.id, goods)
+  log?.({ cacheSource: 'provider' })
+  const goods = await provider.segmentGoods(input.image, log)
+  const session = await measureDetection(log, 'sessionEncode', () => encodeSession(provider.id, goods))
+  if (session) log?.({ outputSessionBytes: Buffer.byteLength(session.payload) })
   const entry = { goods, session, provider: provider.id }
   rememberGoods(entry, input.image)
   return entry
@@ -169,16 +175,19 @@ async function loadGoods(
 export async function selectSmartMask(
   input: SmartSelectRequest,
   provider: SegmentProvider | null = segmentProvider(),
+  log?: DetectionObserver,
 ): Promise<SmartSelectResponse> {
-  const loaded = await loadGoods(input, provider)
+  const loaded = await loadGoods(input, provider, log)
   const { goods } = loaded
-  const selected = buildSelectionAlpha(goods.alpha, goods.width, goods.height, input.point, input.box)
-  const session = loaded.session ?? await encodeSession(loaded.provider, goods)
+  const selected = measureDetectionSync(log, 'selectionBuild', () => buildSelectionAlpha(goods.alpha, goods.width, goods.height, input.point, input.box))
+  const session = loaded.session ?? await measureDetection(log, 'sessionEncode', () => encodeSession(loaded.provider, goods))
+  if (session) log?.({ outputSessionBytes: Buffer.byteLength(session.payload) })
   if (session && !loaded.session) rememberGoods({ ...loaded, session }, input.image)
   if ('error' in selected) throw selectionFailure(selected.error, session)
-  const bbox = alphaBBox(selected.alpha, goods.width, goods.height)
+  const bbox = measureDetectionSync(log, 'selectionBBox', () => alphaBBox(selected.alpha, goods.width, goods.height))
   if (!bbox) throw selectionFailure('miss', session)
-  const mask = await encodeAlphaPng(selected.alpha, goods.width, goods.height, 'white')
+  const mask = await measureDetection(log, 'maskEncode', () => encodeAlphaPng(selected.alpha, goods.width, goods.height, 'white'))
+  log?.({ maskBytes: mask.length, encodedMaskBytes: Buffer.byteLength(mask.toString('base64')) })
   return {
     maskBase64: mask.toString('base64'),
     width: goods.width,

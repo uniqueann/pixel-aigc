@@ -178,4 +178,21 @@ describe('prepareGoodsMattingInput', () => {
     expect(shrunk.jpeg.length).toBeLessThanOrEqual(cap)
     expect(shrunk.jpeg.length).toBeLessThan(baseline.jpeg.length)
   })
+  it('观测区分识别、图片缓存、会话缓存及会话恢复，不记录会话内容', async () => {
+    const segmentGoods = vi.fn(async () => goods(fill(40, 40, (x, y) => x >= 4 && x <= 25 && y >= 4 && y <= 25), 40, 40))
+    const provider: SegmentProvider = { id: 'tencent-goods', segmentGoods }
+    const image = Buffer.from('秘密图片')
+    const log = vi.fn()
+    const first = await selectSmartMask({ image, point: { x: 0.4, y: 0.4 } }, provider, log)
+    await selectSmartMask({ image, point: { x: 0.3, y: 0.4 } }, provider, log)
+    await selectSmartMask({ session: first.session, point: { x: 0.3, y: 0.4 } }, provider, log)
+    clearSmartSelectGoodsCache()
+    await selectSmartMask({ session: first.session, point: { x: 0.3, y: 0.4 } }, provider, log)
+    expect(segmentGoods).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls.filter(([entry]) => entry.cacheSource).map(([entry]) => entry.cacheSource)).toEqual(['provider', 'image-cache', 'session-cache', 'session-restored'])
+    expect(log).toHaveBeenCalledWith({ sessionBytes: Buffer.byteLength(first.session!.payload) })
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ encodedMaskBytes: expect.any(Number) }))
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/秘密图片|pngBase64|goods-alpha/)
+  })
+
 })
