@@ -78,4 +78,15 @@ describe('派生生成请求', () => {
   it('拒绝没有动态描述的图生视频请求', () => {
     expect(() => buildImageToVideoRequest(source, '  ', 5)).toThrow('请输入动态描述')
   })
+
+  it('真实裂变保存指定模型、分辨率与原始尺寸，输出尺寸独立计算', () => {
+    expect(buildVariationRequest(source, '保持构图', 2, { resolution: '2k', modelProfileId: 'chosen-model' })).toMatchObject({
+      modelProfileId: 'chosen-model',
+      params: { resolution: '2k', sourceWidth: 1600, sourceHeight: 900, size: { width: 2048, height: 1152 }, count: 2 },
+    })
+  })
+
+  it('超过真实服务提示词限制时在提交前阻止请求', () => {
+    expect(() => buildVariationRequest(source, '图'.repeat(10001), 1)).toThrow('补充要求最多')
+  })
 })

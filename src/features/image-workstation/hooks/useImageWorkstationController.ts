@@ -18,7 +18,8 @@ import { validateOutpaintOutputSize } from '@shared/outpaint'
 import { requestRepaint } from '@/services/api/repaint'
 import { cloudEnabled } from '@/cloud/client'
 import { liveCapabilityReady } from '@/services/api/task'
-import { uploadDataUrl, uploadTaskInput } from '@/services/api/upload'
+import { uploadDataUrl } from '@/services/api/upload'
+import { imageObjectKey, taskInputKey } from '@/services/api/imageInput'
 import { GenerationService } from '@/editor/services/generationService'
 import { useEditorStore } from '@/editor/store'
 import type { AssetId, GenerationId, ImageAsset } from '@/editor/types'
@@ -87,10 +88,6 @@ function isInlineUrl(url?: string) {
   return !!url && (url.startsWith('data:') || url.startsWith('blob:'))
 }
 
-function imageObjectKey(asset: ImageAsset) {
-  return asset.objectKey ?? asset.storage?.objectKey
-}
-
 async function blobFromAsset(asset: ImageAsset, message: string, options?: { ownerId: string; signal: AbortSignal }) {
   try {
     return await blobFromImageSource(asset.url, imageObjectKey(asset), options)
@@ -98,13 +95,6 @@ async function blobFromAsset(asset: ImageAsset, message: string, options?: { own
     if (options?.signal.aborted) throw fusionAbortError()
     throw new Error(message)
   }
-}
-
-async function taskInputKey(asset: ImageAsset, message: string, options?: { ownerId: string; signal: AbortSignal }) {
-  if (options?.signal.aborted) throw new DOMException('提交已取消', 'AbortError')
-  const existing = imageObjectKey(asset)
-  if (existing) return existing
-  return uploadTaskInput(await blobFromAsset(asset, message, options), asset.mimeType, options?.signal)
 }
 
 async function prepareImageEditRequest(

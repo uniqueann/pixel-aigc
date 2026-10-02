@@ -119,6 +119,7 @@ export function publicImageModel(profile: ImageModelProfile) {
     operations: profile.operations,
     ui: profile.ui,
     defaultFor: profile.defaultFor,
+    pricing: { unit: profile.pricing.unit, creditsPerImage: profile.pricing.creditsPerImage },
   }
 }
 

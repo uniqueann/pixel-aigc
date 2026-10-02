@@ -11,6 +11,7 @@ export interface GenerationContext {
 }
 
 export interface GenerationRecovery {
+  ownerId?: string
   projectId: string
   sceneId: string
   request: CanvasGenerationRequest
@@ -39,6 +40,8 @@ export interface CanvasDrafts {
     prompt: string
     count: number
     durationSeconds: number
+    modelProfileId?: string
+    resolution?: '1k' | '2k' | '4k'
   }
 }
 

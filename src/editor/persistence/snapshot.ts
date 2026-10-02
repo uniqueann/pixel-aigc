@@ -150,18 +150,25 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       if (draft.sourceNode.type !== 'image' || draft.sourceNode.assetId !== draft.sourceAssetId) throw new Error('派生源节点与素材不匹配')
       if (project.assets[String(draft.sourceAssetId)]?.type !== 'image') throw new Error('派生源素材不存在')
       if ((typeof draft.count !== 'number' || ![1, 2, 3, 4].includes(draft.count)) || (typeof draft.durationSeconds !== 'number' || ![5, 10].includes(draft.durationSeconds))) throw new Error('派生参数无效')
+      if (draft.modelProfileId !== undefined) string(draft.modelProfileId)
+      if (draft.resolution !== undefined && !['1k', '2k', '4k'].includes(String(draft.resolution))) throw new Error('派生分辨率无效')
     }
     for (const [id, record] of Object.entries(value.recoveries)) {
       object(record); object(record.request); object(record.context)
       if (id !== record.request.requestId || record.projectId !== project.id || !project.document.scenes.some((scene) => scene.id === record.sceneId)) throw new Error('任务恢复归属无效')
       string(record.request.requestId)
+      if (record.ownerId !== undefined) string(record.ownerId)
+      if (record.request.modelProfileId !== undefined) string(record.request.modelProfileId)
       if (![Capability.TextToImage, Capability.TextToVideo, Capability.Variation].includes(record.request.capability as Capability)) throw new Error('任务恢复能力无效')
       object(record.request.params)
       const params = record.request.params
       object(params.size); finite(params.size.width, true); finite(params.size.height, true)
       if ((typeof params.count !== 'number' || ![1, 2, 3, 4].includes(params.count))) throw new Error('任务恢复数量无效')
       if (record.request.capability === Capability.Variation) {
-        mediaUrl(params.sourceImageUrl)
+        if (params.sourceImageKey !== undefined) {
+          string(params.sourceImageKey)
+          if (!['1k', '2k', '4k'].includes(String(params.resolution))) throw new Error('真实裂变缺少有效分辨率')
+        } else mediaUrl(params.sourceImageUrl)
         if (params.prompt !== undefined && typeof params.prompt !== 'string') throw new Error('裂变提示词无效')
       } else if (typeof params.prompt !== 'string' || !params.prompt.trim()) throw new Error('任务恢复提示词无效')
       if (record.request.capability === Capability.TextToVideo && (params.count !== 1 || (typeof params.durationSeconds !== 'number' || ![5, 10].includes(params.durationSeconds)))) throw new Error('视频任务参数无效')
@@ -193,7 +200,7 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
 export function persistableSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
   const copy = parseSnapshot(snapshot)
   for (const asset of Object.values(copy.project.assets)) {
-    if (asset.storage?.provider === 'r2') {
+    if (asset.storage?.provider === 'r2' || asset.objectKey) {
       asset.url = assetPlaceholder(asset.id)
       delete asset.accessExpiresAt
     }

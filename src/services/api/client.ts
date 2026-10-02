@@ -1,6 +1,13 @@
 import { authEnabled, supabase } from '@/cloud/client'
 import axios from 'axios'
 
+export class ApiError extends Error {
+  constructor(message: string, public status?: number, public code?: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 export const apiClient = axios.create({
   baseURL: '/api',
   timeout: 15000,
@@ -22,6 +29,6 @@ apiClient.interceptors.response.use(
       if (authEnabled) window.location.href = '/login'
     }
     const serverMessage = err.response?.data?.error
-    return Promise.reject(serverMessage ? new Error(serverMessage) : err)
+    return Promise.reject(new ApiError(serverMessage || err.message || '请求失败，请重试', err.response?.status, err.response?.data?.code))
   },
 )

@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/api/task', () => ({ createTask: mocks.createTask }))
+vi.mock('@/cloud/client', () => ({ authEnabled: false, cloudEnabled: false }))
 vi.mock('@/hooks/useTaskPolling', async () => {
   const { useEffect: useReactEffect } = await import('react')
   return {
@@ -69,6 +70,7 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
   let sceneId: string
 
   beforeEach(async () => {
+    vi.stubEnv('VITE_GENERATION_MODE', 'mock')
     usePersistenceStore.setState({ phase: 'idle', writable: true, recoveries: {}, drafts: defaultDrafts() })
     mocks.createTask.mockReset()
     mocks.polling.data = undefined
@@ -87,6 +89,7 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     container.remove()
+    vi.unstubAllEnvs()
   })
 
   function addGeneratedSource() {

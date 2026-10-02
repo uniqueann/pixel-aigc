@@ -1,31 +1,29 @@
-import { cloudEnabled } from '@/cloud/client'
+import { create } from 'zustand'
+import { authEnabled, cloudEnabled } from '@/cloud/client'
+import { useUserStore } from '@/store/useUserStore'
+import type { PublicImageModel } from '@/services/api/imageModels'
+
+export const useCanvasVariationConfiguration = create<{
+  ready: boolean; loading: boolean; models: PublicImageModel[]; error?: string
+}>(() => ({ ready: false, loading: true, models: [] }))
 
 interface VariationGateInput {
-  mode?: string
   generationMode?: string
   cloud?: boolean
+  authenticated?: boolean
+  configured?: boolean
 }
 
-function gateInput(input?: VariationGateInput) {
-  return {
-    mode: input?.mode ?? import.meta.env.MODE,
-    generationMode: input?.generationMode ?? import.meta.env.VITE_GENERATION_MODE,
-    cloud: input?.cloud ?? cloudEnabled,
-  }
+export function isCanvasMockGateway(input?: VariationGateInput) {
+  return (input?.generationMode ?? import.meta.env.VITE_GENERATION_MODE) === 'mock'
+    && !(input?.cloud ?? cloudEnabled)
 }
 
-/** 节点上的裂变入口。只有模拟网关可以点开并提交。 */
+/** 页面和提交控制器共用能力判断，配置尚未确认时不开放真实入口。 */
 export function isFreeCanvasVariationEntryEnabled(input?: VariationGateInput) {
-  const gate = gateInput(input)
-  return gate.generationMode === 'mock' && !gate.cloud
+  if (isCanvasMockGateway(input)) return true
+  return (input?.authenticated ?? (authEnabled && !!useUserStore.getState().userId))
+    && (input?.configured ?? useCanvasVariationConfiguration.getState().ready)
 }
 
-/**
- * 提交前的第二道开关。测试环境放行，是为了保留现有自由画布裂变单测；
- * 开发和生产在非模拟模式下拒绝，不调用 /api/tasks。
- */
-export function canSubmitFreeCanvasVariation(input?: VariationGateInput) {
-  const gate = gateInput(input)
-  if (gate.mode === 'test') return true
-  return gate.generationMode === 'mock' && !gate.cloud
-}
+export const canSubmitFreeCanvasVariation = isFreeCanvasVariationEntryEnabled

@@ -46,8 +46,7 @@ export function loadImageEditConfigured() {
 }
 
 /**
- * 只返回工作站开关，不注册到全局任务能力。
- * 裂变提交由 createTask 单独放行；自由画布入口仍由 availability 开关禁用。
+ * 裂变提交由 createTask 单独放行，各业务入口根据自身配置状态开放。
  */
 export function loadVariationConfigured() {
   if (import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled) return Promise.resolve(true)

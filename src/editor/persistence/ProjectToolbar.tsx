@@ -8,7 +8,7 @@ import { usePersistenceStore } from './persistenceStore'
 import { exportProject, flushProject, hasUnfinishedGeneration, newProject, replaceSnapshot } from './projectPersistence'
 import { parseSnapshot } from './snapshot'
 
-export default function ProjectToolbar({ busy }: { busy: boolean }) {
+export default function ProjectToolbar({ busy, onUploadImage }: { busy: boolean; onUploadImage?: () => void }) {
   const project = useEditorStore((state) => state.project)
   const status = usePersistenceStore((state) => state.status)
   const error = usePersistenceStore((state) => state.error)
@@ -35,14 +35,18 @@ export default function ProjectToolbar({ busy }: { busy: boolean }) {
         title: '新建空白项目？', content: '当前项目会保留本地存档；未同步的内容建议先导出 JSON。', okText: '新建', cancelText: '取消', onOk: newProject,
       })}>新建项目</Button>
     </Space>
-    <CloudToolbar disabled={unavailable} />
+    <CloudToolbar disabled={unavailable} onUploadImage={onUploadImage} />
     <input ref={inputRef} type="file" accept="application/json,.json" aria-label="选择项目 JSON" hidden onChange={(event) => {
       const file = event.target.files?.[0]
       event.target.value = ''
       if (!file) return
       void run(async () => {
         const snapshot = parseSnapshot(await file.text())
-        if (cloudEnabled) { snapshot.project.id = crypto.randomUUID(); snapshot.cloud = undefined; snapshot.recoveries = {} }
+        if (cloudEnabled) {
+          snapshot.project.id = crypto.randomUUID()
+          snapshot.cloud = undefined
+          for (const record of Object.values(snapshot.recoveries)) record.projectId = snapshot.project.id
+        }
         modal.confirm({ title: `导入「${snapshot.project.name}」？`, content: '将整体替换当前项目。如需保留，请先取消并导出当前项目。', okText: '导入', cancelText: '取消', onOk: () => replaceSnapshot(snapshot) })
       })
     }} />
