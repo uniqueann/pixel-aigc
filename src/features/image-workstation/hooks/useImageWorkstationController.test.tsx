@@ -814,7 +814,11 @@ describe('useImageWorkstationController 集成流程', () => {
       options.onObjectResult(descriptor)
       throw new Error('下载中断')
     })
-    const fetchMock = vi.fn(async (url: string) => new Response(new Uint8Array([255, 216, 255, url.startsWith('https:') ? 5 : 1]), { headers: { 'Content-Type': 'image/jpeg' } }))
+    const fetchMock = vi.fn(async (url: string) => {
+      const target = String(url)
+      const fromResult = target.startsWith('https:') || target.startsWith('/api/objects')
+      return new Response(new Uint8Array([255, 216, 255, fromResult ? 5 : 1]), { headers: { 'Content-Type': 'image/jpeg' } })
+    })
     vi.stubGlobal('fetch', fetchMock)
     mocks.historySave.mockRejectedValueOnce(new DOMException('空间不足', 'QuotaExceededError')).mockResolvedValue(undefined)
     await act(async () => root.render(<ControllerHarness tool="repaint" prompt="白色桌面" onController={captureController} />))
@@ -838,7 +842,13 @@ describe('useImageWorkstationController 集成流程', () => {
     const task: GenerationTask = { id: 'partial-read', capability: Capability.ImageEdit, params: { prompt: '白背景' }, status: 'processing', createdAt: '2026-09-30T12:00:00Z', updatedAt: '2026-09-30T12:00:00Z', creditsCost: 4 }
     mocks.createTask.mockResolvedValue(task)
     let failed = true
-    const fetchMock = vi.fn(async (url: string) => url.endsWith('/1') && failed ? new Response('', { status: 503 }) : new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), { headers: { 'Content-Type': 'image/png' } }))
+    const fetchMock = vi.fn(async (url: string) => {
+      const target = String(url)
+      const failedResult = failed && (target.endsWith('/1') || target.includes('partial/1.png') || target.includes(encodeURIComponent('generated/u/partial/1.png')))
+      return failedResult
+        ? new Response('', { status: 503 })
+        : new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), { headers: { 'Content-Type': 'image/png' } })
+    })
     vi.stubGlobal('fetch', fetchMock)
     await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白背景" count={4} onController={captureController} />))
     await act(async () => { await currentController.generate(null) })
@@ -851,7 +861,8 @@ describe('useImageWorkstationController 集成流程', () => {
     await act(async () => { await currentController.retryRead() })
     expect(currentController.outputAssets).toHaveLength(4)
     expect(currentController.outputAssets.map(asset => asset.id)).toEqual(expect.arrayContaining(firstIds))
-    expect(fetchMock.mock.calls.filter(([url]) => url.startsWith('https:'))).toHaveLength(5)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith('https:'))).toHaveLength(0)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/objects'))).toHaveLength(5)
     expect(mocks.createTask).toHaveBeenCalledTimes(1)
     expect(currentController.resultReadError).toBeUndefined()
   })

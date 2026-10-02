@@ -56,15 +56,15 @@ Vercel 使用 Node.js 24，Vite 构建，API 在 `api/[...path].ts`。配置函�
 
 创建私有桶 `pixel-aigc-media`，不启用公共 `r2.dev`。凭据限定到该桶的对象读写权限。设置 `temporary/` 前缀对象 7 天过期的生命周期规则；正式 `media/` 对象不自动删除。
 
-桶 CORS 示例：用真实域名替换占位，按实际使用补充 localhost 或预览域名，不使用全来源通配符。
+桶 CORS 示例：用真实域名替换占位，按实际使用补充 localhost 或预览域名，不使用全来源通配符。私有结果的浏览器 `fetch` 已改为同源 `/api/objects` 代理，不依赖下列 CORS 即可读取；上传 PUT 与可选的 `<img>` 直链仍可能需要。
 
 ```json
 [
   {
-    "AllowedOrigins": ["http://127.0.0.1:5173", "https://你的应用域名"],
+    "AllowedOrigins": ["http://127.0.0.1:5173", "https://aigc.contentup.cc"],
     "AllowedMethods": ["GET", "HEAD", "PUT"],
-    "AllowedHeaders": ["Content-Type"],
-    "ExposeHeaders": ["ETag"],
+    "AllowedHeaders": ["content-type", "range"],
+    "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
     "MaxAgeSeconds": 3600
   }
 ]

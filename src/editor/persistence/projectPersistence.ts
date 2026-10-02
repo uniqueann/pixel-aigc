@@ -3,7 +3,7 @@ import { useEditorStore } from '@/editor/store'
 import { useTaskStore } from '@/store/useTaskStore'
 import { readCurrentSnapshot, writeCurrentSnapshot, persistenceScope } from './database'
 import { restoreTaskDrafts } from './restoreDrafts'
-import { parseSnapshot, serializeSnapshot, persistableSnapshot } from './snapshot'
+import { parseSnapshot, serializeSnapshot, persistableSnapshot, restoreHistoryCommands } from './snapshot'
 import { recoveryForTask, usePersistenceStore } from './persistenceStore'
 import { defaultDrafts, type ProjectSnapshot } from './types'
 
@@ -18,10 +18,20 @@ let hasLock = false
 let suppressChanges = false
 
 export function currentSnapshot(): ProjectSnapshot {
-  const project = useEditorStore.getState().project
-  if (!project) throw new Error('当前没有项目')
+  const editor = useEditorStore.getState()
+  if (!editor.project) throw new Error('当前没有项目')
   const { drafts, recoveries, cloud } = usePersistenceStore.getState()
-  return { schemaVersion: 1, project, drafts, recoveries, cloud }
+  return {
+    schemaVersion: 1,
+    project: editor.project,
+    drafts,
+    recoveries,
+    cloud,
+    history: {
+      undo: editor.undoStack.map(command => command.serialize()),
+      redo: editor.redoStack.map(command => command.serialize()),
+    },
+  }
 }
 
 function changed() {
@@ -59,7 +69,7 @@ function installSubscriptions() {
   if (subscribed) return
   subscribed = true
   useEditorStore.subscribe((state, previous) => {
-    if (state.project !== previous.project) changed()
+    if (state.project !== previous.project || state.undoStack !== previous.undoStack || state.redoStack !== previous.redoStack) changed()
   })
   usePersistenceStore.subscribe((state, previous) => {
     if (state.drafts !== previous.drafts || state.recoveries !== previous.recoveries) changed()
@@ -119,6 +129,8 @@ function applySnapshot(snapshot: ProjectSnapshot) {
   suppressChanges = true
   useTaskStore.setState({ tasks: {} })
   useEditorStore.getState().loadProject(snapshot.project)
+  const history = restoreHistoryCommands(snapshot.history, snapshot.project.assets)
+  useEditorStore.getState().restoreHistory(history.undo, history.redo)
   usePersistenceStore.setState((state) => ({
     cloud: snapshot.cloud,
     drafts: restoreTaskDrafts(snapshot),

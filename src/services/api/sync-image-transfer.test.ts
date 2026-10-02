@@ -5,7 +5,13 @@ vi.mock('@/features/assets/historyOwner', () => ({ currentWorkstationHistoryOwne
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ uploadTaskInput: vi.fn(), signedOwnedObjectUrl: vi.fn() }))
 vi.mock('./upload', () => ({ uploadTaskInput: mocks.uploadTaskInput }))
-vi.mock('./objects', () => ({ signedOwnedObject: (...args: unknown[]) => mocks.signedOwnedObjectUrl(...args).then((url: string) => ({ url, expiresAt: Date.now() + 60_000 })) }))
+vi.mock('./objects', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./objects')>()
+  return {
+    ...actual,
+    signedOwnedObject: (...args: unknown[]) => mocks.signedOwnedObjectUrl(...args).then((url: string) => ({ url, expiresAt: Date.now() + 60_000 })),
+  }
+})
 import { requestRepaint } from './repaint'
 import { requestOutpaint } from './outpaint'
 
@@ -27,7 +33,7 @@ afterEach(() => {
 })
 
 describe('重绘与扩图的大图请求', () => {
-  it('重绘复用已有原图键，只上传蒙版并刷新过期的结果地址', async () => {
+  it('重绘复用已有原图键，只上传蒙版并经同源代理读取结果', async () => {
     mocks.uploadTaskInput.mockResolvedValue('temporary/task-inputs/user/mask')
     mocks.signedOwnedObjectUrl.mockResolvedValue('https://r2.test/refreshed')
     const fetchMock = vi.fn(async (url: string) => {
@@ -46,7 +52,8 @@ describe('重绘与扩图的大图请求', () => {
       sourceImageKey: 'generated/user/job/0.png', maskImageKey: 'temporary/task-inputs/user/mask', prompt: '桌上的花瓶',
     })
     expect(mocks.uploadTaskInput).toHaveBeenCalledTimes(1)
-    expect(mocks.signedOwnedObjectUrl).toHaveBeenCalledWith('temporary/repaint-results/user/1.jpg', expect.any(AbortSignal))
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/objects'))).toBe(true)
+    expect(mocks.signedOwnedObjectUrl).not.toHaveBeenCalled()
     expect(result.type).toBe('image/jpeg')
   })
 

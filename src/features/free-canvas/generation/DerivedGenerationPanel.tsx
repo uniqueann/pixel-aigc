@@ -33,6 +33,7 @@ interface DerivedGenerationPanelProps {
   onDurationChange: (durationSeconds: number) => void
   onGenerate: () => void
   generateDisabled?: boolean
+  modelsLoading?: boolean
   onRetry: () => void
   onModifyParameters: () => void
   onRefetch: () => void
@@ -72,6 +73,7 @@ export default function DerivedGenerationPanel({
   onDurationChange,
   onGenerate,
   generateDisabled = false,
+  modelsLoading = false,
   onRetry,
   onModifyParameters,
   onRefetch,
@@ -176,10 +178,12 @@ export default function DerivedGenerationPanel({
           {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
         </Radio.Group></label>
         {resolutionAdjusted && <p role="status">当前模型或图片比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
-        <p>{mockGateway ? '模拟生成，不消耗积分' : `本次预计预扣 ${estimatedCredits ?? 0} 积分，按实际成功张数结算。失败后由你决定是否再次生成。`}</p>
+        {modelsLoading
+          ? <p role="status">正在加载模型配置…</p>
+          : <p>{mockGateway ? '模拟生成，不消耗积分' : `本次预计预扣 ${estimatedCredits ?? 0} 积分，按实际成功张数结算。失败后由你决定是否再次生成。`}</p>}
       </>}
 
-      {generateDisabled && !imageToVideo ? (
+      {modelsLoading || imageToVideo ? null : generateDisabled ? (
         <p className="toolbox-hint">裂变模型尚未就绪，请检查登录与模型配置。</p>
       ) : null}
       <Button
@@ -219,7 +223,7 @@ export default function DerivedGenerationPanel({
         return downloadImageSource(item.fullSrc, `裂变结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, image?.objectKey)
       }} />}
 
-      <p className="free-canvas-panel-hint">结果会放在源图右侧；生成后仍可继续作为新的派生起点。</p>
+      <p className="free-canvas-panel-hint">结果会落在画板内可见位置；生成后仍可继续作为新的派生起点。</p>
     </aside>
   )
 }

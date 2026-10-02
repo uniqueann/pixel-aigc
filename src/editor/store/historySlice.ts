@@ -2,6 +2,8 @@ import type { StateCreator } from 'zustand'
 import type { EditorCommand, EditorContext } from '@/editor/commands'
 import type { EditorStoreState } from './editorStore'
 
+export const MAX_PERSISTED_HISTORY = 40
+
 export interface HistorySlice {
   undoStack: EditorCommand[]
   redoStack: EditorCommand[]
@@ -9,6 +11,7 @@ export interface HistorySlice {
   undo: () => void
   redo: () => void
   clearHistory: () => void
+  restoreHistory: (undo: EditorCommand[], redo: EditorCommand[]) => void
 }
 
 export const createHistorySlice: StateCreator<EditorStoreState, [], [], HistorySlice> = (set, get) => {
@@ -26,7 +29,10 @@ export const createHistorySlice: StateCreator<EditorStoreState, [], [], HistoryS
     executeCommand: (command) => {
       if (!get().project) return
       command.execute(context())
-      set((state) => ({ undoStack: [...state.undoStack, command], redoStack: [] }))
+      set((state) => ({
+        undoStack: [...state.undoStack, command].slice(-MAX_PERSISTED_HISTORY),
+        redoStack: [],
+      }))
     },
     undo: () => {
       const command = get().undoStack[get().undoStack.length - 1]
@@ -47,5 +53,9 @@ export const createHistorySlice: StateCreator<EditorStoreState, [], [], HistoryS
       }))
     },
     clearHistory: () => set({ undoStack: [], redoStack: [] }),
+    restoreHistory: (undo, redo) => set({
+      undoStack: undo.slice(-MAX_PERSISTED_HISTORY),
+      redoStack: redo.slice(-MAX_PERSISTED_HISTORY),
+    }),
   }
 }

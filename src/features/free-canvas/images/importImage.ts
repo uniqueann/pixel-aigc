@@ -9,7 +9,7 @@ import { readOwnedImage } from '@/services/api/ownedImages'
 import { uploadImage } from '@/services/api/upload'
 import { readResultImage } from '@/features/image-workstation/imageMetadata'
 import { assetPlaceholder } from '@/cloud/assets'
-import { calculateInitialImageNode, type CanvasPoint } from '../geometry'
+import { calculateInitialImageNode, calculateNodeBounds, offsetPlacementToAvoidOverlap, type CanvasPoint } from '../geometry'
 
 export interface CanvasImageImportContext {
   ownerId: string; projectId: string; sceneId: string; epoch: number; center: CanvasPoint; signal: AbortSignal
@@ -30,8 +30,12 @@ function insert(asset: ImageAsset, context: CanvasImageImportContext) {
   const existing = asset.objectKey ? Object.values(editor.project!.assets).find(item => item.type === 'image' && item.objectKey === asset.objectKey) as ImageAsset | undefined : undefined
   asset = existing ?? asset
   const node = calculateInitialImageNode(asset, scene)
-  node.x = context.center.x - node.width / 2
-  node.y = context.center.y - node.height / 2
+  const placed = offsetPlacementToAvoidOverlap(
+    { x: context.center.x - node.width / 2, y: context.center.y - node.height / 2, width: node.width, height: node.height },
+    scene.nodes.map(item => calculateNodeBounds(item)),
+  )
+  node.x = placed.x
+  node.y = placed.y
   node.zIndex = Math.max(-1, ...scene.nodes.map(item => item.zIndex)) + 1
   editor.executeCommand(new InsertGeneratedAssetCommand(scene.id, asset, node))
   editor.selectNodes([node.id])

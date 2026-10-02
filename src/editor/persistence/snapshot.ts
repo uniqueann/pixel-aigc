@@ -1,7 +1,8 @@
 import { assetPlaceholder } from '@/cloud/assets'
-import type { PixelProject } from '@/editor/types'
+import { deserializeCommand, type SerializedEditorCommand } from '@/editor/commands'
+import type { Asset, PixelProject } from '@/editor/types'
 import { Capability } from '@/types'
-import { defaultDrafts, type ProjectSnapshot } from './types'
+import { defaultDrafts, type ProjectHistory, type ProjectSnapshot } from './types'
 
 function object(value: unknown): asserts value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('项目字段必须是对象')
@@ -194,19 +195,160 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
     if (!Number.isInteger(value.cloud.revision) || Number(value.cloud.revision) < 1 || typeof value.cloud.pending !== 'boolean') throw new Error('云端同步版本无效')
     snapshot.cloud = { revision: Number(value.cloud.revision), pending: value.cloud.pending, conflict: value.cloud.conflict === true }
   }
+  if ('schemaVersion' in value && value.history !== undefined) {
+    snapshot.history = parseHistory(value.history, project)
+  }
   return structuredClone(snapshot)
+}
+
+function parseHistory(value: unknown, project: PixelProject): ProjectHistory {
+  object(value)
+  array(value.undo)
+  array(value.redo)
+  return {
+    undo: value.undo.map(item => validateSerializedCommand(item, project)),
+    redo: value.redo.map(item => validateSerializedCommand(item, project)),
+  }
+}
+
+function validateSerializedCommand(value: unknown, project: PixelProject): SerializedEditorCommand {
+  object(value)
+  string(value.id)
+  string(value.sceneId)
+  if (!project.document.scenes.some(scene => scene.id === value.sceneId)) throw new Error('历史命令的场景不存在')
+  if (value.type === 'add-node') {
+    validateNode(value.node, project)
+    return value as SerializedEditorCommand
+  }
+  if (value.type === 'remove-node') {
+    string(value.nodeId)
+    if (value.removedNode !== undefined) validateNode(value.removedNode, project)
+    return value as SerializedEditorCommand
+  }
+  if (value.type === 'update-node') {
+    string(value.nodeId)
+    object(value.changes)
+    if (value.previous !== undefined) validateNode(value.previous, project)
+    return value as SerializedEditorCommand
+  }
+  if (value.type === 'insert-generated') {
+    object(value.asset)
+    string((value.asset as { id?: string }).id)
+    if (project.assets[(value.asset as { id: string }).id]?.type !== (value.asset as { type?: string }).type
+      && !['image', 'video', 'audio'].includes(String((value.asset as { type?: string }).type))) {
+      throw new Error('历史命令的素材无效')
+    }
+    validateNode(value.node, { ...project, assets: { ...project.assets, [(value.asset as { id: string }).id]: value.asset as unknown as Asset } })
+    return value as SerializedEditorCommand
+  }
+  if (value.type === 'resolve-generation') {
+    array(value.placeholderNodeIds)
+    array(value.outputs)
+    for (const id of value.placeholderNodeIds) string(id)
+    const assets = { ...project.assets }
+    for (const output of value.outputs) {
+      object(output)
+      object(output.asset)
+      string((output.asset as { id?: string }).id)
+      assets[(output.asset as { id: string }).id] = output.asset as unknown as Asset
+      validateNode(output.node, { ...project, assets })
+    }
+    return value as SerializedEditorCommand
+  }
+  throw new Error('不支持的历史命令')
+}
+
+function persistableAsset(asset: Asset, assets: Record<string, Asset> = {}): Asset {
+  const source = assets[asset.id] ?? asset
+  const copy = { ...source }
+  if (copy.storage?.provider === 'r2' || copy.objectKey || assets[copy.id]) {
+    copy.url = assetPlaceholder(copy.id)
+    delete copy.accessExpiresAt
+  }
+  return copy
+}
+
+function persistableMediaReference(url: unknown, assets: Record<string, Asset>, objectKey?: string) {
+  if (typeof url !== 'string') return url
+  if (objectKey || url.startsWith('data:') || /[?&]X-Amz-/i.test(url) || /\.r2\.cloudflarestorage\.com/i.test(url)) {
+    const match = Object.values(assets).find(asset => (
+      (objectKey && (asset.objectKey ?? asset.storage?.objectKey) === objectKey)
+      || asset.url === url
+      || (asset.objectKey && url.includes(asset.objectKey))
+    ))
+    if (match) return assetPlaceholder(match.id)
+    if (objectKey) return undefined
+  }
+  return url
+}
+
+function persistableCommand(command: SerializedEditorCommand, assets: Record<string, Asset>): SerializedEditorCommand {
+  if (command.type === 'insert-generated') {
+    return { ...command, asset: persistableAsset(command.asset, assets) }
+  }
+  if (command.type === 'resolve-generation') {
+    return {
+      ...command,
+      outputs: command.outputs.map(output => ({ ...output, asset: persistableAsset(output.asset, assets) })),
+    }
+  }
+  return command
 }
 
 export function persistableSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
   const copy = parseSnapshot(snapshot)
-  for (const asset of Object.values(copy.project.assets)) {
+  const assets = copy.project.assets
+  for (const asset of Object.values(assets)) {
     if (asset.storage?.provider === 'r2' || asset.objectKey) {
       asset.url = assetPlaceholder(asset.id)
       delete asset.accessExpiresAt
     }
   }
+  for (const job of Object.values(copy.project.generations)) {
+    const input = job.input
+    if (!input || typeof input !== 'object') continue
+    const params = input as { sourceImageUrl?: string; sourceImageKey?: string }
+    const next = persistableMediaReference(params.sourceImageUrl, assets, params.sourceImageKey)
+    if (next === undefined) delete params.sourceImageUrl
+    else if (typeof next === 'string') params.sourceImageUrl = next
+  }
+  for (const record of Object.values(copy.recoveries)) {
+    const params = record.request.params as { sourceImageUrl?: string; sourceImageKey?: string }
+    const next = persistableMediaReference(params.sourceImageUrl, assets, params.sourceImageKey)
+    if (next === undefined) delete params.sourceImageUrl
+    else if (typeof next === 'string') params.sourceImageUrl = next
+  }
+  copy.history = {
+    undo: (copy.history?.undo ?? []).map(item => persistableCommand(item, assets)),
+    redo: (copy.history?.redo ?? []).map(item => persistableCommand(item, assets)),
+  }
   return copy
 }
+
 export function serializeSnapshot(snapshot: ProjectSnapshot) {
-  return JSON.stringify(persistableSnapshot(snapshot), null, 2)
+  return JSON.stringify(persistableSnapshot(snapshot))
+}
+
+function hydrateSerializedCommand(command: SerializedEditorCommand, assets?: Record<string, Asset>): SerializedEditorCommand {
+  if (!assets) return command
+  if (command.type === 'insert-generated' && assets[command.asset.id]) {
+    return { ...command, asset: assets[command.asset.id] }
+  }
+  if (command.type === 'resolve-generation') {
+    return {
+      ...command,
+      outputs: command.outputs.map(output => ({
+        ...output,
+        asset: assets[output.asset.id] ?? output.asset,
+      })),
+    }
+  }
+  return command
+}
+
+export function restoreHistoryCommands(history?: ProjectHistory, assets?: Record<string, Asset>) {
+  return {
+    undo: (history?.undo ?? []).map(item => deserializeCommand(hydrateSerializedCommand(item, assets))),
+    redo: (history?.redo ?? []).map(item => deserializeCommand(hydrateSerializedCommand(item, assets))),
+  }
 }

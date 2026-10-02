@@ -20,7 +20,7 @@ describe('项目快照校验与迁移', () => {
     scene.nodes[0] = { ...scene.nodes[0], rotation: 37, x: -120, y: 600, opacity: 0.7, zIndex: 4 }
     scene.viewport = { zoom: 0.7, panX: 80, panY: -200 }
     snapshot.drafts['text-to-image'].prompt = '未提交的草稿'
-    expect(parseSnapshot(serializeSnapshot(snapshot))).toEqual(snapshot)
+    expect(parseSnapshot(serializeSnapshot(snapshot))).toEqual({ ...snapshot, history: { undo: [], redo: [] } })
   })
 
   it('迁移裸项目时使用空草稿与保守恢复记录', () => {
@@ -104,5 +104,50 @@ describe('项目快照校验与迁移', () => {
     expect(persisted.project.assets[asset.id].accessExpiresAt).toBeUndefined()
     expect(asset.url).toContain('signature=expired')
     expect(parseSnapshot(serializeSnapshot(persisted))).toEqual(persisted)
+  })
+
+  it('导出 JSON 对云端/资产图片只保留引用，本地图只内嵌一份', () => {
+    const local = structuredClone(DEMO_IMAGE_ASSET)
+    local.id = 'asset-local'
+    local.name = 'mug.jpg'
+    const owned = structuredClone(DEMO_IMAGE_ASSET)
+    owned.id = 'asset-owned'
+    owned.name = '资产图片'
+    owned.objectKey = 'owned-result'
+    owned.url = `data:image/png;base64,${'A'.repeat(12000)}`
+    snapshot.project.assets = { [local.id]: local, [owned.id]: owned }
+    const localNode = { ...snapshot.project.document.scenes[0].nodes[0], id: 'node-local', assetId: local.id }
+    const ownedNode = { ...snapshot.project.document.scenes[0].nodes[0], id: 'node-owned', assetId: owned.id }
+    snapshot.project.document.scenes[0].nodes = [localNode, ownedNode]
+    snapshot.recoveries.request = {
+      projectId: snapshot.project.id, sceneId: snapshot.project.document.activeSceneId,
+      request: { capability: Capability.Variation, requestId: 'request', params: { sourceImageUrl: owned.url, sourceImageKey: 'owned-result', resolution: '2k', size: { width: 1024, height: 1024 }, count: 1 } },
+      context: { inputAssetIds: [owned.id], autoRetryRemaining: 0, automaticRetry: false },
+      placements: [], replacedPlaceholderIds: [], applied: false,
+    }
+    const json = serializeSnapshot(snapshot)
+    expect(json).not.toContain('A'.repeat(12000))
+    expect(json).toContain(`/__aigc_asset__/${encodeURIComponent(owned.id)}`)
+    expect(json).toContain(local.url)
+    expect(json.split(local.url).length - 1).toBe(1)
+    const restored = parseSnapshot(json)
+    expect(restored.project.assets[local.id].url).toBe(local.url)
+    expect(restored.project.assets[owned.id]).toMatchObject({ objectKey: 'owned-result', url: `/__aigc_asset__/${encodeURIComponent(owned.id)}` })
+    expect(restored.project.document.scenes[0].nodes.map(node => node.id)).toEqual(['node-local', 'node-owned'])
+  })
+
+  it('有界撤销历史可随快照往返，且不把已存档图片再内嵌一份', () => {
+    const node = snapshot.project.document.scenes[0].nodes[0]
+    const asset = snapshot.project.assets[DEMO_IMAGE_ASSET.id]
+    snapshot.history = {
+      undo: [{ type: 'insert-generated', id: 'cmd-1', sceneId: snapshot.project.document.activeSceneId, asset, node }],
+      redo: [],
+    }
+    const persisted = persistableSnapshot(snapshot)
+    expect(persisted.history?.undo[0]).toMatchObject({ type: 'insert-generated', id: 'cmd-1' })
+    if (persisted.history?.undo[0].type === 'insert-generated') {
+      expect(persisted.history.undo[0].asset.url).toBe(`/__aigc_asset__/${encodeURIComponent(asset.id)}`)
+    }
+    expect(parseSnapshot(serializeSnapshot(persisted)).history?.undo).toHaveLength(1)
   })
 })

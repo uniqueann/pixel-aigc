@@ -20,6 +20,7 @@ import type { TaskStatus } from '@/types'
 import {
   calculateFitViewport,
   calculateNodeBounds,
+  calculateRevealViewport,
   clampZoom,
   MIN_NODE_SIZE,
   normalizeNodeTransform,
@@ -330,6 +331,15 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     setVideoUiVersion((version) => version + 1)
   }, [])
 
+  const setCanvasViewport = useCallback((next: ViewportState) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const normalized = { ...next, zoom: clampZoom(next.zoom) }
+    applyViewport(canvas, normalized)
+    canvas.requestRenderAll()
+    callbacksRef.current.onViewportChange(normalized)
+  }, [])
+
   useImperativeHandle(ref, () => ({
     getViewportCenter: () => {
       const canvas = canvasRef.current
@@ -342,7 +352,17 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         y: (container.clientHeight / 2 - transform[5]) / zoom,
       }
     },
-  }), [])
+    revealBounds: (targets) => {
+      const canvas = canvasRef.current
+      const container = containerRef.current
+      if (!canvas || !container || !targets.length) return
+      setCanvasViewport(calculateRevealViewport(
+        { width: container.clientWidth, height: container.clientHeight },
+        targets,
+        viewportFromCanvas(canvas),
+      ))
+    },
+  }), [setCanvasViewport])
 
   useEffect(() => {
     callbacksRef.current = { onSelectNode, onTransformNode, onViewportChange, onAssetLoadError }
@@ -350,15 +370,6 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     selectedNodeIdRef.current = selectedNodeId
     sceneSizeRef.current = { width: scene.width, height: scene.height }
   }, [onAssetLoadError, onSelectNode, onTransformNode, onViewportChange, scene.height, scene.width, selectedNodeId, viewport])
-
-  const setCanvasViewport = useCallback((next: ViewportState) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const normalized = { ...next, zoom: clampZoom(next.zoom) }
-    applyViewport(canvas, normalized)
-    canvas.requestRenderAll()
-    callbacksRef.current.onViewportChange(normalized)
-  }, [])
 
   const fitToScene = useCallback(() => {
     const canvas = canvasRef.current

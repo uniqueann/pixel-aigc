@@ -1,6 +1,6 @@
 import { authEnabled, supabase } from '@/cloud/client'
 
-export async function fetchOwnedObject(objectKey: string, filename?: string) {
+export async function fetchOwnedObject(objectKey: string, filename?: string, signal?: AbortSignal) {
   const token = authEnabled
     ? (await supabase!.auth.getSession()).data.session?.access_token
     : localStorage.getItem('access_token')
@@ -11,10 +11,15 @@ export async function fetchOwnedObject(objectKey: string, filename?: string) {
   }
   const response = await fetch(`/api/objects?${params}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: 'no-store',
+    ...(signal ? { signal } : {}),
   })
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null
-    throw new Error(payload?.error || '读取结果失败')
+    throw new OwnedObjectError(
+      response.status,
+      payload?.error || (response.status === 404 ? '结果对象不存在' : '读取结果失败，请重试读取'),
+    )
   }
   return response.blob()
 }

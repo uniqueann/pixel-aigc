@@ -2,7 +2,7 @@ import { normalizeImageBlob } from '@shared/image-format'
 import { readHistoryImage } from '@/features/assets/workstationHistory'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { useUserStore } from '@/store/useUserStore'
-import { signedOwnedObject } from './objects'
+import { fetchOwnedObject, OwnedObjectError } from './objects'
 
 export interface OwnedImageReference {
   objectKey?: string
@@ -24,6 +24,13 @@ let downloading = 0
 const abortError = () => new DOMException('读取已取消', 'AbortError')
 function check(signal?: AbortSignal) { if (signal?.aborted) throw signal.reason ?? abortError() }
 function keyFor(ownerId: string, key: string) { return JSON.stringify([ownerId, key]) }
+function ownedObjectStatus(error: unknown): number | undefined {
+  if (typeof OwnedObjectError === 'function' && error instanceof OwnedObjectError) return error.status
+  if (error instanceof Error && error.name === 'OwnedObjectError') {
+    const status = (error as { status?: unknown }).status
+    if (typeof status === 'number') return status
+  }
+}
 function cacheBlob(key: string, blob: Blob) {
   const budget = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 64 * 1024 * 1024 : 128 * 1024 * 1024
   if (blob.size > budget) return
@@ -72,54 +79,35 @@ function queued<T>(signal: AbortSignal, run: () => Promise<T>): Promise<T> {
   })
 }
 async function remote(reference: OwnedImageReference, signal: AbortSignal): Promise<Blob> {
+  if (!reference.objectKey) throw new OwnedImageReadError(404, '本地历史图片不存在')
   const queuedAt = performance.now()
   return queued(signal, async () => {
     check(signal)
     const queueMs = Math.round(performance.now() - queuedAt)
-    let signed = { url: reference.url, expiresAt: reference.expiresAt }
-    let refreshes = 0
-    const refresh = async () => {
-      const started = performance.now()
-      signed = await signedOwnedObject(reference.objectKey!, signal)
-      refreshes++
-      console.debug('[图片读取]', { operation: 'sign', elapsedMs: Math.round(performance.now() - started), refreshes })
-    }
-    if (!signed.url || (signed.expiresAt !== undefined && signed.expiresAt - Date.now() < 30_000)) await refresh()
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const timeout = new AbortController()
+    const timer = setTimeout(() => timeout.abort(new OwnedImageReadError(504, '读取结果超时，请重试读取')), 60_000)
+    const cancel = () => timeout.abort(signal.reason ?? abortError())
+    signal.addEventListener('abort', cancel, { once: true })
+    try {
+      // 私有对象字节走同源代理，避免浏览器直连 R2 签名地址触发 CORS。
+      console.debug('[图片读取]', { source: 'proxy', operation: 'request', queueMs })
+      const blob = await normalizeImageBlob(await fetchOwnedObject(reference.objectKey!, undefined, timeout.signal))
       check(signal)
-      const timeout = new AbortController()
-      const timer = setTimeout(() => timeout.abort(new OwnedImageReadError(504, '读取结果超时，请重试读取')), 60_000)
-      const cancel = () => timeout.abort(signal.reason ?? abortError())
-      signal.addEventListener('abort', cancel, { once: true })
-      let retry: boolean
-      try {
-        // 只向本站签名接口发送令牌，R2 请求不携带鉴权头或 Cookie。
-        console.debug('[图片读取]', { source: 'r2', operation: 'request', request: 1, queueMs, refreshes })
-        const response = await fetch(signed.url!, { signal: timeout.signal, credentials: 'omit' })
-        console.debug('[图片读取]', { source: 'r2', operation: 'headers', status: response.status })
-        if (!response.ok) {
-          await response.body?.cancel()
-          if (response.status === 403 && attempt === 0) retry = true
-          else throw new OwnedImageReadError(response.status, response.status === 404 ? '结果对象不存在' : '读取结果失败，请重试读取')
-        } else {
-          const blob = await normalizeImageBlob(await response.blob())
-          check(signal)
-          console.debug('[图片读取]', { source: 'r2', bytes: blob.size, queueMs, refreshes })
-          return blob
-        }
-      } catch (error) {
-        check(signal)
-        if (timeout.signal.aborted) throw timeout.signal.reason
-        if (error instanceof OwnedImageReadError) throw error
-        // 过期签名的跨域响应可能表现为网络异常；只允许重新签名一次。
-        if (attempt === 0 && error instanceof TypeError) retry = true
-        else throw new OwnedImageReadError(502, '读取结果中断，请重试读取')
-      } finally {
-        clearTimeout(timer); signal.removeEventListener('abort', cancel)
+      console.debug('[图片读取]', { source: 'proxy', bytes: blob.size, queueMs })
+      return blob
+    } catch (error) {
+      check(signal)
+      if (timeout.signal.aborted) throw timeout.signal.reason
+      if (error instanceof OwnedImageReadError) throw error
+      const status = ownedObjectStatus(error)
+      if (status !== undefined) {
+        throw new OwnedImageReadError(status, status === 404 ? '结果对象不存在' : error instanceof Error ? error.message : '读取结果失败，请重试读取')
       }
-      if (retry) await refresh()
+      throw new OwnedImageReadError(502, '读取结果中断，请重试读取')
+    } finally {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', cancel)
     }
-    throw new OwnedImageReadError(502, '读取结果失败，请重试读取')
   })
 }
 async function load(reference: OwnedImageReference, ownerId: string, signal: AbortSignal) {

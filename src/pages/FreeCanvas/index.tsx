@@ -13,6 +13,7 @@ import DerivedGenerationPanel, {
   type DerivedGenerationMode,
 } from '@/features/free-canvas/generation/DerivedGenerationPanel'
 import GenerationPanel from '@/features/free-canvas/generation/GenerationPanel'
+import { resolveSelectedImageSource } from '@/features/free-canvas/generation/derivedSource'
 import { isFreeCanvasVariationEntryEnabled } from '@/features/free-canvas/generation/availability'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 import { useCanvasVariationModels } from '@/features/free-canvas/generation/useCanvasVariationModels'
@@ -34,6 +35,7 @@ import {
   useFreeCanvasGenerationController,
 } from '@/features/free-canvas/generation/useFreeCanvasGenerationController'
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
+import { boundsFromPlacement, calculateNodeBounds } from '@/features/free-canvas/geometry'
 import type { FreeCanvasStageHandle, NodeTransform } from '@/features/free-canvas/types'
 import { CANVAS_MODES } from './modes'
 import type { Asset } from '@/editor/types'
@@ -104,6 +106,20 @@ export default function FreeCanvas() {
     importAbort.current = controller
     return () => controller.abort()
   }, [project?.id, epoch, ownerId])
+
+  useEffect(() => {
+    if (!derivedDraft || generation.formLocked) return
+    const selected = resolveSelectedImageSource(scene, project?.assets, selectedNodeId)
+    if (!selected) return
+    if (derivedDraft.sourceNode.id === selected.node.id && derivedDraft.sourceAssetId === selected.asset.id) return
+    const persistence = usePersistenceStore.getState()
+    if (persistence.drafts.derived) {
+      persistence.setDrafts({
+        ...persistence.drafts,
+        derived: { ...persistence.drafts.derived, sourceNode: { ...selected.node }, sourceAssetId: selected.asset.id },
+      })
+    }
+  }, [derivedDraft, generation.formLocked, project?.assets, scene, selectedNodeId])
 
   const importPicture = async (input: File | WorkstationHistoryListItem) => {
     if (importGate.current || !project || !scene) return
@@ -176,7 +192,7 @@ export default function FreeCanvas() {
   }
 
   const handleNodeGenerationAction = useCallback((action: DerivedGenerationMode, nodeId: string) => {
-    if (action === 'variation' && !isFreeCanvasVariationEntryEnabled()) {
+    if (action === 'variation' && !isFreeCanvasVariationEntryEnabled() && !configuration.loading) {
       message.warning('请先确认登录与裂变模型配置')
       return
     }
@@ -196,21 +212,26 @@ export default function FreeCanvas() {
       count: previous?.count ?? preferences.image.counts.variation, durationSeconds: previous?.durationSeconds ?? 5,
       resolution: previous?.resolution ?? preferences.image.resolution, modelProfileId: previous?.modelProfileId ?? model?.id,
     } })
-  }, [generation, message, preferences.image, model?.id])
+  }, [configuration.loading, generation, message, preferences.image, model?.id])
 
   const variationEntryEnabled = isFreeCanvasVariationEntryEnabled()
   const handleDerivedGenerate = () => {
-    if (!derivedContext) return
+    const selected = resolveSelectedImageSource(scene, project?.assets, selectedNodeId)
+    const source = selected ?? derivedContext?.source
+    if (!derivedContext || !source) return
     if (derivedContext.mode === 'variation' && !variationEntryEnabled) {
       message.warning('请先确认登录与裂变模型配置')
       return
     }
     try {
       const request = derivedContext.mode === 'variation'
-        ? buildVariationRequest(derivedContext.source.asset, derivedPrompt, effective.count, { resolution: effective.resolution, modelProfileId: model?.id })
-        : buildImageToVideoRequest(derivedContext.source.asset, derivedPrompt, derivedDurationSeconds)
-      if (derivedContext.mode === 'variation') updateDerived({ count: effective.count, resolution: effective.resolution, modelProfileId: model?.id })
-      void generation.generateDerived(request, derivedContext.source)
+        ? buildVariationRequest(source.asset, derivedPrompt, effective.count, { resolution: effective.resolution, modelProfileId: model?.id })
+        : buildImageToVideoRequest(source.asset, derivedPrompt, derivedDurationSeconds)
+      if (derivedContext.mode === 'variation') updateDerived({ count: effective.count, resolution: effective.resolution, modelProfileId: model?.id, sourceNode: { ...source.node }, sourceAssetId: source.asset.id })
+      void generation.generateDerived(request, source).then((placements) => {
+        if (!placements?.length) return
+        stageRef.current?.revealBounds([calculateNodeBounds(source.node), ...placements.map(boundsFromPlacement)])
+      })
     } catch (error) { message.error(error instanceof Error ? error.message : '生成参数无效') }
   }
 
@@ -296,7 +317,7 @@ export default function FreeCanvas() {
           onUndo={undo}
           onRedo={redo}
           onDelete={handleDelete}
-          variationEnabled={variationEntryEnabled}
+          variationEnabled={variationEntryEnabled || configuration.loading}
           onNodeGenerationAction={handleNodeGenerationAction}
           onAssetLoadError={handleAssetLoadError}
         />
@@ -320,7 +341,8 @@ export default function FreeCanvas() {
             onPromptChange={(prompt) => updateDerived({ prompt })}
             onCountChange={(count) => updateDerived({ count })}
             onDurationChange={(durationSeconds) => updateDerived({ durationSeconds })}
-            generateDisabled={derivedContext.mode === 'variation' && !variationEntryEnabled}
+            generateDisabled={derivedContext.mode === 'variation' && !variationEntryEnabled && !configuration.loading}
+            modelsLoading={derivedContext.mode === 'variation' && configuration.loading}
             onGenerate={handleDerivedGenerate}
             onRetry={() => { void generation.retry() }}
             onModifyParameters={generation.modifyParameters}

@@ -7,6 +7,7 @@ export const MIN_NODE_SIZE = 32
 export const FIT_PADDING = 64
 export const GENERATION_NODE_MAX_EDGE = 320
 export const GENERATION_NODE_GAP = 32
+export const NODE_CASCADE_OFFSET = 40
 
 export interface CanvasPoint {
   x: number
@@ -119,19 +120,149 @@ export function calculateNodeBounds(
   }
 }
 
+export function unionBounds(items: NodeBounds[]): NodeBounds | undefined {
+  if (!items.length) return undefined
+  return {
+    left: Math.min(...items.map(item => item.left)),
+    top: Math.min(...items.map(item => item.top)),
+    right: Math.max(...items.map(item => item.right)),
+    bottom: Math.max(...items.map(item => item.bottom)),
+  }
+}
+
+export function boundsFromPlacement(placement: GenerationPlacement): NodeBounds {
+  return {
+    left: placement.x,
+    top: placement.y,
+    right: placement.x + placement.width,
+    bottom: placement.y + placement.height,
+  }
+}
+
+export function overlapsBounds(a: NodeBounds, b: NodeBounds, padding = 0) {
+  return a.left < b.right + padding
+    && a.right + padding > b.left
+    && a.top < b.bottom + padding
+    && a.bottom + padding > b.top
+}
+
+export function offsetPlacementToAvoidOverlap(
+  placement: GenerationPlacement,
+  occupied: NodeBounds[],
+  options: { offset?: number; maxAttempts?: number } = {},
+): GenerationPlacement {
+  const offset = options.offset ?? NODE_CASCADE_OFFSET
+  const maxAttempts = options.maxAttempts ?? 24
+  let next = { ...placement }
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const bounds = boundsFromPlacement(next)
+    if (!occupied.some(item => overlapsBounds(bounds, item))) return next
+    next = { ...next, x: round(next.x + offset), y: round(next.y + offset) }
+  }
+  return next
+}
+
+function gridOrigin(source: NodeBounds, item: { width: number; height: number }, columns: number, rows: number) {
+  const gridWidth = columns * item.width + (columns - 1) * GENERATION_NODE_GAP
+  const gridHeight = rows * item.height + (rows - 1) * GENERATION_NODE_GAP
+  return [
+    { x: source.right + GENERATION_NODE_GAP, y: source.top },
+    { x: source.left, y: source.bottom + GENERATION_NODE_GAP },
+    { x: source.left - GENERATION_NODE_GAP - gridWidth, y: source.top },
+    { x: source.left, y: source.top - GENERATION_NODE_GAP - gridHeight },
+  ]
+}
+
+function placementsFromOrigin(
+  origin: CanvasPoint,
+  count: number,
+  columns: number,
+  size: { width: number; height: number },
+): GenerationPlacement[] {
+  return Array.from({ length: count }, (_, index) => ({
+    x: round(origin.x + (index % columns) * (size.width + GENERATION_NODE_GAP)),
+    y: round(origin.y + Math.floor(index / columns) * (size.height + GENERATION_NODE_GAP)),
+    width: size.width,
+    height: size.height,
+  }))
+}
+
+function fitsScene(placements: GenerationPlacement[], scene: { width: number; height: number }) {
+  return placements.every(item => (
+    item.x >= 0
+    && item.y >= 0
+    && item.x + item.width <= scene.width
+    && item.y + item.height <= scene.height
+  ))
+}
+
+function clampPlacementToScene(placement: GenerationPlacement, scene: { width: number; height: number }): GenerationPlacement {
+  const width = Math.min(placement.width, scene.width)
+  const height = Math.min(placement.height, scene.height)
+  return {
+    x: round(Math.min(Math.max(0, placement.x), Math.max(0, scene.width - width))),
+    y: round(Math.min(Math.max(0, placement.y), Math.max(0, scene.height - height))),
+    width: round(width),
+    height: round(height),
+  }
+}
+
 export function calculateDerivedPlacements(
   source: Pick<ImageNode, 'x' | 'y' | 'width' | 'height' | 'rotation'>,
   count: number,
+  options: { scene?: { width: number; height: number }; occupied?: NodeBounds[] } = {},
 ): GenerationPlacement[] {
   const normalizedCount = Math.min(4, Math.max(1, Math.round(count)))
   const bounds = calculateNodeBounds(source)
+  const size = { width: round(source.width), height: round(source.height) }
   const columns = normalizedCount <= 2 ? normalizedCount : 2
-  return Array.from({ length: normalizedCount }, (_, index) => ({
-    x: round(bounds.right + GENERATION_NODE_GAP + (index % columns) * (source.width + GENERATION_NODE_GAP)),
-    y: round(bounds.top + Math.floor(index / columns) * (source.height + GENERATION_NODE_GAP)),
-    width: round(source.width),
-    height: round(source.height),
-  }))
+  const rows = Math.ceil(normalizedCount / columns)
+  const candidates = gridOrigin(bounds, size, columns, rows)
+    .map(origin => placementsFromOrigin(origin, normalizedCount, columns, size))
+  const preferred = options.scene
+    ? candidates.find(item => fitsScene(item, options.scene!)) ?? candidates[0].map(item => clampPlacementToScene(item, options.scene!))
+    : candidates[0]
+  if (!options.occupied?.length && !options.scene) return preferred
+  const occupied = [...(options.occupied ?? [])]
+  return preferred.map((placement) => {
+    const next = offsetPlacementToAvoidOverlap(placement, occupied)
+    occupied.push(boundsFromPlacement(next))
+    return options.scene ? clampPlacementToScene(next, options.scene) : next
+  })
+}
+
+export function calculateRevealViewport(
+  container: { width: number; height: number },
+  targets: NodeBounds[],
+  current?: ViewportState,
+  padding = FIT_PADDING,
+): ViewportState {
+  const union = unionBounds(targets)
+  if (!union) return current ?? { zoom: 1, panX: 0, panY: 0 }
+  const width = Math.max(1, union.right - union.left)
+  const height = Math.max(1, union.bottom - union.top)
+  const availableWidth = Math.max(1, container.width - padding * 2)
+  const availableHeight = Math.max(1, container.height - padding * 2)
+  const fitZoom = clampZoom(Math.min(availableWidth / width, availableHeight / height))
+  const zoom = current && width * current.zoom <= availableWidth && height * current.zoom <= availableHeight
+    ? current.zoom
+    : fitZoom
+  if (current) {
+    const view = {
+      left: (padding - current.panX) / current.zoom,
+      top: (padding - current.panY) / current.zoom,
+      right: (container.width - padding - current.panX) / current.zoom,
+      bottom: (container.height - padding - current.panY) / current.zoom,
+    }
+    if (union.left >= view.left && union.top >= view.top && union.right <= view.right && union.bottom <= view.bottom) {
+      return current
+    }
+  }
+  return {
+    zoom,
+    panX: round((container.width - width * zoom) / 2 - union.left * zoom),
+    panY: round((container.height - height * zoom) / 2 - union.top * zoom),
+  }
 }
 
 export function normalizeNodeTransform(transform: NodeTransform): NodeTransform {

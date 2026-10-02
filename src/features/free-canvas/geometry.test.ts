@@ -6,8 +6,12 @@ import {
   calculateGenerationPlacements,
   calculateInitialImageNode,
   calculateNodeBounds,
+  calculateRevealViewport,
   clampZoom,
   normalizeNodeTransform,
+  offsetPlacementToAvoidOverlap,
+  overlapsBounds,
+  boundsFromPlacement,
 } from './geometry'
 
 describe('自由画布几何计算', () => {
@@ -90,5 +94,43 @@ describe('自由画布几何计算', () => {
       { x: 132, y: 182, width: 200, height: 100 },
       { x: 364, y: 182, width: 200, height: 100 },
     ])
+  })
+
+  it('画板放不下右侧结果时改到源图下方，并避开已有节点', () => {
+    const source = { x: 900, y: 80, width: 300, height: 200, rotation: 0 }
+    const placements = calculateDerivedPlacements(source, 1, {
+      scene: { width: 1280, height: 720 },
+      occupied: [{ left: 0, top: 300, right: 200, bottom: 500 }],
+    })
+    expect(placements[0].x + placements[0].width).toBeLessThanOrEqual(1280)
+    expect(placements[0].y + placements[0].height).toBeLessThanOrEqual(720)
+    expect(placements[0].y).toBeGreaterThanOrEqual(280)
+  })
+
+  it('新节点与已有节点中心重合时错开级联偏移', () => {
+    const first = { x: 400, y: 200, width: 200, height: 160 }
+    const occupied = { left: 400, top: 200, right: 600, bottom: 360 }
+    const second = offsetPlacementToAvoidOverlap(first, [occupied])
+    expect(second).toEqual({ x: 560, y: 360, width: 200, height: 160 })
+    expect(overlapsBounds(boundsFromPlacement(second), occupied)).toBe(false)
+  })
+
+  it('结果超出当前视口时平移以完整显示目标区域', () => {
+    expect(calculateRevealViewport(
+      { width: 800, height: 600 },
+      [{ left: 1200, top: 80, right: 1520, bottom: 320 }],
+      { zoom: 0.5, panX: 64, panY: 100 },
+    )).toMatchObject({
+      zoom: 0.5,
+      panX: expect.any(Number),
+      panY: expect.any(Number),
+    })
+    const revealed = calculateRevealViewport(
+      { width: 800, height: 600 },
+      [{ left: 1200, top: 80, right: 1520, bottom: 320 }],
+      { zoom: 0.5, panX: 64, panY: 100 },
+    )
+    expect(revealed.panX + 1200 * revealed.zoom).toBeGreaterThan(0)
+    expect((64 - revealed.panX) / revealed.zoom).toBeLessThan(1200)
   })
 })
