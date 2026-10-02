@@ -1,3 +1,4 @@
+import type { SerializedEditorCommand } from '@/editor/commands'
 import type { ImageNode, PixelProject } from '@/editor/types'
 import type { CanvasGenerationRequest } from '@/features/free-canvas/generation/requestBuilder'
 import type { GenerationPlacement } from '@/features/free-canvas/geometry'
@@ -45,12 +46,18 @@ export interface CanvasDrafts {
   }
 }
 
+export interface ProjectHistory {
+  undo: SerializedEditorCommand[]
+  redo: SerializedEditorCommand[]
+}
+
 export interface ProjectSnapshot {
   cloud?: { revision: number; pending: boolean; conflict?: boolean }
   schemaVersion: 1
   project: PixelProject
   drafts: CanvasDrafts
   recoveries: Record<string, GenerationRecovery>
+  history?: ProjectHistory
 }
 
 export function defaultDrafts(): CanvasDrafts {

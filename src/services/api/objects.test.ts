@@ -7,15 +7,17 @@ import { fetchOwnedObjectDirect } from './objects'
 afterEach(() => vi.unstubAllGlobals())
 
 describe('私有对象直读', () => {
-  it('签名地址跨域失败时只刷新一次，不回退图片代理', async () => {
+  it('字节读取走同源代理，不直连签名地址', async () => {
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
     const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes('mode=url')) return new Response(JSON.stringify({ url: 'https://r2.test/source' }))
-      if (url.startsWith('https://r2.test/')) throw new TypeError('Failed to fetch')
-      return new Response('image', { headers: { 'Content-Type': 'image/jpeg' } })
+      if (String(url).startsWith('/api/objects') && !String(url).includes('mode=url')) {
+        return new Response(png, { headers: { 'Content-Type': 'image/png' } })
+      }
+      throw new Error(`unexpected fetch ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
-    await expect(fetchOwnedObjectDirect('generated/owner/job/0.jpg')).rejects.toThrow('读取结果中断')
-    expect(fetchMock).toHaveBeenCalledTimes(4)
-    expect(fetchMock.mock.calls.every(([url]) => url.startsWith('https://') || url.includes('mode=url'))).toBe(true)
+    const blob = await fetchOwnedObjectDirect('generated/owner/job/0.jpg')
+    expect(blob.size).toBe(png.length)
+    expect(fetchMock.mock.calls.every(([url]) => String(url).startsWith('/api/objects') && !String(url).includes('mode=url'))).toBe(true)
   })
 })

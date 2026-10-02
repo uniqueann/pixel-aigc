@@ -20,6 +20,7 @@ import type { TaskStatus } from '@/types'
 import {
   calculateFitViewport,
   calculateNodeBounds,
+  calculateRevealViewport,
   clampZoom,
   MIN_NODE_SIZE,
   normalizeNodeTransform,
@@ -342,7 +343,17 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         y: (container.clientHeight / 2 - transform[5]) / zoom,
       }
     },
-  }), [])
+    revealBounds: (targets) => {
+      const canvas = canvasRef.current
+      const container = containerRef.current
+      if (!canvas || !container || !targets.length) return
+      setCanvasViewport(calculateRevealViewport(
+        { width: container.clientWidth, height: container.clientHeight },
+        targets,
+        viewportFromCanvas(canvas),
+      ))
+    },
+  }), [setCanvasViewport])
 
   useEffect(() => {
     callbacksRef.current = { onSelectNode, onTransformNode, onViewportChange, onAssetLoadError }

@@ -32,7 +32,7 @@ import {
   type VariationTaskParams,
 } from '@/types'
 import type { CanvasPoint, GenerationPlacement } from '../geometry'
-import { calculateDerivedPlacements, calculateGenerationPlacements } from '../geometry'
+import { calculateDerivedPlacements, calculateGenerationPlacements, calculateNodeBounds } from '../geometry'
 import { canSubmitFreeCanvasVariation, isCanvasMockGateway } from './availability'
 import { saveCanvasTaskHistory } from './history'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
@@ -554,13 +554,20 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       ? state.project?.generations[source.asset.generationId]
       : Object.values(state.project?.generations ?? {})
         .find((generation) => generation.outputAssetIds.includes(source.asset.id))
-    const placements = calculateDerivedPlacements(sourceNode, request.params.count)
+    const scene = readScene()
+    const placements = calculateDerivedPlacements(sourceNode, request.params.count, {
+      scene: scene ? { width: scene.width, height: scene.height } : undefined,
+      occupied: (scene?.nodes ?? [])
+        .filter(node => node.id !== sourceNode.id)
+        .map(node => calculateNodeBounds(node)),
+    })
     await submitRequest(request, placements, [], {
       inputAssetIds: [source.asset.id],
       parentGenerationId: origin?.id,
       autoRetryRemaining: mockGateway ? 1 : 0,
       automaticRetry: false,
     })
+    return placements
   }, [readScene, submitRequest, mockGateway])
 
   const retry = useCallback(async () => {

@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { AddNodeCommand } from '@/editor/commands'
+import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
+import type { ImageNode } from '@/editor/types'
 import * as database from './database'
 import { defaultDrafts } from './types'
 import { usePersistenceStore } from './persistenceStore'
@@ -29,6 +32,27 @@ describe('IndexedDB 项目保存与恢复', () => {
     expect(useEditorStore.getState().project).toEqual(expected.project)
     expect(usePersistenceStore.getState().drafts).toEqual(expected.drafts)
     expect(useEditorStore.getState().undoStack).toEqual([])
+  })
+
+  it('撤销栈随当前项目保存，刷新后仍可撤销与重做', async () => {
+    const state = useEditorStore.getState()
+    const sceneId = state.activeSceneId!
+    const asset = createImageAsset({ id: 'persist-asset', name: 'mug.jpg', url: 'data:image/png;base64,aa', width: 40, height: 30 })
+    const node: ImageNode = {
+      id: 'persist-node', type: 'image', assetId: asset.id, name: asset.name,
+      x: 10, y: 20, width: 40, height: 30, rotation: 0, opacity: 1, visible: true, locked: false, zIndex: 0,
+    }
+    state.registerAsset(asset)
+    state.executeCommand(new AddNodeCommand(sceneId, node))
+    await flushProject()
+    useEditorStore.setState({ project: null, undoStack: [], redoStack: [] })
+    await initializePersistence()
+    expect(useEditorStore.getState().undoStack).toHaveLength(1)
+    useEditorStore.getState().undo()
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes).toEqual([])
+    expect(useEditorStore.getState().redoStack).toHaveLength(1)
+    useEditorStore.getState().redo()
+    expect(useEditorStore.getState().project?.document.scenes[0].nodes).toMatchObject([{ id: 'persist-node' }])
   })
 
   it('连续保存串行处理，最终保留最新版本', async () => {

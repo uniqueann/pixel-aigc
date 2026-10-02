@@ -30,4 +30,5 @@ export interface FreeCanvasStageProps {
 
 export interface FreeCanvasStageHandle {
   getViewportCenter: () => { x: number; y: number }
+  revealBounds: (targets: import('./geometry').NodeBounds[]) => void
 }

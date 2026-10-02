@@ -47,6 +47,8 @@ describe('单张图片入画布', () => {
     expect(state.project?.assets[first.assetId]).toMatchObject({ width: 1600, height: 900, objectKey: 'owned-result', url: `/__aigc_asset__/${first.assetId}` })
     expect(first.assetId).toBe(second.assetId)
     expect(first.id).not.toBe(second.id)
+    expect(first.x).not.toBe(second.x)
+    expect(first.y).not.toBe(second.y)
     expect(Object.keys(state.project!.assets)).toHaveLength(1)
     expect(state.undoStack).toHaveLength(2)
   })
