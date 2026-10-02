@@ -12,7 +12,7 @@ export function useWorkstationParameters(tool: string) {
     setDraft({ tool, memoryEpoch, parameters })
   }
   const update = useCallback((patch: Partial<WorkstationParameters>, remember = true) => {
-    setDraft(previous => ({ tool, parameters: { ...previous.parameters, ...patch } }))
+    setDraft(previous => ({ tool, memoryEpoch: previous.memoryEpoch, parameters: { ...previous.parameters, ...patch } }))
     if (!remember) return
     const state = usePreferencesStore.getState()
     if (COUNT_TOOLS.includes(tool as CountTool)) {

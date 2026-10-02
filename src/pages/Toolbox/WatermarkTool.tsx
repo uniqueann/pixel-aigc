@@ -53,6 +53,11 @@ export default function WatermarkTool() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
   const [settings, setSettings] = useState<WatermarkSettings>(() => initialWatermarkSettings(usePreferencesStore.getState().preferences))
+  const [appliedMemoryEpoch, setAppliedMemoryEpoch] = useState(memoryEpoch)
+  if (appliedMemoryEpoch !== memoryEpoch) {
+    setSettings(initialWatermarkSettings(usePreferencesStore.getState().preferences))
+    setAppliedMemoryEpoch(memoryEpoch)
+  }
   const [previewState, setPreviewState] = useState<PreviewState | null>(null)
   const previewUrlRef = useRef<string | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -103,10 +108,6 @@ export default function WatermarkTool() {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     }
   }, [])
-
-  useEffect(() => {
-    setSettings(initialWatermarkSettings(usePreferencesStore.getState().preferences))
-  }, [memoryEpoch])
 
   useEffect(() => {
     let active = true

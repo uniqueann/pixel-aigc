@@ -6,7 +6,7 @@ import PersonalizationPanel from '@/features/preferences/PersonalizationPanel'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { useUserStore } from '@/store/useUserStore'
 
-export const SETTINGS_ITEMS = [
+const SETTINGS_ITEMS = [
   { key: 'general', label: '通用' },
   { key: 'personalization', label: '个性化' },
   { key: 'models', label: '模型与密钥' },
@@ -47,10 +47,11 @@ export default function SettingsDialog({
       centered
       className="settings-modal"
       wrapClassName="settings-modal-wrap"
-      destroyOnClose={false}
+      style={{ maxWidth: 'calc(100vw - 24px)' }}
+      styles={{ wrapper: { overflowX: 'hidden' }, content: { maxWidth: '100%' }, body: { overflowX: 'hidden' } }}
     >
-      <div className={`settings-layout${narrow ? ' is-narrow' : ''}`}>
-        <div ref={menuRef} className={`settings-menu-shell${narrow ? ' is-narrow' : ''}`}>
+      <div className={`settings-layout${narrow ? ' is-narrow' : ''}`} style={{ maxWidth: '100%', minWidth: 0 }}>
+        <div ref={menuRef} className={`settings-menu-shell${narrow ? ' is-narrow' : ''}`} style={narrow ? { maxWidth: '100%', minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none' } : undefined}>
           <Menu
             mode="inline"
             selectedKeys={[section]}

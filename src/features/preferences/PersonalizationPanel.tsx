@@ -77,7 +77,7 @@ export default function PersonalizationPanel() {
     </div>
     <div className="preferences-memory-actions">
       <p>记忆范围为图片工作站和工具箱的可复用参数。上传文件、提示词、遮罩和结果由当前任务管理。</p>
-      <Popconfirm title="清除图片参数记忆？" description="下次进入工具时将使用个人默认值。" okText="清除" cancelText="取消" onConfirm={() => clearImageMemory()}>
+      <Popconfirm title="清除图片参数记忆？" description="下次进入工具时将使用个人默认值。" okText="清除" cancelText="取消" getPopupContainer={() => document.body} onConfirm={() => clearImageMemory()}>
         <Button size="small" loading={clearing} disabled={!canClear || clearing}>清除图片参数记忆</Button>
       </Popconfirm>
     </div>

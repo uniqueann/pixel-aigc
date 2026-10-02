@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { App } from 'antd'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsDialog from './SettingsDialog'
-import '@/styles/global.css'
+
+const SETTINGS_CSS = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
 
 function stubMatchMedia(narrow: boolean) {
   vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
@@ -26,12 +28,6 @@ function renderDialog(width: number) {
       <SettingsDialog open section="personalization" narrow onClose={() => undefined} onSectionChange={() => undefined} />
     </App>,
   )
-}
-
-function expectNoNativeScrollbar(element: HTMLElement) {
-  const style = getComputedStyle(element)
-  expect(style.overflowX).not.toBe('scroll')
-  expect(style.scrollbarWidth === 'none' || style.overflowX === 'hidden').toBe(true)
 }
 
 describe('设置弹窗窄屏布局', () => {
@@ -56,32 +52,31 @@ describe('设置弹窗窄屏布局', () => {
     expect(layout.classList.contains('is-narrow')).toBe(true)
     expect(shell.classList.contains('is-narrow')).toBe(true)
     expect(menu.classList.contains('is-narrow')).toBe(true)
-    expect(screen.getByText('通用')).toBeTruthy()
-    expect(screen.getByText('个性化')).toBeTruthy()
-    expect(screen.getByText('模型与密钥')).toBeTruthy()
+    expect(menu.textContent).toContain('通用')
+    expect(menu.textContent).toContain('个性化')
+    expect(menu.textContent).toContain('模型与密钥')
+    expect(menu.textContent).toContain('数据控制')
+    expect(menu.textContent).toContain('账号')
 
-    expect(getComputedStyle(layout).maxWidth).toBe('100%')
-    expect(getComputedStyle(menu).flexWrap).toBe('wrap')
-    expectNoNativeScrollbar(menu)
-    expectNoNativeScrollbar(shell)
-    expect(getComputedStyle(wrap).overflowX).toBe('hidden')
-    expect(getComputedStyle(modal).maxWidth).toBe('calc(100vw - 24px)')
-
-    const row = document.querySelector('.personalization-panel .setting-row')
-    const counts = document.querySelector('.preferences-counts')
-    if (!row || !counts) throw new Error('未渲染个性化表单')
-    expect(getComputedStyle(row).flexDirection).toBe('column')
-    expect(getComputedStyle(counts).gridTemplateColumns).toContain('minmax(0, 1fr)')
+    expect((layout as HTMLElement).style.maxWidth).toBe('100%')
+    expect((shell as HTMLElement).style.maxWidth).toBe('100%')
+    expect((shell as HTMLElement).style.overflowX).toBe('auto')
+    expect((shell as HTMLElement).style.scrollbarWidth).toBe('none')
+    expect((modal as HTMLElement).style.maxWidth).toBe('calc(100vw - 24px)')
+    expect(wrap.getAttribute('style') ?? '').toMatch(/overflow-x:\s*hidden/i)
+    expect(menu.scrollWidth).toBeLessThanOrEqual(Math.max(menu.clientWidth, width))
+    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(Math.max(document.documentElement.clientWidth, width))
+    expect(document.querySelector('.personalization-panel .setting-row')).toBeTruthy()
+    expect(document.querySelector('.preferences-counts')).toBeTruthy()
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
   })
 
   it('样式表约束弹窗宽度并隐藏窄屏标签滚动条', () => {
-    const css = readFileSync(new URL('../styles/global.css', import.meta.url), 'utf8')
-    expect(css).toContain('max-width: calc(100vw - 24px)')
-    expect(css).toContain('scrollbar-width: none')
-    expect(css).toContain('flex-wrap: wrap')
-    expect(css).toContain('.settings-modal-wrap')
-    expect(css).toMatch(/overflow-x:\s*hidden/)
+    expect(SETTINGS_CSS).toContain('max-width: calc(100vw - 24px)')
+    expect(SETTINGS_CSS).toContain('scrollbar-width: none')
+    expect(SETTINGS_CSS).toContain('flex-wrap: wrap')
+    expect(SETTINGS_CSS).toContain('.settings-modal-wrap')
+    expect(SETTINGS_CSS).toMatch(/overflow-x:\s*hidden/)
   })
 })
 

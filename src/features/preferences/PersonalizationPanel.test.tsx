@@ -1,10 +1,25 @@
 // @vitest-environment jsdom
 
 import 'fake-indexeddb/auto'
+import type { ReactNode } from 'react'
 import { App } from 'antd'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_ASPECT_RATIO_SETTINGS } from '@/pages/Toolbox/aspect-ratio/types'
+
+vi.mock('antd', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('antd')>()
+  return {
+    ...actual,
+    Popconfirm: ({ title, onConfirm, children }: { title?: ReactNode; onConfirm?: () => void | Promise<void>; children: ReactNode }) => (
+      <div>
+        {children}
+        {String(title).includes('清除图片参数记忆') ? <button type="button" onClick={() => void onConfirm?.()}>确认清除</button> : null}
+      </div>
+    ),
+  }
+})
+
 import PersonalizationPanel from './PersonalizationPanel'
 import { usePreferencesStore } from './store'
 import { initialAspectRatioSettings } from './toolParameters'
@@ -13,9 +28,10 @@ function renderPanel() {
   return render(<App><PersonalizationPanel /></App>)
 }
 
-function confirmClear() {
-  fireEvent.click(screen.getByRole('button', { name: '清除图片参数记忆' }))
-  fireEvent.click(screen.getByRole('button', { name: '清除' }))
+function buttonByText(name: string) {
+  const button = screen.getByText(name).closest('button')
+  if (!button) throw new Error(`未找到「${name}」按钮`)
+  return button
 }
 
 describe('清除图片参数记忆', () => {
@@ -47,7 +63,7 @@ describe('清除图片参数记忆', () => {
   it('确认后立即得到默认值并提示已清除', async () => {
     renderPanel()
     expect(initialAspectRatioSettings(usePreferencesStore.getState().preferences).selectedPresetId).toBe('temu-main')
-    await act(async () => { confirmClear() })
+    await act(async () => { fireEvent.click(buttonByText('确认清除')) })
     await waitFor(() => expect(screen.getByText('已清除图片参数记忆')).toBeTruthy())
     expect(usePreferencesStore.getState().preferences.image.lastUsed).toEqual({})
     expect(initialAspectRatioSettings(usePreferencesStore.getState().preferences)).toMatchObject({
@@ -60,10 +76,10 @@ describe('清除图片参数记忆', () => {
     const failed = vi.fn().mockRejectedValueOnce(new Error('网络断开')).mockResolvedValueOnce(undefined)
     usePreferencesStore.setState({ clearImageMemory: failed })
     renderPanel()
-    await act(async () => { confirmClear() })
+    await act(async () => { fireEvent.click(buttonByText('确认清除')) })
     await waitFor(() => expect(screen.getByText('网络断开')).toBeTruthy())
     expect(failed).toHaveBeenCalledTimes(1)
-    await act(async () => { confirmClear() })
+    await act(async () => { fireEvent.click(buttonByText('确认清除')) })
     await waitFor(() => expect(screen.getByText('已清除图片参数记忆')).toBeTruthy())
     expect(failed).toHaveBeenCalledTimes(2)
   })
