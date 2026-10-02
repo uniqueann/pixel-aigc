@@ -26,6 +26,7 @@ export interface SyncRequestMetrics {
   inputBytes: number
   maskBytes: number
   outputBytes?: number
+  errorCode?: string
   stageMs: Record<string, number>
 }
 
@@ -47,7 +48,7 @@ export async function withSyncLimit<T>(user: User, bucket: Bucket, action: () =>
   } finally {
     await withIdentity(user.id, user.email, async sql => {
       await sql`update aigc.sync_requests set completed_at=now(),http_status=${metrics ? httpStatus : null},
-        error_code=${errorCode},input_bytes=${metrics?.inputBytes ?? null},mask_bytes=${metrics?.maskBytes ?? null},
+        error_code=${errorCode ?? metrics?.errorCode ?? null},input_bytes=${metrics?.inputBytes ?? null},mask_bytes=${metrics?.maskBytes ?? null},
         output_bytes=${metrics?.outputBytes ?? null},stage_ms=${sql.json(metrics?.stageMs ?? {})}
         where id=${id} and user_id=${user.id} and scope=${scope}`
     }).catch(error => {

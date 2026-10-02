@@ -446,20 +446,49 @@ describe('检测观测接口兼容', () => {
     expect(mocks.metrics.at(-1)).toMatchObject({ route: 'subject-detect', inputBytes: 3, outputBytes: expect.any(Number),
       stageMs: { clientDecode: 2, clientEncode: 4, clientBase64: 1, cosUpload: 9, subjectDetect: 15 } })
   })
-  it('选区会话请求记录字节和缓存来源，失败保留已完成阶段', async () => {
+  it('选区会话 miss 返回 200 且不回传会话，记录 outcome 与实际字节', async () => {
     const debug = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     mocks.selectMask.mockImplementation(async (_input, _provider, log) => {
-      log({ stage: 'cacheLookup', ms: 2 }); log({ cacheSource: 'session-cache' })
-      throw new HttpError(422, '没有点中商品', 'SMART_SELECT_MISS')
+      log({ stage: 'cacheLookup', ms: 2 }); log({ cacheSource: 'session-cache' }); log({ outcome: 'miss' })
+      return { miss: true, code: 'SMART_SELECT_MISS', message: '没有点中商品，请点在商品上。水印和文字请用画笔' }
     })
     const session = { provider: 'tencent-goods', payload: '测试会话' }
     const response = await request({ session, point: { x: 0.1, y: 0.2 } }, 'POST', '/api/smart-select')
-    expect(response.status).toHaveBeenCalledWith(422)
-    expect(mocks.metrics.at(-1)).toMatchObject({ route: 'smart-select', inputBytes: Buffer.byteLength(session.payload), outputBytes: expect.any(Number), stageMs: { cacheLookup: 2 } })
+    expect(response.status).toHaveBeenCalledWith(200)
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({
+      miss: true, code: 'SMART_SELECT_MISS', requestId: expect.any(String),
+    }))
+    const body = response.json.mock.calls[0][0] as { session?: unknown }
+    expect(body.session).toBeUndefined()
+    expect(mocks.metrics.at(-1)).toMatchObject({
+      route: 'smart-select',
+      inputBytes: Buffer.byteLength(session.payload),
+      outputBytes: Buffer.byteLength(JSON.stringify(response.json.mock.calls[0][0])),
+      errorCode: 'SMART_SELECT_MISS',
+      stageMs: { cacheLookup: 2 },
+    })
     const logs = debug.mock.calls.map(([value]) => JSON.parse(value))
     expect(logs).toContainEqual(expect.objectContaining({ route: 'smart-select', cacheSource: 'session-cache', requestId: expect.any(String) }))
+    expect(logs).toContainEqual(expect.objectContaining({ route: 'smart-select', outcome: 'miss', requestId: expect.any(String) }))
+    expect(logs).toContainEqual(expect.objectContaining({ evt: 'smart-select', outcome: 'miss', status: 200 }))
     expect(JSON.stringify(logs)).not.toMatch(/测试会话|Bearer|dataBase64/)
     debug.mockRestore()
+  })
+  it('会话恢复后的 miss 仍回传新会话', async () => {
+    const restored = { provider: 'tencent-goods', payload: '恢复后的会话' }
+    mocks.selectMask.mockResolvedValue({
+      miss: true, code: 'SMART_SELECT_MISS', message: '没有点中商品，请点在商品上。水印和文字请用画笔', session: restored,
+    })
+    const response = await request({ session: { provider: 'tencent-goods', payload: '{' }, point: { x: 0.1, y: 0.2 }, dataBase64: 'aW1n' }, 'POST', '/api/smart-select')
+    expect(response.status).toHaveBeenCalledWith(200)
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ miss: true, session: restored, requestId: expect.any(String) }))
+    expect(mocks.metrics.at(-1)).toMatchObject({ errorCode: 'SMART_SELECT_MISS', outputBytes: Buffer.byteLength(JSON.stringify(response.json.mock.calls[0][0])) })
+  })
+  it('真正的选区失败仍返回原状态码', async () => {
+    mocks.selectMask.mockRejectedValue(new HttpError(503, '智能选区尚未配置', 'SMART_SELECT_UNCONFIGURED'))
+    const response = await request({ session: { provider: 'tencent-goods', payload: 'x' }, point: { x: 0.1, y: 0.2 } }, 'POST', '/api/smart-select')
+    expect(response.status).toHaveBeenCalledWith(503)
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'SMART_SELECT_UNCONFIGURED' }))
   })
   it.each([{ decode: -1 }, { encode: Infinity }, { read: 300001 }, { other: 2 }])('拒绝无效客户端阶段 %j', async clientTimingMs => {
     mocks.detectSubject.mockClear()

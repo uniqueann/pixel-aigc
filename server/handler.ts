@@ -445,16 +445,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       metrics.inputBytes = (image?.length ?? 0) + (input.session ? Buffer.byteLength(input.session.payload) : 0)
       if (image && !image.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
       log({ requestBytes: Buffer.byteLength(JSON.stringify(body)) })
-      const result = await withSyncLimit(user, 'detection', () => detectionResponse(metrics, async () => ({ ...await selectSmartMask({
-        image,
-        point: input.point,
-        box: input.box,
-        session: input.session,
-      }, undefined, log), requestId })), metrics)
+      const result = await withSyncLimit(user, 'detection', () => detectionResponse(metrics, async () => {
+        const selected = await selectSmartMask({
+          image,
+          point: input.point,
+          box: input.box,
+          session: input.session,
+        }, undefined, log)
+        if ('miss' in selected && selected.miss) metrics.errorCode = selected.code
+        return { ...selected, requestId }
+      }), metrics)
       res.status(200).json(result)
       console.info(JSON.stringify({
         evt: 'smart-select', requestId, userId, status: 200, route: 'smart-select',
         provider: result.session?.provider ?? null, durationMs: Date.now() - start,
+        outcome: 'miss' in result && result.miss ? 'miss' : 'success',
       }))
       return
     }

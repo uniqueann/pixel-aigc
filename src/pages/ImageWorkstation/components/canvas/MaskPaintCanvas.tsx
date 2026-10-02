@@ -3,7 +3,7 @@ import { message } from 'antd'
 import { Canvas, FabricImage, PencilBrush } from 'fabric'
 import { containRect } from '@shared/erase'
 import { invertContainedAlpha, MASK_PAINT_CSS, opaqueCount, sourcePoint, tintOverlayAsBrush } from '@shared/smart-select'
-import { requestSmartSelect, SmartSelectRequestError, smartSelectErrorMessage, storeSmartSelectSession, type SmartSelectResult } from '@/services/api/smartSelect'
+import { applySmartSelectLookup, requestSmartSelect, SmartSelectRequestError, smartSelectErrorMessage, storeSmartSelectSession, type SmartSelectResult } from '@/services/api/smartSelect'
 import { WORKSTATION_CANVAS_HEIGHT, WORKSTATION_CANVAS_WIDTH } from '../../utils/canvasDisplay'
 import { exportEraseMask, exportPaintedMask, overlayHasPaint, type MaskExportResult } from '../../utils/maskExport'
 import { useCanvasDisplay } from '../../utils/useCanvasDisplay'
@@ -298,7 +298,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       message.loading({ content: '正在识别商品轮廓…', duration: 0, key: SMART_SELECT_TOAST_KEY })
       try {
         const cached = sessionRef.current?.imageUrl === imageUrl ? sessionRef.current.session : null
-        const result = await requestSmartSelect({
+        const lookup = await requestSmartSelect({
           imageUrl,
           objectKey: objectKeyRef.current,
           naturalSize: natural,
@@ -309,9 +309,16 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
           message.destroy(SMART_SELECT_TOAST_KEY)
           return
         }
-        sessionRef.current = { imageUrl, session: result.session }
-        storeSmartSelectSession(imageUrl, result.session)
-        await paintSelection(result, natural)
+        const decision = applySmartSelectLookup(lookup, cached)
+        if (decision.session) {
+          sessionRef.current = { imageUrl, session: decision.session }
+          storeSmartSelectSession(imageUrl, decision.session)
+        }
+        if (!decision.paint) {
+          message.error({ content: decision.toast ?? smartSelectErrorMessage(lookup), key: SMART_SELECT_TOAST_KEY, duration: 5 })
+          return
+        }
+        await paintSelection(decision.paint, natural)
         if (disposed) {
           message.destroy(SMART_SELECT_TOAST_KEY)
           return

@@ -6,10 +6,12 @@ import {
   alphaBBox,
   buildSelectionAlpha,
   binarizeAlpha,
+  SMART_SELECT_MISS_CODE,
+  SMART_SELECT_MISS_MESSAGE,
   type SegmentSession,
 } from '../../shared/smart-select.js'
 import { segmentProvider } from './providers.js'
-import type { GoodsAlpha, SegmentProvider, SmartSelectRequest, SmartSelectResponse } from './types.js'
+import type { GoodsAlpha, GoodsCacheSource, SegmentProvider, SmartSelectMiss, SmartSelectRequest, SmartSelectResponse } from './types.js'
 
 const MAX_SESSION_CHARS = 6_000_000
 const MAX_GOODS_CACHE = 8
@@ -18,6 +20,10 @@ interface CachedGoods {
   goods: GoodsAlpha
   session: SegmentSession | null
   provider: string
+}
+
+interface LoadedGoods extends CachedGoods {
+  cacheSource: GoodsCacheSource
 }
 
 const goodsCache = new Map<string, CachedGoods>()
@@ -63,11 +69,21 @@ interface GoodsSessionPayload {
   pngBase64: string
 }
 
-function selectionFailure(error: 'miss' | 'full-frame', session: SegmentSession | null) {
-  if (error === 'full-frame') {
-    return new SmartSelectFailure(422, '没有分离出商品轮廓，请改用画笔', 'SMART_SELECT_NO_SUBJECT', session)
+function selectionFailure(session: SegmentSession | null) {
+  return new SmartSelectFailure(422, '没有分离出商品轮廓，请改用画笔', 'SMART_SELECT_NO_SUBJECT', session)
+}
+
+function missPayload(session: SegmentSession | null): SmartSelectMiss {
+  return {
+    miss: true,
+    code: SMART_SELECT_MISS_CODE,
+    message: SMART_SELECT_MISS_MESSAGE,
+    ...(session ? { session } : {}),
   }
-  return new SmartSelectFailure(422, '没有点中商品，请点在商品上。水印和文字请用画笔', 'SMART_SELECT_MISS', session)
+}
+
+function missSession(cacheSource: GoodsCacheSource, session: SegmentSession | null) {
+  return cacheSource === 'session-cache' ? null : session
 }
 
 export class SmartSelectFailure extends HttpError {
@@ -142,17 +158,17 @@ async function loadGoods(
   input: SmartSelectRequest,
   provider: SegmentProvider | null,
   log?: DetectionObserver,
-): Promise<CachedGoods> {
+): Promise<LoadedGoods> {
   if (input.session) {
     log?.({ sessionBytes: Buffer.byteLength(input.session.payload) })
     const cached = measureDetectionSync(log, 'cacheLookup', () => readCached(digestKey('session', input.session!.payload)))
-    if (cached) { log?.({ cacheSource: 'session-cache' }); return cached }
+    if (cached) { log?.({ cacheSource: 'session-cache' }); return { ...cached, cacheSource: 'session-cache' } }
     const decoded = await measureDetection(log, 'sessionDecode', () => decodeSession(input.session!))
     if (decoded) {
       const entry = { goods: decoded, session: input.session, provider: input.session.provider }
       rememberGoods(entry)
       log?.({ cacheSource: 'session-restored' })
-      return entry
+      return { ...entry, cacheSource: 'session-restored' }
     }
     if (!input.image?.length) {
       throw new HttpError(400, '选区缓存已失效，请再点一次', 'SMART_SELECT_SESSION_INVALID')
@@ -161,15 +177,14 @@ async function loadGoods(
   if (!input.image?.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
   if (input.image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
   const cached = measureDetectionSync(log, 'cacheLookup', () => readCached(digestKey('image', input.image!)))
-  if (cached) { log?.({ cacheSource: 'image-cache' }); return cached }
+  if (cached) { log?.({ cacheSource: 'image-cache' }); return { ...cached, cacheSource: 'image-cache' } }
   if (!provider) throw new HttpError(503, '智能选区尚未配置', 'SMART_SELECT_UNCONFIGURED')
   log?.({ cacheSource: 'provider' })
   const goods = await provider.segmentGoods(input.image, log)
   const session = await measureDetection(log, 'sessionEncode', () => encodeSession(provider.id, goods))
-  if (session) log?.({ outputSessionBytes: Buffer.byteLength(session.payload) })
   const entry = { goods, session, provider: provider.id }
   rememberGoods(entry, input.image)
-  return entry
+  return { ...entry, cacheSource: 'provider' }
 }
 
 export async function selectSmartMask(
@@ -181,12 +196,16 @@ export async function selectSmartMask(
   const { goods } = loaded
   const selected = measureDetectionSync(log, 'selectionBuild', () => buildSelectionAlpha(goods.alpha, goods.width, goods.height, input.point, input.box))
   const session = loaded.session ?? await measureDetection(log, 'sessionEncode', () => encodeSession(loaded.provider, goods))
-  if (session) log?.({ outputSessionBytes: Buffer.byteLength(session.payload) })
-  if (session && !loaded.session) rememberGoods({ ...loaded, session }, input.image)
-  if ('error' in selected) throw selectionFailure(selected.error, session)
+  if (session && !loaded.session) rememberGoods({ goods: loaded.goods, session, provider: loaded.provider }, input.image)
+  if ('error' in selected) {
+    if (selected.error === 'miss') return finishMiss(log, loaded.cacheSource, session)
+    if (session) log?.({ outputSessionBytes: Buffer.byteLength(session.payload) })
+    throw selectionFailure(session)
+  }
   const bbox = measureDetectionSync(log, 'selectionBBox', () => alphaBBox(selected.alpha, goods.width, goods.height))
-  if (!bbox) throw selectionFailure('miss', session)
+  if (!bbox) return finishMiss(log, loaded.cacheSource, session)
   const mask = await measureDetection(log, 'maskEncode', () => encodeAlphaPng(selected.alpha, goods.width, goods.height, 'white'))
+  if (session) log?.({ outputSessionBytes: Buffer.byteLength(session.payload) })
   log?.({ maskBytes: mask.length, encodedMaskBytes: Buffer.byteLength(mask.toString('base64')) })
   return {
     maskBase64: mask.toString('base64'),
@@ -195,4 +214,11 @@ export async function selectSmartMask(
     bbox,
     session,
   }
+}
+
+function finishMiss(log: DetectionObserver | undefined, cacheSource: GoodsCacheSource, session: SegmentSession | null): SmartSelectMiss {
+  const returned = missSession(cacheSource, session)
+  if (returned) log?.({ outputSessionBytes: Buffer.byteLength(returned.payload) })
+  log?.({ outcome: 'miss' })
+  return missPayload(returned)
 }

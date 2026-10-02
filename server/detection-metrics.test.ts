@@ -22,5 +22,13 @@ describe('检测性能记录写入', () => {
     expect(update[1]).toBe(status)
     expect(update.slice(3, 7)).toEqual([123, 0, 42, { cacheLookup: 2 }])
   })
+  it('200 miss 仍写入 error_code 以便区分未点中', async () => {
+    const metrics: SyncRequestMetrics = { route: 'smart-select', requestId: 'request-id', transport: 'inline', inputBytes: 80, maskBytes: 0, outputBytes: 64, errorCode: 'SMART_SELECT_MISS', stageMs: { cacheLookup: 1 } }
+    await expect(withSyncLimit({ id: 'owner', email: 'test@example.com' }, 'detection', async () => 'ok', metrics)).resolves.toBe('ok')
+    const update = mocks.sql.mock.calls.find(([parts]) => parts.join('').includes('update aigc.sync_requests'))!
+    expect(update[1]).toBe(200)
+    expect(update[2]).toBe('SMART_SELECT_MISS')
+    expect(update.slice(3, 7)).toEqual([80, 0, 64, { cacheLookup: 1 }])
+  })
 })
 

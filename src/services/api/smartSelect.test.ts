@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   SMART_SELECT_RETRY_MESSAGE,
   SMART_SELECT_TIMEOUT_MESSAGE,
+  applySmartSelectLookup,
   clearSmartSelectSessionCache,
   cachedSmartSelectSession,
   isSmartSelectTimeout,
@@ -12,6 +13,7 @@ import {
   SmartSelectRequestError,
   requestSmartSelect,
 } from './smartSelect'
+import { SMART_SELECT_MISS_MESSAGE } from '@shared/smart-select'
 
 describe('智能选区错误与缓存', () => {
   beforeEach(() => {
@@ -87,6 +89,45 @@ describe('智能选区错误与缓存', () => {
     expect(debug).toHaveBeenCalledWith('[智能选区]', expect.objectContaining({ operation: 'post', source: 'session', requestCount: 1, requestBytes: new TextEncoder().encode(sent).byteLength, responseReadMs: expect.any(Number), requestId: 'request-id' }))
     expect(debug).toHaveBeenCalledWith('[智能选区]', expect.objectContaining({ operation: 'complete', requestCount: 1, outcome: 'success' }))
     expect(JSON.stringify(debug.mock.calls)).not.toMatch(/私有会话内容|https:|maskBase64|Authorization/)
+  })
+
+  it('200 miss 显示提示并保留原蒙版与会话', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+    const session = { provider: 'tencent-goods', payload: '{"v":1}' }
+    storeSmartSelectSession('https://img/coffee.jpg', session)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      miss: true, code: 'SMART_SELECT_MISS', message: SMART_SELECT_MISS_MESSAGE, requestId: 'miss-id',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    const lookup = await requestSmartSelect({
+      imageUrl: 'https://img/coffee.jpg',
+      naturalSize: { width: 1280, height: 1280 },
+      point: { x: 0.9, y: 0.9 },
+    })
+    expect(lookup).toEqual({ miss: true, message: SMART_SELECT_MISS_MESSAGE, session: null })
+    expect(cachedSmartSelectSession('https://img/coffee.jpg')).toEqual(session)
+    expect(applySmartSelectLookup(lookup, session)).toEqual({
+      paint: null, toast: SMART_SELECT_MISS_MESSAGE, session,
+    })
+    expect(debug).toHaveBeenCalledWith('[智能选区]', expect.objectContaining({ operation: 'complete', outcome: 'miss' }))
+  })
+
+  it('兼容旧 422 miss：提示相同且带回的会话可复用', async () => {
+    const previous = { provider: 'tencent-goods', payload: '{"v":1}' }
+    const session = { provider: 'tencent-goods', payload: '{"v":1,"kind":"goods-alpha"}' }
+    storeSmartSelectSession('https://img/legacy.jpg', previous)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: SMART_SELECT_MISS_MESSAGE, code: 'SMART_SELECT_MISS', session,
+    }), { status: 422, headers: { 'Content-Type': 'application/json' } })))
+    const lookup = await requestSmartSelect({
+      imageUrl: 'https://img/legacy.jpg',
+      naturalSize: { width: 640, height: 640 },
+      point: { x: 0.1, y: 0.1 },
+    })
+    expect(lookup).toEqual({ miss: true, message: SMART_SELECT_MISS_MESSAGE, session })
+    expect(cachedSmartSelectSession('https://img/legacy.jpg')).toEqual(session)
+    expect(applySmartSelectLookup(lookup, previous)).toEqual({
+      paint: null, toast: SMART_SELECT_MISS_MESSAGE, session,
+    })
   })
 
 })

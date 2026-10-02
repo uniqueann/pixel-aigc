@@ -1,7 +1,7 @@
 import { authEnabled, cloudEnabled, supabase } from '@/cloud/client'
 import { blobFromImageSource } from '@/features/image-workstation/download'
 import type { NormBox, NormPoint, SegmentSession } from '@shared/smart-select'
-import { fitMattingWorkingSize } from '@shared/smart-select'
+import { fitMattingWorkingSize, SMART_SELECT_MISS_CODE, SMART_SELECT_MISS_MESSAGE } from '@shared/smart-select'
 import type { DetectionClientTiming } from '@shared/detection'
 import { measureClientDetection } from './detectionTiming'
 
@@ -26,12 +26,22 @@ export interface SmartSelectResult {
   session: SegmentSession | null
 }
 
+export interface SmartSelectMiss {
+  miss: true
+  message: string
+  session: SegmentSession | null
+}
+
+export type SmartSelectLookup = SmartSelectResult | SmartSelectMiss
+
 interface SmartSelectResponse {
   maskBase64?: string
   width?: number
   height?: number
   bbox?: NormBox
   session?: SegmentSession | null
+  miss?: boolean
+  message?: string
   error?: string
   code?: string
   requestId?: string
@@ -147,6 +157,29 @@ export function smartSelectErrorMessage(error: unknown) {
   return SMART_SELECT_RETRY_MESSAGE
 }
 
+export function isSmartSelectMiss(value: unknown): value is SmartSelectMiss {
+  return Boolean(value && typeof value === 'object' && 'miss' in value && (value as { miss?: unknown }).miss === true)
+}
+
+export function applySmartSelectLookup(
+  lookup: SmartSelectLookup,
+  previousSession: SegmentSession | null = null,
+): { paint: SmartSelectResult | null; toast: string | null; session: SegmentSession | null } {
+  if (isSmartSelectMiss(lookup)) {
+    return { paint: null, toast: lookup.message || SMART_SELECT_MISS_MESSAGE, session: lookup.session ?? previousSession }
+  }
+  return { paint: lookup, toast: null, session: lookup.session ?? previousSession }
+}
+
+function readSmartSelectMiss(payload: SmartSelectResponse | null): SmartSelectMiss | null {
+  if (!payload || (payload.miss !== true && payload.code !== SMART_SELECT_MISS_CODE)) return null
+  return {
+    miss: true,
+    message: payload.message?.trim() || payload.error?.trim() || SMART_SELECT_MISS_MESSAGE,
+    session: payload.session ?? null,
+  }
+}
+
 async function postSmartSelect(body: Record<string, unknown>, report: (metric: Record<string, string | number>) => void) {
   const started = performance.now()
   const metric: Record<string, string | number> = { source: body.session ? 'session' : 'image', requestCount: 0, requestBytes: 0, outcome: 'failed' }
@@ -174,6 +207,11 @@ async function postSmartSelect(body: Record<string, unknown>, report: (metric: R
     }) as SmartSelectResponse | null
     metric.responseReadMs = Math.round(performance.now() - readStarted)
     if (payload?.requestId) metric.requestId = payload.requestId
+    const miss = readSmartSelectMiss(payload)
+    if (miss) {
+      metric.outcome = 'miss'
+      return miss
+    }
     if (!response.ok || !payload?.maskBase64 || !payload.width || !payload.height || !payload.bbox) {
       throw new SmartSelectRequestError(
         payload?.error || (response.status === 504 ? SMART_SELECT_TIMEOUT_MESSAGE : SMART_SELECT_RETRY_MESSAGE),
@@ -199,7 +237,7 @@ async function postSmartSelect(body: Record<string, unknown>, report: (metric: R
   }
 }
 
-export async function requestSmartSelect(input: SmartSelectRequest): Promise<SmartSelectResult> {
+export async function requestSmartSelect(input: SmartSelectRequest): Promise<SmartSelectLookup> {
   const timings: DetectionClientTiming = {}
   const started = performance.now()
   let requestCount = 0
@@ -219,6 +257,10 @@ export async function requestSmartSelect(input: SmartSelectRequest): Promise<Sma
       try {
         const result = await post({ point, box, session })
         storeSmartSelectSession(input.imageUrl, result.session)
+        if (isSmartSelectMiss(result)) {
+          outcome = 'miss'
+          return result
+        }
         outcome = 'success'
         return result
       } catch (error) {
@@ -234,6 +276,10 @@ export async function requestSmartSelect(input: SmartSelectRequest): Promise<Sma
       box,
     })
     storeSmartSelectSession(input.imageUrl, result.session)
+    if (isSmartSelectMiss(result)) {
+      outcome = 'miss'
+      return result
+    }
     outcome = 'success'
     return result
   } catch (error) {
