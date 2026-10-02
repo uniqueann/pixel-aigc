@@ -20,7 +20,7 @@ describe('项目快照校验与迁移', () => {
     scene.nodes[0] = { ...scene.nodes[0], rotation: 37, x: -120, y: 600, opacity: 0.7, zIndex: 4 }
     scene.viewport = { zoom: 0.7, panX: 80, panY: -200 }
     snapshot.drafts['text-to-image'].prompt = '未提交的草稿'
-    expect(parseSnapshot(serializeSnapshot(snapshot))).toEqual(snapshot)
+    expect(parseSnapshot(serializeSnapshot(snapshot))).toEqual({ ...snapshot, history: { undo: [], redo: [] } })
   })
 
   it('迁移裸项目时使用空草稿与保守恢复记录', () => {

@@ -10,6 +10,8 @@ import {
   clampZoom,
   normalizeNodeTransform,
   offsetPlacementToAvoidOverlap,
+  overlapsBounds,
+  boundsFromPlacement,
 } from './geometry'
 
 describe('自由画布几何计算', () => {
@@ -107,8 +109,10 @@ describe('自由画布几何计算', () => {
 
   it('新节点与已有节点中心重合时错开级联偏移', () => {
     const first = { x: 400, y: 200, width: 200, height: 160 }
-    const second = offsetPlacementToAvoidOverlap(first, [{ left: 400, top: 200, right: 600, bottom: 360 }])
-    expect(second).toEqual({ x: 440, y: 240, width: 200, height: 160 })
+    const occupied = { left: 400, top: 200, right: 600, bottom: 360 }
+    const second = offsetPlacementToAvoidOverlap(first, [occupied])
+    expect(second).toEqual({ x: 560, y: 360, width: 200, height: 160 })
+    expect(overlapsBounds(boundsFromPlacement(second), occupied)).toBe(false)
   })
 
   it('结果超出当前视口时平移以完整显示目标区域', () => {

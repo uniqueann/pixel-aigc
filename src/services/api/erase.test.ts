@@ -5,7 +5,13 @@ vi.mock('@/features/assets/historyOwner', () => ({ currentWorkstationHistoryOwne
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ uploadTaskInput: vi.fn(), signedOwnedObjectUrl: vi.fn() }))
 vi.mock('./upload', () => ({ uploadTaskInput: mocks.uploadTaskInput }))
-vi.mock('./objects', () => ({ signedOwnedObject: (...args: unknown[]) => mocks.signedOwnedObjectUrl(...args).then((url: string) => ({ url, expiresAt: Date.now() + 60_000 })) }))
+vi.mock('./objects', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./objects')>()
+  return {
+    ...actual,
+    signedOwnedObject: (...args: unknown[]) => mocks.signedOwnedObjectUrl(...args).then((url: string) => ({ url, expiresAt: Date.now() + 60_000 })),
+  }
+})
 import { requestErase, shouldUseInlineEraseTransport } from './erase'
 
 describe('消除客户端请求', () => {
@@ -58,7 +64,7 @@ describe('消除客户端请求', () => {
     expect(shouldUseInlineEraseTransport(1024, 1024, '', 'generated/user/job/0.png')).toBe(false)
   })
 
-  it('大图并行上传原图与蒙版，并从签名地址读取大结果', async () => {
+  it('大图并行上传原图与蒙版，并经同源代理读取大结果', async () => {
     mocks.uploadTaskInput.mockResolvedValueOnce('temporary/task-inputs/user/source')
       .mockResolvedValueOnce('temporary/task-inputs/user/mask')
     const fetchMock = vi.fn(async (url: string) => {
@@ -78,6 +84,7 @@ describe('消除客户端请求', () => {
     expect(JSON.parse(String(apiCall[1].body))).toMatchObject({
       sourceImageKey: 'temporary/task-inputs/user/source', maskImageKey: 'temporary/task-inputs/user/mask', prompt: '移除物体',
     })
-    expect(fetchMock).toHaveBeenCalledWith('https://r2.test/result', expect.any(Object))
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/objects'))).toBe(true)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('https://'))).toBe(false)
   })
 })

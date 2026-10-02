@@ -109,7 +109,7 @@ describe('自由画布真实裂变闭环', () => {
       expect(mocks.flush).toHaveBeenCalled()
       return taskFor(input)
     })
-    let pending!: Promise<void>
+    let pending!: Promise<unknown>
     await act(async () => {
       pending = controller.generateDerived(request, source)
       await controller.generateDerived(request, source)
@@ -246,7 +246,7 @@ describe('自由画布真实裂变闭环', () => {
   it('项目切换后到达的上传响应不提交任务，也不写入新项目', async () => {
     let release!: (key: string) => void
     mocks.upload.mockImplementationOnce(() => new Promise<string>(resolve => { release = resolve }))
-    let submitting!: Promise<void>
+    let submitting!: Promise<unknown>
     await act(async () => { submitting = controller.generateDerived(request, source) })
     await act(async () => { useEditorStore.getState().createProject('新项目') })
     await act(async () => { release('late-input'); await submitting })

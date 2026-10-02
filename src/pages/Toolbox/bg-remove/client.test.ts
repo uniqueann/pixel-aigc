@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BatchImage } from './types'
 const mocks = vi.hoisted(() => ({ upload: vi.fn(), signed: vi.fn() }))
 vi.mock('@/services/api/upload', () => ({ uploadTaskInput: mocks.upload, uploadImage: vi.fn() }))
-vi.mock('@/services/api/objects', () => ({ signedOwnedObject: (...args: unknown[]) => mocks.signed(...args).then((url: string) => ({ url, expiresAt: Date.now() + 60_000 })) }))
+vi.mock('@/services/api/objects', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/api/objects')>()
+  return {
+    ...actual,
+    signedOwnedObject: (...args: unknown[]) => mocks.signed(...args).then((url: string) => ({ url, expiresAt: Date.now() + 60_000 })),
+  }
+})
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false, createTask: vi.fn(), getTask: vi.fn() }))
 import { requestMatte } from './client'
 
@@ -62,18 +68,19 @@ describe('智能抠图对象传输与可恢复下载', () => {
     }
   })
 
-  it('大结果下载失败后只重试下载，签名失效刷新一次', async () => {
+  it('大结果下载失败后只重试下载，不重新生成', async () => {
     let current = image()
     const onTransfer = (transfer: NonNullable<BatchImage['transfer']>) => { current = { ...current, transfer } }
-    const fetch = vi.fn().mockResolvedValueOnce(objectResponse()).mockResolvedValueOnce(new Response('', { status: 503 }))
-      .mockResolvedValueOnce(new Response('', { status: 403 })).mockResolvedValueOnce(response())
+    const fetch = vi.fn().mockResolvedValueOnce(objectResponse())
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(response())
     vi.stubGlobal('fetch', fetch)
     await expect(requestMatte(current, () => false, { ownerId: 'u', onTransfer })).rejects.toThrow('读取抠图结果失败')
     expect(current.transfer?.result?.objectKey).toBe('temporary/bg-remove-results/u/1.png')
     await requestMatte(current, () => false, { ownerId: 'u', onTransfer })
     expect(fetch.mock.calls.filter(([url]) => url === '/api/bg-remove')).toHaveLength(1)
-    expect(mocks.signed).toHaveBeenCalledTimes(1)
-    expect(fetch.mock.calls.some(([url]) => String(url).startsWith('/api/objects'))).toBe(false)
+    expect(fetch.mock.calls.filter(([url]) => String(url).startsWith('/api/objects'))).toHaveLength(2)
+    expect(mocks.signed).not.toHaveBeenCalled()
   })
 
   it('已清理的结果重新处理，已清理的原图重新上传一次', async () => {

@@ -9,7 +9,7 @@ function findNode(ctx: EditorContext, sceneId: SceneId, nodeId: NodeId) {
 
 abstract class BaseCommand implements EditorCommand {
   readonly id: string
-  constructor(id = crypto.randomUUID()) { this.id = id }
+  constructor(id?: string) { this.id = id ?? crypto.randomUUID() }
   abstract execute(ctx: EditorContext): void
   abstract undo(ctx: EditorContext): void
   abstract serialize(): SerializedEditorCommand

@@ -331,6 +331,15 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     setVideoUiVersion((version) => version + 1)
   }, [])
 
+  const setCanvasViewport = useCallback((next: ViewportState) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const normalized = { ...next, zoom: clampZoom(next.zoom) }
+    applyViewport(canvas, normalized)
+    canvas.requestRenderAll()
+    callbacksRef.current.onViewportChange(normalized)
+  }, [])
+
   useImperativeHandle(ref, () => ({
     getViewportCenter: () => {
       const canvas = canvasRef.current
@@ -361,15 +370,6 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     selectedNodeIdRef.current = selectedNodeId
     sceneSizeRef.current = { width: scene.width, height: scene.height }
   }, [onAssetLoadError, onSelectNode, onTransformNode, onViewportChange, scene.height, scene.width, selectedNodeId, viewport])
-
-  const setCanvasViewport = useCallback((next: ViewportState) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const normalized = { ...next, zoom: clampZoom(next.zoom) }
-    applyViewport(canvas, normalized)
-    canvas.requestRenderAll()
-    callbacksRef.current.onViewportChange(normalized)
-  }, [])
 
   const fitToScene = useCallback(() => {
     const canvas = canvasRef.current

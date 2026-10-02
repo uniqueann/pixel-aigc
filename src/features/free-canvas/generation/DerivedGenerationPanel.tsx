@@ -183,9 +183,7 @@ export default function DerivedGenerationPanel({
           : <p>{mockGateway ? '模拟生成，不消耗积分' : `本次预计预扣 ${estimatedCredits ?? 0} 积分，按实际成功张数结算。失败后由你决定是否再次生成。`}</p>}
       </>}
 
-      {modelsLoading && !imageToVideo ? (
-        <p className="toolbox-hint" role="status">正在加载模型配置…</p>
-      ) : generateDisabled && !imageToVideo ? (
+      {modelsLoading || imageToVideo ? null : generateDisabled ? (
         <p className="toolbox-hint">裂变模型尚未就绪，请检查登录与模型配置。</p>
       ) : null}
       <Button

@@ -24,6 +24,13 @@ let downloading = 0
 const abortError = () => new DOMException('读取已取消', 'AbortError')
 function check(signal?: AbortSignal) { if (signal?.aborted) throw signal.reason ?? abortError() }
 function keyFor(ownerId: string, key: string) { return JSON.stringify([ownerId, key]) }
+function ownedObjectStatus(error: unknown): number | undefined {
+  if (typeof OwnedObjectError === 'function' && error instanceof OwnedObjectError) return error.status
+  if (error instanceof Error && error.name === 'OwnedObjectError') {
+    const status = (error as { status?: unknown }).status
+    if (typeof status === 'number') return status
+  }
+}
 function cacheBlob(key: string, blob: Blob) {
   const budget = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 64 * 1024 * 1024 : 128 * 1024 * 1024
   if (blob.size > budget) return
@@ -92,8 +99,9 @@ async function remote(reference: OwnedImageReference, signal: AbortSignal): Prom
       check(signal)
       if (timeout.signal.aborted) throw timeout.signal.reason
       if (error instanceof OwnedImageReadError) throw error
-      if (error instanceof OwnedObjectError) {
-        throw new OwnedImageReadError(error.status, error.status === 404 ? '结果对象不存在' : error.message)
+      const status = ownedObjectStatus(error)
+      if (status !== undefined) {
+        throw new OwnedImageReadError(status, status === 404 ? '结果对象不存在' : error instanceof Error ? error.message : '读取结果失败，请重试读取')
       }
       throw new OwnedImageReadError(502, '读取结果中断，请重试读取')
     } finally {

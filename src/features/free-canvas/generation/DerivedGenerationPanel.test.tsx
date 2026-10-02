@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createImageAsset } from '@/editor/services/assetService'
 import DerivedGenerationPanel from './DerivedGenerationPanel'
 
@@ -35,9 +35,11 @@ function renderPanel(props: Partial<Parameters<typeof DerivedGenerationPanel>[0]
 }
 
 describe('裂变侧栏能力状态', () => {
+  afterEach(() => cleanup())
+
   it('配置加载中显示加载文案，不显示未就绪错误，源卡片跟随传入素材', () => {
     renderPanel({ generateDisabled: true, modelsLoading: true })
-    expect(screen.getAllByText('正在加载模型配置…').length).toBeGreaterThan(0)
+    expect(screen.getByText('正在加载模型配置…')).toBeTruthy()
     expect(screen.queryByText('裂变模型尚未就绪，请检查登录与模型配置。')).toBeNull()
     expect(screen.getByText('mug.jpg')).toBeTruthy()
     expect(screen.getByText('800 × 600')).toBeTruthy()

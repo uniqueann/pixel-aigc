@@ -112,7 +112,13 @@ export default function FreeCanvas() {
     const selected = resolveSelectedImageSource(scene, project?.assets, selectedNodeId)
     if (!selected) return
     if (derivedDraft.sourceNode.id === selected.node.id && derivedDraft.sourceAssetId === selected.asset.id) return
-    updateDerived({ sourceNode: { ...selected.node }, sourceAssetId: selected.asset.id })
+    const persistence = usePersistenceStore.getState()
+    if (persistence.drafts.derived) {
+      persistence.setDrafts({
+        ...persistence.drafts,
+        derived: { ...persistence.drafts.derived, sourceNode: { ...selected.node }, sourceAssetId: selected.asset.id },
+      })
+    }
   }, [derivedDraft, generation.formLocked, project?.assets, scene, selectedNodeId])
 
   const importPicture = async (input: File | WorkstationHistoryListItem) => {

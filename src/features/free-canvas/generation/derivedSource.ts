@@ -1,4 +1,4 @@
-import type { Asset, ImageAsset, ImageNode, Scene } from '@/editor/types'
+import type { Asset, ImageNode, Scene } from '@/editor/types'
 
 export function resolveSelectedImageSource(
   scene: Scene | undefined,

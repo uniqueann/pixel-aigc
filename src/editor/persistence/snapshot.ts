@@ -238,7 +238,7 @@ function validateSerializedCommand(value: unknown, project: PixelProject): Seria
       && !['image', 'video', 'audio'].includes(String((value.asset as { type?: string }).type))) {
       throw new Error('历史命令的素材无效')
     }
-    validateNode(value.node, { ...project, assets: { ...project.assets, [(value.asset as { id: string }).id]: value.asset as Asset } })
+    validateNode(value.node, { ...project, assets: { ...project.assets, [(value.asset as { id: string }).id]: value.asset as unknown as Asset } })
     return value as SerializedEditorCommand
   }
   if (value.type === 'resolve-generation') {
@@ -250,7 +250,7 @@ function validateSerializedCommand(value: unknown, project: PixelProject): Seria
       object(output)
       object(output.asset)
       string((output.asset as { id?: string }).id)
-      assets[(output.asset as { id: string }).id] = output.asset as Asset
+      assets[(output.asset as { id: string }).id] = output.asset as unknown as Asset
       validateNode(output.node, { ...project, assets })
     }
     return value as SerializedEditorCommand
@@ -318,11 +318,9 @@ export function persistableSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot 
     if (next === undefined) delete params.sourceImageUrl
     else if (typeof next === 'string') params.sourceImageUrl = next
   }
-  if (copy.history) {
-    copy.history = {
-      undo: copy.history.undo.map(item => persistableCommand(item, assets)),
-      redo: copy.history.redo.map(item => persistableCommand(item, assets)),
-    }
+  copy.history = {
+    undo: (copy.history?.undo ?? []).map(item => persistableCommand(item, assets)),
+    redo: (copy.history?.redo ?? []).map(item => persistableCommand(item, assets)),
   }
   return copy
 }
