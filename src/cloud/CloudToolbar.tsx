@@ -13,7 +13,7 @@ import { calculateInitialImageNode } from '@/features/free-canvas/geometry'
 import { AddNodeCommand } from '@/editor/commands'
 import type { ProjectSummary } from '../../shared/cloud'
 
-export default function CloudToolbar({ disabled }: { disabled: boolean }) {
+export default function CloudToolbar({ disabled, onUploadImage }: { disabled: boolean; onUploadImage?: () => void }) {
   const state = useCloudStore()
   const cloud = usePersistenceStore(s => s.cloud)
   const project = useEditorStore(s => s.project)
@@ -34,7 +34,7 @@ export default function CloudToolbar({ disabled }: { disabled: boolean }) {
     <Space wrap>
       <span role="status">{state.busy ? state.status : cloud?.conflict ? '云端版本冲突' : cloud?.pending ? '云端待同步' : cloud ? state.status : '仅保存在本机'}</span>
       <Button size="small" disabled={busy || !!cloud?.conflict} onClick={() => { void run(syncProject) }}>保存到云端</Button>
-      <Button size="small" disabled={busy} onClick={() => { setReplaceId(undefined); input.current?.click() }}>上传图片</Button>
+      {!onUploadImage && <Button size="small" disabled={busy} onClick={() => { setReplaceId(undefined); input.current?.click() }}>上传图片</Button>}
       <Button size="small" disabled={busy} onClick={() => { void run(async () => setProjects((await cloudRequest<{ items: ProjectSummary[] }>('/projects')).items)) }}>云端项目</Button>
       <Button size="small" disabled={busy} onClick={() => { void run(async () => {
         const raw = await readLegacySnapshot()
@@ -44,6 +44,7 @@ export default function CloudToolbar({ disabled }: { disabled: boolean }) {
         modal.confirm({ title: '导入未登录时的本地项目？', content: '导入后点击保存到云端，才会上传到当前账号。', onOk: async () => { await flushProject(); await replaceSnapshot(snapshot) } })
       }) }}>导入旧本地项目</Button>
     </Space>
+    <p className="free-canvas-panel-hint">云端保存图片与布局；完整生成历史与血缘保存在本机，可通过 JSON 导出保留。</p>
     {state.error && <Alert style={{ marginTop: 8 }} type="warning" showIcon message={state.error} />}
     {cloud?.conflict && <Space style={{ marginTop: 8 }}>
       <Button disabled={busy} onClick={() => modal.confirm({ title: '加载云端版本？', content: '当前本地冲突副本已保留，可先导出 JSON。', onOk: () => openCloudProject(currentSnapshot().project.id) })}>加载云端版本</Button>

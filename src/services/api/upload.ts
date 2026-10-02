@@ -70,14 +70,14 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
 }
 
 /** 上传图片并返回可注册到 AssetRegistry 的元数据。 */
-export async function uploadImage(file: File): Promise<UploadedImage> {
+export async function uploadImage(file: File, options: { local?: boolean } = {}): Promise<UploadedImage> {
   if (file.size > MAX_IMAGE_BYTES) throw new Error('图片大小不能超过 20 MB')
   const normalized = await normalizeImageBlob(file)
   file = new File([normalized], filenameWithMimeExtension(file.name, normalized.type), { type: normalized.type, lastModified: file.lastModified })
   validateImageFile(file)
   const previewUrl = await readFileAsDataUrl(file)
   const size = await readImageSize(previewUrl)
-  if (useMockGateway || authEnabled || cloudEnabled) {
+  if (options.local || useMockGateway || authEnabled || cloudEnabled) {
     return { url: previewUrl, name: file.name, mimeType: file.type, ...size }
   }
 

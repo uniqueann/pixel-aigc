@@ -4,7 +4,7 @@ import { DEMO_IMAGE_ASSET } from '@/editor/services/demoImageAsset'
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
 import { Capability } from '@/types'
 import { defaultDrafts, type ProjectSnapshot } from './types'
-import { parseSnapshot, serializeSnapshot } from './snapshot'
+import { parseSnapshot, persistableSnapshot, serializeSnapshot } from './snapshot'
 import { restoreTaskDrafts } from './restoreDrafts'
 
 let snapshot: ProjectSnapshot
@@ -78,5 +78,31 @@ describe('项目快照校验与迁移', () => {
     const restored = parseSnapshot(serializeSnapshot(snapshot))
     expect(restored.recoveries.request.context.autoRetryRemaining).toBe(0)
     expect(restoreTaskDrafts(restored).derived).toMatchObject({ prompt: '镜头推进', durationSeconds: 10, sourceNode: source })
+  })
+
+  it('兼容仅含对象键的真实裂变，完整保留模型、分辨率、账号和草稿', () => {
+    const node = snapshot.project.document.scenes[0].nodes[0]
+    if (node.type !== 'image') throw new Error('测试数据类型错误')
+    snapshot.drafts.derived = { mode: 'variation', sourceAssetId: node.assetId, sourceNode: node, prompt: '旧描述', count: 4, durationSeconds: 5, modelProfileId: 'old-model', resolution: '1k' }
+    snapshot.recoveries.request = {
+      ownerId: '11111111-1111-4111-8111-111111111111', projectId: snapshot.project.id, sceneId: snapshot.project.document.activeSceneId,
+      request: { capability: Capability.Variation, requestId: 'request', modelProfileId: 'chosen-model', params: { sourceImageKey: 'owned-key', resolution: '2k', sourceWidth: 1280, sourceHeight: 960, size: { width: 2048, height: 1536 }, count: 2, prompt: '柔和光线' } },
+      context: { inputAssetIds: [node.assetId], autoRetryRemaining: 0, automaticRetry: false }, placements: [], replacedPlaceholderIds: [], applied: false,
+    }
+    const restored = parseSnapshot(serializeSnapshot(snapshot))
+    expect(restored.recoveries.request).toEqual(snapshot.recoveries.request)
+    expect(restoreTaskDrafts(restored).derived).toMatchObject({ modelProfileId: 'chosen-model', resolution: '2k', count: 2, prompt: '柔和光线' })
+  })
+
+  it('私有图片存档只依赖对象键，不保存签名过期时间或运行时地址', () => {
+    const asset = snapshot.project.assets[DEMO_IMAGE_ASSET.id]
+    asset.objectKey = 'owned-key'
+    asset.url = 'https://images.example/temporary?signature=expired'
+    asset.accessExpiresAt = 100
+    const persisted = persistableSnapshot(snapshot)
+    expect(persisted.project.assets[asset.id]).toMatchObject({ objectKey: 'owned-key', url: `/__aigc_asset__/${encodeURIComponent(asset.id)}` })
+    expect(persisted.project.assets[asset.id].accessExpiresAt).toBeUndefined()
+    expect(asset.url).toContain('signature=expired')
+    expect(parseSnapshot(serializeSnapshot(persisted))).toEqual(persisted)
   })
 })

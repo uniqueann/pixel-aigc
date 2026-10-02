@@ -11,7 +11,7 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
   const job = placeholder?.type === 'generation' ? project.generations[placeholder.generationId] : undefined
   const request = record?.request ?? (job ? { capability: job.capability, params: job.input } : undefined)
   if (!request || !request.params || typeof request.params !== 'object') return drafts
-  const params = request.params as { prompt?: string; size?: { width: number; height: number }; count?: number; durationSeconds?: number; sourceImageUrl?: string }
+  const params = request.params as { prompt?: string; size?: { width: number; height: number }; count?: number; durationSeconds?: number; sourceImageUrl?: string; resolution?: '1k' | '2k' | '4k' }
   const sourceId = record?.context.inputAssetIds[0] ?? job?.inputAssetIds[0]
   const source = sourceId ? project.assets[sourceId] : undefined
   if (source?.type === 'image' && (request.capability === Capability.Variation || params.sourceImageUrl)) {
@@ -24,6 +24,8 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
     return { ...drafts, derived: {
       mode: request.capability === Capability.Variation ? 'variation' as const : 'image-to-video' as const,
       sourceNode, sourceAssetId: source.id, prompt: params.prompt ?? '', count: params.count ?? 4, durationSeconds: params.durationSeconds ?? 5,
+      modelProfileId: record?.request.modelProfileId ?? drafts.derived?.modelProfileId,
+      resolution: params.resolution ?? drafts.derived?.resolution,
     } }
   }
   const mode = request.capability === Capability.TextToVideo ? 'text-to-video' : 'text-to-image'

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Alert, App, Button, Segmented, Space } from 'antd'
 import { Capability } from '@/types'
@@ -14,6 +14,15 @@ import DerivedGenerationPanel, {
 } from '@/features/free-canvas/generation/DerivedGenerationPanel'
 import GenerationPanel from '@/features/free-canvas/generation/GenerationPanel'
 import { isFreeCanvasVariationEntryEnabled } from '@/features/free-canvas/generation/availability'
+import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
+import { useCanvasVariationModels } from '@/features/free-canvas/generation/useCanvasVariationModels'
+import { useCanvasImages } from '@/features/free-canvas/images/useCanvasImages'
+import CanvasAssetPicker from '@/features/free-canvas/images/CanvasAssetPicker'
+import { importCanvasFile, importCanvasHistory, type CanvasImageImportContext } from '@/features/free-canvas/images/importImage'
+import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import type { WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
+import { usePreferencesStore } from '@/features/preferences/store'
+import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
 import {
   buildImageToVideoRequest,
@@ -27,6 +36,9 @@ import {
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
 import type { FreeCanvasStageHandle, NodeTransform } from '@/features/free-canvas/types'
 import { CANVAS_MODES } from './modes'
+import type { Asset } from '@/editor/types'
+
+const EMPTY_ASSETS: Record<string, Asset> = {}
 
 function isEditingText(target: EventTarget | null) {
   return target instanceof HTMLElement
@@ -37,6 +49,15 @@ export default function FreeCanvas() {
   const { mode } = useParams<{ mode: string }>()
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const configuration = useCanvasVariationModels()
+  const preferences = usePreferencesStore(state => state.preferences)
+  const ownerId = currentWorkstationHistoryOwner()
+  const epoch = usePersistenceStore(state => state.epoch)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const importGate = useRef(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const importAbort = useRef(new AbortController())
   const activeSlug = CANVAS_MODES.find((m) => m.slug === mode)?.slug === 'text-to-video' ? 'text-to-video' : 'text-to-image'
   const drafts = usePersistenceStore((state) => state.drafts)
   const { prompt, presetKey, count, durationSeconds } = drafts[activeSlug]
@@ -54,7 +75,7 @@ export default function FreeCanvas() {
     if (state.drafts.derived) state.setDrafts({ ...state.drafts, derived: { ...state.drafts.derived, ...changes } })
   }
   const derivedPrompt = derivedDraft?.prompt ?? ''
-  const variationCount = derivedDraft?.count ?? 4
+  const variationCount = derivedDraft?.count ?? preferences.image.counts.variation
   const derivedDurationSeconds = derivedDraft?.durationSeconds ?? 5
   const stageRef = useRef<FreeCanvasStageHandle>(null)
   const project = useEditorStore((state) => state.project)
@@ -70,6 +91,39 @@ export default function FreeCanvas() {
   const setViewport = useEditorStore((state) => state.setViewport)
   const scene = project?.document.scenes.find((item) => item.id === activeSceneId)
   const generation = useFreeCanvasGenerationController(scene?.id)
+  const foreignSubmission = !!generation.pendingSubmission?.ownerId && generation.pendingSubmission.ownerId !== ownerId
+  const images = useCanvasImages(project?.assets ?? EMPTY_ASSETS, scene, derivedDraft?.sourceAssetId)
+  const model = configuration.models.find(item => item.id === derivedDraft?.modelProfileId)
+    ?? configuration.models.find(item => item.defaultFor?.includes('variation')) ?? configuration.models[0]
+  const requestedResolution = derivedDraft?.resolution ?? preferences.image.resolution
+  const effective = effectiveImageParameters(variationCount, requestedResolution, derivedAsset?.type === 'image' ? derivedAsset : undefined, model?.ui)
+  const estimatedCredits = effective.count * (model?.pricing?.creditsPerImage[effective.resolution] ?? 0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    importAbort.current = controller
+    return () => controller.abort()
+  }, [project?.id, epoch, ownerId])
+
+  const importPicture = async (input: File | WorkstationHistoryListItem) => {
+    if (importGate.current || !project || !scene) return
+    importGate.current = true
+    setImporting(true)
+    const context: CanvasImageImportContext = {
+      ownerId, projectId: project.id, sceneId: scene.id, epoch, signal: importAbort.current.signal,
+      center: stageRef.current?.getViewportCenter() ?? { x: scene.width / 2, y: scene.height / 2 },
+    }
+    try {
+      if (input instanceof File) await importCanvasFile(input, context)
+      else await importCanvasHistory(input, context)
+      if (!context.signal.aborted) { setPickerOpen(false); await flushProject() }
+    } catch (error) {
+      if (!context.signal.aborted) message.error(error instanceof Error ? error.message : '图片添加失败')
+    } finally {
+      importGate.current = false
+      if (!context.signal.aborted) setImporting(false)
+    }
+  }
 
   useEffect(() => {
     ensureFreeCanvasContent()
@@ -123,7 +177,7 @@ export default function FreeCanvas() {
 
   const handleNodeGenerationAction = useCallback((action: DerivedGenerationMode, nodeId: string) => {
     if (action === 'variation' && !isFreeCanvasVariationEntryEnabled()) {
-      message.warning('自由画布裂变即将上线')
+      message.warning('请先确认登录与裂变模型配置')
       return
     }
     const state = useEditorStore.getState()
@@ -136,20 +190,28 @@ export default function FreeCanvas() {
     }
     generation.dismissTask()
     const persistence = usePersistenceStore.getState()
-    persistence.setDrafts({ ...persistence.drafts, derived: { mode: action, sourceNode: { ...node }, sourceAssetId: asset.id, prompt: '', count: 4, durationSeconds: 5 } })
-  }, [generation, message])
+    const previous = persistence.drafts.derived
+    persistence.setDrafts({ ...persistence.drafts, derived: {
+      mode: action, sourceNode: { ...node }, sourceAssetId: asset.id, prompt: '',
+      count: previous?.count ?? preferences.image.counts.variation, durationSeconds: previous?.durationSeconds ?? 5,
+      resolution: previous?.resolution ?? preferences.image.resolution, modelProfileId: previous?.modelProfileId ?? model?.id,
+    } })
+  }, [generation, message, preferences.image, model?.id])
 
   const variationEntryEnabled = isFreeCanvasVariationEntryEnabled()
   const handleDerivedGenerate = () => {
     if (!derivedContext) return
     if (derivedContext.mode === 'variation' && !variationEntryEnabled) {
-      message.warning('自由画布裂变即将上线')
+      message.warning('请先确认登录与裂变模型配置')
       return
     }
-    const request = derivedContext.mode === 'variation'
-      ? buildVariationRequest(derivedContext.source.asset, derivedPrompt, variationCount)
-      : buildImageToVideoRequest(derivedContext.source.asset, derivedPrompt, derivedDurationSeconds)
-    void generation.generateDerived(request, derivedContext.source)
+    try {
+      const request = derivedContext.mode === 'variation'
+        ? buildVariationRequest(derivedContext.source.asset, derivedPrompt, effective.count, { resolution: effective.resolution, modelProfileId: model?.id })
+        : buildImageToVideoRequest(derivedContext.source.asset, derivedPrompt, derivedDurationSeconds)
+      if (derivedContext.mode === 'variation') updateDerived({ count: effective.count, resolution: effective.resolution, modelProfileId: model?.id })
+      void generation.generateDerived(request, derivedContext.source)
+    } catch (error) { message.error(error instanceof Error ? error.message : '生成参数无效') }
   }
 
   const handleCloseDerived = () => {
@@ -192,9 +254,16 @@ export default function FreeCanvas() {
 
   return (
     <div className="free-canvas-page">
-      <ProjectToolbar busy={generation.submitting || generation.active || !!generation.pendingSubmission} />
-      {generation.pendingSubmission && !generation.submitting && <Alert type="warning" showIcon message="生成请求等待恢复" description="继续操作会使用原幂等键确认同一次请求，避免重复生成；放弃后将清理本地等待状态。" action={<Space>
-        <Button onClick={() => { void generation.resumeSubmission() }}>继续原请求</Button>
+      <ProjectToolbar busy={importing || generation.submitting || generation.active || !!generation.pendingSubmission} onUploadImage={() => fileInput.current?.click()} />
+      {pickerOpen && <CanvasAssetPicker key={ownerId} ownerId={ownerId} busy={importing} onSelect={importPicture} onClose={() => { if (!importing) setPickerOpen(false) }} />}
+      <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="上传图片到画布" onChange={event => {
+        const file = event.target.files?.[0]; event.target.value = ''
+        if (file) void importPicture(file)
+      }} />
+      {images.error && <Alert type="warning" showIcon message="画布图片读取失败" description={images.error} action={<Button onClick={images.reload}>重试读取图片</Button>} />}
+      {configuration.error && <Alert type="warning" showIcon message="裂变模型配置读取失败" description={configuration.error} action={<Button onClick={configuration.reload}>重新读取配置</Button>} />}
+      {generation.pendingSubmission && !generation.submitting && <Alert type="warning" showIcon message={foreignSubmission ? '此任务属于其他账号' : '生成请求等待恢复'} description={foreignSubmission ? '当前账号无法续接此任务。放弃等待可清理本地占位，继续编辑画布。' : '继续操作会使用原幂等键确认同一次请求，避免重复生成；放弃后将清理本地等待状态。'} action={<Space>
+        {!foreignSubmission && <Button onClick={() => { void generation.resumeSubmission() }}>继续原请求</Button>}
         <Button onClick={generation.abandonSubmission}>放弃等待</Button>
       </Space>} />}
       {generation.pollError && <Alert type="warning" message="原任务暂时无法查询" description={generation.pollError.message} action={<Button onClick={generation.modifyParameters}>放弃占位并修改参数</Button>} />}
@@ -204,14 +273,17 @@ export default function FreeCanvas() {
           value={activeSlug}
           onChange={(value) => navigate(`/canvas/${value}`)}
         />
-        <span>{scene.width} × {scene.height}</span>
+        <Space wrap><Button loading={importing} disabled={generation.submitting || !!generation.pendingSubmission} onClick={() => fileInput.current?.click()}>上传图片</Button>
+          <Button disabled={importing || generation.submitting || !!generation.pendingSubmission} onClick={() => setPickerOpen(true)}>从我的资产添加</Button>
+          <span>{scene.width} × {scene.height}</span>
+        </Space>
       </div>
       <div className="free-canvas-workspace">
         <FreeCanvasStage
           key={scene.id}
           ref={stageRef}
           scene={scene}
-          assets={project.assets}
+          assets={images.assets}
           generations={project.generations}
           selectedNodeId={selectedNodeId}
           viewport={viewport}
@@ -231,9 +303,9 @@ export default function FreeCanvas() {
         {derivedContext ? (
           <DerivedGenerationPanel
             mode={derivedContext.mode}
-            sourceAsset={derivedContext.source.asset}
+            sourceAsset={images.assets[derivedContext.source.asset.id] as typeof derivedContext.source.asset}
             prompt={derivedPrompt}
-            count={variationCount}
+            count={derivedContext.mode === 'variation' ? effective.count : variationCount}
             durationSeconds={derivedDurationSeconds}
             task={generation.task}
             submitting={generation.submitting}
@@ -253,6 +325,19 @@ export default function FreeCanvas() {
             onRetry={() => { void generation.retry() }}
             onModifyParameters={generation.modifyParameters}
             onRefetch={() => { void generation.refetch() }}
+            models={configuration.models}
+            modelProfileId={model?.id}
+            resolution={effective.resolution}
+            onModelChange={modelProfileId => updateDerived({ modelProfileId })}
+            onResolutionChange={resolution => updateDerived({ resolution })}
+            estimatedCredits={estimatedCredits}
+            resolutionAdjusted={effective.resolution !== requestedResolution}
+            mockGateway={isCanvasMockGateway()}
+            preparationPhase={generation.preparationPhase}
+            historyError={generation.historyError}
+            historySaved={generation.historySaved}
+            onRetrySave={generation.retryHistory}
+            resultAssets={images.assets}
           />
         ) : (
           <GenerationPanel

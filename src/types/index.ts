@@ -111,7 +111,7 @@ export interface TextToVideoTaskParams {
 
 /** 裂变任务参数。自由画布填原图地址；工作站还会带上对象 key 和分辨率。 */
 export interface VariationTaskParams {
-  sourceImageUrl: string
+  sourceImageUrl?: string
   sourceImageKey?: string
   prompt?: string
   size: { width: number; height: number }

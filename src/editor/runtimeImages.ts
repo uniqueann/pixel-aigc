@@ -32,9 +32,9 @@ export function bindRuntimeImage(ownerId: string, asset: ImageAsset, blob: Blob,
   images.get(asset.id)?.lease.release()
   images.set(asset.id, { ownerId, blob, pendingFor: user, lease: retainImageBlob(blob) })
 }
-export function withRuntimeImage(asset: ImageAsset): ImageAsset {
+export function withRuntimeImage(asset: ImageAsset, ownerId?: string): ImageAsset {
   const entry = images.get(asset.id)
-  return entry ? { ...asset, url: entry.lease.url } : asset
+  return entry && (!ownerId || entry.ownerId === ownerId) ? { ...asset, url: entry.lease.url } : asset
 }
 useEditorStore.subscribe(state => {
   for (const [id, entry] of images) if (!state.project?.assets[id]) { entry.lease.release(); images.delete(id) }

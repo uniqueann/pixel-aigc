@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushProject } from '@/editor/persistence/projectPersistence'
 import { recoveryForTask, usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import type { GenerationContext, GenerationRecovery } from '@/editor/persistence/types'
-import { createTask } from '@/services/api/task'
+import { createTask, findTaskByRequest } from '@/services/api/task'
+import { taskInputKey } from '@/services/api/imageInput'
+import { currentWorkstationHistoryOwner, isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import { useUserStore } from '@/store/useUserStore'
 import { generationIdForTask } from '@/editor/adapters/taskAdapter'
 import { ResolveGenerationCommand } from '@/editor/commands'
 import { GenerationService } from '@/editor/services/generationService'
@@ -30,7 +33,8 @@ import {
 } from '@/types'
 import type { CanvasPoint, GenerationPlacement } from '../geometry'
 import { calculateDerivedPlacements, calculateGenerationPlacements } from '../geometry'
-import { canSubmitFreeCanvasVariation } from './availability'
+import { canSubmitFreeCanvasVariation, isCanvasMockGateway } from './availability'
+import { saveCanvasTaskHistory } from './history'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
@@ -65,7 +69,7 @@ function isCanvasGenerationParams(
     && typeof params.size.height === 'number'
   if (!commonValid) return false
   if (capability === Capability.Variation) {
-    return typeof params.sourceImageUrl === 'string'
+    return (typeof params.sourceImageUrl === 'string' || typeof params.sourceImageKey === 'string')
       && (params.prompt === undefined || typeof params.prompt === 'string')
   }
   if (capability === Capability.TextToVideo) {
@@ -106,10 +110,16 @@ function requestForRetry(task: CanvasGenerationTask): CanvasGenerationRequest {
     capability: task.capability as CanvasGenerationRequest['capability'],
     params: task.params,
     requestId: crypto.randomUUID(),
+    modelProfileId: task.modelProfileId ?? recoveryForTask(task.id)?.request.modelProfileId,
   }
 }
 
 export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) {
+  useUserStore((state) => state.userId)
+  const ownerId = currentWorkstationHistoryOwner()
+  const mockGateway = isCanvasMockGateway()
+  const submissionGateRef = useRef(false)
+  const lifetimeAbortRef = useRef(new AbortController())
   const registerAsset = useEditorStore((state) => state.registerAsset)
   const registerGeneration = useEditorStore((state) => state.registerGeneration)
   const addNode = useEditorStore((state) => state.addNode)
@@ -118,15 +128,16 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const selectNodes = useEditorStore((state) => state.selectNodes)
   const project = useEditorStore((state) => state.project)
   const recoveries = usePersistenceStore((state) => state.recoveries)
-  const pendingSubmission = Object.values(recoveries).find((record) => record.projectId === project?.id && record.sceneId === sceneId && !record.backendTaskId && !record.abandoned && !record.applied)
+  const pendingSubmission = Object.values(recoveries).find((record) => record.projectId === project?.id && record.sceneId === sceneId && !record.abandoned && !record.applied && (!record.backendTaskId || (!!record.ownerId && record.ownerId !== ownerId)))
   const epoch = usePersistenceStore((state) => state.epoch)
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    lifetimeAbortRef.current = new AbortController()
+    return () => { mountedRef.current = false; lifetimeAbortRef.current.abort() }
   }, [])
   const projectId = project?.id
-  const isCurrent = useCallback(() => mountedRef.current && useEditorStore.getState().project?.id === projectId && usePersistenceStore.getState().epoch === epoch, [projectId, epoch])
+  const isCurrent = useCallback(() => mountedRef.current && isCurrentWorkstationHistoryOwner(ownerId) && useEditorStore.getState().project?.id === projectId && usePersistenceStore.getState().epoch === epoch, [projectId, epoch, ownerId])
   const upsertTask = useTaskStore((state) => state.upsertTask)
   const tasks = useTaskStore((state) => state.tasks)
   const [activeTaskId, setActiveTaskId] = useState<string>()
@@ -134,6 +145,26 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const [submitting, setSubmitting] = useState(false)
   const [autoRetrying, setAutoRetrying] = useState(false)
   const [submissionError, setSubmissionError] = useState<string>()
+  const [preparationPhase, setPreparationPhase] = useState<string>()
+  const [historyError, setHistoryError] = useState<string>()
+  const [historySaved, setHistorySaved] = useState(false)
+  const unsavedHistoryRef = useRef(new Map<string, CanvasGenerationTask>())
+  const savingHistoryRef = useRef(new Set<string>())
+  const persistHistory = useCallback(async (completedTask: CanvasGenerationTask) => {
+    if (mockGateway || completedTask.capability !== Capability.Variation || !isCurrent() || savingHistoryRef.current.has(completedTask.id)) return
+    unsavedHistoryRef.current.set(completedTask.id, completedTask)
+    savingHistoryRef.current.add(completedTask.id)
+    try {
+      await saveCanvasTaskHistory(completedTask, ownerId, lifetimeAbortRef.current.signal)
+      if (isCurrent()) {
+        unsavedHistoryRef.current.delete(completedTask.id)
+        setHistorySaved(unsavedHistoryRef.current.size === 0)
+        setHistoryError(unsavedHistoryRef.current.size ? '仍有生成图片未保存，可重试保存' : undefined)
+      }
+    } catch (error) {
+      if (isCurrent()) setHistoryError(error instanceof Error ? error.message : '资产保存失败')
+    } finally { savingHistoryRef.current.delete(completedTask.id) }
+  }, [isCurrent, mockGateway, ownerId])
   const [protocolError, setProtocolError] = useState<string>()
   const resolvedTaskIdsRef = useRef(new Set<string>())
   const handledTaskVersionsRef = useRef(new Set<string>())
@@ -151,12 +182,13 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     const generation = recoverable?.backendTaskId
       ? project?.generations[generationIdForTask(recoverable.backendTaskId)]
       : placeholder && !recoveryForTask(project?.generations[placeholder.generationId]?.backendTaskId ?? '')?.abandoned ? project?.generations[placeholder.generationId] : undefined
+    if (recoverable?.ownerId && recoverable.ownerId !== ownerId) return undefined
     return generation?.backendTaskId
       && isCanvasGenerationCapability(generation.capability)
       && isCanvasGenerationParams(generation.input, generation.capability)
       ? generation
       : undefined
-  }, [project, recoveries, sceneId])
+  }, [project, recoveries, sceneId, ownerId])
   const restoredTask = useMemo(() => {
     if (!restoredGeneration?.backendTaskId
       || !isCanvasGenerationParams(restoredGeneration.input, restoredGeneration.capability)) return undefined
@@ -228,11 +260,13 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     const currentScene = readScene()
     const baseZIndex = Math.max(-1, ...(currentScene?.nodes.map((node) => node.zIndex) ?? [-1])) + 1
     const outputs = assets.map((asset, index) => {
-      const placement = placeholders[index] ?? fallbackPlacements[index] ?? fallbackPlacements[0]
+      const image = asset.objectKey ? completedTask.resultImages?.find(item => item.objectKey === asset.objectKey) : undefined
+      const ordinal = image?.ordinal ?? index
+      const placement = placeholders.find(node => node.resultIndex === ordinal) ?? fallbackPlacements[ordinal] ?? fallbackPlacements[0]
       const width = placement?.width ?? Math.min(320, asset.width || 320)
       const height = placement?.height ?? Math.min(320, asset.height || 320)
       const common = {
-        id: `generated-node:${completedTask.id}:${index}`,
+        id: `generated-node:${completedTask.id}:${ordinal}`,
         assetId: asset.id,
         name: asset.name,
         x: placement?.x ?? 0,
@@ -257,23 +291,27 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     if (recovery) usePersistenceStore.getState().setRecovery({ ...recovery, applied: true })
     selectNodes([outputs[0].node.id])
     setProtocolError(undefined)
-  }, [executeCommand, isCurrent, placeholdersForTask, readScene, sceneId, selectNodes])
+    void persistHistory(completedTask)
+  }, [executeCommand, isCurrent, placeholdersForTask, readScene, sceneId, selectNodes, persistHistory])
 
   const submitRequest = useCallback(async (
     initialRequest: CanvasGenerationRequest,
     initialPlacements: GenerationPlacement[],
     initialReplacedPlaceholders: GenerationNode[] = [],
     initialContext: SubmissionContext = { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
+    confirmedTask?: GenerationTask<CanvasGenerationTaskParams>,
   ) => {
-    if (!sceneId || !isCurrent() || !usePersistenceStore.getState().writable) return
-    if (initialRequest.capability === Capability.Variation && !canSubmitFreeCanvasVariation()) {
-      setSubmissionError('自由画布裂变即将上线')
+    if (!sceneId || !isCurrent() || !usePersistenceStore.getState().writable || submissionGateRef.current) return
+    if (initialRequest.capability === Capability.Variation && !confirmedTask && !canSubmitFreeCanvasVariation()) {
+      setSubmissionError('裂变模型尚未就绪，请检查登录与模型配置')
       return
     }
+    submissionGateRef.current = true
     if (!initialContext.automaticRetry) setAutoRetrying(false)
     setSubmitting(true)
     setSubmissionError(undefined)
     setProtocolError(undefined)
+    setHistorySaved(false)
 
     const submitSingle = async (
       request: CanvasGenerationRequest,
@@ -281,14 +319,16 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       replacedPlaceholders: GenerationNode[],
       context: SubmissionContext,
     ): Promise<void> => {
+      context = mockGateway ? context : { ...context, autoRetryRemaining: 0, automaticRetry: false }
       const recovery: GenerationRecovery = {
         projectId: projectId!, sceneId, request, context, placements,
+        ...(!mockGateway ? { ownerId } : {}),
         replacedPlaceholderIds: replacedPlaceholders.map((node) => node.id), applied: false,
       }
       usePersistenceStore.getState().setRecovery(recovery)
       await flushProject()
       if (!isCurrent()) return
-      const receivedTask = await createTask(request)
+      const receivedTask = confirmedTask ?? await createTask(request)
       if (!isCurrent()) return
       const adapted = service.reconcile(receivedTask, {
         inputAssetIds: context.inputAssetIds,
@@ -354,8 +394,25 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     }
 
     try {
+      let prepared = initialRequest
+      if (!mockGateway && initialRequest.capability === Capability.Variation && !confirmedTask) {
+        const params = { ...initialRequest.params } as VariationTaskParams
+        if (!params.sourceImageKey) {
+          const source = useEditorStore.getState().project?.assets[initialContext.inputAssetIds[0]]
+          if (source?.type !== 'image') throw new Error('源图片不可用，请重新选择图片')
+          setPreparationPhase('正在准备并上传原图…')
+          params.sourceImageKey = await taskInputKey(source, '读取原图失败', { ownerId, signal: lifetimeAbortRef.current.signal })
+          params.sourceWidth = source.width
+          params.sourceHeight = source.height
+        }
+        if (!params.resolution) throw new Error('请选择生成分辨率')
+        delete params.sourceImageUrl
+        prepared = { ...initialRequest, params }
+      }
+      if (!isCurrent()) return
+      setPreparationPhase('正在提交生成任务…')
       await submitSingle(
-        initialRequest,
+        prepared,
         initialPlacements,
         initialReplacedPlaceholders,
         initialContext,
@@ -365,9 +422,16 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       if (isCurrent()) {
         setAutoRetrying(false)
         setSubmissionError(error instanceof Error ? error.message : '生成任务提交失败')
+        const status = error && typeof error === 'object' && 'status' in error ? error.status : undefined
+        if (typeof status === 'number' && status >= 400 && status < 500 && status !== 408) {
+          const record = usePersistenceStore.getState().recoveries[initialRequest.requestId]
+          if (record && !record.backendTaskId) usePersistenceStore.getState().setRecovery({ ...record, abandoned: true })
+          void flushProject().catch(() => undefined)
+        }
       }
     } finally {
-      if (isCurrent()) setSubmitting(false)
+      submissionGateRef.current = false
+      if (isCurrent()) { setSubmitting(false); setPreparationPhase(undefined) }
     }
   }, [
     addNode,
@@ -381,17 +445,22 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     selectNodes,
     service,
     upsertTask,
+    mockGateway,
+    ownerId,
   ])
 
   const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
     if (!isCurrent() || !usePersistenceStore.getState().writable || pendingSubmission || recoveryForTask(nextTask.id)?.abandoned || recoveryForTask(nextTask.id)?.applied) return
+    const taskOwner = recoveryForTask(nextTask.id)?.ownerId
+    if (taskOwner && taskOwner !== ownerId) return
     if (!isCanvasGenerationCapability(nextTask.capability)
       || !isCanvasGenerationParams(nextTask.params, nextTask.capability)) return
     const version = `${nextTask.id}:${nextTask.status}:${nextTask.updatedAt}`
     if (handledTaskVersionsRef.current.has(version)) return
     handledTaskVersionsRef.current.add(version)
     let typedTask = nextTask as CanvasGenerationTask
-    const context = contextForTask(typedTask.id)
+    const originalContext = contextForTask(typedTask.id)
+    const context = mockGateway ? originalContext : { ...originalContext, autoRetryRemaining: 0, automaticRetry: false }
     const adapted = service.reconcile(typedTask, {
       inputAssetIds: context.inputAssetIds,
       parentGenerationId: context.parentGenerationId,
@@ -456,6 +525,8 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     resolveTask,
     service,
     submitRequest,
+    mockGateway,
+    ownerId,
     upsertTask,
   ])
 
@@ -463,7 +534,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const needsQuery = displayedTask && (ACTIVE_STATUSES.has(displayedTask.status) || (displayedTask.status === 'succeeded' && !recoveryForTask(displayedTask.id)?.applied))
   const queryTaskId = activeTaskId ?? restoredGeneration?.backendTaskId
   const taskQuery = useTaskPolling(queryTaskId, handlePolledTask, !pendingSubmission && !!needsQuery)
-  const restoredAutomaticRetry = displayedTask ? recoveryForTask(displayedTask.id)?.context.automaticRetry && ACTIVE_STATUSES.has(displayedTask.status) : false
+  const restoredAutomaticRetry = mockGateway && displayedTask ? recoveryForTask(displayedTask.id)?.context.automaticRetry && ACTIVE_STATUSES.has(displayedTask.status) : false
 
   const generate = useCallback(async (request: CanvasGenerationRequest, center: CanvasPoint) => {
     const placements = calculateGenerationPlacements(center, request.params.size, request.params.count)
@@ -487,10 +558,10 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     await submitRequest(request, placements, [], {
       inputAssetIds: [source.asset.id],
       parentGenerationId: origin?.id,
-      autoRetryRemaining: 1,
+      autoRetryRemaining: mockGateway ? 1 : 0,
       automaticRetry: false,
     })
-  }, [readScene, submitRequest])
+  }, [readScene, submitRequest, mockGateway])
 
   const retry = useCallback(async () => {
     if (submitting || pendingSubmission || !displayedTask || !isCanvasGenerationCapability(displayedTask.capability)) return
@@ -500,18 +571,26 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     const derived = previousContext.inputAssetIds.length > 0
     const previous = recoveryForTask(displayedTask.id)
     if (previous) usePersistenceStore.getState().setRecovery({ ...previous, abandoned: true })
+    const request = requestForRetry(displayedTask)
+    const source = useEditorStore.getState().project?.assets[previousContext.inputAssetIds[0]]
+    if (!mockGateway && request.capability === Capability.Variation && source?.type === 'image') {
+      // 手动重试是新任务，本地原图重新准备临时输入，避免复用已过期的上传对象。
+      const params = { ...request.params } as VariationTaskParams
+      delete params.sourceImageKey
+      request.params = params
+    }
     await submitRequest(
-      requestForRetry(displayedTask),
+      request,
       placements,
       placeholders,
       {
         ...previousContext,
         retryOfGenerationId: generationIdForTask(displayedTask.id),
-        autoRetryRemaining: derived ? 1 : 0,
+        autoRetryRemaining: derived && mockGateway ? 1 : 0,
         automaticRetry: false,
       },
     )
-  }, [contextForTask, displayedTask, pendingSubmission, placeholdersForTask, submitRequest, submitting])
+  }, [contextForTask, displayedTask, pendingSubmission, placeholdersForTask, submitRequest, submitting, mockGateway])
 
   const modifyParameters = useCallback(() => {
     if (submitting || pendingSubmission) return
@@ -537,20 +616,39 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   }, [autoRetrying, displayedTask])
 
   const resumeSubmission = useCallback(async () => {
-    if (!pendingSubmission) return
+    if (!pendingSubmission || submissionGateRef.current) return
+    if (pendingSubmission.ownerId && pendingSubmission.ownerId !== ownerId) {
+      setSubmissionError('此请求属于其他账号，请放弃等待后重新创建任务')
+      return
+    }
     const placeholders = (readScene()?.nodes ?? []).filter((node): node is GenerationNode => node.type === 'generation' && pendingSubmission.replacedPlaceholderIds.includes(node.id))
-    await submitRequest(pendingSubmission.request, pendingSubmission.placements, placeholders, pendingSubmission.context)
-  }, [pendingSubmission, readScene, submitRequest])
+    let confirmed: GenerationTask<CanvasGenerationTaskParams> | undefined
+    if (!mockGateway) {
+      submissionGateRef.current = true
+      setSubmitting(true)
+      try { confirmed = await findTaskByRequest(pendingSubmission.request.requestId) as GenerationTask<CanvasGenerationTaskParams> | undefined }
+      catch (error) {
+        if (isCurrent()) setSubmissionError(error instanceof Error ? error.message : '原任务查询失败，请重新查询')
+        return
+      } finally {
+        submissionGateRef.current = false
+        if (isCurrent()) setSubmitting(false)
+      }
+    }
+    await submitRequest(pendingSubmission.request, pendingSubmission.placements, placeholders, pendingSubmission.context, confirmed)
+  }, [pendingSubmission, readScene, submitRequest, mockGateway, ownerId, isCurrent])
 
   const abandonSubmission = useCallback(() => {
     if (!pendingSubmission || submitting) return
     usePersistenceStore.getState().setRecovery({ ...pendingSubmission, abandoned: true })
     pendingSubmission.replacedPlaceholderIds.forEach((id) => { if (sceneId) removeNode(sceneId, id) })
+    if (pendingSubmission.backendTaskId && sceneId) placeholdersForTask(pendingSubmission.backendTaskId).forEach(node => removeNode(sceneId, node.id))
     setTask(undefined)
     setActiveTaskId(undefined)
     setSubmissionError(undefined)
+    selectNodes([])
     void flushProject().catch(() => undefined)
-  }, [pendingSubmission, removeNode, sceneId, submitting])
+  }, [pendingSubmission, placeholdersForTask, removeNode, sceneId, selectNodes, submitting])
 
   const status = displayedTask?.status
   const active = autoRetrying || (!!status && ACTIVE_STATUSES.has(status))
@@ -564,6 +662,10 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     active,
     formLocked: submitting || !!pendingSubmission || active || status === 'failed' || status === 'cancelled',
     submissionError,
+    preparationPhase,
+    historyError,
+    historySaved,
+    retryHistory: () => { void Promise.all([...unsavedHistoryRef.current.values()].map(persistHistory)) },
     protocolError,
     pollError: taskQuery.error,
     polling: taskQuery.isFetching,

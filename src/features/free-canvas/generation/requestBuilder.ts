@@ -6,6 +6,8 @@ import {
   type VariationTaskParams,
 } from '@/types'
 import type { ImageSizePreset } from './config'
+import { VARIATION_USER_PROMPT_MAX, variationPromptLimitMessage } from '@shared/variation'
+import { scaleToLongEdge } from '@/features/image-workstation/tools/requestBuilders/imageEdit'
 
 export type CanvasGenerationTaskParams =
   | TextToImageTaskParams
@@ -16,6 +18,7 @@ export type CanvasGenerationTaskParams =
 export interface CanvasGenerationRequest {
   capability: Capability.TextToImage | Capability.TextToVideo | Capability.Variation
   requestId: string
+  modelProfileId?: string
   params: CanvasGenerationTaskParams
 }
 
@@ -23,6 +26,8 @@ interface SourceImageInput {
   url: string
   width: number
   height: number
+  objectKey?: string
+  storage?: { objectKey: string }
 }
 
 export function buildTextToImageRequest(
@@ -70,18 +75,22 @@ export function buildVariationRequest(
   source: SourceImageInput,
   prompt: string,
   count: number,
+  options?: { resolution: '1k' | '2k' | '4k'; modelProfileId?: string },
 ): CanvasGenerationRequest {
   if (!source.url) throw new Error('源图片不可用')
   const normalizedPrompt = prompt.trim()
+  if (normalizedPrompt.length > VARIATION_USER_PROMPT_MAX) throw new Error(variationPromptLimitMessage())
   const params: VariationTaskParams = {
     sourceImageUrl: source.url,
-    size: { width: source.width, height: source.height },
+    size: options ? scaleToLongEdge(source.width, source.height, { '1k': 1024, '2k': 2048, '4k': 4096 }[options.resolution]) : { width: source.width, height: source.height },
     count: Math.min(4, Math.max(1, Math.round(count))),
     ...(normalizedPrompt ? { prompt: normalizedPrompt } : {}),
+    ...(options ? { resolution: options.resolution, sourceWidth: source.width, sourceHeight: source.height } : {}),
   }
   return {
     capability: Capability.Variation,
     requestId: crypto.randomUUID(),
+    ...(options?.modelProfileId ? { modelProfileId: options.modelProfileId } : {}),
     params,
   }
 }

@@ -2,21 +2,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Capability } from '@/types'
 
 const post = vi.fn()
+const get = vi.fn()
 
 vi.mock('./client', () => ({
   apiClient: {
     post: (...args: unknown[]) => post(...args),
-    get: vi.fn(),
+    get: (...args: unknown[]) => get(...args),
     patch: vi.fn(),
     delete: vi.fn(),
   },
 }))
 
-import { canCreateLiveTask, createTask, liveCapabilityReady, registerLiveCapability } from './task'
+import { canCreateLiveTask, createTask, findTaskByRequest, liveCapabilityReady, registerLiveCapability } from './task'
 
 describe('createTask 真实模式接入检查', () => {
   beforeEach(() => {
     post.mockReset()
+    get.mockReset()
     post.mockResolvedValue({ id: 'task-1', status: 'queued' })
     registerLiveCapability(Capability.Variation, false)
     registerLiveCapability(Capability.ImageEdit, false)
@@ -68,5 +70,15 @@ describe('createTask 真实模式接入检查', () => {
       requestId: '00000000-0000-4000-8000-000000000004',
       params: {},
     })).resolves.toMatchObject({ id: 'task-1' })
+  })
+
+  it('只有查询明确返回 404 才视为不存在，网络或服务异常继续上抛', async () => {
+    get.mockRejectedValueOnce(Object.assign(new Error('未找到任务'), { status: 404 }))
+    await expect(findTaskByRequest('original-request')).resolves.toBeUndefined()
+    get.mockRejectedValueOnce(Object.assign(new Error('服务不可用'), { status: 503 }))
+    await expect(findTaskByRequest('original-request')).rejects.toThrow('服务不可用')
+    get.mockRejectedValueOnce(new TypeError('网络中断'))
+    await expect(findTaskByRequest('original-request')).rejects.toThrow('网络中断')
+    expect(post).not.toHaveBeenCalled()
   })
 })

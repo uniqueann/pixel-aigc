@@ -637,7 +637,17 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       }
 
       const asset = assets[node.assetId]
-      if (!asset || (node.type === 'image' && asset.type !== 'image') || (node.type === 'video' && asset.type !== 'video')) return
+      if (!asset || asset.missing || (node.type === 'image' && asset.type !== 'image') || (node.type === 'video' && asset.type !== 'video')) {
+        if (existing) canvas.remove(existing)
+        nodeObjectsRef.current.delete(node.id)
+        objectAssetUrlsRef.current.delete(node.id)
+        const video = videoElementsRef.current.get(node.id)
+        if (video) releaseVideo(video)
+        videoElementsRef.current.delete(node.id)
+        pendingMediaRef.current.get(node.id)?.controller.abort()
+        pendingMediaRef.current.delete(node.id)
+        return
+      }
 
       if (existing instanceof FabricImage && objectAssetUrlsRef.current.get(node.id) === asset.url) {
         applyNodeToObject(existing, node)
@@ -665,12 +675,17 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           .then((image) => ({ object: image, video: undefined }))
       void mediaPromise
         .then(({ object, video }) => {
-          if (!canvasRef.current || !wantedNodeIdsRef.current.has(node.id)) {
+          if (controller.signal.aborted || pendingMediaRef.current.get(node.id)?.controller !== controller || !canvasRef.current || !wantedNodeIdsRef.current.has(node.id)) {
             if (video) releaseVideo(video)
             return
           }
           pendingMediaRef.current.delete(node.id)
-          applyNodeToObject(object, node)
+          const latestNode = nodesByIdRef.current.get(node.id)
+          if (latestNode?.type !== 'image' && latestNode?.type !== 'video') {
+            if (video) releaseVideo(video)
+            return
+          }
+          applyNodeToObject(object, latestNode)
           nodeObjectsRef.current.set(node.id, object)
           objectAssetUrlsRef.current.set(node.id, asset.url)
           if (video) videoElementsRef.current.set(node.id, video)
@@ -682,7 +697,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           if (video) setVideoUiVersion((version) => version + 1)
         })
         .catch((error: unknown) => {
-          pendingMediaRef.current.delete(node.id)
+          if (pendingMediaRef.current.get(node.id)?.controller === controller) pendingMediaRef.current.delete(node.id)
           if (controller.signal.aborted || reportedLoadErrorsRef.current.has(asset.url)) return
           reportedLoadErrorsRef.current.add(asset.url)
           setMediaLoadVersion((version) => version + 1)
@@ -710,7 +725,12 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     const activeObject = canvas.getActiveObject()
     const nextObject = selectedNodeId ? nodeObjectsRef.current.get(selectedNodeId) : undefined
     if (nextObject && activeObject !== nextObject) canvas.setActiveObject(nextObject)
-    if (!nextObject && activeObject) canvas.discardActiveObject()
+    if (!nextObject && activeObject) {
+      // 媒体加载期间暂时清理 Fabric 选择，保留领域层等待选中的新节点。
+      reconcilingObjectsRef.current = true
+      canvas.discardActiveObject()
+      reconcilingObjectsRef.current = false
+    }
     canvas.requestRenderAll()
   }, [selectedNodeId, scene.nodes])
 
@@ -744,7 +764,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       </div>}
       {selectedImage && nodeActionPosition && (
         <div className="free-canvas-node-actions" style={nodeActionPosition} aria-label="图片派生操作">
-          <Tooltip title={variationEnabled ? '基于这张图再生成一版' : '即将上线'}>
+          <Tooltip title={variationEnabled ? '基于这张图再生成一版' : '请先确认登录与裂变模型配置'}>
             <span>
               <Button
                 size="small"

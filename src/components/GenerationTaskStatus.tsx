@@ -32,6 +32,7 @@ interface GenerationTaskStatusProps {
   onRetryRead?: () => void
   onRetrySave?: () => void
   onRetry?: () => void
+  retryLabel?: string
   onModifyParameters?: () => void
   onRefetch?: () => void
 }
@@ -53,6 +54,7 @@ export default function GenerationTaskStatus({
   onRetryRead,
   onRetrySave,
   onRetry,
+  retryLabel = '按原参数重试',
   onModifyParameters,
   onRefetch,
 }: GenerationTaskStatusProps) {
@@ -72,7 +74,7 @@ export default function GenerationTaskStatus({
           ) : null}
           {terminalFailure && (onRetry || onModifyParameters) ? (
             <div className="generation-task-status-actions">
-              {onRetry ? <Button size="small" type="primary" onClick={onRetry}>按原参数重试</Button> : null}
+              {onRetry ? <Button size="small" type="primary" loading={submitting} onClick={onRetry}>{retryLabel}</Button> : null}
               {onModifyParameters ? <Button size="small" onClick={onModifyParameters}>修改参数</Button> : null}
             </div>
           ) : null}

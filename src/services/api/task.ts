@@ -19,7 +19,7 @@ const LIVE_TASK_CAPABILITIES = new Set<Capability>([Capability.EmailAssist])
 
 /**
  * 工作站已接通、服务端 /tasks 会转到 image_jobs 的能力。
- * 不写入 LIVE_TASK_CAPABILITIES，自由画布裂变入口仍由 availability 开关单独禁用。
+ * 不写入 LIVE_TASK_CAPABILITIES，工作站与画布分别检查自身的模型配置。
  */
 const WORKSTATION_TASK_CAPABILITIES = new Set<Capability>([Capability.Variation])
 const BILLED_TASK_CAPABILITIES = new Set<Capability>([Capability.ImageEdit, Capability.Variation])
@@ -98,6 +98,15 @@ export function getTaskByRequest(requestId: string) {
       if (BILLED_TASK_CAPABILITIES.has(task.capability)) void refreshCredits().catch(() => undefined)
       return task
     })
+}
+
+/** 原请求查询失败时保留错误分类，只有明确不存在才允许确认后继续提交。 */
+export async function findTaskByRequest(requestId: string) {
+  try { return await getTaskByRequest(requestId) }
+  catch (error) {
+    if (error && typeof error === 'object' && 'status' in error && error.status === 404) return undefined
+    throw error
+  }
 }
 
 export function saveTaskEdit(taskId: string, editedText: string) {

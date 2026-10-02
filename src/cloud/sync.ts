@@ -5,6 +5,7 @@ import { accessAssets, assetPlaceholder, hydrateAssets, uploadCloudImage } from 
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { currentSnapshot, flushProject, hasUnfinishedGeneration, replaceSnapshot, updateRuntimeAssetAccess } from '@/editor/persistence/projectPersistence'
+import { blobFromImageSource } from '@/features/image-workstation/download'
 import { persistableSnapshot } from '@/editor/persistence/snapshot'
 import { saveConflictSnapshot } from '@/editor/persistence/database'
 import type { ProjectSnapshot } from '@/editor/persistence/types'
@@ -63,14 +64,19 @@ async function syncOnce() {
     if (asset.type !== 'image') throw new Error(`「${asset.name}」暂不支持云端迁移，请保留本地备份`)
     try {
       const sourceUrl = asset.storage ? (await accessAssets(asset.storage.projectId, [asset.id]))[0].url : asset.url
-      const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(30000) })
-      if (!response.ok) throw new Error('读取失败')
-      const blob = await response.blob()
+      const blob = asset.objectKey
+        ? await blobFromImageSource(sourceUrl, asset.objectKey)
+        : await (async () => {
+          const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(30000) })
+          if (!response.ok) throw new Error('读取失败')
+          return response.blob()
+        })()
       const file = new File([blob], asset.name, { type: blob.type || asset.mimeType })
       const uploaded = await uploadCloudImage(id, asset.id, file)
       const [access] = await accessAssets(id, [asset.id])
       const updated = { ...asset, ...uploaded, url: access.url, accessExpiresAt: access.expiresAt, missing: false,
-        generationId: undefined, source: 'upload' as const, storage: { provider: 'r2' as const, objectKey: uploaded.objectKey, projectId: id } }
+        source: asset.source,
+        storage: { provider: 'r2' as const, objectKey: uploaded.objectKey, projectId: id } }
       if (useEditorStore.getState().project?.id !== id) throw new Error('项目已切换')
       useEditorStore.getState().registerAsset(updated)
       await flushProject()
@@ -82,11 +88,11 @@ async function syncOnce() {
       throw failure
     }
   }
-  // 模拟任务历史仅留在本地备份；已生成图片作为普通素材上传。
+  // 完整生成历史留在本地与 JSON；云端只接收图片、布局和表单草稿。
   const current = currentSnapshot()
   const input = inputOf(current)
   if (input.document.scenes.some(scene => scene.nodes.some(node => node.type === 'generation')))
-    throw new Error('请先移除本地模拟任务占位，再同步项目')
+    throw new Error('请先处理生成任务占位，再同步项目')
   const sentFingerprint = fingerprint(current)
   try {
     const response = await cloudRequest<{ revision: number }>(`/projects/${encodeURIComponent(id)}`, 'PUT', { ...input, baseRevision: revision })
@@ -123,7 +129,7 @@ export async function forkLocalProject() {
   copy.project.name = `${copy.project.name.slice(0,80)}（副本）`
   copy.cloud = undefined
   // 源项目私有素材通过当前用户的短期地址复制到新项目，不跨项目共享对象。
-  copy.recoveries = {}
+  copy.recoveries = Object.fromEntries(Object.entries(copy.recoveries).map(([key, record]) => [key, { ...record, projectId: copy.project.id }]))
   await replaceSnapshot(copy)
   await syncProject()
 }
