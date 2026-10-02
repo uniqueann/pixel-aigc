@@ -3,6 +3,7 @@ import { App, Button, Input, Menu, Modal, Space, Switch } from 'antd'
 import { cloudRequest } from '@/cloud/client'
 import ModelSettingsPanel from '@/features/model-settings/ModelSettingsPanel'
 import PersonalizationPanel from '@/features/preferences/PersonalizationPanel'
+import PreferencesSyncAlert from '@/features/preferences/PreferencesSyncAlert'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { useUserStore } from '@/store/useUserStore'
 
@@ -50,6 +51,7 @@ export default function SettingsDialog({
       style={{ maxWidth: 'calc(100vw - 24px)' }}
       styles={{ wrapper: { overflowX: 'hidden' }, content: { maxWidth: '100%' }, body: { overflowX: 'hidden' } }}
     >
+      <PreferencesSyncAlert />
       <div className={`settings-layout${narrow ? ' is-narrow' : ''}`} style={{ maxWidth: '100%', minWidth: 0 }}>
         <div ref={menuRef} className={`settings-menu-shell${narrow ? ' is-narrow' : ''}`} style={narrow ? { maxWidth: '100%', minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none' } : undefined}>
           <Menu
