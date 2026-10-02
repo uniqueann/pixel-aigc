@@ -7,6 +7,7 @@ import { useCapabilities } from '@/hooks/useCapabilities'
 import CapabilityStatus from '@/components/CapabilityStatus'
 import { useUserStore } from '@/store/useUserStore'
 import BatchImageQueue from './BatchImageQueue'
+import BatchImageUpload from './BatchImageUpload'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import { invalidateBatch, processBatch } from './aspect-ratio/batch'
@@ -390,6 +391,12 @@ export default function AspectRatioTool() {
 
   return (
     <div className="toolbox-watermark">
+      <BatchImageUpload
+        count={items.length}
+        disabled={busy}
+        onAdd={addFile}
+        processingHint={settings.strategy === 'outpaint' ? '智能扩展会上传图片生成背景' : undefined}
+      />
       <div className="toolbox-watermark-main">
         <section className="toolbox-preview-panel" aria-label="转比例预览">
           <div className="toolbox-section-heading">
@@ -515,7 +522,6 @@ export default function AspectRatioTool() {
       </div>
 
       <BatchImageQueue
-        processingHint={settings.strategy === 'outpaint' ? '智能扩展会上传图片生成背景' : undefined}
         items={items.map(item => ({
           id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error,
           note: item.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : item.cropFocus?.note,
@@ -523,7 +529,6 @@ export default function AspectRatioTool() {
         }))}
         selectedId={selectedId}
         disabled={busy}
-        onAdd={addFile}
         onSelect={setSelectedId}
         onRemove={removeFile}
         onClear={clearFiles}

@@ -1,5 +1,5 @@
-import { Button, Tag, Upload } from 'antd'
-import { DeleteOutlined, DownloadOutlined, InboxOutlined, RedoOutlined, ZoomInOutlined } from '@ant-design/icons'
+import { Button, Tag } from 'antd'
+import { DeleteOutlined, DownloadOutlined, RedoOutlined, ZoomInOutlined } from '@ant-design/icons'
 
 export interface BatchQueueItem {
   id: string
@@ -18,7 +18,6 @@ interface Props {
   items: BatchQueueItem[]
   selectedId: string | null
   disabled: boolean
-  onAdd: (file: File) => void
   onSelect: (id: string) => void
   onRemove: (id: string) => void
   onClear: () => void
@@ -26,7 +25,6 @@ interface Props {
   onDownload: (id: string) => void
   onRefine?: (id: string) => void
   onPreviewResult?: (id: string) => void
-  processingHint?: string
 }
 
 const statusLabels = {
@@ -43,28 +41,17 @@ const statusColors = {
   failed: 'error',
 }
 
-export default function BatchImageQueue({ items, selectedId, disabled, onAdd, onSelect, onRemove, onClear, onRetry, onDownload, onRefine, onPreviewResult, processingHint = '图片仅在本机处理' }: Props) {
+export default function BatchImageQueue({ items, selectedId, disabled, onSelect, onRemove, onClear, onRetry, onDownload, onRefine, onPreviewResult }: Props) {
+  if (items.length === 0) return null
   return (
     <section className="toolbox-batch-queue" aria-label="批量图片队列">
       <div className="toolbox-section-heading">
         <div>
-          <strong>待处理图片</strong>
-          <span>{items.length} / 20 张</span>
+          <strong>图片列表</strong>
+          <span>{items.length} 张</span>
         </div>
-        {items.length > 0 && <Button size="small" disabled={disabled} onClick={onClear}>清空</Button>}
+        <Button size="small" disabled={disabled} onClick={onClear}>清空</Button>
       </div>
-      <Upload.Dragger
-        className="toolbox-upload"
-        accept="image/jpeg,image/png,image/webp"
-        multiple
-        showUploadList={false}
-        disabled={disabled}
-        beforeUpload={(file) => { onAdd(file); return Upload.LIST_IGNORE }}
-      >
-        <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-        <p>拖入图片，或点击选择</p>
-        <p className="ant-upload-hint">静态 JPG / PNG / WebP，最多 20 张；{processingHint}</p>
-      </Upload.Dragger>
       {items.length > 0 && (
         <div className="toolbox-queue-grid">
           {items.map(item => (
