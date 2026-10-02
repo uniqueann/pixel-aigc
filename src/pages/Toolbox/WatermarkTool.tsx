@@ -5,6 +5,7 @@ import { useUserStore } from '@/store/useUserStore'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import BatchImageQueue from './BatchImageQueue'
+import BatchImageUpload from './BatchImageUpload'
 import { invalidateBatch, processBatch } from './watermark/batch'
 import { createWatermarkZip, downloadBlob, namesForImages } from './watermark/download'
 import { deletePreset, listPresets, savePreset, type WatermarkPreset } from './watermark/presets'
@@ -288,10 +289,11 @@ export default function WatermarkTool() {
 
   return (
     <div className="toolbox-watermark">
+      <BatchImageUpload count={items.length} disabled={busy} onAdd={addFile} />
       <div className="toolbox-watermark-main">
         <section className="toolbox-preview-panel" aria-label="水印预览">
           <div className="toolbox-section-heading">
-            <div><strong>水印预览</strong><span>切换下方图片，检查横竖图效果</span></div>
+            <div><strong>水印预览</strong><span>在图片列表中切换，检查横竖图效果</span></div>
             {currentPreview?.loading && <span>正在更新预览…</span>}
           </div>
           <div className="toolbox-preview-stage">
@@ -381,7 +383,6 @@ export default function WatermarkTool() {
         items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error }))}
         selectedId={selectedId}
         disabled={busy}
-        onAdd={addFile}
         onSelect={setSelectedId}
         onRemove={removeFile}
         onClear={clearFiles}

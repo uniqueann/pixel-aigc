@@ -8,6 +8,7 @@ import { useUserStore } from '@/store/useUserStore'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import BatchImageQueue from './BatchImageQueue'
+import BatchImageUpload from './BatchImageUpload'
 import { processRemovalBatch, recompositeBatch } from './bg-remove/batch'
 import { requestMatte } from './bg-remove/client'
 import { compositeMatte } from './bg-remove/composite'
@@ -384,6 +385,7 @@ export default function BgRemoveTool() {
 
   return (
     <div className="toolbox-watermark">
+      <BatchImageUpload count={items.length} disabled={busy} onAdd={addFile} processingHint="智能抠图会上传图片处理" />
       <div className="toolbox-watermark-main">
         <section className="toolbox-preview-panel" aria-label="抠图预览">
           <div className="toolbox-section-heading">
@@ -420,7 +422,6 @@ export default function BgRemoveTool() {
         items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error, canRefine: canRefineEdge(item) }))}
         selectedId={selectedId}
         disabled={busy}
-        onAdd={addFile}
         onSelect={selectImage}
         onRemove={removeFile}
         onClear={clearFiles}

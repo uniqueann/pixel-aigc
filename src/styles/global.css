@@ -1079,6 +1079,7 @@ a {
 
 .toolbox-preview-panel,
 .toolbox-settings-panel,
+.toolbox-upload-panel,
 .toolbox-batch-queue {
   min-width: 0;
   padding: 18px;
@@ -1464,8 +1465,9 @@ a {
   .app-main-content { padding: 12px; }
   .toolbox-preview-panel,
   .toolbox-settings-panel,
+  .toolbox-upload-panel,
   .toolbox-batch-queue { padding: 12px; }
-  .toolbox-watermark-footer { align-items: stretch; flex-direction: column; }
+  .toolbox-watermark-footer { align-items: stretch; flex-direction: column; margin: 0 -12px; padding-inline: 12px; }
   .toolbox-footer-actions > .ant-btn { flex: 1; }
   .toolbox-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
