@@ -160,9 +160,9 @@ describe('个性化同步与恢复', () => {
     const refreshing = f.store.getState().refresh(); await Promise.resolve()
     const saveGate = deferred<void>()
     const saveImpl = f.dependencies.save.getMockImplementation()!
-    f.dependencies.save.mockImplementationOnce(async (patches, initializeOnly, owner) => {
+    f.dependencies.save.mockImplementationOnce(async (patches: Parameters<typeof applyPreferencesPatch>[1][], initializeOnly?: boolean) => {
       await saveGate.promise
-      return saveImpl(patches, initializeOnly, owner)
+      return saveImpl(patches, initializeOnly)
     })
     const clearing = f.store.getState().clearImageMemory()
     await Promise.resolve()
