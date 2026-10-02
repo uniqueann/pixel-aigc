@@ -22,6 +22,13 @@ vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
 
 import ImageWorkstation from './index'
 
+/** 按按钮文字定位，避免 jsdom 为可访问名称计算整页样式。 */
+function buttonByText(name: RegExp) {
+  const button = screen.getByText(name).closest('button')
+  if (!button) throw new Error('未找到对应按钮')
+  return button
+}
+
 describe('图片工作站配置提示', () => {
   beforeEach(() => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
@@ -38,7 +45,7 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByRole('status', { hidden: true }).textContent).toBe('正在加载功能配置…')
     expect(container.textContent).not.toContain('即将上线')
     expect(container.textContent).not.toContain('还不能用')
-    expect((screen.getByRole('button', { name: /^生\s*成$/, hidden: true }) as HTMLButtonElement).disabled).toBe(true)
+    expect(buttonByText(/^生\s*成$/).disabled).toBe(true)
 
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     rerender(<App><ImageWorkstation /></App>)
@@ -54,7 +61,7 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByRole('alert', { hidden: true }).textContent).toContain('功能配置加载失败，请重试')
     expect(screen.getByText('补充要求（可选）')).toBeTruthy()
     expect(container.textContent).not.toContain('即将上线')
-    fireEvent.click(screen.getByRole('button', { name: /^重\s*试$/, hidden: true }))
+    fireEvent.click(buttonByText(/^重\s*试$/))
     expect(mocks.status.refetch).toHaveBeenCalledOnce()
   })
 

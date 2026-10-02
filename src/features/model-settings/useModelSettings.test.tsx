@@ -35,6 +35,13 @@ const unconfigured: ModelSettings = {
 }
 const missingKeyMessage = '配置自己的 DeepSeek API Key 后即可生成'
 
+/** 按按钮文字定位，避免 jsdom 为可访问名称计算整页样式。 */
+function buttonByText(name: RegExp) {
+  const button = screen.getByText(name).closest('button')
+  if (!button) throw new Error('未找到对应按钮')
+  return button
+}
+
 describe('邮件模型配置状态', () => {
   let client: QueryClient
   let wrapper: ({ children }: { children: ReactNode }) => ReactNode
@@ -60,12 +67,12 @@ describe('邮件模型配置状态', () => {
     render(<EmailAssistant />, { wrapper })
     fireEvent.change(screen.getByPlaceholderText('粘贴需要处理的邮件内容'), { target: { value: '请确认商品的发货时间。' } })
     expect(screen.queryByText(missingKeyMessage)).toBeNull()
-    expect((screen.getByRole('button', { name: /^生\s*成$/, hidden: true }) as HTMLButtonElement).disabled).toBe(true)
+    expect(buttonByText(/^生\s*成$/).disabled).toBe(true)
 
     await act(async () => resolve(configured))
-    await waitFor(() => expect((screen.getByRole('button', { name: /^生\s*成$/, hidden: true }) as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() => expect(buttonByText(/^生\s*成$/).disabled).toBe(false))
     expect(screen.queryByText(missingKeyMessage)).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /^生\s*成$/, hidden: true }))
+    fireEvent.click(buttonByText(/^生\s*成$/))
     await waitFor(() => expect(mocks.generate).toHaveBeenCalledWith(expect.objectContaining({ sourceText: '请确认商品的发货时间。' }), configured.defaultEmailModelId))
   })
 
@@ -83,7 +90,7 @@ describe('邮件模型配置状态', () => {
     render(<EmailAssistant />, { wrapper })
     await waitFor(() => expect(screen.getByText('模型设置加载失败，请重试')).toBeTruthy())
     expect(screen.queryByText(missingKeyMessage)).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /^重\s*试$/, hidden: true }))
+    fireEvent.click(buttonByText(/^重\s*试$/))
     await waitFor(() => expect(screen.queryByText('模型设置加载失败，请重试')).toBeNull())
     expect(screen.getByText('DeepSeek Flash')).toBeTruthy()
   })
@@ -115,7 +122,7 @@ describe('邮件模型配置状态', () => {
     await waitFor(() => expect(screen.getByText('尚未配置')).toBeTruthy())
     expect(screen.getByText(missingKeyMessage)).toBeTruthy()
     fireEvent.change(screen.getByLabelText('DeepSeek API Key'), { target: { value: '测试密钥' } })
-    fireEvent.click(screen.getByRole('button', { name: /^保\s*存$/, hidden: true }))
+    fireEvent.click(buttonByText(/^保\s*存$/))
     await waitFor(() => expect(screen.getByText('已验证')).toBeTruthy())
     expect(screen.queryByText(missingKeyMessage)).toBeNull()
     await waitFor(() => expect(mocks.getSettings).toHaveBeenCalledTimes(2))
