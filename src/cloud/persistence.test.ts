@@ -5,8 +5,9 @@ import { readCurrentSnapshot, readLegacySnapshot, setPersistenceUser, writeCurre
 import { parseSnapshot, persistableSnapshot } from '@/editor/persistence/snapshot'
 import { defaultDrafts, type ProjectSnapshot } from '@/editor/persistence/types'
 const snapshot: ProjectSnapshot = { schemaVersion: 1, cloud: { revision: 2, pending: true }, drafts: defaultDrafts(), recoveries: {}, project: {
-  id: 'p', name: '测试', createdAt: '2026-01-01', updatedAt: '2026-01-01', generations: {}, document: { version: 1, activeSceneId: 's', scenes: [{ id: 's', name: '场景', width: 100, height: 100, viewport: { zoom: 1, panX: 0, panY: 0 }, nodes: [] }] },
+  id: 'p', name: '测试', createdAt: '2026-01-01', updatedAt: '2026-01-01', generations: {},
   assets: { a: { id: 'a', name: '图', type: 'image', source: 'upload', createdAt: '2026-01-01', width: 100, height: 100, mimeType: 'image/png', url: 'https://r2.example/a?X-Amz-Signature=SECRET', storage: { provider: 'r2', objectKey: 'media/key', projectId: 'p' }, accessExpiresAt: 100 } },
+  document: { version: 1, activeSceneId: 's', scenes: [{ id: 's', name: '场景', width: 100, height: 100, viewport: { zoom: 1, panX: 0, panY: 0 }, nodes: [{ id: 'n', type: 'image', assetId: 'a', name: '图', x: 0, y: 0, width: 10, height: 10, rotation: 0, opacity: 1, visible: true, locked: false, zIndex: 0 }] }] },
 } }
 afterEach(() => { setPersistenceUser('test-reset') })
 describe('账号分区与稳定素材引用', () => {

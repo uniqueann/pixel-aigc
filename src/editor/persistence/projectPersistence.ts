@@ -1,7 +1,9 @@
 import { hydrateAssets } from '@/cloud/assets'
 import { useEditorStore } from '@/editor/store'
 import { useTaskStore } from '@/store/useTaskStore'
+import { useUserStore } from '@/store/useUserStore'
 import { readCurrentSnapshot, writeCurrentSnapshot, persistenceScope } from './database'
+import { linkOwnedAssetKeys } from './ownedAssetKeys'
 import { restoreTaskDrafts } from './restoreDrafts'
 import { parseSnapshot, serializeSnapshot, persistableSnapshot, restoreHistoryCommands } from './snapshot'
 import { recoveryForTask, usePersistenceStore } from './persistenceStore'
@@ -84,6 +86,42 @@ function installSubscriptions() {
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) window.location.reload()
   })
+  useUserStore.subscribe((state, previous) => {
+    if (state.userId !== previous.userId) void relinkOwnedKeys()
+  })
+}
+
+function withDisplayableCloudBytes(compact: ProjectSnapshot, source: ProjectSnapshot) {
+  const display = parseSnapshot(compact)
+  for (const [id, asset] of Object.entries(display.project.assets)) {
+    const previous = source.project.assets[id]
+    if (previous?.url.startsWith('data:') && asset.url.startsWith('/__aigc_asset__/')) asset.url = previous.url
+  }
+  return display
+}
+
+async function relinkOwnedKeys() {
+  const projectId = useEditorStore.getState().project?.id
+  if (!projectId || usePersistenceStore.getState().phase !== 'ready') return
+  try {
+    const linked = await linkOwnedAssetKeys(parseSnapshot(currentSnapshot()))
+    if (useEditorStore.getState().project?.id !== projectId) return
+    useEditorStore.setState(state => {
+      if (!state.project || state.project.id !== projectId) return state
+      const assets = { ...state.project.assets }
+      let gained = false
+      for (const asset of Object.values(linked.project.assets)) {
+        const live = assets[asset.id]
+        if (!live || !asset.objectKey || live.objectKey || live.storage?.objectKey) continue
+        assets[asset.id] = { ...live, objectKey: asset.objectKey }
+        gained = true
+      }
+      if (!gained) return state
+      return { project: { ...state.project, assets, updatedAt: new Date().toISOString() } }
+    })
+  } catch {
+    // 匹配失败时保留现有存档。
+  }
 }
 
 async function acquireLock() {
@@ -109,7 +147,11 @@ export function initializePersistence(): Promise<void> {
       const raw = await readCurrentSnapshot()
       usePersistenceStore.setState({ raw, writable })
       if (raw !== undefined) {
-        applySnapshot(await hydrateAssets(parseSnapshot(raw)))
+        const parsed = parseSnapshot(raw)
+        const linked = await linkOwnedAssetKeys(parsed)
+        const compact = persistableSnapshot(linked)
+        if (JSON.stringify(compact).length < JSON.stringify(raw).length) await writeCurrentSnapshot(compact)
+        applySnapshot(await hydrateAssets(withDisplayableCloudBytes(compact, linked)))
         savedRevision = revision
       }
       usePersistenceStore.setState({ phase: 'ready' })
@@ -158,8 +200,9 @@ export async function replaceSnapshot(snapshot: ProjectSnapshot) {
   usePersistenceStore.setState({ phase: 'loading' })
   clearTimeout(timer)
   const operation = queue.catch(() => undefined).then(async () => {
-    await writeCurrentSnapshot(persistableSnapshot(valid))
-    applySnapshot(valid)
+    const compact = persistableSnapshot(valid)
+    await writeCurrentSnapshot(compact)
+    applySnapshot(parseSnapshot(compact))
     revision += 1
     savedRevision = revision
     usePersistenceStore.setState({ phase: 'ready' })

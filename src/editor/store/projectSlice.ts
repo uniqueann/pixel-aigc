@@ -92,13 +92,24 @@ export const createProjectSlice: StateCreator<EditorStoreState, [], [], ProjectS
       nodes.map((node) => node.id === nodeId ? ({ ...node, ...changes, id: node.id, type: node.type } as EditorNode) : node),
     ),
   })),
-  registerAsset: (asset) => set((state) => ({
-    project: state.project ? {
-      ...state.project,
-      assets: { ...state.project.assets, [asset.id]: asset },
-      updatedAt: now(),
-    } : null,
-  })),
+  registerAsset: (asset) => set((state) => {
+    if (!state.project) return { project: null }
+    const previous = state.project.assets[asset.id]
+    const objectKey = asset.objectKey ?? previous?.objectKey ?? previous?.storage?.objectKey
+    const storage = asset.storage ?? previous?.storage
+    const next: Asset = {
+      ...asset,
+      ...(objectKey ? { objectKey } : {}),
+      ...(storage ? { storage } : {}),
+    }
+    return {
+      project: {
+        ...state.project,
+        assets: { ...state.project.assets, [asset.id]: next },
+        updatedAt: now(),
+      },
+    }
+  }),
   registerGeneration: (generation) => set((state) => ({
     project: state.project ? {
       ...state.project,

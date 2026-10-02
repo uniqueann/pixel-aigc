@@ -9,6 +9,7 @@ import {
   calculateRevealViewport,
   clampZoom,
   normalizeNodeTransform,
+  findArtboardPlacement,
   offsetPlacementToAvoidOverlap,
   overlapsBounds,
   boundsFromPlacement,
@@ -113,6 +114,58 @@ describe('自由画布几何计算', () => {
     const second = offsetPlacementToAvoidOverlap(first, [occupied])
     expect(second).toEqual({ x: 560, y: 360, width: 200, height: 160 })
     expect(overlapsBounds(boundsFromPlacement(second), occupied)).toBe(false)
+  })
+
+  it('优先把新节点放进画板，右侧和下方被占时改到左侧空位', () => {
+    const placed = findArtboardPlacement(
+      { x: 592, y: 200, width: 160, height: 120 },
+      [
+        { left: 560, top: 0, right: 1000, bottom: 600 },
+        { left: 0, top: 340, right: 560, bottom: 600 },
+      ],
+      { width: 1000, height: 600 },
+      { left: 400, top: 200, right: 560, bottom: 320 },
+    )
+    expect(placed.outside).toBe(false)
+    expect(placed.x).toBeGreaterThanOrEqual(0)
+    expect(placed.x + placed.width).toBeLessThanOrEqual(560)
+    expect(placed.y).toBeGreaterThanOrEqual(0)
+    expect(placed.y + placed.height).toBeLessThanOrEqual(340)
+  })
+
+  it('首选位置在画板下方时改放到画板内部', () => {
+    const placed = findArtboardPlacement(
+      { x: 400, y: 800, width: 180, height: 140 },
+      [{ left: 500, top: 250, right: 780, bottom: 470 }],
+      { width: 1280, height: 720 },
+    )
+    expect(placed.outside).toBe(false)
+    expect(placed.x).toBeGreaterThanOrEqual(0)
+    expect(placed.y).toBeGreaterThanOrEqual(0)
+    expect(placed.x + placed.width).toBeLessThanOrEqual(1280)
+    expect(placed.y + placed.height).toBeLessThanOrEqual(720)
+  })
+
+  it('画板只剩小空隙时先缩小，整板被占满才放到画板外', () => {
+    const fitted = findArtboardPlacement(
+      { x: 0, y: 0, width: 180, height: 140 },
+      [{ left: 0, top: 0, right: 100, bottom: 160 }],
+      { width: 200, height: 160 },
+    )
+    expect(fitted.outside).toBe(false)
+    expect(fitted.width).toBeLessThan(180)
+    expect(fitted.x).toBeGreaterThanOrEqual(0)
+    expect(fitted.y).toBeGreaterThanOrEqual(0)
+    expect(fitted.x + fitted.width).toBeLessThanOrEqual(200)
+    expect(fitted.y + fitted.height).toBeLessThanOrEqual(160)
+
+    const outside = findArtboardPlacement(
+      { x: 10, y: 10, width: 80, height: 80 },
+      [{ left: 0, top: 0, right: 200, bottom: 200 }],
+      { width: 200, height: 200 },
+    )
+    expect(outside.outside).toBe(true)
+    expect(outside.y).toBeGreaterThanOrEqual(200)
   })
 
   it('结果超出当前视口时平移以完整显示目标区域', () => {

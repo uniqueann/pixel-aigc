@@ -130,9 +130,12 @@ export default function FreeCanvas() {
       center: stageRef.current?.getViewportCenter() ?? { x: scene.width / 2, y: scene.height / 2 },
     }
     try {
-      if (input instanceof File) await importCanvasFile(input, context)
-      else await importCanvasHistory(input, context)
-      if (!context.signal.aborted) { setPickerOpen(false); await flushProject() }
+      const imported = input instanceof File ? await importCanvasFile(input, context) : await importCanvasHistory(input, context)
+      if (!context.signal.aborted) {
+        stageRef.current?.revealBounds([calculateNodeBounds(imported.node)])
+        setPickerOpen(false)
+        await flushProject()
+      }
     } catch (error) {
       if (!context.signal.aborted) message.error(error instanceof Error ? error.message : '图片添加失败')
     } finally {

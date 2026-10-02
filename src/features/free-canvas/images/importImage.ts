@@ -9,7 +9,7 @@ import { readOwnedImage } from '@/services/api/ownedImages'
 import { uploadImage } from '@/services/api/upload'
 import { readResultImage } from '@/features/image-workstation/imageMetadata'
 import { assetPlaceholder } from '@/cloud/assets'
-import { calculateInitialImageNode, calculateNodeBounds, offsetPlacementToAvoidOverlap, type CanvasPoint } from '../geometry'
+import { calculateInitialImageNode, calculateNodeBounds, findArtboardPlacement, type CanvasPoint } from '../geometry'
 
 export interface CanvasImageImportContext {
   ownerId: string; projectId: string; sceneId: string; epoch: number; center: CanvasPoint; signal: AbortSignal
@@ -27,19 +27,25 @@ function insert(asset: ImageAsset, context: CanvasImageImportContext) {
   const editor = useEditorStore.getState()
   const scene = editor.project?.document.scenes.find(item => item.id === context.sceneId)
   if (!scene) throw new Error('当前画布不存在')
-  const existing = asset.objectKey ? Object.values(editor.project!.assets).find(item => item.type === 'image' && item.objectKey === asset.objectKey) as ImageAsset | undefined : undefined
+  const existing = Object.values(editor.project!.assets).find(item => item.type === 'image' && (
+    (asset.objectKey && item.objectKey === asset.objectKey)
+    || (!asset.objectKey && asset.url.startsWith('data:') && item.url === asset.url)
+  )) as ImageAsset | undefined
   asset = existing ?? asset
   const node = calculateInitialImageNode(asset, scene)
-  const placed = offsetPlacementToAvoidOverlap(
+  const placed = findArtboardPlacement(
     { x: context.center.x - node.width / 2, y: context.center.y - node.height / 2, width: node.width, height: node.height },
     scene.nodes.map(item => calculateNodeBounds(item)),
+    scene,
   )
   node.x = placed.x
   node.y = placed.y
+  node.width = placed.width
+  node.height = placed.height
   node.zIndex = Math.max(-1, ...scene.nodes.map(item => item.zIndex)) + 1
   editor.executeCommand(new InsertGeneratedAssetCommand(scene.id, asset, node))
   editor.selectNodes([node.id])
-  return node
+  return { node, placedOutside: placed.outside }
 }
 
 export async function importCanvasFile(file: File, context: CanvasImageImportContext) {
@@ -59,5 +65,5 @@ export async function importCanvasHistory(record: WorkstationHistoryListItem, co
     reader.onerror = () => reject(new Error('读取资产图片失败'))
     reader.readAsDataURL(measured.blob)
   })
-  return insert(createImageAsset({ id, name: '资产图片', url, objectKey: record.objectKey, ...measured, createdAt: record.createdAt }), context)
+  return insert(createImageAsset({ id, name: '资产图片', url, ...measured, objectKey: record.objectKey, createdAt: record.createdAt }), context)
 }
