@@ -57,3 +57,17 @@ export async function readLegacyPreferences(owner: string): Promise<PreferencesP
   }
   return { recent: { assetsView }, image: { lastUsed } }
 }
+
+/** 清除工具箱本机旧偏好，避免清空云端记忆后再次被 IndexedDB 回填。 */
+export async function clearLegacyImagePrefs(owner: string): Promise<void> {
+  const [{ DEFAULT_BG_REMOVE_SETTINGS }, session] = await Promise.all([
+    import('@/pages/Toolbox/bg-remove/types'),
+    import('@/pages/Toolbox/bg-remove/session'),
+  ])
+  const current = session.loadBgRemoveSession(owner)
+  if (current) session.saveBgRemoveSession({ ...current, settings: DEFAULT_BG_REMOVE_SETTINGS })
+  await Promise.allSettled([
+    import('@/pages/Toolbox/bg-remove/prefs').then(module => module.clearPrefs(owner)),
+    import('@/pages/Toolbox/aspect-ratio/prefs').then(module => module.clearPrefs(owner)),
+  ])
+}

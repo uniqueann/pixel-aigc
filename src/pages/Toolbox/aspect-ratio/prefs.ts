@@ -70,3 +70,11 @@ export async function writePrefs(scope: string, settings: AspectRatioSettings): 
     request.onerror = () => reject(request.error ?? new Error('保存转比例设置失败'))
   })
 }
+
+export async function clearPrefs(scope: string): Promise<void> {
+  await transact<void>('readwrite', (store, resolve, reject) => {
+    const request = store.delete(scope)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error ?? new Error('清除转比例设置失败'))
+  })
+}

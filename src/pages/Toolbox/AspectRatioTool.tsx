@@ -58,6 +58,7 @@ export default function AspectRatioTool() {
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
   const [settings, setSettings] = useState<AspectRatioSettings>(() => initialAspectRatioSettings(usePreferencesStore.getState().preferences))
   const settingsRef = useRef(settings)
   const [previewState, setPreviewState] = useState<PreviewState | null>(null)
@@ -140,6 +141,12 @@ export default function AspectRatioTool() {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    const next = initialAspectRatioSettings(usePreferencesStore.getState().preferences)
+    settingsRef.current = next
+    setSettings(next)
+  }, [memoryEpoch])
 
   useEffect(() => {
     let active = true

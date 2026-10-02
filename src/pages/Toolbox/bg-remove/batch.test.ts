@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { describe, expect, it, vi } from 'vitest'
 import { imagesNeedingRemoval, processRemovalBatch, recompositeBatch } from './batch'
 import { outputNames } from './download'
-import { normalizeSettings, outputMime, readPrefs, writePrefs } from './prefs'
+import { clearPrefs, normalizeSettings, outputMime, readPrefs, writePrefs } from './prefs'
 import { DEFAULT_BG_REMOVE_SETTINGS, type BatchImage } from './types'
 
 function item(id: string, status: BatchImage['status'] = 'pending', matte?: Blob): BatchImage {
@@ -20,6 +20,9 @@ describe('抠图背景设置', () => {
     await writePrefs('user-a', { background: 'transparent' })
     expect(await readPrefs('user-a')).toEqual({ background: 'transparent' })
     expect(await readPrefs('user-b')).toEqual(DEFAULT_BG_REMOVE_SETTINGS)
+    await writePrefs('user-a', { background: 'transparent' })
+    await clearPrefs('user-a')
+    expect(await readPrefs('user-a')).toEqual(DEFAULT_BG_REMOVE_SETTINGS)
   })
 })
 

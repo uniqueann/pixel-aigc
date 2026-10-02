@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyPreferencesPatch, defaultPreferences, type PreferencesResponse } from '@shared/preferences'
+import { initialAspectRatioSettings } from './toolParameters'
 import { createPreferencesStore } from './createPreferencesStore'
 import type { PreferencesCache } from './storage'
+import { DEFAULT_ASPECT_RATIO_SETTINGS } from '@/pages/Toolbox/aspect-ratio/types'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -22,6 +24,7 @@ function fixture() {
     loadCache: (owner: string) => caches.get(owner),
     saveCache: vi.fn((owner: string, cache: PreferencesCache) => { caches.set(owner, structuredClone(cache)); return true }),
     legacy: vi.fn(async () => ({ recent: { assetsView: 'list' as const } })),
+    clearLegacy: vi.fn(async () => undefined),
   }
   return { dependencies, caches, response, server: () => server, empty: () => { stored = false }, store: createPreferencesStore(dependencies) }
 }
@@ -137,5 +140,38 @@ describe('个性化同步与恢复', () => {
     f.dependencies.read.mockRejectedValue(new Error('网络断开')); await f.store.getState().initialize('alice', true)
     expect(f.store.getState().preferences.email.language).toBe('en'); expect(f.store.getState().ready).toBe(true)
     await f.store.getState().initialize('bob', true); expect(f.store.getState().preferences.email.language).toBe('zh')
+  })
+  it('清除记忆立即提交且不受防抖影响，迟到读取不会回填', async () => {
+    const f = fixture(); await f.store.getState().initialize('alice', true)
+    f.store.getState().remember('aspect-ratio', { selectedPresetId: 'temu-main', strategy: 'letterbox' })
+    await f.store.getState().flush()
+    const read = deferred<PreferencesResponse>(); f.dependencies.read.mockReturnValueOnce(read.promise)
+    const refreshing = f.store.getState().refresh(); await Promise.resolve()
+    const clearing = f.store.getState().clearImageMemory()
+    await Promise.resolve()
+    expect(f.dependencies.save).toHaveBeenCalledTimes(2)
+    expect(f.dependencies.clearLegacy).toHaveBeenCalledWith('alice')
+    expect(f.store.getState().preferences.image.lastUsed).toEqual({})
+    expect(initialAspectRatioSettings(f.store.getState().preferences).selectedPresetId).toBe(DEFAULT_ASPECT_RATIO_SETTINGS.selectedPresetId)
+    const stale = f.response()
+    stale.preferences = applyPreferencesPatch(defaultPreferences(), { image: { lastUsed: { 'aspect-ratio': { selectedPresetId: 'temu-main', strategy: 'letterbox' } } } })
+    read.resolve(stale)
+    await refreshing
+    await clearing
+    expect(f.store.getState().preferences.image.lastUsed).toEqual({})
+    expect(f.server().image.lastUsed).toEqual({})
+    expect(f.store.getState().memoryEpoch).toBeGreaterThan(0)
+  })
+  it('清除记忆失败后可立即重试', async () => {
+    const f = fixture(); await f.store.getState().initialize('alice', true)
+    f.store.getState().remember('aspect-ratio', { selectedPresetId: 'temu-main', strategy: 'letterbox' })
+    await f.store.getState().flush()
+    f.dependencies.save.mockRejectedValueOnce(new Error('网络断开'))
+    await expect(f.store.getState().clearImageMemory()).rejects.toThrow(/网络断开/)
+    expect(f.store.getState().status).toBe('error')
+    expect(f.store.getState().preferences.image.lastUsed).toEqual({})
+    await f.store.getState().clearImageMemory()
+    expect(f.server().image.lastUsed).toEqual({})
+    expect(f.store.getState().status).toBe('saved')
   })
 })

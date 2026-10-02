@@ -50,6 +50,7 @@ export default function BgRemoveTool() {
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
+  const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
   const [settings, setSettings] = useState<BgRemoveSettings>(() => initialBgRemoveSettings(usePreferencesStore.getState().preferences))
   const settingsRef = useRef(settings)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -178,6 +179,11 @@ export default function BgRemoveTool() {
     }
   }, [historyOwner, message, scope])
 
+  useEffect(() => {
+    const next = initialBgRemoveSettings(usePreferencesStore.getState().preferences)
+    settingsRef.current = next
+    setSettings(next)
+  }, [memoryEpoch])
 
   useEffect(() => {
     let cancelled = false

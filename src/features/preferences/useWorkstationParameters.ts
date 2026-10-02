@@ -4,11 +4,12 @@ import { initialWorkstationParameters, type WorkstationParameters } from './tool
 import { usePreferencesStore } from './store'
 
 export function useWorkstationParameters(tool: string) {
-  const [draft, setDraft] = useState(() => ({ tool, parameters: initialWorkstationParameters(usePreferencesStore.getState().preferences, tool) }))
+  const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
+  const [draft, setDraft] = useState(() => ({ tool, memoryEpoch, parameters: initialWorkstationParameters(usePreferencesStore.getState().preferences, tool) }))
   let parameters = draft.parameters
-  if (draft.tool !== tool) {
+  if (draft.tool !== tool || draft.memoryEpoch !== memoryEpoch) {
     parameters = initialWorkstationParameters(usePreferencesStore.getState().preferences, tool)
-    setDraft({ tool, parameters })
+    setDraft({ tool, memoryEpoch, parameters })
   }
   const update = useCallback((patch: Partial<WorkstationParameters>, remember = true) => {
     setDraft(previous => ({ tool, parameters: { ...previous.parameters, ...patch } }))

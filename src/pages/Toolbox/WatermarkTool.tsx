@@ -51,6 +51,7 @@ export default function WatermarkTool() {
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
   const [settings, setSettings] = useState<WatermarkSettings>(() => initialWatermarkSettings(usePreferencesStore.getState().preferences))
   const [previewState, setPreviewState] = useState<PreviewState | null>(null)
   const previewUrlRef = useRef<string | null>(null)
@@ -102,6 +103,10 @@ export default function WatermarkTool() {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    setSettings(initialWatermarkSettings(usePreferencesStore.getState().preferences))
+  }, [memoryEpoch])
 
   useEffect(() => {
     let active = true
