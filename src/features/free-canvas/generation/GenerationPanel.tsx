@@ -198,6 +198,7 @@ export default function GenerationPanel({
       {textToVideo && <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />}
 
       <Button
+        className="free-canvas-generate"
         type="primary"
         block
         loading={submitting}

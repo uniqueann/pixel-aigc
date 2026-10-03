@@ -209,6 +209,7 @@ export default function DerivedGenerationPanel({
         <p>保持原图比例；首期暂不支持含真人人脸的图片。</p>
         <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} /></>}
       <Button
+        className="free-canvas-generate"
         type="primary"
         block
         loading={submitting || autoRetrying}
