@@ -1,4 +1,5 @@
 import { watermarkPosition, watermarkTilePositions } from './geometry'
+import { averageLuminance, clampSampleRect, resolveTextAppearance } from './readability'
 import type { WatermarkSettings } from './types'
 
 type DrawContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
@@ -62,12 +63,53 @@ export function drawWatermarkedImage(
     }
     const width = Math.min(availableWidth, context.measureText(text).width)
     const height = fontSize * 1.15
+    const luminance = settings.colorMode === 'auto'
+      ? readBackgroundLuminance(context, targetWidth, targetHeight, settings.layout === 'tile'
+        ? null
+        : watermarkPosition(targetWidth, targetHeight, width, height, margin, settings.anchor), width, height)
+      : null
+    const appearance = resolveTextAppearance({
+      colorMode: settings.colorMode, color: settings.color, readability: settings.readability, fontSize, luminance,
+    })
+    context.textAlign = 'left'
     context.textBaseline = 'top'
-    context.fillStyle = settings.color
-    context.shadowColor = 'rgba(0, 0, 0, 0.55)'
-    context.shadowBlur = Math.max(1, fontSize * 0.1)
-    context.shadowOffsetY = Math.max(1, fontSize * 0.04)
-    drawMark(width, height, (left, top) => context.fillText(text, left, top))
+    context.fillStyle = appearance.fill
+    context.shadowColor = 'transparent'
+    context.shadowBlur = 0
+    context.shadowOffsetX = 0
+    context.shadowOffsetY = 0
+    if (appearance.stroke) {
+      context.lineJoin = 'round'
+      context.miterLimit = 2
+      context.lineWidth = appearance.strokeWidth
+      context.strokeStyle = appearance.stroke
+    }
+    drawMark(width, height, (left, top) => {
+      if (appearance.stroke) context.strokeText(text, left, top)
+      context.fillText(text, left, top)
+    })
   }
   context.restore()
+}
+
+/** 读取已绘制的原图像素。getImageData 不受当前透明度影响，预览和导出走同一函数。 */
+function readBackgroundLuminance(
+  context: DrawContext,
+  targetWidth: number,
+  targetHeight: number,
+  origin: { left: number; top: number } | null,
+  markWidth: number,
+  markHeight: number,
+) {
+  if (typeof context.getImageData !== 'function') return 1
+  const bounds = origin
+    ? clampSampleRect(origin.left, origin.top, markWidth, markHeight, targetWidth, targetHeight)
+    : { x: 0, y: 0, width: targetWidth, height: targetHeight }
+  if (bounds.width <= 0 || bounds.height <= 0) return 1
+  try {
+    const image = context.getImageData(bounds.x, bounds.y, bounds.width, bounds.height)
+    return averageLuminance(image.data, image.width, image.height)
+  } catch {
+    return 1
+  }
 }

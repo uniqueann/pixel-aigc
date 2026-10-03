@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Button, ColorPicker, Input, Radio, Slider, Upload } from 'antd'
+import { Button, ColorPicker, Input, Radio, Slider, Switch, Upload } from 'antd'
 import { UploadOutlined } from '@ant-design/icons'
 import type { WatermarkAnchor, WatermarkSettings } from '../watermark/types'
 
@@ -39,7 +39,25 @@ export default function WatermarkSettingsPanel({ settings, disabled, onChange, o
         <>
           <label className="toolbox-field-label" htmlFor="watermark-text">水印文字</label>
           <Input id="watermark-text" value={settings.text} maxLength={80} disabled={disabled} placeholder="例如：© 我的品牌" onChange={event => onChange({ text: event.target.value })} />
-          <div className="toolbox-field-row"><span>文字颜色</span><ColorPicker value={settings.color} disabled={disabled} onChange={color => onChange({ color: color.toHexString() })} /></div>
+          <label className="toolbox-field-label">文字颜色</label>
+          <Radio.Group
+            className="toolbox-layout-options"
+            aria-label="文字颜色模式"
+            value={settings.colorMode}
+            disabled={disabled}
+            onChange={event => onChange({ colorMode: event.target.value })}
+            options={[{ label: '自动', value: 'auto' }, { label: '自定义', value: 'custom' }]}
+            optionType="button"
+            buttonStyle="solid"
+          />
+          {settings.colorMode === 'custom' && (
+            <div className="toolbox-field-row"><span>自定义颜色</span><ColorPicker value={settings.color} disabled={disabled} onChange={color => onChange({ color: color.toHexString() })} /></div>
+          )}
+          <div className="toolbox-field-row">
+            <span>可读性描边</span>
+            <Switch checked={settings.readability} disabled={disabled} aria-label="可读性描边" onChange={checked => onChange({ readability: checked })} />
+          </div>
+          <p className="toolbox-hint">自动按水印区域明暗选择黑白字，平铺看整张图，透明处按浅色处理。描边为对比色，并随字号缩放。</p>
           <label className="toolbox-field-label">文字大小：短边的 {settings.textSizePercent}%</label>
           <Slider min={1} max={15} value={settings.textSizePercent} disabled={disabled} onChange={value => onChange({ textSizePercent: value })} />
         </>

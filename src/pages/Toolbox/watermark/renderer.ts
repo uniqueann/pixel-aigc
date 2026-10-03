@@ -1,4 +1,5 @@
 import { drawWatermarkedImage } from './draw'
+import { canvasSizeForSource, WATERMARK_OUTPUT_QUALITY } from './raster'
 import type { RenderRequest, RenderResult } from './types'
 
 interface WorkerResponse { id: number; result?: RenderResult; error?: string }
@@ -24,11 +25,7 @@ async function renderOnMainThread(request: RenderRequest): Promise<RenderResult>
   let canvas: HTMLCanvasElement | undefined
   try {
     if (request.settings.kind === 'logo' && request.settings.logo) logo = await readSource(request.settings.logo)
-    const scale = request.previewMaxDimension
-      ? Math.min(1, request.previewMaxDimension / Math.max(source.width, source.height))
-      : 1
-    const width = Math.max(1, Math.round(source.width * scale))
-    const height = Math.max(1, Math.round(source.height * scale))
+    const { width, height } = canvasSizeForSource(source.width, source.height, request.previewMaxDimension)
     canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height
@@ -37,7 +34,7 @@ async function renderOnMainThread(request: RenderRequest): Promise<RenderResult>
     drawWatermarkedImage(context, source, source.width, source.height, width, height, request.settings, logo)
     const outputCanvas = canvas
     const blob = await new Promise<Blob>((resolve, reject) => {
-      outputCanvas.toBlob(value => value ? resolve(value) : reject(new Error('图片编码失败')), request.outputMime ?? request.sourceMime, 0.92)
+      outputCanvas.toBlob(value => value ? resolve(value) : reject(new Error('图片编码失败')), request.outputMime ?? request.sourceMime, WATERMARK_OUTPUT_QUALITY)
     })
     return { blob, mimeType: blob.type, width, height }
   } finally {

@@ -1308,7 +1308,8 @@ a {
 .toolbox-queue-error,
 .toolbox-queue-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbox-queue-note { color: var(--color-text-muted); font-size: 12px; }
-.toolbox-queue-note.is-warning { color: var(--color-warning); white-space: normal; overflow: visible; }
+.toolbox-queue-note.is-warning { color: var(--color-warning); white-space: normal; overflow: visible; padding: 6px 8px; border-radius: 6px; background: rgba(245, 185, 66, 0.16); }
+.toolbox-crop-notice { margin: 10px 0 0; padding: 8px 10px; border-radius: 6px; background: rgba(245, 185, 66, 0.16); color: var(--color-warning); font-size: 13px; line-height: 1.45; }
 .toolbox-watermark-footer {
   position: sticky;
   bottom: 0;

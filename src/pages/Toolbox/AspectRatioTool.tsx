@@ -22,7 +22,7 @@ import { initialAspectRatioSettings, aspectRatioMemory } from '@/features/prefer
 import { deletePreset, listPresets, savePreset, type AspectRatioPreset } from './aspect-ratio/presets'
 import { AspectRatioRenderer } from './aspect-ratio/renderer'
 import { SubjectDetectionCache } from './aspect-ratio/subjectCache'
-import { cropProgressLabel } from './aspect-ratio/subjectFocus'
+import { cropProgressLabel, unavailableCropSummary } from './aspect-ratio/subjectFocus'
 import { PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
 import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
@@ -85,7 +85,8 @@ export default function AspectRatioTool() {
   const selectedOutputSize = selectedOutputPlan?.targetSize ?? { width: preset.width, height: preset.height }
   const completed = items.filter(item => item.status === 'succeeded')
   const failed = items.filter(item => item.status === 'failed')
-  const gridFallbacks = items.filter(item => item.status === 'succeeded' && item.cropFocus?.source === 'grid' && item.cropFocus.note)
+  const degradeLabel = unavailableCropSummary(completed.map(item => item.cropFocus))
+  const missedSubjectCount = completed.filter(item => item.cropFocus?.source === 'grid' && !item.cropFocus.unavailable).length
   const processingItems = items.filter(item => item.status === 'processing')
   const donePercent = items.length ? Math.round(completed.length / items.length * 100) : 0
   const outputBytes = completed.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
@@ -401,6 +402,9 @@ export default function AspectRatioTool() {
             {settings.strategy === 'outpaint' ? '智能扩展会上传图片生成背景。' : '图片在本机处理。'}
           </p>
           {upscale > 2 && <p className="toolbox-hint toolbox-warning">当前图片需要放大超过 2 倍才能铺满目标尺寸，细节可能变糊。</p>}
+          {selected?.status === 'succeeded' && selected.cropFocus?.source === 'grid' && selected.cropFocus.note && (
+            <p className="toolbox-crop-notice" role="status">{selected.cropFocus.note}</p>
+          )}
         </section>
 
         <AspectRatioSettingsPanel settings={settings} disabled={controlsLocked} onChange={updateSettings}
@@ -436,6 +440,7 @@ export default function AspectRatioTool() {
           id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error,
           note: item.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : item.cropFocus?.note,
           noteWarning: item.status !== 'processing' && item.cropFocus?.source === 'grid',
+          canRetry: item.status === 'succeeded' && Boolean(item.cropFocus?.unavailable),
         }))}
         selectedId={selectedId}
         disabled={busy}
@@ -450,13 +455,14 @@ export default function AspectRatioTool() {
       <PreviewGallery {...galleryProps} onDownload={item => downloadOne(item.id)} />
 
       <div className="toolbox-watermark-footer">
-        {settings.strategy === 'crop' && gridFallbacks.length > 0 && <p className="toolbox-hint toolbox-warning toolbox-crop-warning">{gridFallbacks.length} 张没有按商品裁剪，用的是当前九宫格。下载前请把焦点改到商品所在位置，再重新处理。</p>}
+        {settings.strategy === 'crop' && degradeLabel && <p className="toolbox-crop-notice toolbox-crop-warning" role="status">{degradeLabel}</p>}
+        {settings.strategy === 'crop' && missedSubjectCount > 0 && <p className="toolbox-crop-notice toolbox-crop-warning" role="status">{missedSubjectCount} 张没识别到商品，已按当前九宫格裁剪。请把焦点改到商品所在位置后再处理。</p>}
         <div className="toolbox-progress">
-          <span className="toolbox-progress-status">{processing && settings.strategy === 'crop'
+          <span className="toolbox-progress-status">{(processing && settings.strategy === 'crop'
             ? cropProgressLabel(completed.length, items.length, processingItems.map(item => item.file.name))
             : processing && settings.strategy === 'outpaint'
               ? outpaintProgressLabel(completed.length, items.length, processingItems.map(item => item.file.name))
-              : `${completed.length} / ${items.length} 张已完成`}</span>
+              : `${completed.length} / ${items.length} 张已完成`) + (degradeLabel ? ` · ${degradeLabel}` : '')}</span>
           {processing && <Progress size="small" status="active" percent={Math.max(donePercent, 8)} showInfo={false} />}
           {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
         </div>

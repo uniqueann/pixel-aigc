@@ -20,6 +20,8 @@ export interface CropFocus {
   fy: number
   source: 'subject' | 'grid'
   note: string
+  /** 检测失败、超时、限流或离线。没识别到商品时不设置。 */
+  unavailable?: boolean
 }
 
 export interface AspectRatioSettings {

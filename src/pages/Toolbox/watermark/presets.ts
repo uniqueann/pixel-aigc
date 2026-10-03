@@ -1,4 +1,4 @@
-import { DEFAULT_WATERMARK_SETTINGS, type WatermarkSettings } from './types'
+import { migrateWatermarkSettings, type WatermarkSettings } from './types'
 
 const DATABASE_NAME = 'pixel-aigc-watermark-presets'
 const STORE_NAME = 'presets'
@@ -41,7 +41,7 @@ export async function listPresets(scope: string): Promise<WatermarkPreset[]> {
     request.onerror = () => reject(request.error ?? new Error('读取模板失败'))
   })
   return records.filter(record => record.scope === scope)
-    .map(record => ({ ...record, settings: { ...DEFAULT_WATERMARK_SETTINGS, ...record.settings } }))
+    .map(record => ({ ...record, settings: migrateWatermarkSettings(record.settings) }))
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 

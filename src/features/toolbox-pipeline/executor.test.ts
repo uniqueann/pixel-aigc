@@ -108,7 +108,7 @@ describe('流水线步骤执行与恢复', () => {
     const test = setup()
     test.detect.mockRejectedValueOnce(new DOMException('检测超时', 'TimeoutError'))
     await test.run()
-    expect(test.store.getState().items[0].cropFocus?.note).toContain('主体检测失败')
+    expect(test.store.getState().items[0].cropFocus).toMatchObject({ unavailable: true, note: '智能检测不可用，已按居中裁剪' })
     expect(itemStatus(test.store.getState().items[0])).toBe('succeeded')
     const cancelled = setup()
     let stopped = false

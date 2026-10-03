@@ -25,8 +25,17 @@ describe('工具默认参数与记忆', () => {
     p.image.lastUsed['bg-remove'] = { background: '#ffffff' }; p.image.lastUsed.watermark = { text: '我的水印', opacity: 40 }
     expect(initialAspectRatioSettings(p)).toMatchObject({ strategy: 'crop', selectedPresetId: 'temu-main', fx: 0.5, fy: 0.5 })
     expect(initialBgRemoveSettings(p).background).toBe('#ffffff')
-    expect(initialWatermarkSettings(p)).toMatchObject({ text: '我的水印', opacity: 40, logo: null, kind: 'text' })
-    expect(watermarkMemory({ ...DEFAULT_WATERMARK_SETTINGS, logo: new Blob(['logo']), logoName: 'logo.png', kind: 'logo' })).not.toHaveProperty('logo')
+    expect(initialWatermarkSettings(p)).toMatchObject({ text: '我的水印', opacity: 40, logo: null, kind: 'text', colorMode: 'custom', readability: true })
+    const memory = watermarkMemory({ ...DEFAULT_WATERMARK_SETTINGS, logo: new Blob(['logo']), logoName: 'logo.png', kind: 'logo', colorMode: 'auto', readability: false })
+    expect(memory).not.toHaveProperty('logo')
+    expect(memory).toMatchObject({ colorMode: 'auto', readability: false })
+    p.image.lastUsed.watermark = memory
+    expect(initialWatermarkSettings(p)).toMatchObject({ colorMode: 'auto', readability: false, logo: null })
+    p.image.rememberParameters = false
+    expect(initialWatermarkSettings(p)).toMatchObject({ colorMode: 'auto', readability: true, text: '' })
     expect(aspectRatioMemory(initialAspectRatioSettings(p))).not.toHaveProperty('fx')
+  })
+  it('没有参数记忆时文字水印默认自动配色并打开描边', () => {
+    expect(initialWatermarkSettings(defaultPreferences())).toMatchObject({ colorMode: 'auto', readability: true, color: '#ffffff', text: '' })
   })
 })
