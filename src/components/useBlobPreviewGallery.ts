@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import type { PreviewItem } from './PreviewGallery'
 import { usePreviewGallery } from './usePreviewGallery'
+import { useBlobUrls } from './useBlobUrls'
 
 interface BlobPreviewSource {
   id: string
@@ -10,15 +11,14 @@ interface BlobPreviewSource {
 }
 
 export function useBlobPreviewGallery(items: BlobPreviewSource[]) {
-  const previewItems = useMemo<PreviewItem[]>(() => items.flatMap(item => item.output ? [{
+  const blobs = useMemo(() => items.map(item => item.output), [items])
+  const urls = useBlobUrls(blobs)
+  const previewItems = useMemo<PreviewItem[]>(() => items.flatMap(item => item.output && urls.has(item.output) ? [{
     id: item.id,
     thumbSrc: item.sourceUrl,
-    fullSrc: URL.createObjectURL(item.output),
+    fullSrc: urls.get(item.output)!,
     originalSrc: item.sourceUrl,
     title: item.file.name,
-  }] : []), [items])
-  useEffect(() => () => {
-    for (const item of previewItems) URL.revokeObjectURL(item.fullSrc)
-  }, [previewItems])
+  }] : []), [items, urls])
   return usePreviewGallery(previewItems)
 }

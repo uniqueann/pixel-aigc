@@ -1605,3 +1605,29 @@ a {
   .toolbox-footer-actions > .ant-btn { flex: 1; }
   .toolbox-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.toolbox-pipeline-settings {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.toolbox-pipeline-watermark-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+}
+
+.toolbox-pipeline .toolbox-preview-panel {
+  align-self: start;
+}
+
+@media (min-width: 901px) {
+  .toolbox-pipeline .toolbox-preview-panel {
+    position: sticky;
+    top: 0;
+  }
+}

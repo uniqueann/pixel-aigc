@@ -10,3 +10,9 @@ export {
   MAX_ZIP_BYTES,
   queueLimitMessage,
 } from '../shared/inspect'
+
+import type { WatermarkSettings } from './types'
+
+export function hasWatermark(settings: WatermarkSettings) {
+  return settings.kind === 'text' ? Boolean(settings.text.trim()) : Boolean(settings.logo)
+}

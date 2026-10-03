@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Button, ColorPicker, Input, Progress, Radio, Select } from 'antd'
+import { App, Button, Input, Progress, Select } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import CapabilityStatus from '@/components/CapabilityStatus'
 import { useUserStore } from '@/store/useUserStore'
 import BatchImageQueue from './BatchImageQueue'
+import AspectRatioSettingsPanel from './shared/AspectRatioSettingsPanel'
 import BatchImageUpload from './BatchImageUpload'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
@@ -26,17 +27,6 @@ import { PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from
 import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
-const focuses = [
-  { fx: 0, fy: 0, label: '左上' },
-  { fx: 0.5, fy: 0, label: '上中' },
-  { fx: 1, fy: 0, label: '右上' },
-  { fx: 0, fy: 0.5, label: '左中' },
-  { fx: 0.5, fy: 0.5, label: '正中' },
-  { fx: 1, fy: 0.5, label: '右中' },
-  { fx: 0, fy: 1, label: '左下' },
-  { fx: 0.5, fy: 1, label: '下中' },
-  { fx: 1, fy: 1, label: '右下' },
-]
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败'
@@ -413,89 +403,11 @@ export default function AspectRatioTool() {
           {upscale > 2 && <p className="toolbox-hint toolbox-warning">当前图片需要放大超过 2 倍才能铺满目标尺寸，细节可能变糊。</p>}
         </section>
 
-        <section className="toolbox-settings-panel" aria-label="转比例设置">
-          <div className="toolbox-section-heading"><div><strong>转比例设置</strong><span>一次设置，应用到整批</span></div></div>
-          <label className="toolbox-field-label">目标平台</label>
-          <Radio.Group
-            value={preset.id}
-            disabled={controlsLocked}
-            onChange={event => updateSettings({ selectedPresetId: event.target.value })}
-          >
-            {PLATFORM_SIZE_PRESETS.map(item => (
-              <Radio key={item.id} value={item.id} style={{ display: 'flex', marginBottom: 6 }}>
-                {item.label} {item.width} × {item.height}
-              </Radio>
-            ))}
-          </Radio.Group>
-          <label className="toolbox-field-label">适配策略</label>
-          <Radio.Group
-            value={settings.strategy}
-            disabled={controlsLocked}
-            onChange={event => updateSettings({ strategy: event.target.value })}
-            options={[
-              { label: '留白填充', value: 'letterbox' },
-              { label: '智能裁剪', value: 'crop' },
-              { label: '智能扩展', value: 'outpaint' },
-            ]}
-          />
-          {settings.strategy === 'letterbox' && <p className="toolbox-hint">留白会把原图完整放进目标尺寸，空白处用所选颜色填上。</p>}
-          {settings.strategy === 'outpaint' && (
-            <>
-              <label className="toolbox-field-label">输出模式</label>
-              <Radio.Group
-                value={settings.outpaintOutputMode ?? 'platform'}
-                disabled={controlsLocked}
-                onChange={event => updateSettings({ outpaintOutputMode: event.target.value })}
-                options={[
-                  { label: '按平台尺寸输出', value: 'platform' },
-                  { label: '保留原图分辨率', value: 'original' },
-                ]}
-              />
-              <p className="toolbox-hint">
-                {settings.outpaintOutputMode === 'original'
-                  ? '原图保持原尺寸，按平台比例补背景；每张图片的输出尺寸随原图变化，比例一致时保留原文件。'
-                  : `输出精确的 ${preset.width} × ${preset.height} 平台尺寸，原图会按尺寸缩放。`}
-                预览里的深色区域是待补全的留白。
-              </p>
-            </>
-          )}
-          {settings.strategy === 'outpaint' && <CapabilityStatus ready={outpaintReady} error={capabilityError}
+        <AspectRatioSettingsPanel settings={settings} disabled={controlsLocked} onChange={updateSettings}
+          outpaintStatus={<CapabilityStatus ready={outpaintReady} error={capabilityError}
             unavailableMessage="智能扩展还不能用。请在服务端配置阿里云百炼的 DASHSCOPE_API_KEY（华北2北京）。"
             onRetry={() => void refetchCapabilities()} />}
-          {settings.strategy === 'letterbox' && (
-            <>
-              <div className="toolbox-field-row">
-                <span>留白颜色</span>
-                <ColorPicker value={settings.background === 'transparent' ? '#ffffff' : settings.background} disabled={controlsLocked || settings.background === 'transparent'} onChange={color => updateSettings({ background: color.toHexString() })} />
-              </div>
-              <Radio.Group
-                value={settings.background === 'transparent' ? 'transparent' : 'color'}
-                disabled={controlsLocked}
-                onChange={event => updateSettings({ background: event.target.value === 'transparent' ? 'transparent' : '#ffffff' })}
-                options={[{ label: '纯色', value: 'color' }, { label: '透明 PNG', value: 'transparent' }]}
-                optionType="button"
-              />
-            </>
-          )}
-          {settings.strategy === 'crop' && (
-            <>
-              <label className="toolbox-field-label">裁剪焦点</label>
-              <div className="toolbox-anchor-grid">
-                {focuses.map(focus => (
-                  <button
-                    key={focus.label}
-                    type="button"
-                    className={settings.fx === focus.fx && settings.fy === focus.fy ? 'is-active' : ''}
-                    disabled={controlsLocked}
-                    onClick={() => updateSettings({ fx: focus.fx, fy: focus.fy })}
-                  >
-                    {focus.label}
-                  </button>
-                ))}
-              </div>
-              <p className="toolbox-hint">处理时识别商品主体并按主体裁剪。识别不到或检测失败时，按当前九宫格裁完，这一张仍算成功。队列里出现黄色提示时，先把焦点改到商品所在位置，再重新处理。</p>
-            </>
-          )}
+          templates={
           <div className="toolbox-presets">
             <label className="toolbox-field-label">本机模板</label>
             <div className="toolbox-preset-row">
@@ -515,7 +427,8 @@ export default function AspectRatioTool() {
               <Button icon={<SaveOutlined />} disabled={controlsLocked} onClick={() => void saveCurrentPreset()}>保存</Button>
             </div>
           </div>
-        </section>
+          }
+        />
       </div>
 
       <BatchImageQueue

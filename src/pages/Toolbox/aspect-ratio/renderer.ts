@@ -31,7 +31,7 @@ async function renderOnMainThread(request: RenderRequest): Promise<RenderResult>
     const context = canvas.getContext('2d')
     if (!context) throw new Error('无法创建图片处理画布')
     drawFittedImage(context, source, source.width, source.height, size.width, size.height, request.settings)
-    const mimeType = outputMime(request.settings.strategy, request.settings.background)
+    const mimeType = request.outputMime ?? outputMime(request.settings.strategy, request.settings.background)
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas!.toBlob(value => value ? resolve(value) : reject(new Error('图片编码失败')), mimeType, JPEG_QUALITY)
     })

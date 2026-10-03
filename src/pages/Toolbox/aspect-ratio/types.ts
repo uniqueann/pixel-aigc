@@ -60,6 +60,7 @@ export interface RenderRequest {
   targetWidth: number
   targetHeight: number
   previewMaxDimension?: number
+  outputMime?: 'image/png' | 'image/jpeg'
 }
 
 export interface RenderResult {

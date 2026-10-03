@@ -57,6 +57,7 @@ export interface RenderRequest {
   sourceMime: BatchImage['sourceMime']
   settings: WatermarkSettings
   previewMaxDimension?: number
+  outputMime?: 'image/png' | 'image/jpeg'
 }
 
 export interface RenderResult {

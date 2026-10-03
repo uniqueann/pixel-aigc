@@ -8,6 +8,7 @@ import { TOOLBOX_TOOLS } from './tools'
 const WatermarkTool = lazyWithRetry(() => import('./WatermarkTool'))
 const AspectRatioTool = lazyWithRetry(() => import('./AspectRatioTool'))
 const BgRemoveTool = lazyWithRetry(() => import('./BgRemoveTool'))
+const PipelineTool = lazyWithRetry(() => import('./PipelineTool'))
 
 export default function Toolbox() {
   const { tool } = useParams<{ tool: string }>()
@@ -27,7 +28,7 @@ export default function Toolbox() {
         onChange={(slug) => navigate(`/toolbox/${slug}`)}
       />
 
-      {activeSlug === 'bg-remove' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载智能抠图…</div>}><BgRemoveTool /></Suspense> : activeSlug === 'watermark' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : activeSlug === 'aspect-ratio' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载转比例工具…</div>}><AspectRatioTool /></Suspense> : null}
+      {activeSlug === 'bg-remove' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载智能抠图…</div>}><BgRemoveTool /></Suspense> : activeSlug === 'watermark' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : activeSlug === 'aspect-ratio' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载转比例工具…</div>}><AspectRatioTool /></Suspense> : activeSlug === 'pipeline' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载流水线…</div>}><PipelineTool /></Suspense> : null}
     </div>
   )
 }

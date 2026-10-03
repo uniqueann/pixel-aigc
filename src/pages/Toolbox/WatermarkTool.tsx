@@ -1,40 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import { App, Button, ColorPicker, Input, Progress, Radio, Select, Slider, Upload } from 'antd'
-import { DownloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons'
+import { App, Button, Input, Progress, Select } from 'antd'
+import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { useUserStore } from '@/store/useUserStore'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import BatchImageQueue from './BatchImageQueue'
+import WatermarkSettingsPanel from './shared/WatermarkSettingsPanel'
 import BatchImageUpload from './BatchImageUpload'
 import { invalidateBatch, processBatch } from './watermark/batch'
 import { createWatermarkZip, downloadBlob, namesForImages } from './watermark/download'
 import { deletePreset, listPresets, savePreset, type WatermarkPreset } from './watermark/presets'
 import { WatermarkRenderer } from './watermark/renderer'
-import { type BatchImage, type WatermarkAnchor, type WatermarkSettings } from './watermark/types'
+import { type BatchImage, type WatermarkSettings } from './watermark/types'
 import { datedDownloadName } from './shared/dateStamp'
-import { inspectImage, inspectLogo, MAX_ZIP_BYTES, queueLimitMessage } from './watermark/validation'
+import { inspectImage, inspectLogo, MAX_ZIP_BYTES, queueLimitMessage, hasWatermark } from './watermark/validation'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { initialWatermarkSettings, watermarkMemory } from '@/features/preferences/toolParameters'
 
-const anchors: { value: WatermarkAnchor; label: string }[] = [
-  { value: 'top-left', label: '左上' },
-  { value: 'top-center', label: '上中' },
-  { value: 'top-right', label: '右上' },
-  { value: 'middle-left', label: '左中' },
-  { value: 'middle-center', label: '正中' },
-  { value: 'middle-right', label: '右中' },
-  { value: 'bottom-left', label: '左下' },
-  { value: 'bottom-center', label: '下中' },
-  { value: 'bottom-right', label: '右下' },
-]
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败'
 }
 
-function hasWatermark(settings: WatermarkSettings) {
-  return settings.kind === 'text' ? Boolean(settings.text.trim()) : Boolean(settings.logo)
-}
 
 interface PreviewState {
   imageId: string
@@ -313,68 +300,8 @@ export default function WatermarkTool() {
           <p className="toolbox-hint">预览使用缩略尺寸；导出按原图像素处理。图片不会上传到服务器。</p>
         </section>
 
-        <section className="toolbox-settings-panel" aria-label="水印设置">
-          <div className="toolbox-section-heading"><div><strong>水印设置</strong><span>一次设置，应用到整批</span></div></div>
-          <Radio.Group
-            value={settings.kind}
-            disabled={controlsLocked}
-            onChange={event => updateSettings({ kind: event.target.value })}
-            options={[{ label: '文字水印', value: 'text' }, { label: 'Logo 水印', value: 'logo' }]}
-            optionType="button"
-            buttonStyle="solid"
-          />
-          {settings.kind === 'text' ? (
-            <>
-              <label className="toolbox-field-label" htmlFor="watermark-text">水印文字</label>
-              <Input id="watermark-text" value={settings.text} maxLength={80} disabled={controlsLocked} placeholder="例如：© 我的品牌" onChange={event => updateSettings({ text: event.target.value })} />
-              <div className="toolbox-field-row"><span>文字颜色</span><ColorPicker value={settings.color} disabled={controlsLocked} onChange={color => updateSettings({ color: color.toHexString() })} /></div>
-              <label className="toolbox-field-label">文字大小：短边的 {settings.textSizePercent}%</label>
-              <Slider min={1} max={15} value={settings.textSizePercent} disabled={controlsLocked} onChange={value => updateSettings({ textSizePercent: value })} />
-            </>
-          ) : (
-            <>
-              <label className="toolbox-field-label">Logo 图片</label>
-              <Upload accept="image/png,image/webp" showUploadList={false} disabled={controlsLocked} beforeUpload={file => { void chooseLogo(file); return Upload.LIST_IGNORE }}>
-                <Button icon={<UploadOutlined />} disabled={controlsLocked}>选择 PNG / WebP</Button>
-              </Upload>
-              <span className="toolbox-logo-name" title={settings.logoName ?? ''}>{settings.logoName ?? '推荐使用透明背景 Logo'}</span>
-              <label className="toolbox-field-label">Logo 宽度：短边的 {settings.logoSizePercent}%</label>
-              <Slider min={5} max={50} value={settings.logoSizePercent} disabled={controlsLocked} onChange={value => updateSettings({ logoSizePercent: value })} />
-            </>
-          )}
-          <label className="toolbox-field-label">排列方式</label>
-          <Radio.Group
-            className="toolbox-layout-options"
-            value={settings.layout}
-            disabled={controlsLocked}
-            onChange={event => updateSettings({ layout: event.target.value })}
-            options={[{ label: '单个', value: 'single' }, { label: '平铺', value: 'tile' }]}
-            optionType="button"
-            buttonStyle="solid"
-          />
-          {settings.layout === 'tile' ? (
-            <>
-              <label className="toolbox-field-label">平铺间距：短边的 {settings.tileGapPercent}%</label>
-              <Slider min={0} max={30} value={settings.tileGapPercent} disabled={controlsLocked} onChange={value => updateSettings({ tileGapPercent: value })} />
-              <label className="toolbox-field-label">旋转角度：{settings.tileRotation}°</label>
-              <Slider min={-60} max={60} value={settings.tileRotation} disabled={controlsLocked} onChange={value => updateSettings({ tileRotation: value })} />
-            </>
-          ) : (
-            <>
-              <label className="toolbox-field-label">位置</label>
-              <div className="toolbox-anchor-grid">
-                {anchors.map(anchor => <button key={anchor.value} type="button" className={settings.anchor === anchor.value ? 'is-active' : ''} disabled={controlsLocked} aria-label={anchor.label} title={anchor.label} onClick={() => updateSettings({ anchor: anchor.value })}>{anchor.label}</button>)}
-              </div>
-            </>
-          )}
-          <label className="toolbox-field-label">透明度：{settings.opacity}%</label>
-          <Slider min={10} max={100} value={settings.opacity} disabled={controlsLocked} onChange={value => updateSettings({ opacity: value })} />
-          {settings.layout === 'single' && (
-            <>
-              <label className="toolbox-field-label">边距：短边的 {settings.marginPercent}%</label>
-              <Slider min={0} max={10} value={settings.marginPercent} disabled={controlsLocked} onChange={value => updateSettings({ marginPercent: value })} />
-            </>
-          )}
+        <WatermarkSettingsPanel settings={settings} disabled={controlsLocked} onChange={updateSettings} onLogo={chooseLogo}
+          templates={
           <div className="toolbox-presets">
             <label className="toolbox-field-label">本机模板</label>
             <div className="toolbox-preset-row">
@@ -386,7 +313,8 @@ export default function WatermarkTool() {
               <Button icon={<SaveOutlined />} disabled={controlsLocked} onClick={() => void saveCurrentPreset()}>保存</Button>
             </div>
           </div>
-        </section>
+          }
+        />
       </div>
 
       <BatchImageQueue
