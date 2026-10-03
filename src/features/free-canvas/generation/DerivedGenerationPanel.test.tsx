@@ -52,8 +52,10 @@ describe('裂变侧栏能力状态', () => {
   })
 
   it('图生视频未开放时禁用提交并说明真人素材限制', () => {
-    renderPanel({ mode: 'image-to-video', prompt: '镜头推进', generateDisabled: true })
+    renderPanel({ mode: 'image-to-video', prompt: '镜头推进', generateDisabled: true, estimatedCredits: undefined })
     expect(screen.getByText('视频生成尚未开放，请检查登录与服务配置。')).toBeTruthy()
+    expect(screen.getByText('积分预估暂不可用')).toBeTruthy()
+    expect(screen.queryByText(/预计消耗/)).toBeNull()
     expect((screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

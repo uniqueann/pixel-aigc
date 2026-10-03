@@ -31,6 +31,7 @@ vi.mock('./erase-storage', () => ({
 vi.mock('./sync-limits', () => ({ withSyncLimit: (_user: unknown, _bucket: string, action: () => Promise<unknown>, metrics?: unknown) => { mocks.metrics.push(metrics); return action() } }))
 import handler from './handler'
 import { HttpError } from './errors'
+import { SEEDANCE_VIDEO_MODEL } from '../shared/video-models.js'
 const draft = { prompt: '',presetKey: '1:1',count: 1,durationSeconds: 5 }
 const body = { name: '测试',schemaVersion: 1,baseRevision: 3,document: { version: 1,activeSceneId: 's',scenes: [{ id: 's',name: '场景',width: 100,height: 100,viewport: { zoom: 1,panX: 0,panY: 0 },nodes: [] }] },drafts: { 'text-to-image': draft,'text-to-video': draft } }
 async function request(payload: unknown, method='PUT', url='/api/projects/p') {
@@ -209,7 +210,7 @@ describe('API 认证、版本和写入边界', () => {
     const flags = await request(undefined, 'GET', '/api/capabilities')
     expect(flags.json).toHaveBeenCalledWith(expect.objectContaining({ textToVideo: false, imageToVideo: false }))
     const models = await request(undefined, 'GET', '/api/video-models')
-    expect(models.json).toHaveBeenCalledWith({ items: [] })
+    expect(models.json).toHaveBeenCalledWith({ items: [SEEDANCE_VIDEO_MODEL] })
   })
 
   it('capabilities 在配置腾讯云后打开智能选区', async () => {

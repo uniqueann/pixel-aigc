@@ -6,11 +6,14 @@ import { Capability, type GenerationTask } from '@/types'
 import type { Asset } from '@/editor/types'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import { useUserStore } from '@/store/useUserStore'
 import type { CanvasGenerationTaskParams } from './requestBuilder'
 import { IMAGE_SIZE_PRESETS } from './config'
 import { availableTextToImagePresets } from './textToImageParameters'
 import { resultAssetForTask } from './resultAsset'
+import VideoCreditEstimate from './VideoCreditEstimate'
 import VideoGenerationSettings from './VideoGenerationSettings'
+import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits'
 import type { VideoModelProfile } from '@shared/video-models'
 
 interface GenerationPanelProps {
@@ -86,6 +89,7 @@ export default function GenerationPanel({
   generateAudio = false, onAudioChange, videoConfigured = false, videoModel,
 }: GenerationPanelProps) {
   const textToVideo = mode === 'text-to-video'
+  const balance = useUserStore(state => state.credits)
   const model = models.find(item => item.id === modelProfileId)
   const supportedPresets = availableTextToImagePresets(model)
   const taskIsVideo = task?.capability === Capability.TextToVideo
@@ -114,6 +118,9 @@ export default function GenerationPanel({
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
   const retryUnitPrice = originalResolution === '720p' ? undefined : originalModel?.pricing.creditsPerImage[originalResolution ?? resolution]
   const retryCredits = task ? retryUnitPrice === undefined ? undefined : task.params.count * retryUnitPrice : estimatedCredits
+  const retryVideoCredits = videoCreditsForDuration(videoModel, taskDuration)
+  const videoCreditSubmitBlocked = textToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: estimatedCredits, balance })
+  const videoRetryBlocked = taskIsVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: retryVideoCredits, balance })
 
   return (
     <aside className="free-canvas-generation-panel">
@@ -187,13 +194,14 @@ export default function GenerationPanel({
         {!modelsLoading && generateDisabled && <p className="toolbox-hint">文生图模型尚未就绪，请检查登录与模型配置。</p>}
       </>}
       {textToVideo && <VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
-        loading={modelsLoading} configured={videoConfigured || mockGateway} credits={estimatedCredits} mockGateway={mockGateway} />}
+        loading={modelsLoading} configured={videoConfigured || mockGateway} />}
+      {textToVideo && <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />}
 
       <Button
         type="primary"
         block
         loading={submitting}
-        disabled={formLocked || generateDisabled || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > 4000)) || (!textToVideo && (modelsLoading || (!!model?.ui.promptMaxLength && prompt.trim().length > model.ui.promptMaxLength))) || !prompt.trim()}
+        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > 4000)) || (!textToVideo && (modelsLoading || (!!model?.ui.promptMaxLength && prompt.trim().length > model.ui.promptMaxLength))) || !prompt.trim()}
         onClick={onGenerate}
       >
         {active ? '正在生成' : textToVideo ? '生成视频到画布' : '生成到画布'}
@@ -201,7 +209,7 @@ export default function GenerationPanel({
       {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
         手动重试将按原参数创建新任务，生成 {task.params.count} 张，{retryCredits === undefined ? '原模型积分报价尚未就绪，请先确认模型配置。' : `预计预扣 ${retryCredits} 积分。`}
       </p>}
-      {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{videoModel ? `重新生成将创建新任务并预扣 ${videoModel.pricing.creditsPerVideo[taskDuration === 10 ? 10 : 5]} 积分。` : '请先读取视频配置与报价，再决定是否重新生成。'}</p>}
+      {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
 
       <GenerationTaskStatus
         task={task}
@@ -216,7 +224,7 @@ export default function GenerationPanel({
         historySaved={historySaved}
         onRetrySave={onRetrySave}
         onRetry={onRetry}
-        retryDisabled={!!taskIsVideo && (generateDisabled || modelsLoading)}
+        retryDisabled={!!taskIsVideo && (generateDisabled || modelsLoading || videoRetryBlocked)}
         retryLabel={!taskIsVideo && !textToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
