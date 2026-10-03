@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { Asset, GenerationJob, NodeId, Scene, ViewportState } from '@/editor/types'
 
 export interface NodeTransform {
@@ -27,6 +28,7 @@ export interface FreeCanvasStageProps {
   onDelete: () => void
   onNodeGenerationAction: (action: 'variation' | 'image-to-video', nodeId: NodeId) => void
   onAssetLoadError: (message: string) => void
+  children?: ReactNode
 }
 
 export interface FreeCanvasStageHandle {

@@ -259,6 +259,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   onDelete,
   onNodeGenerationAction,
   onAssetLoadError,
+  children,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
@@ -286,6 +287,11 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const sceneSizeRef = useRef({ width: scene.width, height: scene.height })
   const spacePressedRef = useRef(false)
   const panningRef = useRef(false)
+  const overlayPanningRef = useRef(false)
+  const dismissHintRef = useRef(() => {})
+  const [hintDismissed, setHintDismissed] = useState(false)
+  const [hintHovered, setHintHovered] = useState(false)
+  dismissHintRef.current = () => setHintDismissed(true)
   const reconcilingObjectsRef = useRef(false)
   const lastPointerRef = useRef({ x: 0, y: 0 })
   const initialFitAppliedRef = useRef(false)
@@ -380,6 +386,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       { width: container.clientWidth, height: container.clientHeight },
       sceneSizeRef.current,
     ))
+    dismissHintRef.current()
   }, [setCanvasViewport])
 
   const zoomBy = useCallback((factor: number) => {
@@ -390,6 +397,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     canvas.zoomToPoint(new Point(container.clientWidth / 2, container.clientHeight / 2), nextZoom)
     canvas.requestRenderAll()
     callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+    dismissHintRef.current()
   }, [])
 
   useEffect(() => {
@@ -496,6 +504,8 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       target.setCoords()
       callbacksRef.current.onTransformNode(nodeId, transform)
     })
+    canvas.on('object:moving', () => { dismissHintRef.current() })
+    canvas.on('object:scaling', () => { dismissHintRef.current() })
     canvas.on('mouse:wheel', ({ e, viewportPoint }) => {
       e.preventDefault()
       e.stopPropagation()
@@ -510,6 +520,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       }
       canvas.requestRenderAll()
       callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+      dismissHintRef.current()
     })
     canvas.on('mouse:down:before', ({ e }) => {
       if (!(e instanceof MouseEvent) || (!spacePressedRef.current && e.button !== 1)) return
@@ -521,9 +532,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       e.preventDefault()
     })
     canvas.on('mouse:move', ({ e }) => {
-      if (!panningRef.current || !(e instanceof MouseEvent)) return
+      if (overlayPanningRef.current || !panningRef.current || !(e instanceof MouseEvent)) return
       const deltaX = e.clientX - lastPointerRef.current.x
       const deltaY = e.clientY - lastPointerRef.current.y
+      if (deltaX !== 0 || deltaY !== 0) dismissHintRef.current()
       lastPointerRef.current = { x: e.clientX, y: e.clientY }
       const transform = canvas.viewportTransform
       transform[4] += deltaX
@@ -532,7 +544,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       canvas.requestRenderAll()
     })
     canvas.on('mouse:up', () => {
-      if (!panningRef.current) return
+      if (overlayPanningRef.current || !panningRef.current) return
       panningRef.current = false
       canvas.skipTargetFind = false
       canvas.defaultCursor = spacePressedRef.current ? 'grab' : 'default'
@@ -553,8 +565,72 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
 
+    const isChromeControl = (target: EventTarget | null) => (
+      target instanceof Element && !!target.closest('.free-canvas-add-image, .free-canvas-help')
+    )
+    const overlayWheel = (event: WheelEvent) => {
+      if (!isChromeControl(event.target)) return
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = canvas.upperCanvasEl.getBoundingClientRect()
+      const viewportPoint = new Point(event.clientX - rect.left, event.clientY - rect.top)
+      if (event.ctrlKey || event.metaKey) {
+        const nextZoom = clampZoom(canvas.getZoom() * Math.exp(-event.deltaY * 0.0015))
+        canvas.zoomToPoint(viewportPoint, nextZoom)
+      } else {
+        const transform = canvas.viewportTransform
+        transform[4] -= event.deltaX
+        transform[5] -= event.deltaY
+        canvas.setViewportTransform(transform)
+      }
+      canvas.requestRenderAll()
+      callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+      dismissHintRef.current()
+    }
+    const endOverlayPan = () => {
+      if (!overlayPanningRef.current) return
+      overlayPanningRef.current = false
+      panningRef.current = false
+      canvas.skipTargetFind = false
+      canvas.defaultCursor = spacePressedRef.current ? 'grab' : 'default'
+      callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+    }
+    const overlayPointerDown = (event: PointerEvent) => {
+      if (!isChromeControl(event.target) || (!spacePressedRef.current && event.button !== 1)) return
+      overlayPanningRef.current = true
+      panningRef.current = true
+      lastPointerRef.current = { x: event.clientX, y: event.clientY }
+      canvas.skipTargetFind = true
+      canvas.defaultCursor = 'grabbing'
+      canvas.selection = false
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const overlayPointerMove = (event: PointerEvent) => {
+      if (!overlayPanningRef.current) return
+      const deltaX = event.clientX - lastPointerRef.current.x
+      const deltaY = event.clientY - lastPointerRef.current.y
+      if (deltaX !== 0 || deltaY !== 0) dismissHintRef.current()
+      lastPointerRef.current = { x: event.clientX, y: event.clientY }
+      const transform = canvas.viewportTransform
+      transform[4] += deltaX
+      transform[5] += deltaY
+      canvas.setViewportTransform(transform)
+      canvas.requestRenderAll()
+    }
+    container.addEventListener('wheel', overlayWheel, { passive: false })
+    container.addEventListener('pointerdown', overlayPointerDown)
+    window.addEventListener('pointermove', overlayPointerMove)
+    window.addEventListener('pointerup', endOverlayPan)
+    window.addEventListener('pointercancel', endOverlayPan)
+
     return () => {
       observer.disconnect()
+      container.removeEventListener('wheel', overlayWheel)
+      container.removeEventListener('pointerdown', overlayPointerDown)
+      window.removeEventListener('pointermove', overlayPointerMove)
+      window.removeEventListener('pointerup', endOverlayPan)
+      window.removeEventListener('pointercancel', endOverlayPan)
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       pendingMedia.forEach(({ controller }) => controller.abort())
@@ -770,6 +846,17 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   return (
     <div className="free-canvas-stage" ref={containerRef}>
       <canvas ref={canvasElementRef} aria-label="自由画布编辑区域" />
+      <div className="free-canvas-stage-chrome">
+        <div
+          className={`free-canvas-help${hintDismissed && !hintHovered ? ' is-dismissed' : ''}`}
+          onMouseEnter={() => setHintHovered(true)}
+          onMouseLeave={() => setHintHovered(false)}
+          aria-hidden={hintDismissed && !hintHovered}
+        >
+          滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · 双击视频播放/暂停
+        </div>
+        {children}
+      </div>
       {reportedLoadErrorsRef.current.size > 0 && <div className="free-canvas-media-error" role="status">
         部分媒体加载失败，节点数据已保留。
         <Button size="small" onClick={() => { reportedLoadErrorsRef.current.clear(); setMediaLoadVersion((version) => version + 1) }}>重新加载媒体</Button>
@@ -835,7 +922,6 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <Tooltip title="放大"><Button type="text" icon={<PlusOutlined />} onClick={() => zoomBy(1.25)} aria-label="放大画布" /></Tooltip>
         <Tooltip title="适合画板"><Button type="text" icon={<ExpandOutlined />} onClick={fitToScene} aria-label="适合画板" /></Tooltip>
       </div>
-      <div className="free-canvas-help">滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · 双击视频播放/暂停</div>
     </div>
   )
 })

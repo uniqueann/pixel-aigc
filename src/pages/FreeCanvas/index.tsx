@@ -42,6 +42,7 @@ import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
 import { boundsFromPlacement, calculateNodeBounds } from '@/features/free-canvas/geometry'
 import type { FreeCanvasStageHandle, NodeTransform } from '@/features/free-canvas/types'
 import { CANVAS_MODES } from './modes'
+import CanvasAddImageButton from './CanvasAddImageButton'
 import type { Asset } from '@/editor/types'
 
 const EMPTY_ASSETS: Record<string, Asset> = {}
@@ -343,11 +344,6 @@ export default function FreeCanvas() {
           value={activeSlug}
           onChange={(value) => navigate(`/canvas/${value}`)}
         />
-        <div className="free-canvas-page-actions">
-          <Button loading={importing} disabled={generation.submitting || !!generation.pendingSubmission} onClick={() => fileInput.current?.click()}>上传图片</Button>
-          <Button disabled={importing || generation.submitting || !!generation.pendingSubmission} onClick={() => setPickerOpen(true)}>从我的资产添加</Button>
-          <span>{scene.width} × {scene.height}</span>
-        </div>
       </div>
       <div className="free-canvas-workspace">
         <FreeCanvasStage
@@ -371,7 +367,14 @@ export default function FreeCanvas() {
           imageToVideoEnabled={videoConfiguration.imageReady || videoConfiguration.loading}
           onNodeGenerationAction={handleNodeGenerationAction}
           onAssetLoadError={handleAssetLoadError}
-        />
+        >
+          <CanvasAddImageButton
+            importing={importing}
+            disabled={generation.submitting || !!generation.pendingSubmission}
+            onUpload={() => fileInput.current?.click()}
+            onPickAsset={() => setPickerOpen(true)}
+          />
+        </FreeCanvasStage>
         {derivedContext ? (
           <DerivedGenerationPanel
             mode={derivedContext.mode}
