@@ -9,10 +9,12 @@ import {
   calculateRevealViewport,
   clampZoom,
   normalizeNodeTransform,
+  ARTBOARD_PLACEMENT_GAP,
   findArtboardPlacement,
   offsetPlacementToAvoidOverlap,
   overlapsBounds,
   boundsFromPlacement,
+  placeArtboardNodes,
 } from './geometry'
 
 describe('自由画布几何计算', () => {
@@ -166,6 +168,115 @@ describe('自由画布几何计算', () => {
     )
     expect(outside.outside).toBe(true)
     expect(outside.y).toBeGreaterThanOrEqual(200)
+  })
+
+  function expectInside(placement: { x: number; y: number; width: number; height: number }, scene: { width: number; height: number }) {
+    expect(placement.x).toBeGreaterThanOrEqual(ARTBOARD_PLACEMENT_GAP)
+    expect(placement.y).toBeGreaterThanOrEqual(ARTBOARD_PLACEMENT_GAP)
+    expect(placement.x + placement.width).toBeLessThanOrEqual(scene.width - ARTBOARD_PLACEMENT_GAP)
+    expect(placement.y + placement.height).toBeLessThanOrEqual(scene.height - ARTBOARD_PLACEMENT_GAP)
+  }
+
+  function expectClear(placement: { x: number; y: number; width: number; height: number }, occupied: { left: number; top: number; right: number; bottom: number }[]) {
+    const bounds = boundsFromPlacement(placement)
+    for (const item of occupied) expect(overlapsBounds(bounds, item, ARTBOARD_PLACEMENT_GAP)).toBe(false)
+  }
+
+  it('首选点越出上、左、右、下边缘时，整张节点收进画板并保留间距', () => {
+    const scene = { width: 1280, height: 720 }
+    const size = { width: 200, height: 120 }
+    const edges = [
+      { x: 400, y: -180 },
+      { x: -220, y: 200 },
+      { x: 1400, y: 200 },
+      { x: 400, y: 900 },
+    ]
+    for (const origin of edges) {
+      const placed = findArtboardPlacement({ ...origin, ...size }, [], scene)
+      expect(placed.outside).toBe(false)
+      expectInside(placed, scene)
+      expect(placed.width).toBe(size.width)
+      expect(placed.height).toBe(size.height)
+    }
+    expect(findArtboardPlacement({ x: 400, y: -180, ...size }, [], scene)).toMatchObject({ x: 400, y: ARTBOARD_PLACEMENT_GAP })
+    expect(findArtboardPlacement({ x: -220, y: 200, ...size }, [], scene)).toMatchObject({ x: ARTBOARD_PLACEMENT_GAP, y: 200 })
+    expect(findArtboardPlacement({ x: 1400, y: 200, ...size }, [], scene)).toMatchObject({
+      x: scene.width - ARTBOARD_PLACEMENT_GAP - size.width,
+      y: 200,
+    })
+    expect(findArtboardPlacement({ x: 400, y: 900, ...size }, [], scene)).toMatchObject({
+      x: 400,
+      y: scene.height - ARTBOARD_PLACEMENT_GAP - size.height,
+    })
+  })
+
+  it('首选位置压住已有节点时改到最近的空位，不重叠也不伸出画板', () => {
+    const scene = { width: 1280, height: 720 }
+    const occupied = [{ left: 400, top: 200, right: 600, bottom: 360 }]
+    const placed = findArtboardPlacement({ x: 400, y: 200, width: 200, height: 160 }, occupied, scene)
+    expect(placed.outside).toBe(false)
+    expect(placed.width).toBe(200)
+    expect(placed.height).toBe(160)
+    expectInside(placed, scene)
+    expectClear(placed, occupied)
+  })
+
+  it('一批结果越出上沿时保持顺序和相对位置，且互不重叠', () => {
+    const scene = { width: 1280, height: 720 }
+    const preferred = [
+      { x: 48, y: -40, width: 100, height: 80 },
+      { x: 200, y: -40, width: 120, height: 80 },
+      { x: 400, y: -40, width: 140, height: 80 },
+    ]
+    const placed = placeArtboardNodes(preferred, [], scene)
+    expect(placed.map(item => item.width)).toEqual([100, 120, 140])
+    expect(placed.every(item => item.y === ARTBOARD_PLACEMENT_GAP)).toBe(true)
+    expect(placed.map(item => item.x)).toEqual([48, 200, 400])
+    placed.forEach((item, index) => {
+      expectInside(item, scene)
+      expectClear(item, placed.filter((_, other) => other !== index).map(boundsFromPlacement))
+    })
+  })
+
+  it('同一首选点的级联节点依次占住画板内互不重叠的空位', () => {
+    const scene = { width: 1280, height: 720 }
+    const preferred = Array.from({ length: 3 }, () => ({ x: 400, y: 200, width: 180, height: 140 }))
+    const placed = placeArtboardNodes(preferred, [], scene)
+    expect(placed).toHaveLength(3)
+    placed.forEach((item, index) => {
+      expectInside(item, scene)
+      expectClear(item, placed.filter((_, other) => other !== index).map(boundsFromPlacement))
+    })
+    expect(new Set(placed.map(item => `${item.x},${item.y}`)).size).toBe(3)
+  })
+
+  it('画板被占满时放到画板外紧邻已有内容，且不与已有节点重叠', () => {
+    const scene = { width: 200, height: 200 }
+    const occupied = [{ left: 0, top: 0, right: 200, bottom: 200 }]
+    const placed = findArtboardPlacement({ x: 10, y: 10, width: 80, height: 80 }, occupied, scene)
+    expect(placed.outside).toBe(true)
+    expect(placed.y).toBeGreaterThanOrEqual(scene.height)
+    expect(overlapsBounds(boundsFromPlacement(placed), occupied[0])).toBe(false)
+  })
+
+  it('视口中心靠近画板上沿时，文生图结果完整落在画板内且不压住已有图片', () => {
+    const scene = { width: 1280, height: 720 }
+    const occupied = [
+      { left: 40, top: 380, right: 420, bottom: 680 },
+      { left: 860, top: 360, right: 1240, bottom: 690 },
+    ]
+    const preferred = calculateGenerationPlacements({ x: 640, y: 40 }, { width: 1024, height: 1024 }, 2)
+    expect(preferred.some(item => item.y < 0)).toBe(true)
+    const placed = placeArtboardNodes(preferred, occupied, scene)
+    expect(placed).toHaveLength(2)
+    placed.forEach((item, index) => {
+      expect(item.x).toBeGreaterThanOrEqual(16)
+      expect(item.y).toBeGreaterThanOrEqual(16)
+      expect(item.x + item.width).toBeLessThanOrEqual(scene.width - 16)
+      expect(item.y + item.height).toBeLessThanOrEqual(scene.height - 16)
+      expectClear(item, occupied)
+      expectClear(item, placed.filter((_, other) => other !== index).map(boundsFromPlacement))
+    })
   })
 
   it('结果超出当前视口时平移以完整显示目标区域', () => {

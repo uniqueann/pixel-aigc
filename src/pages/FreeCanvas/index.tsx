@@ -215,7 +215,10 @@ export default function FreeCanvas() {
       if (activeSlug === 'text-to-image') {
         updateDraft({ modelProfileId: textToImageParameters.model?.id, resolution: textToImageParameters.requestedResolution })
       }
-      void generation.generate(request, center)
+      void generation.generate(request, center).then((placements) => {
+        if (!placements?.length) return
+        stageRef.current?.revealBounds(placements.map(boundsFromPlacement))
+      })
     } catch (error) { message.error(error instanceof Error ? error.message : '生成参数无效') }
   }
 
