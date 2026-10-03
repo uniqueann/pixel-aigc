@@ -582,26 +582,10 @@ a {
   display: flex;
   min-width: 0;
   max-width: 100%;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 12px;
-}
-
-.free-canvas-page-actions {
-  display: flex;
-  min-width: 0;
-  max-width: 100%;
+  margin-bottom: 8px;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-
-.free-canvas-page-header > span,
-.free-canvas-page-actions > span {
-  color: var(--color-text-muted);
-  font-size: 12px;
 }
 
 .free-canvas-workspace {
@@ -709,17 +693,46 @@ a {
   text-align: center;
 }
 
-.free-canvas-help {
+.free-canvas-stage-chrome {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   top: 12px;
+  right: 12px;
   left: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  max-width: calc(100% - 24px);
+  pointer-events: none;
+}
+
+.free-canvas-help {
+  min-width: 0;
   padding: 5px 9px;
+  overflow: hidden;
   border-radius: 7px;
   background: rgb(23 23 26 / 72%);
   color: rgb(237 237 236 / 64%);
   font-size: 11px;
-  pointer-events: none;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.62;
+  pointer-events: auto;
+  transition: opacity 280ms ease;
+}
+
+.free-canvas-help.is-dismissed {
+  opacity: 0;
+}
+
+.free-canvas-add-image {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-left: auto;
+  pointer-events: auto;
 }
 
 .free-canvas-generation-panel {
@@ -1251,18 +1264,10 @@ a {
   }
 
   .free-canvas-page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .free-canvas-page-actions {
-    flex-direction: column;
-    align-items: stretch;
-    width: 100%;
-  }
-
-  .free-canvas-page-actions .ant-btn {
-    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    width: auto;
+    max-width: 100%;
   }
 
   .free-canvas-workspace {
@@ -1290,10 +1295,28 @@ a {
     transform: none;
   }
 
-  .free-canvas-help {
+  .free-canvas-stage-chrome {
     right: 12px;
+    left: auto;
+    width: auto;
     max-width: calc(100% - 24px);
-    overflow-wrap: anywhere;
+  }
+
+  .free-canvas-help {
+    display: none;
+  }
+
+  .free-canvas-add-label {
+    display: none;
+  }
+
+  .free-canvas-add-image .ant-btn {
+    width: 32px;
+    padding-inline: 0;
+  }
+
+  .free-canvas-add-image .ant-btn .ant-btn-icon {
+    margin-inline-end: 0;
   }
 
   .free-canvas-node-actions {
