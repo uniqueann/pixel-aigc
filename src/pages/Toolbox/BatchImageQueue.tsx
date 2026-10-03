@@ -12,6 +12,7 @@ export interface BatchQueueItem {
   note?: string
   noteWarning?: boolean
   canRefine?: boolean
+  canRetry?: boolean
 }
 
 interface Props {
@@ -66,7 +67,7 @@ export default function BatchImageQueue({ items, selectedId, disabled, onSelect,
                 <Tag color={statusColors[item.status]}>{statusLabels[item.status]}</Tag>
                 <div className="toolbox-queue-actions">
                   {item.status === 'succeeded' && <Button size="small" type="text" icon={<DownloadOutlined />} aria-label={`下载 ${item.name}`} onClick={() => onDownload(item.id)} />}
-                  {item.status === 'failed' && <Button size="small" type="text" disabled={disabled} icon={<RedoOutlined />} aria-label={`重试 ${item.name}`} onClick={() => onRetry(item.id)} />}
+                  {(item.status === 'failed' || item.canRetry) && <Button size="small" type="text" disabled={disabled} icon={<RedoOutlined />} aria-label={`重试 ${item.name}`} onClick={() => onRetry(item.id)} />}
                   <Button size="small" type="text" disabled={disabled} icon={<DeleteOutlined />} aria-label={`移除 ${item.name}`} onClick={() => onRemove(item.id)} />
                 </div>
               </div>

@@ -37,7 +37,7 @@ async function renderOnMainThread(request: RenderRequest): Promise<RenderResult>
     drawWatermarkedImage(context, source, source.width, source.height, width, height, request.settings, logo)
     const outputCanvas = canvas
     const blob = await new Promise<Blob>((resolve, reject) => {
-      outputCanvas.toBlob(value => value ? resolve(value) : reject(new Error('图片编码失败')), request.sourceMime, 0.92)
+      outputCanvas.toBlob(value => value ? resolve(value) : reject(new Error('图片编码失败')), request.outputMime ?? request.sourceMime, 0.92)
     })
     return { blob, mimeType: blob.type, width, height }
   } finally {

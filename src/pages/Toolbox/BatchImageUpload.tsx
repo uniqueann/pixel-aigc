@@ -26,6 +26,7 @@ export default function BatchImageUpload({ count, disabled, onAdd, processingHin
         <p>拖入图片，或点击选择</p>
         <p className="ant-upload-hint">静态 JPG / PNG / WebP，最多 20 张；{processingHint}</p>
       </Upload.Dragger>
+      <p className="toolbox-hint">单张最多 20 MB，整批最多 150 MB；桌面设备最多 24 MP，触屏设备最多 12 MP。</p>
     </section>
   )
 }

@@ -20,7 +20,7 @@ async function processRequest({ id, request }: WorkerRequest) {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('无法创建图片处理画布')
     drawWatermarkedImage(context, source, source.width, source.height, width, height, request.settings, logo)
-    const blob = await canvas.convertToBlob({ type: request.sourceMime, quality: 0.92 })
+    const blob = await canvas.convertToBlob({ type: request.outputMime ?? request.sourceMime, quality: 0.92 })
     const result: RenderResult = { blob, mimeType: blob.type, width, height }
     self.postMessage({ id, result } satisfies WorkerResponse)
   } catch (error) {

@@ -16,7 +16,7 @@ async function processRequest({ id, request }: WorkerRequest) {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('无法创建图片处理画布')
     drawFittedImage(context, source, source.width, source.height, size.width, size.height, request.settings)
-    const mimeType = outputMime(request.settings.strategy, request.settings.background)
+    const mimeType = request.outputMime ?? outputMime(request.settings.strategy, request.settings.background)
     const blob = await canvas.convertToBlob({ type: mimeType, quality: JPEG_QUALITY })
     const result: RenderResult = { blob, mimeType: blob.type || mimeType, width: size.width, height: size.height }
     self.postMessage({ id, result } satisfies WorkerResponse)
