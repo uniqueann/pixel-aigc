@@ -14,7 +14,7 @@ vi.mock('@/cloud/client', () => ({ cloudEnabled: true }))
 
 const configuredFlags: CapabilityFlags = {
   bgRemove: true, outpaint: true, erase: true, repaint: true,
-  imageEdit: true, variation: true, smartSelect: true,
+  imageEdit: true, variation: true, smartSelect: true, textToImage: true, textToVideo: true, imageToVideo: true,
 }
 
 describe('共享功能配置', () => {

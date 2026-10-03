@@ -51,9 +51,9 @@ describe('裂变侧栏能力状态', () => {
     expect(screen.queryByText('正在加载模型配置…')).toBeNull()
   })
 
-  it('图生视频在真实模式明确显示尚未接入并禁用提交', () => {
+  it('图生视频未开放时禁用提交并说明真人素材限制', () => {
     renderPanel({ mode: 'image-to-video', prompt: '镜头推进', generateDisabled: true })
-    expect(screen.getByText('视频真实生成尚未接入，目前仅支持模拟模式。')).toBeTruthy()
+    expect(screen.getByText('视频生成尚未开放，请检查登录与服务配置。')).toBeTruthy()
     expect((screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

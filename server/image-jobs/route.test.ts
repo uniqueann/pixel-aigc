@@ -17,8 +17,11 @@ describe('图片任务列表路由', () => {
     await handleImageTaskRoute(user, 'GET', ['tasks'], undefined, new URLSearchParams())
     expect(mocks.list).toHaveBeenLastCalledWith(user, 1, undefined)
   })
-  it('拒绝视频能力和无效页码，不查询任务历史', async () => {
-    for (const query of ['capability=text_to_video', 'capability=text_to_image&page=0'])
+  it('视频沿用任务历史路由，拒绝未知能力和无效页码', async () => {
+    await handleImageTaskRoute(user, 'GET', ['tasks'], undefined, new URLSearchParams('capability=text_to_video'))
+    expect(mocks.list).toHaveBeenCalledWith(user, 1, 'text_to_video')
+    mocks.list.mockClear()
+    for (const query of ['capability=unknown', 'capability=text_to_image&page=0'])
       await expect(handleImageTaskRoute(user, 'GET', ['tasks'], undefined, new URLSearchParams(query))).rejects.toThrow()
     expect(mocks.list).not.toHaveBeenCalled()
   })

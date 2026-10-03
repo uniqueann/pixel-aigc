@@ -1,6 +1,10 @@
 import { MAX_OUTPAINT_OUTPUT_PIXELS } from '../shared/outpaint.js'
 import type { VercelRequest, VercelResponse } from './http.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
+import { waitUntil } from '@vercel/functions'
+import { SEEDANCE_VIDEO_MODEL } from '../shared/video-models.js'
+import { videoGenerationAvailable } from './video-providers/seedance/config.js'
+import { maintainVideoJobs, recordVideoCallback } from './video-jobs/maintenance.js'
 import { z } from 'zod'
 import { authenticate } from './auth.js'
 import { database, withIdentity } from './db.js'
@@ -111,6 +115,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const route = url.searchParams.get('__route') ?? url.pathname.replace(/^\/api/, '')
     const path = route.split('/').filter(Boolean).map(decodeURIComponent)
     const method = req.method ?? 'GET'
+    if (path.join('/') === 'internal/video-jobs-callback' && method === 'POST') {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
+      if (Buffer.byteLength(JSON.stringify(body ?? null)) > 64 * 1024) throw new HttpError(413, '回调内容过大')
+      const jobId = await recordVideoCallback(url.searchParams, body)
+      res.status(202).json({ received: true })
+      if (jobId) waitUntil(maintainVideoJobs(jobId).catch(() => console.error(JSON.stringify({ evt: 'video-maintenance', code: 'CALLBACK_ADVANCE_FAILED' }))))
+      return
+    }
+    if (path.join('/') === 'internal/video-jobs-maintenance' && method === 'POST') {
+      const secret = process.env.VIDEO_CRON_SECRET
+      const supplied = req.headers.authorization?.replace(/^Bearer /, '') ?? ''
+      if (!secret || Buffer.byteLength(supplied) !== Buffer.byteLength(secret) || !timingSafeEqual(Buffer.from(supplied), Buffer.from(secret))) throw new HttpError(401, '未授权', 'AUTH_REQUIRED')
+      res.status(202).json({ received: true })
+      waitUntil(maintainVideoJobs().catch(() => console.error(JSON.stringify({ evt: 'video-maintenance', code: 'MAINTENANCE_FAILED' }))))
+      return
+    }
     if ((path.join('/') === 'internal/email-cleanup' || path.join('/') === 'internal/image-jobs-sweep') && method === 'GET') {
       const secret = process.env.CRON_SECRET
       const supplied = req.headers.authorization?.replace(/^Bearer /, '') ?? ''
@@ -139,8 +159,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         imageEdit: imageModelsAvailable('image_edit'),
         variation: imageModelsAvailable('variation'),
         textToImage: imageModelsAvailable('text_to_image'),
+        textToVideo: videoGenerationAvailable(), imageToVideo: videoGenerationAvailable(),
         smartSelect: segmentConfigured(),
       })
+      return
+    }
+    if (path[0] === 'video-models' && method === 'GET') {
+      res.status(200).json({ items: videoGenerationAvailable() ? [SEEDANCE_VIDEO_MODEL] : [] })
       return
     }
     if (path[0] === 'image-models' && method === 'GET') {
@@ -481,7 +506,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const key = url.searchParams.get('key') ?? ''
       if (url.searchParams.get('mode') === 'url') {
         res.setHeader('Cache-Control', 'private, no-store')
-        res.status(200).json(await signOwnedObjectRead(user, key))
+        res.status(200).json(await signOwnedObjectRead(user, key, url.searchParams.get('disposition') === 'attachment'
+          ? url.searchParams.get('filename')?.trim() || '视频.mp4' : undefined))
         return
       }
       const downloaded = await loadOwnedObject(user, key)
@@ -498,7 +524,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'POST') {
         const capability = body && typeof body === 'object' && 'capability' in body
           ? String((body as { capability?: unknown }).capability) : ''
-        if (IMAGE_TASK_CAPABILITIES.has(capability)) {
+        if (IMAGE_TASK_CAPABILITIES.has(capability) || capability === 'text_to_video') {
           res.status(200).json(await handleImageTaskRoute(user, method, path, body, url.searchParams))
           return
         }
@@ -508,7 +534,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json(await handleEmailTaskRoute(user, method, path, body, url.searchParams))
         return
       }
-      if (method === 'GET' && path.length === 1 && IMAGE_TASK_CAPABILITIES.has(url.searchParams.get('capability') ?? '')) {
+      if (method === 'GET' && path.length === 1 && (IMAGE_TASK_CAPABILITIES.has(url.searchParams.get('capability') ?? '') || url.searchParams.get('capability') === 'text_to_video')) {
         res.status(200).json(await handleImageTaskRoute(user, method, path, body, url.searchParams))
         return
       }

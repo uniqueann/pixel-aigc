@@ -31,7 +31,7 @@ export function createImageAsset(input: ImageAssetInput): ImageAsset {
   }
 }
 
-export function createVideoAsset(input: Omit<ImageAssetInput, 'source'> & { duration?: number }): VideoAsset {
+export function createVideoAsset(input: Omit<ImageAssetInput, 'source'> & { duration?: number; retentionExpiresAt?: string; posterKey?: string; hasAudio?: boolean }): VideoAsset {
   return {
     id: input.id ?? crypto.randomUUID(),
     type: 'video',
@@ -43,6 +43,7 @@ export function createVideoAsset(input: Omit<ImageAssetInput, 'source'> & { dura
     width: input.width,
     height: input.height,
     duration: input.duration ?? 0,
+    retentionExpiresAt: input.retentionExpiresAt, posterKey: input.posterKey, hasAudio: input.hasAudio,
     source: 'generation',
     generationId: input.generationId,
     createdAt: input.createdAt ?? new Date().toISOString(),

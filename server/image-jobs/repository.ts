@@ -14,7 +14,7 @@ function asItem(row: Record<string, unknown>): ImageJobItemRow {
   return row as unknown as ImageJobItemRow
 }
 
-export function createSqlStore(sql: Transaction, userId: string): ImageJobStore {
+export function createSqlStore(sql: Transaction, userId: string, media: 'image' | 'video' = 'image'): ImageJobStore {
   const scope = runtimeScope()
   return {
     async findById(id) {
@@ -85,6 +85,7 @@ export function createSqlStore(sql: Transaction, userId: string): ImageJobStore 
         lease_until=${patch.lease_until === undefined ? sql`lease_until` : patch.lease_until},
         next_poll_at=${patch.next_poll_at ?? sql`next_poll_at`},
         completed_at=${patch.completed_at === undefined ? sql`completed_at` : patch.completed_at},
+        expires_at=${patch.expires_at ?? sql`expires_at`},
         updated_at=now()
         where id=${id} and user_id=${userId} and scope=${scope} returning *`
       return asJob(row)
@@ -99,6 +100,7 @@ export function createSqlStore(sql: Transaction, userId: string): ImageJobStore 
         result_mime_type=${patch.result_mime_type === undefined ? sql`result_mime_type` : patch.result_mime_type},
         result_width=${patch.result_width === undefined ? sql`result_width` : patch.result_width},
         result_height=${patch.result_height === undefined ? sql`result_height` : patch.result_height},
+        ${patch.result_metadata === undefined ? sql`` : sql`result_metadata=${sql.json(patch.result_metadata as never)},`}
         error_code=${patch.error_code === undefined ? sql`error_code` : patch.error_code},
         error_message=${patch.error_message === undefined ? sql`error_message` : patch.error_message},
         updated_at=now()
@@ -107,21 +109,26 @@ export function createSqlStore(sql: Transaction, userId: string): ImageJobStore 
     },
     async hourlyCount() {
       const [row] = await sql`select count(*)::integer as used from aigc.image_jobs
-        where user_id=${userId} and scope=${scope} and created_at>now()-interval '1 hour'`
+        where user_id=${userId} and scope=${scope} and created_at>now()-interval '1 hour'
+          and (capability='text_to_video')=${media === 'video'}`
       return Number(row.used)
     },
     async hourlyOldest() {
       const [row] = await sql`select min(created_at) as oldest from aigc.image_jobs
-        where user_id=${userId} and scope=${scope} and created_at>now()-interval '1 hour'`
+        where user_id=${userId} and scope=${scope} and created_at>now()-interval '1 hour'
+          and (capability='text_to_video')=${media === 'video'}`
       return row.oldest ? new Date(row.oldest as Date | string) : undefined
     },
     async userActiveCount() {
       const [row] = await sql`select count(*)::integer as used from aigc.image_jobs
-        where user_id=${userId} and scope=${scope} and status in ('queued','processing') and deadline_at>now()`
+        where user_id=${userId} and scope=${scope} and status in ('queued','processing') and deadline_at>now()
+          and (capability='text_to_video')=${media === 'video'}`
       return Number(row.used)
     },
     async globalActiveCount() {
-      const [row] = await sql`select aigc.image_processing_count(${scope}) as used`
+      const [row] = media === 'video'
+        ? await sql`select aigc.video_processing_count(${scope}) as used`
+        : await sql`select aigc.image_processing_count(${scope}) as used`
       return Number(row.used)
     },
     async expireUserOverdue(now) {

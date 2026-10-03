@@ -10,6 +10,7 @@ export interface CreateTaskPayload<TParams = Record<string, unknown>> {
   /** 幂等键，前端生成，防止网络重试导致重复扣积分 */
   requestId: string
   modelProfileId?: string
+  priceVersion?: string
 }
 
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
@@ -21,8 +22,8 @@ const LIVE_TASK_CAPABILITIES = new Set<Capability>([Capability.EmailAssist])
  * 已接通、服务端 /tasks 会转到 image_jobs 的图片能力。
  * 不写入 LIVE_TASK_CAPABILITIES，各业务入口分别检查自身的模型配置。
  */
-const IMAGE_TASK_CAPABILITIES = new Set<Capability>([Capability.Variation, Capability.TextToImage])
-const BILLED_TASK_CAPABILITIES = new Set<Capability>([Capability.ImageEdit, Capability.Variation, Capability.TextToImage])
+const IMAGE_TASK_CAPABILITIES = new Set<Capability>([Capability.Variation, Capability.TextToImage, Capability.TextToVideo])
+const BILLED_TASK_CAPABILITIES = new Set<Capability>([Capability.ImageEdit, Capability.Variation, Capability.TextToImage, Capability.TextToVideo])
 let creditRefreshSequence = 0
 
 async function refreshCredits() {
@@ -68,7 +69,7 @@ export function getTask(taskId: string) {
   })
 }
 
-export function listTasks(params?: { capability?: Capability; page?: number }) {
+export function listTasks(params?: { capability?: Capability; page?: number }): Promise<TaskListResponse> {
   if (useMockGateway) return listMockTasks().then(result => ({
     items: result.items.map(task => ({ id: task.id, capability: task.capability, status: task.status,
       modelProfileId: task.modelProfileId, operation: (task.params as { operation?: string })?.operation,
@@ -80,6 +81,7 @@ export function listTasks(params?: { capability?: Capability; page?: number }) {
 }
 
 export interface TaskSummary {
+  video?: Omit<import('@shared/video-models').VideoResult, 'url' | 'expiresAt'>
   id: string
   capability: Capability
   status: GenerationTask['status']

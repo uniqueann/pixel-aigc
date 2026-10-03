@@ -46,7 +46,7 @@ describe('createTask 真实模式接入检查', () => {
     }), { timeout: 55000 })
   })
 
-  it('文生图沿用图片任务接口，视频仍未开放真实提交', async () => {
+  it('文生图和视频沿用任务接口，视频是否开放由服务端配置判断', async () => {
     expect(liveCapabilityReady(Capability.TextToImage, false)).toBe(false)
     expect(canCreateLiveTask(Capability.TextToImage, false)).toBe(true)
     const payload = {
@@ -57,8 +57,10 @@ describe('createTask 真实模式接入检查', () => {
     }
     await expect(createTask(payload)).resolves.toMatchObject({ id: 'task-1' })
     expect(post).toHaveBeenCalledWith('/tasks', payload, { timeout: 55000 })
-    await expect(createTask({ ...payload, capability: Capability.TextToVideo })).rejects.toThrow('该生成能力尚未接入真实服务')
-    expect(post).toHaveBeenCalledTimes(1)
+    const video = { ...payload, capability: Capability.TextToVideo, modelProfileId: 'seedance-2-0-fast', priceVersion: 'seedance-fast-720p-v1' }
+    await expect(createTask(video)).resolves.toMatchObject({ id: 'task-1' })
+    expect(post).toHaveBeenLastCalledWith('/tasks', video, { timeout: 55000 })
+    expect(post).toHaveBeenCalledTimes(2)
   })
 
   it('未接入的能力仍拒绝提交', async () => {

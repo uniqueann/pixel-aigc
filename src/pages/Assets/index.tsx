@@ -4,6 +4,8 @@ import { AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, Unord
 import { App, Alert, Button, Card, Segmented, Space, Spin, Tooltip } from 'antd'
 import EmptyState from '@/components/EmptyState'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
+import VideoPoster from '@/components/VideoPoster'
+import { downloadOwnedVideo } from '@/services/api/ownedVideos'
 import { usePreviewGallery } from '@/components/usePreviewGallery'
 import { authEnabled } from '@/cloud/client'
 import {
@@ -13,6 +15,7 @@ import {
   workstationToolLabel,
 } from '@/features/assets/labels'
 import { hydrateWorkstationHistoryFromImageJobs } from '@/features/assets/hydrateImageJobs'
+import { hydrateVideoJobs } from '@/features/assets/hydrateVideoJobs'
 import { isCurrentWorkstationHistoryOwner, resolveWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import {
   deleteWorkstationHistory,
@@ -28,7 +31,7 @@ import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 import { usePreferencesStore } from '@/features/preferences/store'
 
-type Filter = 'all' | 'workstation' | 'email'
+type Filter = 'all' | 'workstation' | 'video' | 'email'
 type ViewMode = 'grid' | 'list'
 function initialViewMode(): ViewMode {
   const { workbench, recent } = usePreferencesStore.getState().preferences
@@ -37,7 +40,7 @@ function initialViewMode(): ViewMode {
 
 interface LibraryItem {
   id: string
-  kind: 'workstation' | 'email'
+  kind: 'workstation' | 'video' | 'email'
   title: string
   subtitle: string
   status: string
@@ -92,7 +95,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     if (showLoading) setLoading(true)
     try {
       if (!current()) return
-      const local = await listHistoryPreviews(ownerId)
+      const local = await listHistoryPreviews(ownerId, true)
       if (!current()) return
       const nextUrls: Record<string, string> = {}
       const nextVersions: Record<string, string> = {}
@@ -134,8 +137,8 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       if (!isActive()) return
       void refresh(isActive).catch(error => { if (isActive()) setHistoryError(error instanceof Error ? error.message : '历史读取失败') })
       if (authEnabled) {
-        void hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: abort.signal })
-          .then(result => {
+        void Promise.all([hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: abort.signal }), hydrateVideoJobs(ownerId, abort.signal)])
+          .then(([result]) => {
             if (!isActive()) return
             if (result.failed) setHistoryError(`有 ${result.failed} 项结果未能补记，请重试读取与保存`)
             return refresh(isActive, false)
@@ -165,7 +168,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     try {
       await refresh(isActive)
       if (authEnabled && isActive()) {
-        const result = await hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: lifetimeAbortRef.current.signal })
+        const [result] = await Promise.all([hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: lifetimeAbortRef.current.signal }), hydrateVideoJobs(ownerId, lifetimeAbortRef.current.signal)])
         if (isActive() && result.failed) setHistoryError(`有 ${result.failed} 项结果未能补记，请重试读取与保存`)
         if (isActive()) await refresh(isActive, false)
       }
@@ -176,9 +179,10 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const items = useMemo<LibraryItem[]>(() => {
     const workstation = workstationItems.map((record) => ({
       id: record.id,
-      kind: 'workstation' as const,
-      title: workstationToolLabel(record.toolSlug),
-      subtitle: `${record.width}×${record.height}${record.prompt ? ` · ${record.prompt}` : ''}`,
+      kind: record.mediaType === 'video' ? 'video' as const : 'workstation' as const,
+      title: record.mediaType === 'video' ? 'Seedance 视频' : workstationToolLabel(record.toolSlug),
+      subtitle: record.video ? `${record.video.durationSeconds.toFixed(1)} 秒 · 720p · ${formatTime(record.video.retentionExpiresAt)} 到期`
+        : `${record.width}×${record.height}${record.prompt ? ` · ${record.prompt}` : ''}`,
       status: 'succeeded',
       createdAt: record.createdAt,
       previewUrl: previewUrls[record.id],
@@ -200,6 +204,9 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const visible = items.filter((item) => filter === 'all' || item.kind === filter)
   const previewItems: PreviewItem[] = visible.flatMap(item => item.record ? [{
     id: item.id,
+    mediaType: item.record?.mediaType,
+    retentionExpiresAt: item.record?.video?.retentionExpiresAt,
+    posterKey: item.record?.video?.posterKey,
     thumbSrc: item.previewUrl ?? '',
     fullSrc: '',
     historyId: item.id,
@@ -213,6 +220,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const downloadRecord = async (record: WorkstationHistoryListItem, currentBlob?: Blob) => {
     setDownloadingId(record.id)
     try {
+      if (record.video) { await downloadOwnedVideo(record.video, `Seedance_${record.video.durationSeconds.toFixed(1)}秒.mp4`, ownerId); return }
       await downloadImageSource(currentBlob ?? await readOwnedImage({ historyId: record.id, objectKey: record.objectKey }, { ownerId }), filenameForWorkstationResult({
         toolLabel: capabilityLabel(record.capability, record.toolSlug),
         width: record.width,
@@ -253,6 +261,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           options={[
             { label: '全部', value: 'all' },
             { label: '图片', value: 'workstation' },
+            { label: '视频', value: 'video' },
             { label: '邮件助手', value: 'email' },
           ]}
         />
@@ -281,20 +290,20 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       {loading ? (
         <div className="assets-loading"><Spin /> 正在读取历史任务…</div>
       ) : hydrating && visible.length === 0 && filter !== 'email' ? (
-        <div className="assets-loading"><Spin /> 正在补记当前账号的云端图片任务…</div>
+        <div className="assets-loading"><Spin /> 正在补记当前账号的云端图片与视频任务…</div>
       ) : visible.length === 0 ? (
         <EmptyState
           description={filter === 'email'
             ? '暂无邮件任务'
-            : '暂无当前账号的历史任务。旧版未标记账号的本地记录已隔离；已完成的云端图片任务会自动补记。'}
-          action={<Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : '/image-workstation/repaint')}>去生成</Button>}
+            : '暂无当前账号的历史任务。旧版未标记账号的本地记录已隔离；已完成的云端图片与视频任务会自动补记。'}
+          action={<Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : filter === 'video' ? '/canvas/text-to-video' : '/image-workstation/repaint')}>去生成</Button>}
         />
       ) : (
         <div className={viewMode === 'grid' ? 'assets-grid' : 'assets-list'}>
           {visible.map((item) => {
             const preview = item.record ? (
-              <button className="assets-cover" type="button" aria-label={`查看${item.title}大图`} title="查看大图" onClick={() => openAt(item.id)}>
-                {item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : <span>查看原图</span>}
+              <button className="assets-cover" type="button" aria-label={item.kind === 'video' ? `播放${item.title}` : `查看${item.title}大图`} title={item.kind === 'video' ? '播放视频' : '查看大图'} onClick={() => openAt(item.id)}>
+                {item.record?.video ? <VideoPoster posterKey={item.record.video.posterKey} retentionExpiresAt={item.record.video.retentionExpiresAt} ownerId={ownerId} /> : item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : <span>查看原图</span>}
               </button>
             ) : null
             return (
@@ -310,7 +319,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
                   <div className="assets-card-subtitle" title={item.subtitle}>{item.subtitle}</div>
                 </div>
                 <Space className="assets-card-actions" wrap>
-                  {item.record ? <Button size="small" icon={<ZoomInOutlined />} onClick={() => openAt(item.id)}>查看大图</Button> : null}
+                  {item.record ? <Button size="small" icon={<ZoomInOutlined />} onClick={() => openAt(item.id)}>{item.record.video ? '播放视频' : '查看大图'}</Button> : null}
                   {item.record ? (
                     <Button
                       size="small"

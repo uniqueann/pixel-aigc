@@ -10,6 +10,8 @@ import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import type { GenerationTask } from '@/types'
 import type { CanvasGenerationTaskParams } from './requestBuilder'
 import { resultAssetForTask } from './resultAsset'
+import VideoGenerationSettings from './VideoGenerationSettings'
+import type { VideoModelProfile } from '@shared/video-models'
 
 export type DerivedGenerationMode = 'variation' | 'image-to-video'
 
@@ -19,6 +21,10 @@ interface DerivedGenerationPanelProps {
   prompt: string
   count: number
   durationSeconds: number
+  generateAudio?: boolean
+  onAudioChange?: (value: boolean) => void
+  videoConfigured?: boolean
+  videoModel?: VideoModelProfile
   task?: GenerationTask<CanvasGenerationTaskParams>
   submitting: boolean
   autoRetrying: boolean
@@ -81,6 +87,7 @@ export default function DerivedGenerationPanel({
   models = [], modelProfileId, resolution = '2k', onModelChange, onResolutionChange,
   estimatedCredits, mockGateway = true, resolutionAdjusted = false, preparationPhase,
   historyError, historySaved, onRetrySave, resultAssets,
+  generateAudio = false, onAudioChange, videoConfigured = false, videoModel,
 }: DerivedGenerationPanelProps) {
   const imageToVideo = mode === 'image-to-video'
   const title = imageToVideo ? '从图片生成视频' : '图片裂变'
@@ -95,17 +102,19 @@ export default function DerivedGenerationPanel({
         : imageToVideo
           ? `本次生成 1 段 ${durationSeconds} 秒视频`
           : `本次生成 ${count} 张裂变图片`
-  const resultUrls = task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
+  const resultUrls = task?.resultVideos?.length ? task.resultVideos.map(video => video.url) : task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
   const previewItems = resultUrls.map((url, index) => {
-    const image = task?.resultImages?.[index]
+    const image = task?.resultVideos?.[index] ?? task?.resultImages?.[index]
     const asset = resultAssetForTask(task, index, resultAssets ?? {})
     const src = asset && !asset.missing ? asset.url : url
-    return { id: `${task?.id}:${index}`, thumbSrc: src, fullSrc: src, originalSrc: sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `裂变结果 ${(image?.ordinal ?? index) + 1}` }
+    return { id: `${task?.id}:${index}`, mediaType: imageToVideo ? 'video' as const : 'image' as const,
+      posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
+      thumbSrc: imageToVideo ? '' : src, fullSrc: src, originalSrc: imageToVideo || sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `${imageToVideo ? '视频' : '裂变'}结果 ${(image?.ordinal ?? index) + 1}` }
   })
   const model = models.find(item => item.id === modelProfileId)
   const originalModel = models.find(item => item.id === task?.modelProfileId) ?? model
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
-  const retryCredits = task ? task.params.count * (originalModel?.pricing?.creditsPerImage[originalResolution ?? resolution] ?? 0) : estimatedCredits
+  const retryCredits = task ? task.params.count * (originalResolution === '720p' ? 0 : originalModel?.pricing?.creditsPerImage[originalResolution ?? resolution] ?? 0) : estimatedCredits
 
   return (
     <aside className="free-canvas-generation-panel free-canvas-derived-panel">
@@ -136,7 +145,7 @@ export default function DerivedGenerationPanel({
         <span>{imageToVideo ? '动态描述' : '变化描述（可选）'}</span>
         <Input.TextArea
           rows={5}
-          maxLength={imageToVideo ? undefined : VARIATION_USER_PROMPT_MAX}
+          maxLength={imageToVideo ? 4000 : VARIATION_USER_PROMPT_MAX}
           showCount={!imageToVideo}
           value={prompt}
           disabled={formLocked}
@@ -187,12 +196,14 @@ export default function DerivedGenerationPanel({
       {modelsLoading || imageToVideo ? null : generateDisabled ? (
         <p className="toolbox-hint">裂变模型尚未就绪，请检查登录与模型配置。</p>
       ) : null}
-      {imageToVideo && !mockGateway && <p className="toolbox-hint">视频真实生成尚未接入，目前仅支持模拟模式。</p>}
+      {imageToVideo && <><VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
+        loading={modelsLoading} configured={videoConfigured || mockGateway} credits={estimatedCredits} mockGateway={mockGateway} />
+        <p>保持原图比例；首期暂不支持含真人人脸的图片。</p></>}
       <Button
         type="primary"
         block
         loading={submitting || autoRetrying}
-        disabled={formLocked || generateDisabled || (imageToVideo && !prompt.trim())}
+        disabled={formLocked || generateDisabled || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > 4000))}
         onClick={onGenerate}
       >
         {active ? '正在生成' : imageToVideo ? '生成视频' : `开始裂变 ${count} 张`}
@@ -201,6 +212,7 @@ export default function DerivedGenerationPanel({
       {!imageToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
         手动重试将按原参数创建新任务，生成 {task.params.count} 张，预计预扣 {retryCredits} 积分。
       </p>}
+      {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{videoModel ? `重新生成将创建新任务并预扣 ${videoModel.pricing.creditsPerVideo['durationSeconds' in task.params && task.params.durationSeconds === 10 ? 10 : 5]} 积分。` : '请先读取视频配置与报价，再决定是否重新生成。'}</p>}
 
       <GenerationTaskStatus
         task={task}
@@ -215,11 +227,12 @@ export default function DerivedGenerationPanel({
         historySaved={historySaved}
         onRetrySave={onRetrySave}
         onRetry={onRetry}
+        retryDisabled={imageToVideo && (generateDisabled || modelsLoading)}
         retryLabel={!imageToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
       />
-      {task?.status === 'succeeded' && !imageToVideo && <PreviewResultStrip items={previewItems} onDownload={item => {
+      {task?.status === 'succeeded' && <PreviewResultStrip items={previewItems} onDownload={item => {
         const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
         const image = task.resultImages?.[index]
         return downloadImageSource(item.fullSrc, `裂变结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)

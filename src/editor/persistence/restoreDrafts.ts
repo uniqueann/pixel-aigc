@@ -11,10 +11,10 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
   const job = placeholder?.type === 'generation' ? project.generations[placeholder.generationId] : undefined
   const request = record?.request ?? (job ? { capability: job.capability, params: job.input } : undefined)
   if (!request || !request.params || typeof request.params !== 'object') return drafts
-  const params = request.params as { prompt?: string; size?: { width: number; height: number }; count?: number; durationSeconds?: number; sourceImageUrl?: string; resolution?: '1k' | '2k' | '4k' }
+  const params = request.params as { prompt?: string; size?: { width: number; height: number }; count?: number; durationSeconds?: number; sourceImageUrl?: string; sourceImageKey?: string; mode?: string; generateAudio?: boolean; resolution?: '1k' | '2k' | '4k' | '720p' }
   const sourceId = record?.context.inputAssetIds[0] ?? job?.inputAssetIds[0]
   const source = sourceId ? project.assets[sourceId] : undefined
-  if (source?.type === 'image' && (request.capability === Capability.Variation || params.sourceImageUrl)) {
+  if (source?.type === 'image' && (request.capability === Capability.Variation || params.mode === 'image_to_video' || params.sourceImageKey || params.sourceImageUrl)) {
     const currentSource = project.document.scenes.flatMap((scene) => scene.nodes).find((node): node is ImageNode => node.type === 'image' && node.assetId === source.id)
     const sourceNode: ImageNode = currentSource ?? drafts.derived?.sourceNode ?? {
       id: `restored-source:${source.id}`, type: 'image', assetId: source.id,
@@ -26,6 +26,7 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
       sourceNode, sourceAssetId: source.id, prompt: params.prompt ?? '', count: params.count ?? 4, durationSeconds: params.durationSeconds ?? 5,
       modelProfileId: record?.request.modelProfileId ?? drafts.derived?.modelProfileId,
       resolution: params.resolution ?? drafts.derived?.resolution,
+      generateAudio: params.generateAudio ?? drafts.derived?.generateAudio,
     } }
   }
   const mode = request.capability === Capability.TextToVideo ? 'text-to-video' : 'text-to-image'
@@ -41,5 +42,6 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
     ...drafts[mode], prompt: params.prompt ?? '', presetKey, count: params.count ?? 1, durationSeconds: params.durationSeconds ?? 5,
     ...(record?.request.modelProfileId ? { modelProfileId: record.request.modelProfileId } : {}),
     ...(params.resolution ? { resolution: params.resolution } : {}),
+    ...(params.generateAudio !== undefined ? { generateAudio: params.generateAudio } : {}),
   } }
 }

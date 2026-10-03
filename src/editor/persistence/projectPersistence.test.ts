@@ -9,7 +9,7 @@ import { Capability } from '@/types'
 import * as database from './database'
 import { defaultDrafts, type ProjectSnapshot } from './types'
 import { usePersistenceStore } from './persistenceStore'
-import { currentSnapshot, flushProject, initializePersistence, newProject, replaceSnapshot, updateRuntimeAssetAccess } from './projectPersistence'
+import { copyProjectLocally, currentSnapshot, flushProject, initializePersistence, newProject, replaceSnapshot, updateRuntimeAssetAccess } from './projectPersistence'
 
 Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: (_name: string, _options: unknown, callback: (lock: object) => Promise<void>) => callback({}) } })
 
@@ -23,6 +23,20 @@ beforeEach(async () => {
 })
 
 describe('IndexedDB 项目保存与恢复', () => {
+  it('云项目另存本地时创建新 ID，保留草稿和素材并解除云同步状态', async () => {
+    const original = useEditorStore.getState().project!
+    usePersistenceStore.setState({ cloud: { revision: 3, pending: false } })
+    usePersistenceStore.getState().setDrafts({ ...defaultDrafts(), 'text-to-video': { prompt: '视频草稿', count: 1, presetKey: '16:9', durationSeconds: 10, resolution: '720p', generateAudio: true } })
+    await copyProjectLocally()
+    const copy = currentSnapshot()
+    expect(copy.project.id).not.toBe(original.id)
+    expect(copy.project.name).toContain('本地副本')
+    expect(copy.project.document).toEqual(original.document)
+    expect(copy.cloud).toBeUndefined()
+    expect(copy.drafts['text-to-video']).toMatchObject({ generateAudio: true, resolution: '720p' })
+    expect(await database.readCurrentSnapshot()).toMatchObject({ project: { id: copy.project.id } })
+  })
+
   it('事务提交后保存完整快照，再初始化恢复相同项目和空历史', async () => {
     usePersistenceStore.getState().setDrafts({ ...defaultDrafts(),
       'text-to-image': { prompt: '文生图草稿', count: 2, presetKey: '16:9', durationSeconds: 5, modelProfileId: 'chosen-model', resolution: '4k' },

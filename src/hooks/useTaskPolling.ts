@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { App } from 'antd'
 import { getTask } from '@/services/api/task'
 import { useTaskStore } from '@/store/useTaskStore'
-import type { GenerationTask, TaskStatus } from '@/types'
+import { Capability, type GenerationTask, type TaskStatus } from '@/types'
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
 
@@ -43,7 +43,7 @@ export function useTaskPolling(taskId: string | undefined, onTask?: (task: Gener
     enabled: !!taskId && enabled,
     refetchInterval: (query) => {
       const status = query.state.data?.status
-      return status && ACTIVE_STATUSES.has(status) ? 2000 : false
+      return status && ACTIVE_STATUSES.has(status) ? query.state.data?.capability === Capability.TextToVideo ? 5000 : 2000 : false
     },
   })
 }

@@ -8,6 +8,7 @@ import {
 import type { ImageSizePreset } from './config'
 import { VARIATION_USER_PROMPT_MAX, variationPromptLimitMessage } from '@shared/variation'
 import { scaleToLongEdge } from '@/features/image-workstation/tools/requestBuilders/imageEdit'
+import type { VideoModelProfile, VideoRatio } from '@shared/video-models'
 
 export type CanvasGenerationTaskParams =
   | TextToImageTaskParams
@@ -19,6 +20,7 @@ export interface CanvasGenerationRequest {
   capability: Capability.TextToImage | Capability.TextToVideo | Capability.Variation
   requestId: string
   modelProfileId?: string
+  priceVersion?: string
   params: CanvasGenerationTaskParams
 }
 
@@ -57,11 +59,13 @@ export function buildTextToVideoRequest(
   prompt: string,
   preset: ImageSizePreset,
   durationSeconds: number,
+  options?: { model: VideoModelProfile; generateAudio: boolean },
 ): CanvasGenerationRequest {
   const normalizedPrompt = prompt.trim()
   if (!normalizedPrompt) throw new Error('请输入画面描述')
 
   const params: TextToVideoTaskParams = {
+    ...(options ? { mode: 'text_to_video' as const, ratio: preset.key as VideoRatio, resolution: '720p' as const, generateAudio: options.generateAudio } : {}),
     prompt: normalizedPrompt,
     size: { width: preset.width, height: preset.height },
     durationSeconds: durationSeconds === 10 ? 10 : 5,
@@ -70,6 +74,7 @@ export function buildTextToVideoRequest(
   return {
     capability: Capability.TextToVideo,
     requestId: crypto.randomUUID(),
+    ...(options ? { modelProfileId: options.model.id, priceVersion: options.model.pricing.version } : {}),
     params,
   }
 }
@@ -102,11 +107,13 @@ export function buildImageToVideoRequest(
   source: SourceImageInput,
   prompt: string,
   durationSeconds: number,
+  options?: { model: VideoModelProfile; generateAudio: boolean },
 ): CanvasGenerationRequest {
   if (!source.url) throw new Error('源图片不可用')
   const normalizedPrompt = prompt.trim()
   if (!normalizedPrompt) throw new Error('请输入动态描述')
   const params: ImageToVideoTaskParams = {
+    ...(options ? { mode: 'image_to_video' as const, ratio: 'adaptive' as const, resolution: '720p' as const, generateAudio: options.generateAudio } : {}),
     sourceImageUrl: source.url,
     prompt: normalizedPrompt,
     size: { width: source.width, height: source.height },
@@ -116,6 +123,7 @@ export function buildImageToVideoRequest(
   return {
     capability: Capability.TextToVideo,
     requestId: crypto.randomUUID(),
+    ...(options ? { modelProfileId: options.model.id, priceVersion: options.model.pricing.version } : {}),
     params,
   }
 }

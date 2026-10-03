@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import sharp from 'sharp'
 import { env } from './config.js'
@@ -12,8 +12,13 @@ export async function signUpload(key: string, mimeType: string, size: number) {
   // aigc.contentup.cc 那条只放行 Content-Type 的 CORS 规则。
   return getSignedUrl(s3(), new PutObjectCommand({ Bucket: bucket(), Key: key, ContentType: mimeType, ContentLength: size }), { expiresIn: 600, signableHeaders: new Set(['content-type']) })
 }
-export async function signRead(key: string, expiresIn = 900) {
-  return { url: await getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket(), Key: key }), { expiresIn }), expiresAt: Date.now() + expiresIn * 1000 }
+export async function signRead(key: string, expiresIn = 900, disposition?: string) {
+  return { url: await getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket(), Key: key,
+    ...(disposition ? { ResponseContentDisposition: disposition } : {}) }), { expiresIn }), expiresAt: Date.now() + expiresIn * 1000 }
+}
+
+export async function deleteObject(key: string, signal?: AbortSignal) {
+  await s3().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }), signal ? { abortSignal: signal } : undefined)
 }
 
 export async function putObject(key: string, bytes: Uint8Array, contentType: string, signal?: AbortSignal) {

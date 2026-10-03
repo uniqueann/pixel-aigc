@@ -25,6 +25,9 @@ export interface VideoAsset extends BaseAsset {
   width: number
   height: number
   duration: number
+  retentionExpiresAt?: string
+  posterKey?: string
+  hasAudio?: boolean
 }
 
 export interface AudioAsset extends BaseAsset {

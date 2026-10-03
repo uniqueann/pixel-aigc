@@ -7,6 +7,8 @@ import { isCurrentWorkstationHistoryOwner, currentWorkstationHistoryOwner } from
 import { readOwnedImage, invalidateOwnedImage } from '@/services/api/ownedImages'
 import { retainImageBlob, runtimeImageBlob } from '@/services/api/imageRuntime'
 import CompareViewer from './CompareViewer'
+import VideoPlayer from './VideoPlayer'
+import { downloadOwnedVideo } from '@/services/api/ownedVideos'
 import './preview.css'
 
 type RcPreviewImageProps = ImgHTMLAttributes<HTMLImageElement> & {
@@ -14,6 +16,9 @@ type RcPreviewImageProps = ImgHTMLAttributes<HTMLImageElement> & {
 }
 
 export interface PreviewItem {
+  mediaType?: 'image' | 'video'
+  retentionExpiresAt?: string
+  posterKey?: string
   id: string
   thumbSrc: string
   fullSrc: string
@@ -101,6 +106,7 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
   const { message } = App.useApp()
   const [comparing, setComparing] = useState(false)
   const item = items[current]
+  const isVideo = item?.mediaType === 'video'
   const { id: readId, objectKey: readKey, historyId: readHistoryId, ownerId: readOwnerId, fullSrc: readSrc, expiresAt: readExpiresAt } = item ?? {}
   const currentUserId = useUserStore(state => state.userId)
   const signatureOwnerRef = useRef<string>()
@@ -109,7 +115,7 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
   const readError = readFailure?.id === item?.id ? readFailure?.message : undefined
   const [readAttempt, setReadAttempt] = useState(0)
   useEffect(() => {
-    if (!open || !readId || (!readKey && !readHistoryId)) return
+    if (!open || isVideo || !readId || (!readKey && !readHistoryId)) return
     const controller = new AbortController()
     let active = true
     let lease: ReturnType<typeof retainImageBlob> | undefined
@@ -131,8 +137,8 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
         setResolved({ id: readId, url: lease.url, userId: currentUserId })
       }).catch(error => { if (active) setReadFailure({ id: readId, message: error instanceof Error ? error.message : '图片读取失败' }) })
     return () => { active = false; controller.abort(); lease?.release() }
-  }, [open, readId, readKey, readHistoryId, readOwnerId, readSrc, readExpiresAt, readAttempt, currentUserId])
-  const requiresRead = Boolean(item?.objectKey || item?.historyId)
+  }, [open, isVideo, readId, readKey, readHistoryId, readOwnerId, readSrc, readExpiresAt, readAttempt, currentUserId])
+  const requiresRead = !isVideo && Boolean(item?.objectKey || item?.historyId)
   const localSrc = resolved?.id === item?.id && resolved?.userId === currentUserId ? resolved?.url : undefined
   const retryImage = () => {
     if (readKey) { try { invalidateOwnedImage(readOwnerId ?? currentWorkstationHistoryOwner(), readKey) } catch { return } }
@@ -148,7 +154,8 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
     if (!item) return
     try {
       if (item.ownerId && !isCurrentWorkstationHistoryOwner(item.ownerId)) throw new Error('账号已切换，无法下载其他账号的图片')
-      if (onDownload) await onDownload({ ...item, fullSrc: localSrc ?? item.fullSrc })
+      if (isVideo) await downloadOwnedVideo({ objectKey: item.objectKey, url: item.fullSrc, retentionExpiresAt: item.retentionExpiresAt }, `${item.title ?? '视频'}.mp4`, item.ownerId)
+      else if (onDownload) await onDownload({ ...item, fullSrc: localSrc ?? item.fullSrc })
       else {
         const currentBlob = localSrc ? runtimeImageBlob(localSrc) : undefined
         const blob = currentBlob ?? (item.historyId ? await readOwnedImage({ historyId: item.historyId, objectKey: item.objectKey }, { ownerId: item.ownerId }) : await blobFromImageSource(localSrc ?? item.fullSrc, item.objectKey))
@@ -166,19 +173,19 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
 
   if (items.length === 0) return null
   return <>
-    {(!comparing || (requiresRead && !localSrc)) && <Image.PreviewGroup
-      items={items.map(entry => ({ src: entry.id === item?.id && localSrc ? localSrc : entry.objectKey || entry.historyId ? 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' : entry.fullSrc, alt: entry.title ?? '图片预览' }))}
+    {(!comparing || (requiresRead && !localSrc)) && (!isVideo || open) && <Image.PreviewGroup
+      items={items.map(entry => ({ src: entry.id === item?.id && localSrc ? localSrc : entry.mediaType === 'video' || entry.objectKey || entry.historyId ? 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' : entry.fullSrc, alt: entry.title ?? '媒体预览' }))}
       preview={{
         visible: open,
         current,
         onVisibleChange: visible => { if (!visible && (!comparing || (requiresRead && !localSrc))) { setComparing(false); onClose() } },
         onChange: change,
         rootClassName: 'preview-gallery-overlay',
-        imageRender: image => requiresRead && !localSrc ? <div className="preview-image-frame"><div className="preview-load-state">{readError ? <><span>{readError}</span><Button onClick={() => setReadAttempt(value => value + 1)}>重试读取</Button></> : <Spin />}</div></div> : <PreviewImage image={image} onRetry={requiresRead ? retryImage : undefined} />,
+        imageRender: image => isVideo && open ? <VideoPlayer key={item.id} ownerId={item.ownerId} reference={{ objectKey: item.objectKey, url: item.fullSrc, expiresAt: item.expiresAt, retentionExpiresAt: item.retentionExpiresAt }} /> : requiresRead && !localSrc ? <div className="preview-image-frame"><div className="preview-load-state">{readError ? <><span>{readError}</span><Button onClick={() => setReadAttempt(value => value + 1)}>重试读取</Button></> : <Spin />}</div></div> : <PreviewImage image={image} onRetry={requiresRead ? retryImage : undefined} />,
         toolbarRender: (originalNode) => <>
-          {originalNode}
-          <Button className="preview-toolbar-action" type="text" icon={<DownloadOutlined />} aria-label="下载原始大图" onClick={() => void download()} />
-          {item?.originalSrc && <Button className="preview-toolbar-action" type="text" icon={<RetweetOutlined />} aria-label="对比原图与结果" onClick={() => setComparing(true)} />}
+          {!isVideo && originalNode}
+          <Button className="preview-toolbar-action" type="text" icon={<DownloadOutlined />} aria-label={isVideo ? '下载视频' : '下载原始大图'} onClick={() => void download()} />
+          {!isVideo && item?.originalSrc && <Button className="preview-toolbar-action" type="text" icon={<RetweetOutlined />} aria-label="对比原图与结果" onClick={() => setComparing(true)} />}
         </>,
       }}
     />}

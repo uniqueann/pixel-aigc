@@ -15,6 +15,7 @@ vi.mock('./storage', () => ({
   signUpload: vi.fn(),
   putObject: mocks.putObject,
   getObject: mocks.getObject,
+  getObjectLimited: vi.fn(), deleteObject: vi.fn(),
 }))
 vi.mock('./bailian-erase', () => ({ eraseWithBailian: mocks.eraseWithBailian }))
 vi.mock('./bailian-repaint', () => ({ repaintWithBailian: mocks.repaintWithBailian }))
@@ -196,15 +197,19 @@ describe('API 认证、版本和写入边界', () => {
     else process.env.DASHSCOPE_API_KEY = previous
   })
 
-  it('文生图进入独立参数校验，视频能力继续返回未接入', async () => {
+  it('文生图和视频进入独立参数校验，未配置视频时保持关闭', async () => {
     const invalidText = await request({ capability: 'text_to_image', requestId: '00000000-0000-4000-8000-000000000203', params: {
       prompt: '  ', size: { width: 1600, height: 900 }, count: 2, resolution: '2k',
     } }, 'POST', '/api/tasks')
     expect(invalidText.status).toHaveBeenCalledWith(400)
     expect(invalidText.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'INVALID_REQUEST' }))
     const video = await request({ capability: 'text_to_video', params: {} }, 'POST', '/api/tasks')
-    expect(video.status).toHaveBeenCalledWith(501)
-    expect(video.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'CAPABILITY_UNAVAILABLE' }))
+    expect(video.status).toHaveBeenCalledWith(400)
+    expect(video.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'INVALID_REQUEST' }))
+    const flags = await request(undefined, 'GET', '/api/capabilities')
+    expect(flags.json).toHaveBeenCalledWith(expect.objectContaining({ textToVideo: false, imageToVideo: false }))
+    const models = await request(undefined, 'GET', '/api/video-models')
+    expect(models.json).toHaveBeenCalledWith({ items: [] })
   })
 
   it('capabilities 在配置腾讯云后打开智能选区', async () => {

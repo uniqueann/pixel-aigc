@@ -12,6 +12,8 @@ export const HISTORY_CHANGED = 'pixel-history-changed'
 export type WorkstationHistorySlug = 'repaint' | 'remove' | 'outpaint' | 'smart-edit' | string
 
 export interface WorkstationHistoryMetadata {
+  mediaType?: 'image' | 'video'
+  video?: Omit<import('@shared/video-models').VideoResult, 'url' | 'expiresAt'>
   id: string
   objectKey?: string
   taskId?: string
@@ -96,11 +98,31 @@ function changed(ownerId: string) {
   }
 }
 
-export async function listHistoryMetadata(ownerId: string): Promise<WorkstationHistoryMetadata[]> {
+export async function listHistoryMetadata(ownerId: string, includeVideos = false): Promise<WorkstationHistoryMetadata[]> {
   requireOwner(ownerId)
+  if (includeVideos) await pruneExpiredVideos(ownerId)
   return transaction([METADATA], 'readonly', (tx, done) => {
     const request = tx.objectStore(METADATA).index('ownerId').getAll(ownerId)
-    request.onsuccess = () => done(request.result.map(({ ownerId: _ownerId, ...fields }) => { void _ownerId; return fields }).sort(compareHistory))
+    request.onsuccess = () => done(request.result.map(({ ownerId: _ownerId, ...fields }) => { void _ownerId; return fields })
+      .filter((item: WorkstationHistoryMetadata) => item.mediaType !== 'video' || (includeVideos && !!item.video && new Date(item.video.retentionExpiresAt).getTime() > Date.now())).sort(compareHistory))
+  })
+}
+
+/** 到期删除本地视频引用；保留画布中的过期提示，不再恢复播放地址。 */
+export async function pruneExpiredVideos(ownerId: string) {
+  requireOwner(ownerId)
+  await transaction([METADATA, THUMBNAILS], 'readwrite', (tx, done) => {
+    const request = tx.objectStore(METADATA).index('ownerId').openCursor(ownerId)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) { done(undefined); return }
+      const item = cursor.value as WorkstationHistoryMetadata
+      if (item.mediaType === 'video' && !(new Date(item.video?.retentionExpiresAt ?? '').getTime() > Date.now())) {
+        cursor.delete()
+        tx.objectStore(THUMBNAILS).delete([ownerId, item.id])
+      }
+      cursor.continue()
+    }
   })
 }
 export async function readHistoryImage(ownerId: string, reference: { id?: string; objectKey?: string }): Promise<Blob | undefined> {
@@ -180,14 +202,14 @@ async function makeThumbnails() {
     }
   } finally { makingThumbnail = false }
 }
-export async function listHistoryPreviews(ownerId: string): Promise<WorkstationHistoryListItem[]> {
-  const items = await listHistoryMetadata(ownerId)
+export async function listHistoryPreviews(ownerId: string, includeVideos = false): Promise<WorkstationHistoryListItem[]> {
+  const items = await listHistoryMetadata(ownerId, includeVideos)
   const thumbnails = await transaction<Array<{ id: string; thumbnail: Blob }>>([THUMBNAILS], 'readonly', (tx, done) => {
     const request = tx.objectStore(THUMBNAILS).index('ownerId').getAll(ownerId)
     request.onsuccess = () => done(request.result)
   })
   const byId = new Map(thumbnails.map(item => [item.id, item.thumbnail]))
-  for (const item of items) if (!byId.has(item.id)) enqueueThumbnail(ownerId, item.id, undefined, item)
+  for (const item of items) if (item.mediaType !== 'video' && !byId.has(item.id)) enqueueThumbnail(ownerId, item.id, undefined, item)
   return items.map(item => ({ ...item, thumbnail: byId.get(item.id) }))
 }
 export async function listHistoryDeletions(ownerId: string): Promise<DeletedResult[]> {
@@ -216,7 +238,7 @@ export async function recordWorkstationHistory(ownerId: string, record: Workstat
         } catch (error) { fail(error); return }
         const request = tx.objectStore(METADATA).index('ownerId').getAll(ownerId)
         request.onsuccess = () => {
-          for (const extra of request.result.sort(compareHistory).slice(HISTORY_LIMIT)) {
+          for (const extra of request.result.filter((item: WorkstationHistoryMetadata) => item.mediaType !== 'video').sort(compareHistory).slice(HISTORY_LIMIT)) {
             for (const name of [ORIGINALS, METADATA, THUMBNAILS]) tx.objectStore(name).delete([ownerId, extra.id])
           }
           saved = true
@@ -232,6 +254,25 @@ export async function recordWorkstationHistory(ownerId: string, record: Workstat
   console.debug('[图片历史]', { operation: 'save', elapsedMs: Math.round(performance.now() - started), bytes: record.result.size })
   changed(ownerId)
   if (saved) enqueueThumbnail(ownerId, savedId, undefined, record)
+}
+
+/** 视频只保存轻量元数据，既不读取 MP4，也不挤占图片的原件存储额度。 */
+export async function recordVideoHistory(ownerId: string, record: WorkstationHistoryMetadata) {
+  requireOwner(ownerId)
+  if (record.mediaType !== 'video' || !record.video || new Date(record.video.retentionExpiresAt).getTime() <= Date.now()) return
+  let saved = false
+  await transaction([METADATA, DELETED], 'readwrite', (tx, done) => {
+    const deleted = tx.objectStore(DELETED).index('ownerId').getAll(ownerId)
+    deleted.onsuccess = () => {
+      if (deleted.result.some(item => item.id === record.id || item.objectKey === record.objectKey)) { done(undefined); return }
+      const old = tx.objectStore(METADATA).get([ownerId, record.id])
+      old.onsuccess = () => {
+        if (old.result?.updatedAt !== record.updatedAt) { tx.objectStore(METADATA).put({ ...record, ownerId }); saved = true }
+        done(undefined)
+      }
+    }
+  })
+  if (saved) changed(ownerId)
 }
 /** 只在同一任务版本中确认位置后补齐身份，不读取或复制原图。 */
 export async function associateHistoryResult(ownerId: string, id: string, association: { taskId: string; ordinal?: number; objectKey: string; updatedAt: string }) {

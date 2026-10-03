@@ -45,6 +45,8 @@ import { describeReferenceUrl } from '../image-providers/dragoncode/images.js'
 import { sleep as defaultSleep } from '../image-providers/http.js'
 import { cropToSourceAspect } from './aspect-crop.js'
 import { createSqlBilling, noopBilling, type BillingPort } from './billing.js'
+import { reserveAndCreateJob } from './lifecycle.js'
+import { VIDEO_RETENTION_MS } from '../../shared/video-models.js'
 import { createSqlStore } from './repository.js'
 import {
   ACTIVE_JOB_STATUSES,
@@ -525,15 +527,6 @@ export async function createImageJobInStore(
     throw new HttpError(503, '图片积分单价尚未配置', 'IMAGE_PRICE_UNAVAILABLE')
   }
   const reserved = mapped.fanOut * unitPrice
-  const reservedOk = await runtime.billing.reserve({
-    userId: user.id, jobId, amount: reserved,
-    meta: { capability: parsed.capability, modelProfileId: profile.id, resolution: effectiveResolution, unitPrice },
-  })
-  if (!reservedOk.ok) {
-    throw new HttpError(402, reservedOk.message, reservedOk.code, {
-      extra: { required: reservedOk.required, balance: reservedOk.balance },
-    })
-  }
   const input: InsertImageJobInput = {
     id: jobId,
     requestId: parsed.requestId,
@@ -555,9 +548,9 @@ export async function createImageJobInStore(
       config?.initialPollDelayMs ?? DEFAULT_INITIAL_POLL_DELAY_MS,
     ),
   }
-  const job = await store.insertJob(input)
-  const items = await store.insertItems(job, mapped.fanOut)
-  return { bundle: { job, items }, created: true, provider }
+  const bundle = await reserveAndCreateJob(store, runtime.billing, user.id, input,
+    { capability: parsed.capability, modelProfileId: profile.id, resolution: effectiveResolution, unitPrice })
+  return { bundle, created: true, provider }
 }
 
 export async function runProviderSubmits(
@@ -674,12 +667,14 @@ export async function finalizeJob(
     error_message: reduced.status === 'expired'
       ? '任务处理超时，请重试'
       : reduced.status === 'failed'
-        ? (items.find(item => item.error_message)?.error_message ?? '图片生成失败，请稍后重试')
+        ? (items.find(item => item.error_message)?.error_message ?? (job.capability === 'text_to_video' ? '视频生成失败，请稍后重试' : '图片生成失败，请稍后重试'))
         : job.error_message,
     credits_charged: creditsCharged,
     billing_state: billingState,
     completed_at: terminal ? new Date(runtime.now()) : job.completed_at,
-    next_poll_at: nextPollAt(runtime.now(), dragonCodeConfig()?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS),
+    ...(job.capability === 'text_to_video' && reduced.status === 'succeeded' && job.status !== 'succeeded'
+      ? { expires_at: new Date(runtime.now() + VIDEO_RETENTION_MS), error_code: null, error_message: null } : {}),
+    next_poll_at: nextPollAt(runtime.now(), job.capability === 'text_to_video' ? 60_000 : dragonCodeConfig()?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS),
     lease_until: null,
     provider_params: providerParams,
   })
@@ -879,6 +874,7 @@ export async function loadImageTask(user: User, id: string, runtime = defaultIma
     const job = await store.findById(id)
     if (!job) return null
     const items = await store.listItems(job.id)
+    if (job.capability === 'text_to_video') return { mode: 'video' as const, job, items }
     const now = runtime.now()
     const overdue = now >= new Date(job.deadline_at).getTime()
     const salvage = canSalvage(job, now, items)
@@ -890,6 +886,10 @@ export async function loadImageTask(user: User, id: string, runtime = defaultIma
     return { mode: 'advance' as const, job: leased, items }
   })
   if (!prepared) return null
+  if (prepared.mode === 'video') {
+    const { toClientVideoTask } = await import('../video-jobs/service.js')
+    return toClientVideoTask(prepared)
+  }
   if (prepared.mode === 'snapshot') return toClientImageTask(prepared, runtime)
   const outcomes = await collectAdvancePatches(prepared.job, prepared.items, runtime)
   return withIdentity(user.id, user.email, async sql => {
@@ -911,17 +911,22 @@ export async function loadImageTaskByRequest(user: User, requestId: string, runt
   return loadImageTask(user, found.id, runtime)
 }
 
-export async function listImageTasks(user: User, page: number, capability?: ImageTaskCapability) {
+export async function listImageTasks(user: User, page: number, capability?: ImageTaskCapability | 'text_to_video') {
   return withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     const scope = runtimeScope()
     const [count] = await sql`select count(*)::integer as total from aigc.image_jobs
       where user_id=${user.id} and scope=${scope} and expires_at>now()
       and (${capability ?? null}::text is null or capability=${capability ?? null})`
-    const rows = await sql`select id,status,model_profile_id,capability,left(params->>'prompt',80) as preview,created_at,updated_at
-      from aigc.image_jobs where user_id=${user.id} and scope=${scope} and expires_at>now()
-      and (${capability ?? null}::text is null or capability=${capability ?? null})
-      order by created_at desc limit 20 offset ${(page - 1) * 20}`
+    const rows = capability === 'text_to_video'
+      ? await sql`select j.*,i.result_object_key,i.result_width,i.result_height,i.result_metadata,left(j.params->>'prompt',80) as preview
+          from aigc.image_jobs j left join aigc.image_job_items i on i.job_id=j.id and i.ordinal=0
+          where j.user_id=${user.id} and j.scope=${scope} and j.expires_at>now() and j.capability='text_to_video'
+          order by j.created_at desc limit 20 offset ${(page - 1) * 20}`
+      : await sql`select id,status,model_profile_id,capability,left(params->>'prompt',80) as preview,created_at,updated_at
+          from aigc.image_jobs where user_id=${user.id} and scope=${scope} and expires_at>now()
+          and (${capability ?? null}::text is null or capability=${capability ?? null})
+          order by created_at desc limit 20 offset ${(page - 1) * 20}`
     return {
       items: rows.map(row => {
         const mapped = toClientTaskStatus(String(row.status))
@@ -931,6 +936,10 @@ export async function listImageTasks(user: User, page: number, capability?: Imag
           status: mapped.status,
           modelProfileId: row.model_profile_id,
           preview: row.preview,
+          ...(capability === 'text_to_video' && row.status === 'succeeded' && row.result_object_key ? {
+            video: { objectKey: row.result_object_key, ordinal: 0, width: row.result_width, height: row.result_height,
+              mimeType: 'video/mp4', ...(row.result_metadata as object), retentionExpiresAt: iso(row.expires_at as Date | string) },
+          } : {}),
           createdAt: iso(row.created_at as Date | string),
           updatedAt: iso(row.updated_at as Date | string),
         }
@@ -951,9 +960,10 @@ export async function deleteImageTask(user: User, id: string) {
   return withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     const scope = runtimeScope()
-    const [job] = await sql`select status from aigc.image_jobs
+    const [job] = await sql`select status,capability from aigc.image_jobs
       where id=${id} and user_id=${user.id} and scope=${scope} and expires_at>now()`
     if (!job) return null
+    if (job.capability === 'text_to_video') throw new HttpError(409, '请从资产列表移除视频，文件将在到期后自动清理', 'TASK_NOT_DELETABLE')
     if (job.status === 'queued' || job.status === 'processing') {
       throw new HttpError(409, '任务正在处理或不存在', 'TASK_NOT_DELETABLE')
     }

@@ -36,6 +36,22 @@ describe('项目快照校验与迁移', () => {
     expect(parseSnapshot(serializeSnapshot(snapshot)).drafts['text-to-image']).toEqual(snapshot.drafts['text-to-image'])
   })
 
+  it('视频恢复保留声音与 720p 配置，图生视频只靠对象键即可恢复派生侧栏', () => {
+    const source = snapshot.project.document.scenes[0].nodes[0]
+    if (source.type !== 'image') throw new Error('测试数据类型错误')
+    snapshot.drafts['text-to-video'] = { ...snapshot.drafts['text-to-video'], resolution: '720p', generateAudio: true }
+    snapshot.recoveries.request = {
+      projectId: snapshot.project.id, sceneId: snapshot.project.document.activeSceneId,
+      request: { capability: Capability.TextToVideo, requestId: 'request', modelProfileId: 'seedance-2-0-fast', priceVersion: 'seedance-fast-720p-v1',
+        params: { mode: 'image_to_video', prompt: '镜头推进', sourceImageKey: 'owned-source', ratio: 'adaptive', size: { width: 600, height: 400 }, count: 1, resolution: '720p', durationSeconds: 10, generateAudio: true } },
+      context: { inputAssetIds: [source.assetId], autoRetryRemaining: 0, automaticRetry: false },
+      placements: [], replacedPlaceholderIds: [], applied: false,
+    }
+    const restored = parseSnapshot(serializeSnapshot(snapshot))
+    expect(restored.drafts['text-to-video']).toMatchObject({ resolution: '720p', generateAudio: true })
+    expect(restoreTaskDrafts(restored).derived).toMatchObject({ mode: 'image-to-video', resolution: '720p', durationSeconds: 10, generateAudio: true, sourceAssetId: source.assetId })
+  })
+
   it.each([{ modelProfileId: '' }, { resolution: '8k' }])('拒绝无效的文生图草稿配置 %j', (invalid) => {
     Object.assign(snapshot.drafts['text-to-image'], invalid)
     expect(() => parseSnapshot(snapshot)).toThrow()

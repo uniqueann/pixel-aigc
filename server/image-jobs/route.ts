@@ -16,11 +16,17 @@ type User = Awaited<ReturnType<typeof authenticate>>
 const uuid = z.uuid()
 
 export async function handleImageTaskRoute(user: User, method: string, path: string[], body: unknown, query: URLSearchParams) {
-  if (path.length === 1 && method === 'POST') return submitImageTask(user, body)
+  if (path.length === 1 && method === 'POST') {
+    if (body && typeof body === 'object' && 'capability' in body && body.capability === 'text_to_video') {
+      const { submitVideoTask } = await import('../video-jobs/service.js')
+      return submitVideoTask(user, body)
+    }
+    return submitImageTask(user, body)
+  }
   if (path.length === 1 && method === 'GET') {
     const page = z.coerce.number().int().min(1).max(1000).parse(query.get('page') ?? '1')
     const capability = query.has('capability')
-      ? z.enum(['image_edit', 'variation', 'text_to_image']).parse(query.get('capability'))
+      ? z.enum(['image_edit', 'variation', 'text_to_image', 'text_to_video']).parse(query.get('capability'))
       : undefined
     return listImageTasks(user, page, capability)
   }

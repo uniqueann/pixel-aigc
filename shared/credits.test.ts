@@ -9,6 +9,10 @@ import {
 } from './credits'
 
 describe('积分明细文案', () => {
+  it('视频明细按模式、分辨率和秒数显示，不套用图片张数', () => {
+    expect(creditJobTitle({ capability: 'text_to_video', params: { mode: 'text_to_video', durationSeconds: 5 }, resolution: '720p', count: 1 })).toBe('文生视频 720P 5秒')
+    expect(creditJobTitle({ capability: 'text_to_video', params: { mode: 'image_to_video', durationSeconds: 10 }, resolution: '720p', count: 1 })).toBe('图生视频 720P 10秒')
+  })
   it('按流水类型给出中文标签，结算无退回时不叫退回', () => {
     expect(creditKindLabel('grant')).toBe('赠送/充值')
     expect(creditKindLabel('reserve')).toBe('提交预扣')

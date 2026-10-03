@@ -5,6 +5,7 @@ import { App } from 'antd'
 import PreviewGallery, { type PreviewItem } from './PreviewGallery'
 import * as ownedImages from '@/services/api/ownedImages'
 import * as historyOwner from '@/features/assets/historyOwner'
+import * as ownedVideos from '@/services/api/ownedVideos'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
@@ -54,6 +55,26 @@ function collectConsoleErrors() {
 }
 
 describe('PreviewGallery', () => {
+  it('视频只挂载当前播放器，关闭预览立即释放源，其他视频不预加载', async () => {
+    mockOverlayStyle()
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
+    const read = vi.spyOn(ownedVideos, 'readOwnedVideoUrl').mockResolvedValue({ url: 'https://r2.test/current.mp4' })
+    const imageRead = vi.spyOn(ownedImages, 'readOwnedImage')
+    const videos: PreviewItem[] = [1, 2].map(index => ({ id: `video-${index}`, mediaType: 'video', thumbSrc: '', fullSrc: '', objectKey: `video-${index}` }))
+    const props = { items: videos, current: 0, onClose: vi.fn(), onChange: vi.fn() }
+    const { rerender } = render(<App><PreviewGallery {...props} open /></App>)
+    const video = await screen.findByLabelText('视频预览') as HTMLVideoElement
+    await waitFor(() => expect(video.getAttribute('src')).toBe('https://r2.test/current.mp4'))
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(imageRead).not.toHaveBeenCalled()
+    expect(document.querySelectorAll('video')).toHaveLength(1)
+    rerender(<App><PreviewGallery {...props} open={false} /></App>)
+    expect(document.querySelector('video')).toBeNull()
+    expect(video.pause).toHaveBeenCalled()
+    expect(video.getAttribute('src')).toBeNull()
+  })
+
   it('历史预览下载直接复用当前 Blob，不再次读取完整历史', async () => {
     mockOverlayStyle()
     vi.spyOn(historyOwner, 'currentWorkstationHistoryOwner').mockReturnValue('anonymous')

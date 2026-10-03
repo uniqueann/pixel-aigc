@@ -7,7 +7,7 @@ type Resolution = '1k' | '2k' | '4k'
 interface TextToImageDraftInput {
   presetKey: string
   count: number
-  resolution?: Resolution
+  resolution?: Resolution | '720p'
   modelProfileId?: string
 }
 
@@ -22,7 +22,7 @@ export function resolveCanvasTextToImageParameters(draft: TextToImageDraftInput,
     ?? models.find(item => item.defaultFor?.includes('text_to_image')) ?? models[0]
   const presets = availableTextToImagePresets(model)
   const preset = presets.find(item => item.key === draft.presetKey) ?? presets[0] ?? IMAGE_SIZE_PRESETS[0]
-  const requestedResolution = draft.resolution ?? defaultResolution
+  const requestedResolution = draft.resolution && draft.resolution !== '720p' ? draft.resolution : defaultResolution
   const effective = effectiveImageParameters(Math.min(4, draft.count), requestedResolution, preset, model?.ui)
   const creditsPerImage = model?.pricing.creditsPerImage[effective.resolution]
   const pricingReady = typeof creditsPerImage === 'number' && Number.isFinite(creditsPerImage) && creditsPerImage >= 0

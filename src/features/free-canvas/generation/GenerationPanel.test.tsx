@@ -75,11 +75,12 @@ describe('自由画布文生图侧栏', () => {
     expect(retrySave).toHaveBeenCalledTimes(1)
   })
 
-  it('真实视频入口明确未接入，模拟视频仍保留时长选项', () => {
+  it('未开放的视频禁用提交，并保留时长和声音设置', () => {
     renderPanel({ mode: 'text-to-video', generateDisabled: true })
-    expect(screen.getByText('视频真实生成尚未接入，目前仅支持模拟模式。')).toBeTruthy()
+    expect(screen.getByText('视频生成尚未开放，请检查登录与服务配置。')).toBeTruthy()
     expect((screen.getByRole('button', { name: '生成视频到画布' }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByRole('combobox', { name: '文生图模型' })).toBeNull()
     expect(screen.getByText('10 秒')).toBeTruthy()
+    expect(screen.getByRole('switch', { name: '生成声音' }).getAttribute('aria-checked')).toBe('false')
   })
 })
