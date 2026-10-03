@@ -18,6 +18,8 @@ describe('个性化配置边界', () => {
     { image: { counts: { variation: 9 } } }, { image: { resolution: '8k' } },
     { workbench: { startPage: 'https://external.test' } }, { recent: { page: '/login' } },
     { image: { lastUsed: { watermark: { logo: 'secret-image' } } } },
+    { image: { lastUsed: { watermark: { colorMode: 'rainbow' } } } },
+    { image: { lastUsed: { watermark: { readability: 'yes' } } } },
     { image: { lastUsed: { 'smart-edit': { prompt: '不保存的提示词' } } } },
     { image: { lastUsed: { 'aspect-ratio': { fx: 0.5 } } } }, { userId: 'other' },
   ])('拒绝越界及非偏好字段：%j', patch => {
@@ -26,6 +28,11 @@ describe('个性化配置边界', () => {
   it('初始化也校验补丁，不接受任意数据', () => {
     expect(preferencesRequestSchema.safeParse({ patches: [{ email: { language: 'en' } }], initializeOnly: true }).success).toBe(true)
     expect(preferencesRequestSchema.safeParse({ patches: [{ email: { apiKey: 'secret' } }], initializeOnly: true }).success).toBe(false)
+  })
+  it('水印颜色模式和描边可以单独记住', () => {
+    expect(preferencesPatchSchema.safeParse({ image: { lastUsed: { watermark: { colorMode: 'auto', readability: true, text: 'PIXEL TEST' } } } }).success).toBe(true)
+    const stored = applyPreferencesPatch(defaultPreferences(), { image: { lastUsed: { watermark: { color: '#ffffff', opacity: 70 } } } })
+    expect(stored.image.lastUsed.watermark).toEqual({ color: '#ffffff', opacity: 70 })
   })
   it('上次访问只恢复有效工作台页面', () => {
     const value = defaultPreferences(); value.workbench.startPage = 'last'; value.recent.page = '/toolbox/aspect-ratio'

@@ -72,7 +72,7 @@ export default function BatchImageQueue({ items, selectedId, disabled, onSelect,
                 </div>
               </div>
               {item.error && <div className="toolbox-queue-error" title={item.error}>{item.error}</div>}
-              {item.note && <div className={`toolbox-queue-note${item.noteWarning ? ' is-warning' : ''}`} title={item.note}>{item.note}</div>}
+              {item.note && <div className={`toolbox-queue-note${item.noteWarning ? ' is-warning' : ''}`} role={item.noteWarning ? 'status' : undefined} title={item.note}>{item.note}</div>}
               {onRefine && (item.canRefine || item.status === 'failed') && (
                 <Button size="small" type="link" disabled={disabled} onClick={() => onRefine(item.id)}>
                   {item.canRefine ? '修边缘' : '去工作站精修'}

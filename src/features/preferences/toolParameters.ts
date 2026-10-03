@@ -4,7 +4,7 @@ import { defaultImageModel, mapDragonCodeSize, type ImageModelUi } from '@shared
 import { COUNT_TOOLS, type CountTool, type ImageMemoryTool, type PersonalizationPreferences } from '@shared/preferences'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, type AspectRatioSettings } from '@/pages/Toolbox/aspect-ratio/types'
 import { DEFAULT_BG_REMOVE_SETTINGS, type BgRemoveSettings } from '@/pages/Toolbox/bg-remove/types'
-import { DEFAULT_WATERMARK_SETTINGS, type WatermarkSettings } from '@/pages/Toolbox/watermark/types'
+import { DEFAULT_WATERMARK_SETTINGS, migrateWatermarkSettings, type WatermarkSettings } from '@/pages/Toolbox/watermark/types'
 
 export interface WorkstationParameters {
   count: number
@@ -53,13 +53,15 @@ export function initialAspectRatioSettings(preferences: PersonalizationPreferenc
   return { ...DEFAULT_ASPECT_RATIO_SETTINGS, ...(preferences.image.rememberParameters ? preferences.image.lastUsed['aspect-ratio'] : {}) }
 }
 export function initialWatermarkSettings(preferences: PersonalizationPreferences): WatermarkSettings {
-  return { ...DEFAULT_WATERMARK_SETTINGS, ...(preferences.image.rememberParameters ? preferences.image.lastUsed.watermark : {}) }
+  const remembered = preferences.image.rememberParameters ? preferences.image.lastUsed.watermark : undefined
+  if (!remembered) return { ...DEFAULT_WATERMARK_SETTINGS }
+  return migrateWatermarkSettings(remembered)
 }
 export function aspectRatioMemory(settings: AspectRatioSettings) {
   const { strategy, selectedPresetId, background, outpaintOutputMode } = settings
   return { strategy, selectedPresetId, background, outpaintOutputMode }
 }
 export function watermarkMemory(settings: WatermarkSettings) {
-  const { text, color, opacity, textSizePercent, logoSizePercent, marginPercent, layout, anchor, tileGapPercent, tileRotation } = settings
-  return { text, color, opacity, textSizePercent, logoSizePercent, marginPercent, layout, anchor, tileGapPercent, tileRotation }
+  const { text, color, colorMode, readability, opacity, textSizePercent, logoSizePercent, marginPercent, layout, anchor, tileGapPercent, tileRotation } = settings
+  return { text, color, colorMode, readability, opacity, textSizePercent, logoSizePercent, marginPercent, layout, anchor, tileGapPercent, tileRotation }
 }

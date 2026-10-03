@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CROP_CONCURRENCY, invalidateBatch, processBatch } from './batch'
-import { SUBJECT_CROP_NOTE, cropProgressLabel, detectionPixelSize, focusFromSubjectBox, gridCropNote, mockDetectSubject } from './subjectFocus'
+import { CENTER_CROP_UNAVAILABLE_NOTE, SUBJECT_CROP_NOTE, cropProgressLabel, detectionPixelSize, focusFromSubjectBox, gridCropNote, mockDetectSubject, unavailableCropSummary } from './subjectFocus'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, type BatchImage } from './types'
 
 function item(id: string, width = 1000, height = 1000): BatchImage {
@@ -63,9 +63,44 @@ describe('智能裁剪按张检测', () => {
       },
       update, shouldStop: () => false,
     })
-    expect(images[0]).toMatchObject({ status: 'succeeded', cropFocus: { fx: 0, fy: 1, source: 'grid', note: gridCropNote(0, 1, true) } })
+    expect(images[0]).toMatchObject({ status: 'succeeded', cropFocus: { fx: 0, fy: 1, source: 'grid', unavailable: true, note: '智能检测不可用，已按九宫格「左下」裁剪' } })
     expect(images[1].status).toBe('failed')
     expect(images[1].cropFocus).toBeUndefined()
+  })
+
+  it.each([
+    ['超时', () => new DOMException('检测超时', 'TimeoutError')],
+    ['离线', () => new TypeError('Failed to fetch')],
+    ['限流', () => new Error('429 Too Many Requests')],
+  ] as const)('%s仍裁剪成功，并提示已按居中裁剪', async (_label, createError) => {
+    const error = createError()
+    let images = [item('a'), item('b')]
+    const update = (id: string, patch: Partial<BatchImage>) => {
+      images = images.map(image => image.id === id ? { ...image, ...patch } : image)
+    }
+    const render = vi.fn(async () => ({ blob: new Blob(['ok']), mimeType: 'image/jpeg', width: 1000, height: 500 }))
+    await processBatch({
+      images, settings: { ...DEFAULT_ASPECT_RATIO_SETTINGS, strategy: 'crop', fx: 0.5, fy: 0.5 },
+      targetWidth: 1000, targetHeight: 500, detect: async () => { throw error }, render, update, shouldStop: () => false,
+    })
+    expect(images.map(image => image.status)).toEqual(['succeeded', 'succeeded'])
+    expect(images.every(image => image.cropFocus?.note === CENTER_CROP_UNAVAILABLE_NOTE)).toBe(true)
+    expect(images.every(image => image.cropFocus?.unavailable)).toBe(true)
+    expect(unavailableCropSummary(images.map(image => image.cropFocus))).toBe('2 张已降级为居中裁剪')
+    expect(render).toHaveBeenCalledTimes(2)
+  })
+
+  it('没识别到商品不算检测不可用，批次统计只计算不可用降级', () => {
+    expect(gridCropNote(0.5, 0.5)).not.toContain('智能检测不可用')
+    expect(unavailableCropSummary([
+      { fx: 0.5, fy: 0.5, unavailable: true },
+      { fx: 0.5, fy: 0.5 },
+      undefined,
+    ])).toBe('1 张已降级为居中裁剪')
+    expect(unavailableCropSummary([
+      { fx: 0.5, fy: 0.5, unavailable: true },
+      { fx: 0, fy: 1, unavailable: true },
+    ])).toBe('2 张智能检测不可用，已降级为九宫格裁剪')
   })
 
   it('留白填充和比例一致时不检测', async () => {

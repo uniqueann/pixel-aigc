@@ -24,4 +24,21 @@ describe('本机水印模板', () => {
     expect(record.settings.tileGapPercent).toBe(DEFAULT_WATERMARK_SETTINGS.tileGapPercent)
     await deletePreset(saved.id)
   })
+
+  it('旧模板没有颜色模式时保留原颜色，新模板可以保存自动模式', async () => {
+    const legacy: Partial<typeof DEFAULT_WATERMARK_SETTINGS> = { ...DEFAULT_WATERMARK_SETTINGS, color: '#112233', text: '旧水印' }
+    delete legacy.colorMode
+    delete legacy.readability
+    const oldPreset = await savePreset('legacy-color', '旧颜色', legacy as typeof DEFAULT_WATERMARK_SETTINGS)
+    const [oldRecord] = await listPresets('legacy-color')
+    expect(oldRecord.settings.colorMode).toBe('custom')
+    expect(oldRecord.settings.color).toBe('#112233')
+    expect(oldRecord.settings.readability).toBe(true)
+
+    const created = await savePreset('legacy-color', '新模板', { ...DEFAULT_WATERMARK_SETTINGS, text: 'PIXEL TEST', readability: false })
+    const records = await listPresets('legacy-color')
+    expect(records.find(record => record.id === created.id)?.settings).toMatchObject({ colorMode: 'auto', readability: false, text: 'PIXEL TEST' })
+    await deletePreset(oldPreset.id)
+    await deletePreset(created.id)
+  })
 })

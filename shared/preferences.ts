@@ -25,7 +25,8 @@ const presetId = z.string().refine(value => PLATFORM_SIZE_PRESETS.some(preset =>
 const imageParameters = z.object({ count: count.optional(), resolution: resolution.optional() }).strict()
 const relight = z.object({ direction: z.enum(RELIGHT_DIRECTIONS), quality: z.enum(RELIGHT_QUALITIES), temperature: z.enum(RELIGHT_TEMPERATURES) }).strict()
 const watermark = z.object({
-  text: z.string().max(80).optional(), color: color.optional(), opacity: z.number().min(10).max(100).optional(),
+  text: z.string().max(80).optional(), color: color.optional(), colorMode: z.enum(['auto', 'custom']).optional(),
+  readability: z.boolean().optional(), opacity: z.number().min(10).max(100).optional(),
   textSizePercent: z.number().min(1).max(15).optional(), logoSizePercent: z.number().min(5).max(50).optional(),
   marginPercent: z.number().min(0).max(10).optional(), layout: z.enum(['single', 'tile']).optional(),
   anchor: z.enum(['top-left', 'top-center', 'top-right', 'middle-left', 'middle-center', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']).optional(),

@@ -13,9 +13,27 @@ export function gridFocusLabel(fx: number, fy: number) {
   return `${x}${y}`
 }
 
+export function isCenterFocus(fx: number, fy: number) {
+  return fx > 0.25 && fx < 0.75 && fy > 0.25 && fy < 0.75
+}
+
+export const CENTER_CROP_UNAVAILABLE_NOTE = '智能检测不可用，已按居中裁剪'
+
 export function gridCropNote(fx: number, fy: number, failed = false) {
-  const reason = failed ? '主体检测失败' : '没识别到商品'
-  return `${reason}，已按九宫格「${gridFocusLabel(fx, fy)}」裁剪。请把焦点改到商品所在位置后再处理。`
+  if (failed) {
+    return isCenterFocus(fx, fy)
+      ? CENTER_CROP_UNAVAILABLE_NOTE
+      : `智能检测不可用，已按九宫格「${gridFocusLabel(fx, fy)}」裁剪`
+  }
+  return `没识别到商品，已按九宫格「${gridFocusLabel(fx, fy)}」裁剪。请把焦点改到商品所在位置后再处理。`
+}
+
+export function unavailableCropSummary(focuses: Array<Pick<CropFocus, 'unavailable' | 'fx' | 'fy'> | undefined>) {
+  const degraded = focuses.filter((focus): focus is Pick<CropFocus, 'unavailable' | 'fx' | 'fy'> => Boolean(focus?.unavailable))
+  if (!degraded.length) return ''
+  return degraded.every(focus => isCenterFocus(focus.fx, focus.fy))
+    ? `${degraded.length} 张已降级为居中裁剪`
+    : `${degraded.length} 张智能检测不可用，已降级为九宫格裁剪`
 }
 
 export const GRID_CROP_NOTE = gridCropNote(0.5, 0.5)
@@ -87,6 +105,6 @@ export async function cropFocusForImage(
     return { ...focus, source: 'subject', note: SUBJECT_CROP_NOTE }
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw error
-    return { ...grid, note: gridCropNote(settings.fx, settings.fy, true) }
+    return { ...grid, unavailable: true, note: gridCropNote(settings.fx, settings.fy, true) }
   }
 }
