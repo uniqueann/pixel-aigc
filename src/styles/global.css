@@ -849,6 +849,27 @@ a {
   text-align: center;
 }
 
+.free-canvas-switch-field {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.free-canvas-switch-field > span {
+  min-width: 0;
+}
+
+.free-canvas-switch-field > .ant-switch {
+  flex: 0 0 auto;
+  align-self: center;
+  width: auto;
+}
+
+.free-canvas-generate.ant-btn {
+  flex-shrink: 0;
+}
+
 .generation-task-status-stack {
   display: flex;
   flex-direction: column;
