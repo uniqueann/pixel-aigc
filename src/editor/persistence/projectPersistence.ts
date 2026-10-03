@@ -36,6 +36,17 @@ export function currentSnapshot(): ProjectSnapshot {
   }
 }
 
+export async function copyProjectLocally() {
+  if (hasUnfinishedGeneration()) throw new Error('请先等待当前生成完成')
+  await flushProject()
+  const copy = parseSnapshot(currentSnapshot())
+  copy.project.id = crypto.randomUUID()
+  copy.project.name = `${copy.project.name.slice(0, 80)}（本地副本）`
+  copy.cloud = undefined
+  for (const record of Object.values(copy.recoveries)) record.projectId = copy.project.id
+  await replaceSnapshot(copy)
+}
+
 function changed() {
   if (suppressChanges || usePersistenceStore.getState().phase !== 'ready') return
   revision += 1

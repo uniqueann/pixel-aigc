@@ -33,7 +33,7 @@ import {
 } from '@/types'
 import type { CanvasPoint, GenerationPlacement } from '../geometry'
 import { calculateDerivedPlacements, calculateGenerationPlacements, calculateNodeBounds, placeArtboardNodes } from '../geometry'
-import { canSubmitFreeCanvasTextToImage, canSubmitFreeCanvasVariation, isCanvasMockGateway } from './availability'
+import { canSubmitFreeCanvasTextToImage, canSubmitFreeCanvasVariation, canSubmitFreeCanvasVideo, useCanvasVideoConfiguration, isCanvasMockGateway } from './availability'
 import { saveCanvasTaskHistory } from './history'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
 
@@ -111,6 +111,7 @@ function requestForRetry(task: CanvasGenerationTask): CanvasGenerationRequest {
     params: task.params,
     requestId: crypto.randomUUID(),
     modelProfileId: task.modelProfileId ?? recoveryForTask(task.id)?.request.modelProfileId,
+    priceVersion: task.capability === Capability.TextToVideo ? useCanvasVideoConfiguration.getState().models[0]?.pricing.version ?? recoveryForTask(task.id)?.request.priceVersion : undefined,
   }
 }
 
@@ -151,7 +152,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const unsavedHistoryRef = useRef(new Map<string, CanvasGenerationTask>())
   const savingHistoryRef = useRef(new Set<string>())
   const persistHistory = useCallback(async (completedTask: CanvasGenerationTask) => {
-    if (mockGateway || ![Capability.Variation, Capability.TextToImage].includes(completedTask.capability) || !isCurrent() || savingHistoryRef.current.has(completedTask.id)) return
+    if (mockGateway || ![Capability.Variation, Capability.TextToImage, Capability.TextToVideo].includes(completedTask.capability) || !isCurrent() || savingHistoryRef.current.has(completedTask.id)) return
     unsavedHistoryRef.current.set(completedTask.id, completedTask)
     savingHistoryRef.current.add(completedTask.id)
     try {
@@ -310,6 +311,13 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       setSubmissionError('文生图模型尚未就绪，请检查登录与模型配置')
       return
     }
+    if (initialRequest.capability === Capability.TextToVideo && !confirmedTask) {
+      const params = initialRequest.params as ImageToVideoTaskParams | TextToVideoTaskParams
+      if (!canSubmitFreeCanvasVideo(params.mode === 'image_to_video' ? 'image_to_video' : 'text_to_video')) {
+        setSubmissionError('视频模型尚未就绪，请检查登录与模型配置'); return
+      }
+      if (usePersistenceStore.getState().cloud) { setSubmissionError('请先另存为本地副本，再生成视频'); return }
+    }
     submissionGateRef.current = true
     if (!initialContext.automaticRetry) setAutoRetrying(false)
     setSubmitting(true)
@@ -413,6 +421,17 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
           params.sourceHeight = source.height
         }
         if (!params.resolution) throw new Error('请选择生成分辨率')
+        delete params.sourceImageUrl
+        prepared = { ...initialRequest, params }
+      }
+      if (!mockGateway && initialRequest.capability === Capability.TextToVideo && !confirmedTask) {
+        const params = { ...initialRequest.params } as ImageToVideoTaskParams
+        if (params.mode === 'image_to_video' && !params.sourceImageKey) {
+          const source = useEditorStore.getState().project?.assets[initialContext.inputAssetIds[0]]
+          if (source?.type !== 'image') throw new Error('源图片不可用，请重新选择图片')
+          setPreparationPhase('正在准备并上传视频首帧…')
+          params.sourceImageKey = await taskInputKey(source, '读取原图失败', { ownerId, signal: lifetimeAbortRef.current.signal })
+        }
         delete params.sourceImageUrl
         prepared = { ...initialRequest, params }
       }

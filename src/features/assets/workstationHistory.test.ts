@@ -13,6 +13,7 @@ import {
   deleteWorkstationHistory,
   listWorkstationHistory,
   recordWorkstationHistory,
+  recordVideoHistory,
 } from './workstationHistory'
 
 function record(id: string, createdAt: string) {
@@ -207,6 +208,42 @@ describe('工作站本地历史', () => {
     await deleteWorkstationHistory(OWNER_A, 'legacy:0')
     await recordWorkstationHistory(OWNER_A, { ...record('new:o2', '2026-09-30T12:00:00.000Z'), objectKey: 'stable-key' })
     expect(await listHistoryMetadata(OWNER_A)).toEqual([])
+  })
+
+  it('视频仅存轻量记录，不读写原件或生成缩略图，并尊重删除标记', async () => {
+    const expiry = new Date(Date.now() + 86400_000).toISOString()
+    const video = { objectKey: 'video-key', ordinal: 0, width: 1280, height: 720, durationSeconds: 5, sizeBytes: 1234, hasAudio: false,
+      mimeType: 'video/mp4' as const, retentionExpiresAt: expiry }
+    const item = { ...record('video:o0', new Date().toISOString()), result: undefined, objectKey: video.objectKey, mimeType: 'video/mp4', mediaType: 'video' as const, video }
+    const write = vi.spyOn(IDBObjectStore.prototype, 'put')
+    await recordVideoHistory(OWNER_A, item)
+    expect(write.mock.contexts.every(store => (store as IDBObjectStore).name !== 'workstationResults')).toBe(true)
+    write.mockRestore()
+    expect(await listHistoryMetadata(OWNER_A)).toEqual([])
+    expect((await listHistoryPreviews(OWNER_A, true))[0]).toMatchObject({ mediaType: 'video', video })
+    expect(await readHistoryImage(OWNER_A, { id: item.id })).toBeUndefined()
+    await deleteWorkstationHistory(OWNER_A, item.id)
+    await recordVideoHistory(OWNER_A, { ...item, id: 'other:o0' })
+    expect(await listHistoryMetadata(OWNER_A, true)).toEqual([])
+  })
+
+  it('到期清理视频元数据，其他账号的视频不受影响', async () => {
+    const video = { objectKey: 'video-key', ordinal: 0, width: 1280, height: 720, durationSeconds: 5, sizeBytes: 1234, hasAudio: false,
+      mimeType: 'video/mp4' as const, retentionExpiresAt: new Date(Date.now() + 2000).toISOString() }
+    const item = { ...record('video:o0', new Date().toISOString()), objectKey: video.objectKey, mimeType: 'video/mp4', mediaType: 'video' as const, video }
+    await recordVideoHistory(OWNER_A, item)
+    await recordVideoHistory(OWNER_B, { ...item, video: { ...video, retentionExpiresAt: new Date(Date.now() + 86400_000).toISOString() } })
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 3000)
+    expect(await listHistoryMetadata(OWNER_A, true)).toEqual([])
+    expect(await listHistoryMetadata(OWNER_B, true)).toHaveLength(1)
+    now.mockRestore()
+    const db = await openHistoryDatabase()
+    const stored = await new Promise(resolve => {
+      const request = db.transaction('metadata').objectStore('metadata').get([OWNER_A, item.id])
+      request.onsuccess = () => resolve(request.result)
+    })
+    db.close()
+    expect(stored).toBeUndefined()
   })
 
 })

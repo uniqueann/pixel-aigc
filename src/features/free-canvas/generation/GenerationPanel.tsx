@@ -10,6 +10,8 @@ import type { CanvasGenerationTaskParams } from './requestBuilder'
 import { IMAGE_SIZE_PRESETS } from './config'
 import { availableTextToImagePresets } from './textToImageParameters'
 import { resultAssetForTask } from './resultAsset'
+import VideoGenerationSettings from './VideoGenerationSettings'
+import type { VideoModelProfile } from '@shared/video-models'
 
 interface GenerationPanelProps {
   mode: string
@@ -17,6 +19,10 @@ interface GenerationPanelProps {
   presetKey: string
   count: number
   durationSeconds: number
+  generateAudio?: boolean
+  onAudioChange?: (value: boolean) => void
+  videoConfigured?: boolean
+  videoModel?: VideoModelProfile
   task?: GenerationTask<CanvasGenerationTaskParams>
   submitting: boolean
   active: boolean
@@ -77,6 +83,7 @@ export default function GenerationPanel({
   estimatedCredits, resolutionAdjusted = false, ratioAdjusted = false, countAdjusted = false,
   modelsLoading = false, generateDisabled = false, mockGateway = true,
   historyError, historySaved, onRetrySave, resultAssets,
+  generateAudio = false, onAudioChange, videoConfigured = false, videoModel,
 }: GenerationPanelProps) {
   const textToVideo = mode === 'text-to-video'
   const model = models.find(item => item.id === modelProfileId)
@@ -94,16 +101,18 @@ export default function GenerationPanel({
       : taskIsVideo || textToVideo
         ? `本次生成 1 段 ${taskDuration} 秒视频`
         : `本次生成 ${task?.params.count ?? count} 张图片`
-  const resultUrls = task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
+  const resultUrls = task?.resultVideos?.length ? task.resultVideos.map(video => video.url) : task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
   const previewItems = resultUrls.map((url, index) => {
-    const image = task?.resultImages?.[index]
+    const image = task?.resultVideos?.[index] ?? task?.resultImages?.[index]
     const asset = resultAssetForTask(task, index, resultAssets ?? {})
     const src = asset && !asset.missing ? asset.url : url
-    return { id: `${task?.id}:${index}`, thumbSrc: src, fullSrc: src, title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
+    return { id: `${task?.id}:${index}`, mediaType: taskIsVideo ? 'video' as const : 'image' as const,
+      posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
+      thumbSrc: taskIsVideo ? '' : src, fullSrc: src, title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
   })
   const originalModel = task?.modelProfileId ? models.find(item => item.id === task.modelProfileId) : model
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
-  const retryUnitPrice = originalModel?.pricing.creditsPerImage[originalResolution ?? resolution]
+  const retryUnitPrice = originalResolution === '720p' ? undefined : originalModel?.pricing.creditsPerImage[originalResolution ?? resolution]
   const retryCredits = task ? retryUnitPrice === undefined ? undefined : task.params.count * retryUnitPrice : estimatedCredits
 
   return (
@@ -118,7 +127,7 @@ export default function GenerationPanel({
         <Input.TextArea
           rows={6}
           value={prompt}
-          maxLength={textToVideo ? undefined : model?.ui.promptMaxLength}
+          maxLength={textToVideo ? 4000 : model?.ui.promptMaxLength}
           showCount={!textToVideo && !!model?.ui.promptMaxLength}
           disabled={formLocked}
           onChange={(event) => onPromptChange(event.target.value)}
@@ -177,13 +186,14 @@ export default function GenerationPanel({
             : `本次预计预扣 ${estimatedCredits} 积分，按实际成功张数结算。失败后由你决定是否再次生成。`}</p>}
         {!modelsLoading && generateDisabled && <p className="toolbox-hint">文生图模型尚未就绪，请检查登录与模型配置。</p>}
       </>}
-      {textToVideo && !mockGateway && <p className="toolbox-hint">视频真实生成尚未接入，目前仅支持模拟模式。</p>}
+      {textToVideo && <VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
+        loading={modelsLoading} configured={videoConfigured || mockGateway} credits={estimatedCredits} mockGateway={mockGateway} />}
 
       <Button
         type="primary"
         block
         loading={submitting}
-        disabled={formLocked || generateDisabled || (!textToVideo && (modelsLoading || (!!model?.ui.promptMaxLength && prompt.trim().length > model.ui.promptMaxLength))) || !prompt.trim()}
+        disabled={formLocked || generateDisabled || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > 4000)) || (!textToVideo && (modelsLoading || (!!model?.ui.promptMaxLength && prompt.trim().length > model.ui.promptMaxLength))) || !prompt.trim()}
         onClick={onGenerate}
       >
         {active ? '正在生成' : textToVideo ? '生成视频到画布' : '生成到画布'}
@@ -191,6 +201,7 @@ export default function GenerationPanel({
       {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
         手动重试将按原参数创建新任务，生成 {task.params.count} 张，{retryCredits === undefined ? '原模型积分报价尚未就绪，请先确认模型配置。' : `预计预扣 ${retryCredits} 积分。`}
       </p>}
+      {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{videoModel ? `重新生成将创建新任务并预扣 ${videoModel.pricing.creditsPerVideo[taskDuration === 10 ? 10 : 5]} 积分。` : '请先读取视频配置与报价，再决定是否重新生成。'}</p>}
 
       <GenerationTaskStatus
         task={task}
@@ -205,11 +216,12 @@ export default function GenerationPanel({
         historySaved={historySaved}
         onRetrySave={onRetrySave}
         onRetry={onRetry}
+        retryDisabled={!!taskIsVideo && (generateDisabled || modelsLoading)}
         retryLabel={!taskIsVideo && !textToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
       />
-      {task?.status === 'succeeded' && !taskIsVideo && <PreviewResultStrip items={previewItems} onDownload={item => {
+      {task?.status === 'succeeded' && <PreviewResultStrip items={previewItems} onDownload={item => {
         const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
         const image = task.resultImages?.[index]
         return downloadImageSource(item.fullSrc, `生成结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)

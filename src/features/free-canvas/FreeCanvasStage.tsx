@@ -250,6 +250,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   canRedo,
   generationActive,
   variationEnabled = false,
+  imageToVideoEnabled = false,
   onSelectNode,
   onTransformNode,
   onViewportChange,
@@ -789,15 +790,15 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
             </span>
           </Tooltip>
           <span className="free-canvas-node-actions-divider" />
-          <Button
-            size="small"
-            type="text"
-            icon={<VideoCameraAddOutlined />}
-            disabled={generationActive}
-            onClick={() => onNodeGenerationAction('image-to-video', selectedImage.id)}
-          >
-            生成视频
-          </Button>
+          <Tooltip title={imageToVideoEnabled ? '让这张图片动起来' : '请先确认登录与视频模型配置'}>
+            <span><Button
+              size="small"
+              type="text"
+              icon={<VideoCameraAddOutlined />}
+              disabled={generationActive || !imageToVideoEnabled}
+              onClick={() => onNodeGenerationAction('image-to-video', selectedImage.id)}
+            >生成视频</Button></span>
+          </Tooltip>
         </div>
       )}
       <div className="free-canvas-toolbar" aria-label="画布工具栏">

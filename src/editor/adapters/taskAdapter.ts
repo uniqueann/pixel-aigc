@@ -32,7 +32,7 @@ export function adaptGenerationTask<TParams>(
   const generationId = generationIdForTask(task.id)
   const outputSize = options.outputSize ?? { width: 0, height: 0 }
   const isVideo = task.capability === Capability.TextToVideo
-  const resultImages = task.resultImages ?? []
+  const resultImages = isVideo && task.resultVideos?.length ? task.resultVideos : task.resultImages ?? []
   const urls = resultImages.length ? resultImages.map(image => image.url) : (task.resultUrls ?? [])
   const assets = urls.map((url, index) => {
     const measured = resultImages[index]
@@ -50,7 +50,9 @@ export function adaptGenerationTask<TParams>(
       createdAt: task.updatedAt,
     }
     return isVideo
-      ? createVideoAsset({ ...common, duration: options.outputDuration })
+      ? createVideoAsset({ ...common, duration: task.resultVideos?.[index]?.durationSeconds ?? options.outputDuration,
+        retentionExpiresAt: task.resultVideos?.[index]?.retentionExpiresAt, posterKey: task.resultVideos?.[index]?.posterKey,
+        hasAudio: task.resultVideos?.[index]?.hasAudio })
       : createImageAsset({ ...common, source: 'generation' })
   })
 

@@ -145,7 +145,8 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       if (typeof draft.prompt !== 'string' || !['1:1', '4:3', '3:4', '16:9', '9:16'].includes(String(draft.presetKey))) throw new Error('生成草稿无效')
       if ((typeof draft.count !== 'number' || ![1, 2, 3, 4].includes(draft.count)) || (typeof draft.durationSeconds !== 'number' || ![5, 10].includes(draft.durationSeconds))) throw new Error('生成草稿参数无效')
       if (draft.modelProfileId !== undefined) string(draft.modelProfileId)
-      if (draft.resolution !== undefined && !['1k', '2k', '4k'].includes(String(draft.resolution))) throw new Error('生成草稿分辨率无效')
+      if (draft.resolution !== undefined && !(mode === 'text-to-video' ? ['720p'] : ['1k', '2k', '4k']).includes(String(draft.resolution))) throw new Error('生成草稿分辨率无效')
+      if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
     }
     if (value.drafts.derived !== undefined) {
       const draft = value.drafts.derived
@@ -157,7 +158,8 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       if (project.assets[String(draft.sourceAssetId)]?.type !== 'image') throw new Error('派生源素材不存在')
       if ((typeof draft.count !== 'number' || ![1, 2, 3, 4].includes(draft.count)) || (typeof draft.durationSeconds !== 'number' || ![5, 10].includes(draft.durationSeconds))) throw new Error('派生参数无效')
       if (draft.modelProfileId !== undefined) string(draft.modelProfileId)
-      if (draft.resolution !== undefined && !['1k', '2k', '4k'].includes(String(draft.resolution))) throw new Error('派生分辨率无效')
+      if (draft.resolution !== undefined && !(draft.mode === 'image-to-video' ? ['720p', '1k', '2k', '4k'] : ['1k', '2k', '4k']).includes(String(draft.resolution))) throw new Error('派生分辨率无效')
+      if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
     }
     for (const [id, record] of Object.entries(value.recoveries)) {
       object(record); object(record.request); object(record.context)
@@ -165,12 +167,14 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       string(record.request.requestId)
       if (record.ownerId !== undefined) string(record.ownerId)
       if (record.request.modelProfileId !== undefined) string(record.request.modelProfileId)
+      if (record.request.priceVersion !== undefined) string(record.request.priceVersion)
       if (![Capability.TextToImage, Capability.TextToVideo, Capability.Variation].includes(record.request.capability as Capability)) throw new Error('任务恢复能力无效')
       object(record.request.params)
       const params = record.request.params
       object(params.size); finite(params.size.width, true); finite(params.size.height, true)
       if ((typeof params.count !== 'number' || ![1, 2, 3, 4].includes(params.count))) throw new Error('任务恢复数量无效')
-      if (params.resolution !== undefined && !['1k', '2k', '4k'].includes(String(params.resolution))) throw new Error('任务恢复分辨率无效')
+      if (params.resolution !== undefined && !(record.request.capability === Capability.TextToVideo ? ['720p'] : ['1k', '2k', '4k']).includes(String(params.resolution))) throw new Error('任务恢复分辨率无效')
+      if (params.generateAudio !== undefined && typeof params.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
       if (record.request.capability === Capability.Variation) {
         if (params.sourceImageKey !== undefined) {
           string(params.sourceImageKey)

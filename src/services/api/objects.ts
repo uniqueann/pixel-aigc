@@ -28,11 +28,12 @@ export class OwnedObjectError extends Error {
   constructor(public status: number, message: string) { super(message); this.name = 'OwnedObjectError' }
 }
 
-export async function signedOwnedObject(objectKey: string, signal?: AbortSignal) {
+export async function signedOwnedObject(objectKey: string, signal?: AbortSignal, filename?: string) {
   const token = authEnabled
     ? (await supabase!.auth.getSession()).data.session?.access_token
     : localStorage.getItem('access_token')
   const params = new URLSearchParams({ key: objectKey, mode: 'url' })
+  if (filename) { params.set('disposition', 'attachment'); params.set('filename', filename) }
   const response = await fetch(`/api/objects?${params}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     cache: 'no-store',

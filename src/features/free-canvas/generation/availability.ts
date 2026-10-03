@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { authEnabled, cloudEnabled } from '@/cloud/client'
 import { useUserStore } from '@/store/useUserStore'
 import type { PublicImageModel } from '@/services/api/imageModels'
+import type { VideoModelProfile } from '@shared/video-models'
 
 interface CanvasImageConfiguration {
   ready: boolean; loading: boolean; models: PublicImageModel[]; error?: string
@@ -9,6 +10,7 @@ interface CanvasImageConfiguration {
 
 export const useCanvasVariationConfiguration = create<CanvasImageConfiguration>(() => ({ ready: false, loading: true, models: [] }))
 export const useCanvasTextToImageConfiguration = create<CanvasImageConfiguration>(() => ({ ready: false, loading: true, models: [] }))
+export const useCanvasVideoConfiguration = create<{ ready: boolean; imageReady: boolean; loading: boolean; models: VideoModelProfile[] }>(() => ({ ready: false, imageReady: false, loading: true, models: [] }))
 
 interface VariationGateInput {
   generationMode?: string
@@ -39,3 +41,9 @@ export function isFreeCanvasTextToImageEntryEnabled(input?: VariationGateInput) 
 }
 
 export const canSubmitFreeCanvasTextToImage = isFreeCanvasTextToImageEntryEnabled
+
+export function canSubmitFreeCanvasVideo(mode: 'text_to_video' | 'image_to_video' = 'text_to_video') {
+  if (isCanvasMockGateway()) return true
+  const config = useCanvasVideoConfiguration.getState()
+  return authEnabled && !!useUserStore.getState().userId && (mode === 'image_to_video' ? config.imageReady : config.ready)
+}

@@ -1,5 +1,6 @@
 import { Alert, Button, Spin } from 'antd'
 import type { GenerationTask } from '@/types'
+import { Capability } from '@/types'
 
 const WARNING_LABELS: Record<string, string> = {
   RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO: '当前比例不支持 4K，已按 2K 生成',
@@ -33,6 +34,7 @@ interface GenerationTaskStatusProps {
   onRetrySave?: () => void
   onRetry?: () => void
   retryLabel?: string
+  retryDisabled?: boolean
   onModifyParameters?: () => void
   onRefetch?: () => void
 }
@@ -55,17 +57,20 @@ export default function GenerationTaskStatus({
   onRetrySave,
   onRetry,
   retryLabel = '按原参数重试',
+  retryDisabled = false,
   onModifyParameters,
   onRefetch,
 }: GenerationTaskStatusProps) {
   const terminalFailure = task?.status === 'failed' || task?.status === 'cancelled'
+  const video = task?.capability === Capability.TextToVideo
+  const phaseLabel = task?.phase ? ({ submitting: '提交确认中', queued: '排队中', generating: '视频生成中', transferring: '视频转存中' })[task.phase] : undefined
 
   return (
     <div className="generation-task-status-stack">
       {(task || submitting) ? (
         <div className={`generation-task-status is-${task?.status ?? 'pending'}`}>
           <div className="generation-task-status-title">
-            <strong>{readingResults ? '读取结果中' : task ? STATUS_LABELS[task.status] : '正在提交'}</strong>
+            <strong>{readingResults ? '读取结果中' : phaseLabel ?? (task ? STATUS_LABELS[task.status] : '正在提交')}</strong>
             {(active || polling || readingResults) ? <Spin size="small" /> : null}
           </div>
           {summary ? <span>{summary}</span> : null}
@@ -74,16 +79,16 @@ export default function GenerationTaskStatus({
           ) : null}
           {terminalFailure && (onRetry || onModifyParameters) ? (
             <div className="generation-task-status-actions">
-              {onRetry ? <Button size="small" type="primary" loading={submitting} onClick={onRetry}>{retryLabel}</Button> : null}
+              {onRetry ? <Button size="small" type="primary" loading={submitting} disabled={retryDisabled} onClick={onRetry}>{retryLabel}</Button> : null}
               {onModifyParameters ? <Button size="small" onClick={onModifyParameters}>修改参数</Button> : null}
             </div>
           ) : null}
         </div>
       ) : null}
 
-      {task?.status === 'succeeded' && historySaved ? <span>完整图片已保存到本地历史</span> : null}
+      {task?.status === 'succeeded' && historySaved ? <span>{video ? '视频已保存到我的资产，保留 30 天' : '完整图片已保存到本地历史'}</span> : null}
       {resultReadError ? <Alert type="warning" showIcon message="已生成，结果读取失败" description={resultReadError} action={onRetryRead ? <Button size="small" loading={readingResults} onClick={onRetryRead}>重试读取</Button> : undefined} /> : null}
-      {historyError ? <Alert type="warning" showIcon message="图片可用，历史未保存" description={historyError} action={onRetrySave ? <Button size="small" onClick={onRetrySave}>重试保存</Button> : undefined} /> : null}
+      {historyError ? <Alert type="warning" showIcon message={video ? '视频可用，资产记录未保存' : '图片可用，历史未保存'} description={historyError} action={onRetrySave ? <Button size="small" onClick={onRetrySave}>重试保存</Button> : undefined} /> : null}
       {submissionError ? <Alert type="error" showIcon message="提交失败" description={submissionError} /> : null}
       {protocolError ? <Alert type="error" showIcon message="结果异常" description={protocolError} /> : null}
       {pollError ? (

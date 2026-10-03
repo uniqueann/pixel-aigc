@@ -30,7 +30,8 @@ export interface GenerationDraft {
   count: number
   durationSeconds: number
   modelProfileId?: string
-  resolution?: '1k' | '2k' | '4k'
+  resolution?: '1k' | '2k' | '4k' | '720p'
+  generateAudio?: boolean
 }
 
 export interface CanvasDrafts {
@@ -44,7 +45,8 @@ export interface CanvasDrafts {
     count: number
     durationSeconds: number
     modelProfileId?: string
-    resolution?: '1k' | '2k' | '4k'
+    resolution?: '1k' | '2k' | '4k' | '720p'
+    generateAudio?: boolean
   }
 }
 

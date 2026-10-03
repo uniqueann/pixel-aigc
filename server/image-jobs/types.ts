@@ -39,6 +39,7 @@ export interface ImageJobItemRow {
   result_mime_type: string | null
   result_width: number | null
   result_height: number | null
+  result_metadata?: Record<string, unknown> | null
   error_code: string | null
   error_message: string | null
   updated_at: Date | string

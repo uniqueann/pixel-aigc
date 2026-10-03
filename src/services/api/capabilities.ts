@@ -10,6 +10,8 @@ export interface CapabilityFlags {
   imageEdit?: boolean
   variation?: boolean
   textToImage?: boolean
+  textToVideo?: boolean
+  imageToVideo?: boolean
   smartSelect?: boolean
 }
 

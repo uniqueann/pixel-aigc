@@ -28,6 +28,7 @@ export function insufficientCreditsMessage(required: number, balance: number) {
 }
 
 export function creditToolName(params: unknown, capability?: string) {
+  if (capability === 'text_to_video') return params && typeof params === 'object' && 'mode' in params && params.mode === 'image_to_video' ? '图生视频' : '文生视频'
   if (readRetouchDirections(params).length) return '精修'
   if (readRelight(params)) return '重新打光'
   if (readReferenceImageKey(params)) return '融合'
@@ -52,6 +53,10 @@ export function creditJobTitle(input: {
   count?: number
 }) {
   const tool = creditToolName(input.params, input.capability)
+  if (input.capability === 'text_to_video') {
+    const duration = input.params && typeof input.params === 'object' && 'durationSeconds' in input.params ? input.params.durationSeconds : undefined
+    return [tool, input.resolution?.toUpperCase(), typeof duration === 'number' ? `${duration}秒` : undefined].filter(Boolean).join(' ')
+  }
   const spec = creditJobSpec(input.resolution, input.count)
   return [tool, spec].filter(Boolean).join(' ')
 }

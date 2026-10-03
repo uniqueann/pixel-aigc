@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Alert, App, Button, Segmented, Space } from 'antd'
 import { Capability } from '@/types'
 import ProjectToolbar from '@/editor/persistence/ProjectToolbar'
-import { flushProject } from '@/editor/persistence/projectPersistence'
+import { flushProject, copyProjectLocally } from '@/editor/persistence/projectPersistence'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import type { GenerationDraft } from '@/editor/persistence/types'
 import { RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
@@ -16,9 +16,11 @@ import GenerationPanel from '@/features/free-canvas/generation/GenerationPanel'
 import { resolveSelectedImageSource } from '@/features/free-canvas/generation/derivedSource'
 import { isCanvasMockGateway, isFreeCanvasTextToImageEntryEnabled, isFreeCanvasVariationEntryEnabled } from '@/features/free-canvas/generation/availability'
 import { useCanvasTextToImageModels, useCanvasVariationModels } from '@/features/free-canvas/generation/useCanvasVariationModels'
+import { useCanvasVideoModels } from '@/features/free-canvas/generation/useCanvasVideoModels'
 import { resolveCanvasTextToImageParameters } from '@/features/free-canvas/generation/textToImageParameters'
 import { resultAssetForTask } from '@/features/free-canvas/generation/resultAsset'
 import { useCanvasImages } from '@/features/free-canvas/images/useCanvasImages'
+import { useCanvasVideos } from '@/features/free-canvas/images/useCanvasVideos'
 import CanvasAssetPicker from '@/features/free-canvas/images/CanvasAssetPicker'
 import { importCanvasFile, importCanvasHistory, type CanvasImageImportContext } from '@/features/free-canvas/images/importImage'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
@@ -54,6 +56,9 @@ export default function FreeCanvas() {
   const { message } = App.useApp()
   const configuration = useCanvasVariationModels()
   const textToImageConfiguration = useCanvasTextToImageModels()
+  const videoConfiguration = useCanvasVideoModels()
+  const videoModel = videoConfiguration.models[0]
+  const cloudProject = usePersistenceStore(state => state.cloud)
   const preferences = usePreferencesStore(state => state.preferences)
   const ownerId = currentWorkstationHistoryOwner()
   const epoch = usePersistenceStore(state => state.epoch)
@@ -96,12 +101,13 @@ export default function FreeCanvas() {
   const scene = project?.document.scenes.find((item) => item.id === activeSceneId)
   const generation = useFreeCanvasGenerationController(scene?.id)
   const foreignSubmission = !!generation.pendingSubmission?.ownerId && generation.pendingSubmission.ownerId !== ownerId
-  const taskResultCount = generation.task?.resultImages?.length || generation.task?.resultUrls?.length || 0
+  const taskResultCount = generation.task?.resultVideos?.length || generation.task?.resultImages?.length || generation.task?.resultUrls?.length || 0
   const previewAssetIds = Array.from({ length: taskResultCount }, (_, index) => resultAssetForTask(generation.task, index, project?.assets ?? EMPTY_ASSETS)?.id).filter((id): id is string => !!id)
   const images = useCanvasImages(project?.assets ?? EMPTY_ASSETS, scene, derivedDraft?.sourceAssetId, previewAssetIds)
+  const videos = useCanvasVideos(images.assets, scene)
   const model = configuration.models.find(item => item.id === derivedDraft?.modelProfileId)
     ?? configuration.models.find(item => item.defaultFor?.includes('variation')) ?? configuration.models[0]
-  const requestedResolution = derivedDraft?.resolution ?? preferences.image.resolution
+  const requestedResolution = derivedDraft?.resolution && derivedDraft.resolution !== '720p' ? derivedDraft.resolution : preferences.image.resolution
   const effective = effectiveImageParameters(variationCount, requestedResolution, derivedAsset?.type === 'image' ? derivedAsset : undefined, model?.ui)
   const estimatedCredits = effective.count * (model?.pricing?.creditsPerImage[effective.resolution] ?? 0)
   const textToImageParameters = resolveCanvasTextToImageParameters(drafts['text-to-image'], preferences.image.resolution, textToImageConfiguration.models)
@@ -190,8 +196,8 @@ export default function FreeCanvas() {
   }, [])
 
   const handleGenerate = () => {
-    if (activeSlug === 'text-to-video' && !mockGateway) {
-      message.warning('视频真实生成尚未接入，目前仅支持模拟模式')
+    if (activeSlug === 'text-to-video' && (!videoConfiguration.ready || cloudProject)) {
+      message.warning(cloudProject ? '请先另存为本地副本，再生成视频' : '请先确认登录与视频服务配置')
       return
     }
     if (activeSlug === 'text-to-image' && !textToImageEntryEnabled) {
@@ -210,7 +216,7 @@ export default function FreeCanvas() {
     }
     try {
       const request = activeSlug === 'text-to-video'
-        ? buildTextToVideoRequest(prompt, preset, durationSeconds)
+        ? buildTextToVideoRequest(prompt, preset, durationSeconds, videoModel ? { model: videoModel, generateAudio: drafts['text-to-video'].generateAudio ?? false } : undefined)
         : buildTextToImageRequest(prompt, textToImageParameters.preset, textToImageParameters.count, { resolution: textToImageParameters.resolution, modelProfileId: textToImageParameters.model?.id })
       if (activeSlug === 'text-to-image') {
         updateDraft({ modelProfileId: textToImageParameters.model?.id, resolution: textToImageParameters.requestedResolution })
@@ -241,17 +247,19 @@ export default function FreeCanvas() {
     persistence.setDrafts({ ...persistence.drafts, derived: {
       mode: action, sourceNode: { ...node }, sourceAssetId: asset.id, prompt: '',
       count: previous?.count ?? preferences.image.counts.variation, durationSeconds: previous?.durationSeconds ?? 5,
-      resolution: previous?.resolution ?? preferences.image.resolution, modelProfileId: previous?.modelProfileId ?? model?.id,
+      resolution: action === 'image-to-video' ? '720p' : previous?.resolution && previous.resolution !== '720p' ? previous.resolution : preferences.image.resolution,
+      modelProfileId: action === 'image-to-video' ? videoModel?.id : previous?.modelProfileId ?? model?.id,
+      generateAudio: previous?.generateAudio ?? false,
     } })
-  }, [configuration.loading, generation, message, preferences.image, model?.id])
+  }, [configuration.loading, generation, message, preferences.image, model?.id, videoModel?.id])
 
   const variationEntryEnabled = isFreeCanvasVariationEntryEnabled()
   const handleDerivedGenerate = () => {
     const selected = resolveSelectedImageSource(scene, project?.assets, selectedNodeId)
     const source = selected ?? derivedContext?.source
     if (!derivedContext || !source) return
-    if (derivedContext.mode === 'image-to-video' && !mockGateway) {
-      message.warning('视频真实生成尚未接入，目前仅支持模拟模式')
+    if (derivedContext.mode === 'image-to-video' && (!videoConfiguration.imageReady || cloudProject)) {
+      message.warning(cloudProject ? '请先另存为本地副本，再生成视频' : '请先确认登录与视频服务配置')
       return
     }
     if (derivedContext.mode === 'variation' && !variationEntryEnabled) {
@@ -261,7 +269,7 @@ export default function FreeCanvas() {
     try {
       const request = derivedContext.mode === 'variation'
         ? buildVariationRequest(source.asset, derivedPrompt, effective.count, { resolution: effective.resolution, modelProfileId: model?.id })
-        : buildImageToVideoRequest(source.asset, derivedPrompt, derivedDurationSeconds)
+        : buildImageToVideoRequest(source.asset, derivedPrompt, derivedDurationSeconds, videoModel ? { model: videoModel, generateAudio: derivedDraft?.generateAudio ?? false } : undefined)
       if (derivedContext.mode === 'variation') updateDerived({ count: effective.count, resolution: effective.resolution, modelProfileId: model?.id, sourceNode: { ...source.node }, sourceAssetId: source.asset.id })
       void generation.generateDerived(request, source).then((placements) => {
         if (!placements?.length) return
@@ -317,6 +325,10 @@ export default function FreeCanvas() {
         if (file) void importPicture(file)
       }} />
       {images.error && <Alert type="warning" showIcon message="画布图片读取失败" description={images.error} action={<Button onClick={images.reload}>重试读取图片</Button>} />}
+      {videos.error && <Alert type="warning" showIcon message="画布视频读取失败" description={videos.error} action={<Button onClick={videos.reload}>重试读取视频</Button>} />}
+      {videoConfiguration.error && <Alert type="warning" showIcon message="视频配置读取失败" action={<Button onClick={videoConfiguration.reload}>重新读取视频配置</Button>} />}
+      {cloudProject && (activeSlug === 'text-to-video' || derivedContext?.mode === 'image-to-video') && <Alert type="info" showIcon message="视频画布暂时仅支持本地保存"
+        description="另存为本地副本后即可生成视频，原云端项目继续保留。" action={<Button disabled={generation.formLocked} onClick={() => { void copyProjectLocally().catch(error => message.error(error instanceof Error ? error.message : '另存失败')) }}>另存为本地副本</Button>} />}
       {configuration.error && <Alert type="warning" showIcon message="裂变模型配置读取失败" description={configuration.error} action={<Button onClick={configuration.reload}>重新读取配置</Button>} />}
       {textToImageConfiguration.error && <Alert type="warning" showIcon message="文生图模型配置读取失败" description={textToImageConfiguration.error} action={<Button onClick={textToImageConfiguration.reload}>重新读取文生图配置</Button>} />}
       {generation.pendingSubmission && !generation.submitting && <Alert type="warning" showIcon message={foreignSubmission ? '此任务属于其他账号' : '生成请求等待恢复'} description={foreignSubmission ? '当前账号无法续接此任务。放弃等待可清理本地占位，继续编辑画布。' : '继续操作会使用原幂等键确认同一次请求，避免重复生成；放弃后将清理本地等待状态。'} action={<Space>
@@ -340,7 +352,7 @@ export default function FreeCanvas() {
           key={scene.id}
           ref={stageRef}
           scene={scene}
-          assets={images.assets}
+          assets={videos.assets}
           generations={project.generations}
           selectedNodeId={selectedNodeId}
           viewport={viewport}
@@ -354,6 +366,7 @@ export default function FreeCanvas() {
           onRedo={redo}
           onDelete={handleDelete}
           variationEnabled={variationEntryEnabled || configuration.loading}
+          imageToVideoEnabled={videoConfiguration.imageReady || videoConfiguration.loading}
           onNodeGenerationAction={handleNodeGenerationAction}
           onAssetLoadError={handleAssetLoadError}
         />
@@ -364,6 +377,10 @@ export default function FreeCanvas() {
             prompt={derivedPrompt}
             count={derivedContext.mode === 'variation' ? effective.count : variationCount}
             durationSeconds={derivedDurationSeconds}
+            generateAudio={derivedDraft?.generateAudio ?? false}
+            onAudioChange={generateAudio => updateDerived({ generateAudio })}
+            videoConfigured={videoConfiguration.imageReady}
+            videoModel={videoModel}
             task={generation.task}
             submitting={generation.submitting}
             autoRetrying={generation.autoRetrying}
@@ -377,8 +394,8 @@ export default function FreeCanvas() {
             onPromptChange={(prompt) => updateDerived({ prompt })}
             onCountChange={(count) => updateDerived({ count })}
             onDurationChange={(durationSeconds) => updateDerived({ durationSeconds })}
-            generateDisabled={derivedContext.mode === 'variation' ? !variationEntryEnabled : !mockGateway}
-            modelsLoading={derivedContext.mode === 'variation' && configuration.loading}
+            generateDisabled={derivedContext.mode === 'variation' ? !variationEntryEnabled : !videoConfiguration.imageReady || !!cloudProject}
+            modelsLoading={derivedContext.mode === 'variation' ? configuration.loading : videoConfiguration.loading}
             onGenerate={handleDerivedGenerate}
             onRetry={() => { void generation.retry() }}
             onModifyParameters={generation.modifyParameters}
@@ -388,14 +405,14 @@ export default function FreeCanvas() {
             resolution={effective.resolution}
             onModelChange={modelProfileId => updateDerived({ modelProfileId })}
             onResolutionChange={resolution => updateDerived({ resolution })}
-            estimatedCredits={estimatedCredits}
+            estimatedCredits={derivedContext.mode === 'variation' ? estimatedCredits : videoModel?.pricing.creditsPerVideo[derivedDurationSeconds === 10 ? 10 : 5]}
             resolutionAdjusted={effective.resolution !== requestedResolution}
             mockGateway={mockGateway}
             preparationPhase={generation.preparationPhase}
             historyError={generation.historyError}
             historySaved={generation.historySaved}
             onRetrySave={generation.retryHistory}
-            resultAssets={images.assets}
+            resultAssets={videos.assets}
           />
         ) : (
           <GenerationPanel
@@ -404,6 +421,10 @@ export default function FreeCanvas() {
             presetKey={activeSlug === 'text-to-image' ? textToImageParameters.preset.key : presetKey}
             count={activeSlug === 'text-to-image' ? textToImageParameters.count : count}
             durationSeconds={durationSeconds}
+            generateAudio={drafts['text-to-video'].generateAudio ?? false}
+            onAudioChange={generateAudio => updateDraft({ generateAudio })}
+            videoConfigured={videoConfiguration.ready}
+            videoModel={videoModel}
             task={generation.task}
             submitting={generation.submitting}
             active={generation.active}
@@ -425,17 +446,17 @@ export default function FreeCanvas() {
             resolution={textToImageParameters.resolution}
             onModelChange={modelProfileId => updateDraft({ modelProfileId })}
             onResolutionChange={resolution => updateDraft({ resolution })}
-            estimatedCredits={textToImageParameters.estimatedCredits}
+            estimatedCredits={activeSlug === 'text-to-video' ? videoModel?.pricing.creditsPerVideo[durationSeconds === 10 ? 10 : 5] : textToImageParameters.estimatedCredits}
             resolutionAdjusted={textToImageParameters.resolutionAdjusted}
             ratioAdjusted={textToImageParameters.ratioAdjusted}
             countAdjusted={textToImageParameters.countAdjusted}
-            modelsLoading={textToImageConfiguration.loading}
-            generateDisabled={activeSlug === 'text-to-image' ? !textToImageEntryEnabled : !mockGateway}
+            modelsLoading={activeSlug === 'text-to-video' ? videoConfiguration.loading : textToImageConfiguration.loading}
+            generateDisabled={activeSlug === 'text-to-image' ? !textToImageEntryEnabled : !videoConfiguration.ready || !!cloudProject}
             mockGateway={mockGateway}
             historyError={generation.historyError}
             historySaved={generation.historySaved}
             onRetrySave={generation.retryHistory}
-            resultAssets={images.assets}
+            resultAssets={videos.assets}
           />
         )}
       </div>

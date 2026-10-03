@@ -32,6 +32,9 @@ export interface GenerationTask<TParams = Record<string, unknown>> {
   params: TParams
   resultUrls?: string[]
   resultImages?: Array<{ url: string; width: number; height: number; mimeType: string; objectKey?: string; expiresAt?: number; ordinal?: number }>
+  resultVideos?: import('@shared/video-models').VideoResult[]
+  phase?: import('@shared/video-models').VideoPhase
+  retentionExpiresAt?: string
   warnings?: string[]
   /** 文本生成类任务的单条结果 */
   resultText?: string
@@ -105,6 +108,10 @@ export interface TextToImageTaskParams {
 
 /** 自由画布文生视频任务参数 */
 export interface TextToVideoTaskParams {
+  mode?: 'text_to_video'
+  ratio?: import('@shared/video-models').VideoRatio
+  resolution?: '720p'
+  generateAudio?: boolean
   prompt: string
   size: { width: number; height: number }
   durationSeconds: number
@@ -125,7 +132,12 @@ export interface VariationTaskParams {
 
 /** 自由画布图生视频任务参数，复用文生视频能力路由 */
 export interface ImageToVideoTaskParams {
-  sourceImageUrl: string
+  mode?: 'image_to_video'
+  ratio?: 'adaptive'
+  resolution?: '720p'
+  generateAudio?: boolean
+  sourceImageKey?: string
+  sourceImageUrl?: string
   prompt: string
   size: { width: number; height: number }
   durationSeconds: 5 | 10
