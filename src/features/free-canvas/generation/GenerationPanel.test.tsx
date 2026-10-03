@@ -76,8 +76,10 @@ describe('自由画布文生图侧栏', () => {
   })
 
   it('未开放的视频禁用提交，并保留时长和声音设置', () => {
-    renderPanel({ mode: 'text-to-video', generateDisabled: true })
+    renderPanel({ mode: 'text-to-video', generateDisabled: true, estimatedCredits: undefined })
     expect(screen.getByText('视频生成尚未开放，请检查登录与服务配置。')).toBeTruthy()
+    expect(screen.getByText('积分预估暂不可用')).toBeTruthy()
+    expect(screen.queryByText(/预计消耗/)).toBeNull()
     expect((screen.getByRole('button', { name: '生成视频到画布' }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByRole('combobox', { name: '文生图模型' })).toBeNull()
     expect(screen.getByText('10 秒')).toBeTruthy()

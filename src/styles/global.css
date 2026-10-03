@@ -540,6 +540,8 @@ a {
 .free-canvas-page {
   display: flex;
   height: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 560px;
   flex-direction: column;
 }
@@ -564,6 +566,8 @@ a {
 
 .free-canvas-workspace {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
   flex: 1;
   gap: 14px;
@@ -679,6 +683,8 @@ a {
 .free-canvas-generation-panel {
   display: flex;
   width: 280px;
+  max-width: 100%;
+  min-width: 0;
   padding: 18px;
   flex: 0 0 280px;
   flex-direction: column;
@@ -695,9 +701,15 @@ a {
 
 .free-canvas-generation-panel p {
   margin: 0;
+  max-width: 100%;
   color: var(--color-text-secondary);
   font-size: 12px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.free-canvas-generation-panel p.free-canvas-credit-warning {
+  color: var(--color-danger);
 }
 
 .free-canvas-derived-header {
@@ -754,14 +766,26 @@ a {
 
 .free-canvas-field {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   flex-direction: column;
   gap: 8px;
   color: var(--color-text-secondary);
   font-size: 12px;
 }
 
+.free-canvas-field .ant-segmented,
+.free-canvas-field .ant-radio-group,
+.free-canvas-generation-panel .ant-btn {
+  max-width: 100%;
+}
+
+.free-canvas-field .ant-segmented-item,
 .free-canvas-field .ant-segmented-item-label {
   min-width: 0;
+}
+
+.free-canvas-field .ant-segmented-item-label {
   padding-inline: 5px;
   font-size: 11px;
 }
@@ -772,7 +796,8 @@ a {
 }
 
 .free-canvas-field .ant-radio-button-wrapper {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   padding-inline: 0;
   text-align: center;
 }
@@ -1182,7 +1207,9 @@ a {
 
   .free-canvas-generation-panel {
     width: 100%;
-    flex-basis: auto;
+    max-width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
   }
 }
 

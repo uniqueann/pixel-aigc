@@ -165,7 +165,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
     if (path[0] === 'video-models' && method === 'GET') {
-      res.status(200).json({ items: videoGenerationAvailable() ? [SEEDANCE_VIDEO_MODEL] : [] })
+      // 报价与生成开关分离：关闭时仍返回价格供面板预估，提交仍由能力开关拒绝。
+      res.status(200).json({ items: [SEEDANCE_VIDEO_MODEL] })
       return
     }
     if (path[0] === 'image-models' && method === 'GET') {

@@ -18,6 +18,7 @@ import { isCanvasMockGateway, isFreeCanvasTextToImageEntryEnabled, isFreeCanvasV
 import { useCanvasTextToImageModels, useCanvasVariationModels } from '@/features/free-canvas/generation/useCanvasVariationModels'
 import { useCanvasVideoModels } from '@/features/free-canvas/generation/useCanvasVideoModels'
 import { resolveCanvasTextToImageParameters } from '@/features/free-canvas/generation/textToImageParameters'
+import { videoCreditsForDuration } from '@/features/free-canvas/generation/videoCredits'
 import { resultAssetForTask } from '@/features/free-canvas/generation/resultAsset'
 import { useCanvasImages } from '@/features/free-canvas/images/useCanvasImages'
 import { useCanvasVideos } from '@/features/free-canvas/images/useCanvasVideos'
@@ -405,7 +406,7 @@ export default function FreeCanvas() {
             resolution={effective.resolution}
             onModelChange={modelProfileId => updateDerived({ modelProfileId })}
             onResolutionChange={resolution => updateDerived({ resolution })}
-            estimatedCredits={derivedContext.mode === 'variation' ? estimatedCredits : videoModel?.pricing.creditsPerVideo[derivedDurationSeconds === 10 ? 10 : 5]}
+            estimatedCredits={derivedContext.mode === 'variation' ? estimatedCredits : videoCreditsForDuration(videoModel, derivedDurationSeconds)}
             resolutionAdjusted={effective.resolution !== requestedResolution}
             mockGateway={mockGateway}
             preparationPhase={generation.preparationPhase}
@@ -446,7 +447,7 @@ export default function FreeCanvas() {
             resolution={textToImageParameters.resolution}
             onModelChange={modelProfileId => updateDraft({ modelProfileId })}
             onResolutionChange={resolution => updateDraft({ resolution })}
-            estimatedCredits={activeSlug === 'text-to-video' ? videoModel?.pricing.creditsPerVideo[durationSeconds === 10 ? 10 : 5] : textToImageParameters.estimatedCredits}
+            estimatedCredits={activeSlug === 'text-to-video' ? videoCreditsForDuration(videoModel, durationSeconds) : textToImageParameters.estimatedCredits}
             resolutionAdjusted={textToImageParameters.resolutionAdjusted}
             ratioAdjusted={textToImageParameters.ratioAdjusted}
             countAdjusted={textToImageParameters.countAdjusted}
