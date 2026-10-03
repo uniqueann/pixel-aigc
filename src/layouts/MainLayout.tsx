@@ -121,7 +121,7 @@ function MainLayoutContent() {
   }
 
   return (
-    <Layout style={{ height: '100vh' }}>
+    <Layout className="app-shell" style={{ height: '100vh' }}>
       <Sider
         width={260}
         collapsedWidth={68}
@@ -185,7 +185,7 @@ function MainLayoutContent() {
           </Dropdown>
         </div>
       </Sider>
-      <Layout>
+      <Layout className="app-shell-main">
         <Header className="app-header">
           <Space size={14}>
             <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />

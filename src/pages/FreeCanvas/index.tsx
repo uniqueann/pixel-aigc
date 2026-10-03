@@ -343,10 +343,11 @@ export default function FreeCanvas() {
           value={activeSlug}
           onChange={(value) => navigate(`/canvas/${value}`)}
         />
-        <Space wrap><Button loading={importing} disabled={generation.submitting || !!generation.pendingSubmission} onClick={() => fileInput.current?.click()}>上传图片</Button>
+        <div className="free-canvas-page-actions">
+          <Button loading={importing} disabled={generation.submitting || !!generation.pendingSubmission} onClick={() => fileInput.current?.click()}>上传图片</Button>
           <Button disabled={importing || generation.submitting || !!generation.pendingSubmission} onClick={() => setPickerOpen(true)}>从我的资产添加</Button>
           <span>{scene.width} × {scene.height}</span>
-        </Space>
+        </div>
       </div>
       <div className="free-canvas-workspace">
         <FreeCanvasStage
