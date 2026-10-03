@@ -16,6 +16,7 @@ import {
   type TextToVideoTaskParams,
   type VariationTaskParams,
 } from '@/types'
+import { ARTBOARD_PLACEMENT_GAP, boundsFromPlacement, overlapsBounds } from '@/features/free-canvas/geometry'
 import { IMAGE_SIZE_PRESETS } from './config'
 import {
   buildImageToVideoRequest,
@@ -633,7 +634,7 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     const request = buildTextToImageRequest('延迟响应', IMAGE_SIZE_PRESETS[0], 1)
     let resolveRequest!: (task: GenerationTask<CanvasGenerationTaskParams>) => void
     mocks.createTask.mockImplementation(() => new Promise((resolve) => { resolveRequest = resolve }))
-    let submitting!: Promise<void>
+    let submitting!: Promise<unknown>
     await act(async () => { submitting = currentController.generate(request, { x: 0, y: 0 }) })
     await reloadController()
     await act(async () => {
@@ -643,6 +644,62 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     expect(useEditorStore.getState().project?.generations).toEqual({})
     expect(useEditorStore.getState().project?.document.scenes[0].nodes).toEqual([])
     expect(currentController.pendingSubmission).toBeDefined()
+  })
+
+  it('视口靠近画板上沿时，文生图占位和结果都完整落在画板内且不重叠', async () => {
+    const blocker: ImageNode = {
+      id: 'node-blocker',
+      type: 'image',
+      assetId: 'asset-blocker',
+      name: '已有图片',
+      x: 480,
+      y: 24,
+      width: 320,
+      height: 320,
+      rotation: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      zIndex: 0,
+    }
+    await act(async () => useEditorStore.getState().addNode(sceneId, blocker))
+    const request = buildTextToImageRequest('靠边的杯子', IMAGE_SIZE_PRESETS[0], 2)
+    const processingTask: GenerationTask<CanvasGenerationTaskParams> = {
+      id: 'task-edge',
+      capability: Capability.TextToImage,
+      status: 'processing',
+      params: request.params,
+      creditsCost: 2,
+      createdAt: '2026-10-03T00:00:00.000Z',
+      updatedAt: '2026-10-03T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValue(processingTask)
+    await act(async () => {
+      await currentController.generate(request, { x: 640, y: 40 })
+    })
+
+    const placeholders = useEditorStore.getState().project?.document.scenes[0].nodes.filter(node => node.type === 'generation') ?? []
+    expect(placeholders).toHaveLength(2)
+    for (const node of placeholders) {
+      expect(node.y).toBeGreaterThanOrEqual(ARTBOARD_PLACEMENT_GAP)
+      expect(node.x).toBeGreaterThanOrEqual(ARTBOARD_PLACEMENT_GAP)
+      expect(node.x + node.width).toBeLessThanOrEqual(1280 - ARTBOARD_PLACEMENT_GAP)
+      expect(node.y + node.height).toBeLessThanOrEqual(720 - ARTBOARD_PLACEMENT_GAP)
+      expect(overlapsBounds(boundsFromPlacement(node), boundsFromPlacement(blocker), ARTBOARD_PLACEMENT_GAP)).toBe(false)
+    }
+    expect(overlapsBounds(boundsFromPlacement(placeholders[0]), boundsFromPlacement(placeholders[1]), ARTBOARD_PLACEMENT_GAP)).toBe(false)
+
+    mocks.polling.data = {
+      ...processingTask,
+      status: 'succeeded',
+      resultUrls: ['cup-a.png', 'cup-b.png'],
+      updatedAt: '2026-10-03T00:01:00.000Z',
+    }
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+    const results = useEditorStore.getState().project?.document.scenes[0].nodes.filter(node => node.type === 'image' && node.id !== blocker.id) ?? []
+    expect(results.map(node => ({ x: node.x, y: node.y, width: node.width, height: node.height }))).toEqual(
+      placeholders.map(node => ({ x: node.x, y: node.y, width: node.width, height: node.height })),
+    )
   })
 
 })

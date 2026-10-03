@@ -32,7 +32,7 @@ import {
   type VariationTaskParams,
 } from '@/types'
 import type { CanvasPoint, GenerationPlacement } from '../geometry'
-import { calculateDerivedPlacements, calculateGenerationPlacements, calculateNodeBounds } from '../geometry'
+import { calculateDerivedPlacements, calculateGenerationPlacements, calculateNodeBounds, placeArtboardNodes } from '../geometry'
 import { canSubmitFreeCanvasTextToImage, canSubmitFreeCanvasVariation, isCanvasMockGateway } from './availability'
 import { saveCanvasTaskHistory } from './history'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
@@ -544,9 +544,18 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const restoredAutomaticRetry = mockGateway && displayedTask ? recoveryForTask(displayedTask.id)?.context.automaticRetry && ACTIVE_STATUSES.has(displayedTask.status) : false
 
   const generate = useCallback(async (request: CanvasGenerationRequest, center: CanvasPoint) => {
-    const placements = calculateGenerationPlacements(center, request.params.size, request.params.count)
+    const scene = readScene()
+    const preferred = calculateGenerationPlacements(center, request.params.size, request.params.count)
+    const placements = scene
+      ? placeArtboardNodes(
+        preferred,
+        scene.nodes.map(node => calculateNodeBounds(node)),
+        { width: scene.width, height: scene.height },
+      )
+      : preferred
     await submitRequest(request, placements)
-  }, [submitRequest])
+    return placements
+  }, [readScene, submitRequest])
 
   const generateDerived = useCallback(async (
     request: CanvasGenerationRequest,

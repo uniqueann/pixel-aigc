@@ -52,6 +52,21 @@ describe('单张图片入画布', () => {
     expect(state.undoStack).toHaveLength(2)
   })
 
+  it('视口中心已有图片时，新图片改放到画板内空位且不重叠', async () => {
+    const scene = useEditorStore.getState().project!.document.scenes[0]
+    useEditorStore.getState().addNode(scene.id, {
+      id: 'existing-node', type: 'image', assetId: 'asset-existing', name: '已有图片',
+      x: 24, y: 24, width: 420, height: 420, rotation: 0, opacity: 1, visible: true, locked: false, zIndex: 1,
+    })
+    const { node } = await importCanvasFile(new File([blob], '图片.png', { type: 'image/png' }), { ...context, center: { x: 234, y: 234 } })
+    expect(node.x).toBeGreaterThanOrEqual(24)
+    expect(node.y).toBeGreaterThanOrEqual(24)
+    expect(node.x + node.width).toBeLessThanOrEqual(1280 - 24)
+    expect(node.y + node.height).toBeLessThanOrEqual(720 - 24)
+    const overlaps = node.x < 24 + 420 + 24 && node.x + node.width + 24 > 24 && node.y < 24 + 420 + 24 && node.y + node.height + 24 > 24
+    expect(overlaps).toBe(false)
+  })
+
   it('视口中心落在画板外时，新图片仍完整落在画板内', async () => {
     const file = new File([blob], '图片.png', { type: 'image/png' })
     const { node } = await importCanvasFile(file, { ...context, center: { x: 500, y: 900 } })
