@@ -1,7 +1,38 @@
 .preview-gallery-overlay .ant-image-preview-mask { background: rgba(0, 0, 0, .85); }
-.preview-gallery-overlay .ant-image-preview-operations { background: #17171a; }
+.preview-gallery-overlay .ant-image-preview-operations {
+  --preview-op-gap: 12px;
+  flex-wrap: nowrap;
+  background: #17171a;
+}
+.preview-gallery-overlay .ant-image-preview-operations-operation { flex: none; }
+.preview-gallery-overlay .preview-toolbar-download-split { position: relative; }
+.preview-gallery-overlay .preview-toolbar-download:focus { outline: none; }
+.preview-gallery-overlay .preview-toolbar-download:focus-visible > .anticon { color: rgba(255, 255, 255, .85); }
+/* 分隔线放在放大按钮与下载按钮的既有间距正中，不额外撑开工具条 */
+.preview-gallery-overlay .preview-toolbar-divider {
+  position: absolute;
+  top: 50%;
+  inset-inline-start: calc(var(--preview-op-gap) / -2);
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, .55);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
 .preview-toolbar-action { color: #fff; }
 .preview-toolbar-action:hover { color: #21cfa0 !important; }
+@media (max-width: 440px) {
+  /* 390 宽时收紧间距，7 个图标保持同一行且不被截断 */
+  .preview-gallery-overlay .ant-image-preview-operations {
+    --preview-op-gap: 8px;
+    max-width: calc(100vw - 16px);
+    padding-inline: 10px;
+  }
+  .preview-gallery-overlay .ant-image-preview-operations-operation {
+    margin-inline-start: var(--preview-op-gap);
+    padding-inline: 8px;
+  }
+}
 .preview-image-frame[data-state='loading'] .ant-image-preview-img,
 .preview-image-frame[data-state='error'] .ant-image-preview-img { visibility: hidden; }
 .preview-load-state {

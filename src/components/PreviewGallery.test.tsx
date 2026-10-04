@@ -75,6 +75,22 @@ describe('PreviewGallery', () => {
     expect(video.getAttribute('src')).toBeNull()
   })
 
+  it('视频下载按钮在工具条内，不带图片操作项', async () => {
+    mockOverlayStyle()
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
+    vi.spyOn(ownedVideos, 'readOwnedVideoUrl').mockResolvedValue({ url: 'https://r2.test/current.mp4' })
+    const videos: PreviewItem[] = [{ id: 'video-1', mediaType: 'video', thumbSrc: '', fullSrc: '', objectKey: 'video-1' }]
+    render(<App><PreviewGallery items={videos} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
+    const download = await screen.findByRole('button', { name: '下载视频' })
+    const operations = document.querySelector('.ant-image-preview-operations')
+    expect(operations?.contains(download)).toBe(true)
+    expect(document.querySelector('.ant-image-preview-operations-operation-zoomIn')).toBeNull()
+    expect(download.querySelector('.preview-toolbar-divider')).toBeNull()
+    fireEvent.mouseEnter(download)
+    expect(await screen.findByText('下载视频')).toBeTruthy()
+  })
+
   it('历史预览下载直接复用当前 Blob，不再次读取完整历史', async () => {
     mockOverlayStyle()
     vi.spyOn(historyOwner, 'currentWorkstationHistoryOwner').mockReturnValue('anonymous')
@@ -93,6 +109,23 @@ describe('PreviewGallery', () => {
     expect(read).toHaveBeenCalledTimes(1)
     expect(URL.createObjectURL).toHaveBeenLastCalledWith(blob)
     await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalled(), { timeout: 1500 })
+  })
+
+  it('下载按钮在预览工具条内，位于放大按钮右侧', async () => {
+    mockOverlayStyle()
+    render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
+    const download = await screen.findByRole('button', { name: '下载原始大图' })
+    const operations = document.querySelector('.ant-image-preview-operations') as HTMLElement
+    expect(operations.contains(download)).toBe(true)
+    const actions = [...operations.querySelectorAll(':scope > .ant-image-preview-operations-operation')]
+    expect(actions).toHaveLength(7)
+    expect(actions[5].className).toContain('zoomIn')
+    expect(actions[6]).toBe(download)
+    expect(download.querySelector(':scope > .anticon')).toBeTruthy()
+    expect(download.querySelector('.preview-toolbar-divider')).toBeTruthy()
+    expect(operations.contains(screen.getByRole('button', { name: '对比原图与结果' }))).toBe(false)
+    fireEvent.mouseEnter(download)
+    expect(await screen.findByText('下载原图')).toBeTruthy()
   })
 
   it('账号切换后的旧历史不读取图片，也不调用自定义下载', async () => {
