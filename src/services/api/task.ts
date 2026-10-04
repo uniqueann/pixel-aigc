@@ -48,11 +48,11 @@ export function canCreateLiveTask(capability: Capability, mockGateway = useMockG
   return liveCapabilityReady(capability, mockGateway) || IMAGE_TASK_CAPABILITIES.has(capability)
 }
 
-export function createTask<TParams>(payload: CreateTaskPayload<TParams>) {
+export function createTask<TParams>(payload: CreateTaskPayload<TParams>, options?: { signal?: AbortSignal }) {
   if (!canCreateLiveTask(payload.capability))
     return Promise.reject(new Error('该生成能力尚未接入真实服务'))
   if (useMockGateway) return createMockTask(payload)
-  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload, { timeout: 55000 })
+  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload, { timeout: 55000, ...options })
     .then(task => {
       if (BILLED_TASK_CAPABILITIES.has(payload.capability)) void refreshCredits().catch(() => undefined)
       return task

@@ -1429,6 +1429,98 @@ a {
   margin-top: 16px;
 }
 
+.email-mode-switcher {
+  margin-bottom: 16px;
+}
+
+.email-model-alert,
+.email-batch-alert {
+  margin-bottom: 16px;
+}
+
+.email-batch-panel {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+.email-batch-import-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.email-batch-import-grid > .ant-card,
+.email-batch-panel > .ant-card {
+  min-width: 0;
+}
+
+.email-batch-hint,
+.email-batch-template-notes,
+.email-batch-progress p {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.email-batch-hint:first-child {
+  margin-top: 0;
+}
+
+.email-batch-template-notes {
+  margin-bottom: 0;
+  padding-left: 18px;
+}
+
+.email-batch-template-notes li + li {
+  margin-top: 6px;
+}
+
+.email-batch-model {
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.email-batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.email-batch-cell,
+.email-batch-row-error {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.email-batch-row-error {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.email-batch-detail,
+.email-batch-detail label {
+  display: block;
+  width: 100%;
+}
+
+.email-batch-detail label .ant-input {
+  margin-top: 6px;
+}
+
+@media (max-width: 900px) {
+  .email-batch-import-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .free-canvas-generation-placeholder {
   display: grid;
   padding: 12px 0;
