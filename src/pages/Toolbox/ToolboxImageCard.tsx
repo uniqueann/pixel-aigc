@@ -177,7 +177,7 @@ export default function ToolboxImageCard({
     event.preventDefault()
     dragDepth.current = 0
     setDragOver(false)
-    addFiles(event.dataTransfer.files)
+    addFiles(event.dataTransfer?.files)
   }
 
   return (
