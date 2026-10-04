@@ -4,9 +4,8 @@ import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { useUserStore } from '@/store/useUserStore'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
-import BatchImageQueue from './BatchImageQueue'
 import WatermarkSettingsPanel from './shared/WatermarkSettingsPanel'
-import BatchImageUpload from './BatchImageUpload'
+import ToolboxImageCard, { PreviewItemNotice, PreviewResultActions } from './ToolboxImageCard'
 import { invalidateBatch, processBatch } from './watermark/batch'
 import { createWatermarkZip, downloadBlob, namesForImages } from './watermark/download'
 import { deletePreset, listPresets, savePreset, type WatermarkPreset } from './watermark/presets'
@@ -286,17 +285,40 @@ export default function WatermarkTool() {
 
   return (
     <div className="toolbox-watermark">
-      <BatchImageUpload count={items.length} disabled={busy} onAdd={addFile} />
+      <ToolboxImageCard
+        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, status: item.status, error: item.error }))}
+        selectedId={selectedId}
+        disabled={busy}
+        onAdd={addFile}
+        onSelect={setSelectedId}
+        onRemove={removeFile}
+        onClear={clearFiles}
+      />
       <div className="toolbox-watermark-main">
         <section className="toolbox-preview-panel" aria-label="水印预览">
           <div className="toolbox-section-heading">
-            <div><strong>水印预览</strong><span>在图片列表中切换，检查横竖图效果</span></div>
-            {currentPreview?.loading && <span>正在更新预览…</span>}
+            <div className="toolbox-preview-title">
+              <strong>水印预览</strong>
+              <span className="toolbox-preview-meta">{selected ? `${selected.file.name} · ${selected.width} × ${selected.height}` : '等待图片'}</span>
+            </div>
+            <div className="toolbox-preview-actions">
+              {currentPreview?.loading && <span>正在更新预览…</span>}
+              {selected && (
+                <PreviewResultActions
+                  status={selected.status}
+                  hasOutput={Boolean(selected.output)}
+                  busy={busy}
+                  onDownload={() => downloadOne(selected.id)}
+                  onRetry={() => { void processImages([selected.id]) }}
+                />
+              )}
+            </div>
           </div>
           <div className="toolbox-preview-stage">
             {selected ? <img src={currentPreview?.url ?? selected.sourceUrl} alt={`${selected.file.name} 的水印预览`} onClick={selected.output ? () => openAt(selected.id) : undefined} style={{ cursor: selected.output ? 'zoom-in' : undefined }} /> : <p>先添加图片，再设置水印</p>}
           </div>
           {currentPreview?.error && <div className="toolbox-preview-error">预览失败：{currentPreview.error}</div>}
+          <PreviewItemNotice error={selected?.error} />
           <p className="toolbox-hint">预览使用缩略尺寸；导出按原图像素处理。图片不会上传到服务器。</p>
         </section>
 
@@ -317,17 +339,6 @@ export default function WatermarkTool() {
         />
       </div>
 
-      <BatchImageQueue
-        items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error }))}
-        selectedId={selectedId}
-        disabled={busy}
-        onSelect={setSelectedId}
-        onRemove={removeFile}
-        onClear={clearFiles}
-        onRetry={id => { void processImages([id]) }}
-        onDownload={downloadOne}
-        onPreviewResult={openAt}
-      />
       <PreviewGallery {...galleryProps} onDownload={item => downloadOne(item.id)} />
 
       <div className="toolbox-watermark-footer">
