@@ -6,9 +6,8 @@ import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import CapabilityStatus from '@/components/CapabilityStatus'
 import { useUserStore } from '@/store/useUserStore'
-import BatchImageQueue from './BatchImageQueue'
 import AspectRatioSettingsPanel from './shared/AspectRatioSettingsPanel'
-import BatchImageUpload from './BatchImageUpload'
+import ToolboxImageCard, { PreviewItemNotice, PreviewResultActions } from './ToolboxImageCard'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import { invalidateBatch, processBatch } from './aspect-ratio/batch'
@@ -379,17 +378,48 @@ export default function AspectRatioTool() {
 
   return (
     <div className="toolbox-watermark">
-      <BatchImageUpload
-        count={items.length}
+      <ToolboxImageCard
+        items={items.map(item => ({
+          id: item.id,
+          name: item.file.name,
+          url: item.sourceUrl,
+          status: item.status,
+          error: item.error,
+          note: item.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : item.cropFocus?.note,
+        }))}
+        selectedId={selectedId}
         disabled={busy}
         onAdd={addFile}
+        onSelect={setSelectedId}
+        onRemove={removeFile}
+        onClear={clearFiles}
         processingHint={settings.strategy === 'outpaint' ? '智能扩展会上传图片生成背景' : undefined}
       />
       <div className="toolbox-watermark-main">
         <section className="toolbox-preview-panel" aria-label="转比例预览">
           <div className="toolbox-section-heading">
-            <div><strong>转比例预览</strong><span>{preset.label} · {settings.strategy === 'outpaint' && settings.outpaintOutputMode === 'original' && !selected ? '保留原图分辨率' : `${selectedOutputSize.width} × ${selectedOutputSize.height}`}</span></div>
-            {currentPreview?.loading && <span>正在更新预览…</span>}
+            <div className="toolbox-preview-title">
+              <strong>转比例预览</strong>
+              <span className="toolbox-preview-meta">{selected
+                ? `${selected.file.name} · ${selected.width} × ${selected.height}`
+                : `${preset.label} · ${settings.strategy === 'outpaint' && settings.outpaintOutputMode === 'original' ? '保留原图分辨率' : `${selectedOutputSize.width} × ${selectedOutputSize.height}`}`}</span>
+            </div>
+            <div className="toolbox-preview-actions">
+              {currentPreview?.loading && <span>正在更新预览…</span>}
+              {settings.strategy === 'outpaint' && selected?.status === 'failed' && (
+                <Button size="small" type="link" disabled={busy} onClick={() => refineFailed(selected.id)}>去工作站精修</Button>
+              )}
+              {selected && (
+                <PreviewResultActions
+                  status={selected.status}
+                  hasOutput={Boolean(selected.output)}
+                  retry={selected.status === 'succeeded' && Boolean(selected.cropFocus?.unavailable)}
+                  busy={busy}
+                  onDownload={() => { void downloadOne(selected.id) }}
+                  onRetry={() => { void processImages([selected.id]) }}
+                />
+              )}
+            </div>
           </div>
           <div className="toolbox-preview-stage">
             {selected ? <img src={currentPreview?.url ?? selected.sourceUrl} alt={`${selected.file.name} 的转比例预览`} onClick={selected.output ? () => openAt(selected.id) : undefined} style={{ cursor: selected.output ? 'zoom-in' : undefined }} /> : <p>先添加图片，再选择平台和适配方式</p>}
@@ -402,9 +432,11 @@ export default function AspectRatioTool() {
             {settings.strategy === 'outpaint' ? '智能扩展会上传图片生成背景。' : '图片在本机处理。'}
           </p>
           {upscale > 2 && <p className="toolbox-hint toolbox-warning">当前图片需要放大超过 2 倍才能铺满目标尺寸，细节可能变糊。</p>}
-          {selected?.status === 'succeeded' && selected.cropFocus?.source === 'grid' && selected.cropFocus.note && (
-            <p className="toolbox-crop-notice" role="status">{selected.cropFocus.note}</p>
-          )}
+          <PreviewItemNotice
+            error={selected?.error}
+            note={selected ? (selected.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : selected.cropFocus?.note) : undefined}
+            warning={Boolean(selected && selected.status !== 'processing' && selected.cropFocus?.source === 'grid')}
+          />
         </section>
 
         <AspectRatioSettingsPanel settings={settings} disabled={controlsLocked} onChange={updateSettings}
@@ -435,23 +467,6 @@ export default function AspectRatioTool() {
         />
       </div>
 
-      <BatchImageQueue
-        items={items.map(item => ({
-          id: item.id, name: item.file.name, url: item.sourceUrl, width: item.width, height: item.height, status: item.status, error: item.error,
-          note: item.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : item.cropFocus?.note,
-          noteWarning: item.status !== 'processing' && item.cropFocus?.source === 'grid',
-          canRetry: item.status === 'succeeded' && Boolean(item.cropFocus?.unavailable),
-        }))}
-        selectedId={selectedId}
-        disabled={busy}
-        onSelect={setSelectedId}
-        onRemove={removeFile}
-        onClear={clearFiles}
-        onRetry={id => { void processImages([id]) }}
-        onDownload={downloadOne}
-        onPreviewResult={openAt}
-        onRefine={settings.strategy === 'outpaint' ? refineFailed : undefined}
-      />
       <PreviewGallery {...galleryProps} onDownload={item => downloadOne(item.id)} />
 
       <div className="toolbox-watermark-footer">

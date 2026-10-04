@@ -13,8 +13,7 @@ import { unavailableCropSummary } from './aspect-ratio/subjectFocus'
 import { pipelineNames, createPipelineZip } from '@/features/toolbox-pipeline/download'
 import { usePipelineUrls } from '@/features/toolbox-pipeline/usePipelineUrls'
 import { usePipelinePreview, type PreviewStage } from '@/features/toolbox-pipeline/usePipelinePreview'
-import BatchImageUpload from './BatchImageUpload'
-import BatchImageQueue from './BatchImageQueue'
+import ToolboxImageCard, { PreviewItemNotice, PreviewResultActions } from './ToolboxImageCard'
 import AspectRatioSettingsPanel from './shared/AspectRatioSettingsPanel'
 import WatermarkSettingsPanel from './shared/WatermarkSettingsPanel'
 import PresetControls from './shared/PresetControls'
@@ -132,11 +131,48 @@ export default function PipelineTool() {
 
   return <div className="toolbox-watermark toolbox-pipeline">
     <div className="toolbox-section-heading"><div><strong>转比例 → 加水印</strong><span>一次设置，自动处理整批图片</span></div></div>
-    <BatchImageUpload count={items.length} disabled={busy} onAdd={addFile}
-      processingHint={settings.aspectRatio.strategy === 'crop' ? '智能裁剪可能上传缩略图识别主体，水印在本机处理' : '转比例与水印在本机处理'} />
+    <ToolboxImageCard
+      items={items.map(item => {
+        const artifact = item.output ?? item.intermediate
+        return {
+          id: item.id,
+          name: item.file.name,
+          url: urls.get(artifact?.blob ?? item.file) ?? '',
+          status: itemStatus(item),
+          error: item.error,
+          note: pipelineQueueNote(item, runState),
+        }
+      })}
+      selectedId={selectedId}
+      disabled={busy}
+      onAdd={addFile}
+      onSelect={state.select}
+      onRemove={id => { const item = items.find(item => item.id === id); if (item) forgetPipelineImage(item.file); state.remove(id) }}
+      onClear={() => { clearPipelineCache(); state.clear() }}
+      processingHint={settings.aspectRatio.strategy === 'crop' ? '智能裁剪可能上传缩略图识别主体，水印在本机处理' : '转比例与水印在本机处理'}
+    />
     <div className="toolbox-watermark-main">
       <section className="toolbox-preview-panel" aria-label="流水线预览">
-        <div className="toolbox-section-heading"><div><strong>效果预览</strong><span>{preset.label} · {shownSize.width} × {shownSize.height}{selected ? ` · ${finalMime(selected, settings) === 'image/png' ? 'PNG' : 'JPEG'}` : ''}</span></div></div>
+        <div className="toolbox-section-heading">
+          <div className="toolbox-preview-title">
+            <strong>效果预览</strong>
+            <span className="toolbox-preview-meta">{selected
+              ? `${selected.file.name} · ${shownSize.width} × ${shownSize.height} · ${finalMime(selected, settings) === 'image/png' ? 'PNG' : 'JPEG'}`
+              : `${preset.label} · ${shownSize.width} × ${shownSize.height}`}</span>
+          </div>
+          {selected && (
+            <div className="toolbox-preview-actions">
+              <PreviewResultActions
+                status={itemStatus(selected)}
+                hasOutput={Boolean(selected.output)}
+                retry={itemStatus(selected) === 'succeeded' && selected.cropFocus?.source === 'grid'}
+                busy={busy}
+                onDownload={() => downloadOne(selected.id)}
+                onRetry={() => { void process([selected.id]) }}
+              />
+            </div>
+          )}
+        </div>
         <Radio.Group value={stage} onChange={event => setStage(event.target.value)} optionType="button" buttonStyle="solid"
           options={[{ label: '原图', value: 'original' }, { label: '转比例', value: 'ratio' }, { label: '最终效果', value: 'final' }]} />
         <div className="toolbox-preview-stage">
@@ -145,8 +181,12 @@ export default function PipelineTool() {
         </div>
         {preview?.loading && <p className="toolbox-hint" role="status">正在更新预览…</p>}
         {preview?.error && <p className="toolbox-preview-error">预览失败：{preview.error}</p>}
-        {selected?.cropFocus?.source === 'grid' && selected.cropFocus.note && (
-          <p className="toolbox-crop-notice" role="status">{selected.cropFocus.note}</p>
+        {selected && (
+          <PreviewItemNotice
+            error={selected.error}
+            note={pipelineQueueNote(selected, runState)}
+            warning={selected.cropFocus?.source === 'grid' && pipelineQueueNote(selected, runState) === selected.cropFocus.note}
+          />
         )}
         <p className="toolbox-hint">预览最长边不超过 800 px，成品按平台精确尺寸导出。切页会暂停，返回后可继续；刷新或关闭后需重新上传。</p>
         {settings.aspectRatio.strategy === 'crop' && !selected?.intermediate && <p className="toolbox-hint">预览按九宫格展示；处理时识别主体，实际裁剪位置可能调整。</p>}
@@ -161,16 +201,6 @@ export default function PipelineTool() {
           templates={<PresetControls key={ownerId} scope={ownerId} settings={settings.watermark} api={watermarkApi} disabled={busy} onApply={state.updateWatermark} validate={() => hasWatermark(settings.watermark)} />} />}
       </div>
     </div>
-    <BatchImageQueue items={items.map(item => {
-      const artifact = item.output ?? item.intermediate
-      return { id: item.id, name: item.file.name, url: urls.get(artifact?.blob ?? item.file) ?? '',
-        width: artifact?.width ?? item.width, height: artifact?.height ?? item.height,
-        status: itemStatus(item), error: item.error, note: pipelineQueueNote(item, runState),
-        noteWarning: item.cropFocus?.source === 'grid', canRetry: itemStatus(item) === 'succeeded' && item.cropFocus?.source === 'grid' }
-    })} selectedId={selectedId} disabled={busy} onSelect={state.select}
-      onRemove={id => { const item = items.find(item => item.id === id); if (item) forgetPipelineImage(item.file); state.remove(id) }}
-      onClear={() => { clearPipelineCache(); state.clear() }} onRetry={id => void process([id])} onDownload={downloadOne}
-      onPreviewResult={finalGallery.openAt} />
     <PreviewGallery {...finalGallery.galleryProps} onDownload={item => downloadOne(item.id)} />
     <PreviewGallery {...ratioGallery.galleryProps} onDownload={item => {
       const intermediate = items.find(candidate => candidate.id === item.id)?.intermediate

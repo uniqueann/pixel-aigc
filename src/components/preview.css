@@ -25,9 +25,7 @@
   background: rgba(0, 0, 0, .72) !important;
 }
 .workstation-result-item:hover .preview-zoom-button,
-.workstation-result-item:focus-within .preview-zoom-button,
-.toolbox-queue-card:hover .preview-zoom-button,
-.toolbox-queue-card:focus-within .preview-zoom-button { opacity: 1; }
+.workstation-result-item:focus-within .preview-zoom-button { opacity: 1; }
 @media (hover: none) { .preview-zoom-button { opacity: 1; } }
 .preview-result-strip { display: flex; flex-shrink: 0; min-height: 58px; gap: 8px; overflow-x: auto; }
 .preview-result-tile { position: relative; flex: 0 0 58px; height: 58px; }
