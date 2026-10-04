@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultImageModel, publicImageModel } from '@shared/image-models'
+import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import { createImageAsset } from '@/editor/services/assetService'
 import { Capability, type GenerationTask, type TextToImageTaskParams } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
@@ -47,6 +48,17 @@ describe('自由画布文生图侧栏', () => {
     expect(screen.getByText('模型积分报价尚未就绪，请重新读取文生图配置。')).toBeTruthy()
     expect((screen.getByRole('button', { name: '生成到画布' }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByText(/预计预扣 0 积分/)).toBeNull()
+  })
+
+  it('模型列表未返回时仍按共享上限显示字数', () => {
+    renderPanel({ models: [], modelProfileId: undefined, prompt: '' })
+    expect(screen.getByText(`0 / ${PROMPT_MAX_LENGTH}`)).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: '生成数量' })).toBeTruthy()
+  })
+
+  it('文生视频画面描述按共享上限计数', () => {
+    renderPanel({ mode: 'text-to-video', prompt: '' })
+    expect(screen.getByText(`0 / ${PROMPT_MAX_LENGTH}`)).toBeTruthy()
   })
 
   it('恢复的超长提示词被模型长度限制阻止提交', () => {
