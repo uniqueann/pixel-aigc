@@ -29,7 +29,7 @@ function EmailAssistantSession() {
   const { settingsQuery, profilesQuery } = configuration
 
   return <div className="email-assistant-page">
-    <ToolSwitcher className="email-mode-switcher" options={MODES} value={mode} onChange={value => {
+    <ToolSwitcher className="page-tab-row" options={MODES} value={mode} onChange={value => {
       setMode(value)
       if (value === 'batch') setBatchVisited(true)
       if (value === 'single') void single.refreshHistory?.().catch(() => undefined)

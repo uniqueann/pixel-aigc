@@ -19,6 +19,7 @@ export default function Toolbox() {
   return (
     <div>
       <ToolSwitcher
+        className="page-tab-row"
         options={TOOLBOX_TOOLS.map((t) => ({
           value: t.slug,
           label: t.label,
@@ -28,7 +29,7 @@ export default function Toolbox() {
         onChange={(slug) => navigate(`/toolbox/${slug}`)}
       />
 
-      {activeSlug === 'bg-remove' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载智能抠图…</div>}><BgRemoveTool /></Suspense> : activeSlug === 'watermark' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : activeSlug === 'aspect-ratio' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载转比例工具…</div>}><AspectRatioTool /></Suspense> : activeSlug === 'pipeline' ? <Suspense fallback={<div style={{ marginTop: 20 }}>正在加载流水线…</div>}><PipelineTool /></Suspense> : null}
+      {activeSlug === 'bg-remove' ? <Suspense fallback={<div>正在加载智能抠图…</div>}><BgRemoveTool /></Suspense> : activeSlug === 'watermark' ? <Suspense fallback={<div>正在加载加水印工具…</div>}><WatermarkTool /></Suspense> : activeSlug === 'aspect-ratio' ? <Suspense fallback={<div>正在加载转比例工具…</div>}><AspectRatioTool /></Suspense> : activeSlug === 'pipeline' ? <Suspense fallback={<div>正在加载流水线…</div>}><PipelineTool /></Suspense> : null}
     </div>
   )
 }

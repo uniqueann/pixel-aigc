@@ -130,27 +130,29 @@ export default function PipelineTool() {
   }
 
   return <div className="toolbox-watermark toolbox-pipeline">
-    <div className="toolbox-section-heading"><div><strong>转比例 → 加水印</strong><span>一次设置，自动处理整批图片</span></div></div>
-    <ToolboxImageCard
-      items={items.map(item => {
-        const artifact = item.output ?? item.intermediate
-        return {
-          id: item.id,
-          name: item.file.name,
-          url: urls.get(artifact?.blob ?? item.file) ?? '',
-          status: itemStatus(item),
-          error: item.error,
-          note: pipelineQueueNote(item, runState),
-        }
-      })}
-      selectedId={selectedId}
-      disabled={busy}
-      onAdd={addFile}
-      onSelect={state.select}
-      onRemove={id => { const item = items.find(item => item.id === id); if (item) forgetPipelineImage(item.file); state.remove(id) }}
-      onClear={() => { clearPipelineCache(); state.clear() }}
-      processingHint={settings.aspectRatio.strategy === 'crop' ? '智能裁剪可能上传缩略图识别主体，水印在本机处理' : '转比例与水印在本机处理'}
-    />
+    <div className="toolbox-pipeline-lead">
+      <div className="toolbox-section-heading"><div><strong>转比例 → 加水印</strong><span>一次设置，自动处理整批图片</span></div></div>
+      <ToolboxImageCard
+        items={items.map(item => {
+          const artifact = item.output ?? item.intermediate
+          return {
+            id: item.id,
+            name: item.file.name,
+            url: urls.get(artifact?.blob ?? item.file) ?? '',
+            status: itemStatus(item),
+            error: item.error,
+            note: pipelineQueueNote(item, runState),
+          }
+        })}
+        selectedId={selectedId}
+        disabled={busy}
+        onAdd={addFile}
+        onSelect={state.select}
+        onRemove={id => { const item = items.find(item => item.id === id); if (item) forgetPipelineImage(item.file); state.remove(id) }}
+        onClear={() => { clearPipelineCache(); state.clear() }}
+        processingHint={settings.aspectRatio.strategy === 'crop' ? '智能裁剪可能上传缩略图识别主体，水印在本机处理' : '转比例与水印在本机处理'}
+      />
+    </div>
     <div className="toolbox-watermark-main">
       <section className="toolbox-preview-panel" aria-label="流水线预览">
         <div className="toolbox-section-heading">
