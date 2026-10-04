@@ -6,6 +6,7 @@ import {
   EMAIL_BATCH_HEADERS, EMAIL_BATCH_MAX_BYTES, EMAIL_BATCH_MAX_ROWS,
   EMAIL_LANGUAGES, EMAIL_OPERATIONS, EMAIL_POLISH_STYLES,
 } from '../options'
+import { formatEmailBatchError } from './labels'
 import { EMAIL_BATCH_STATUS_LABELS, type EmailBatchOriginal, type EmailBatchRow } from './types'
 
 type Defaults = PersonalizationPreferences['email']
@@ -91,9 +92,10 @@ export function createEmailBatchTemplate() {
 }
 
 export function exportEmailBatchCsv(rows: EmailBatchRow[]) {
-  return toCsv([...EMAIL_BATCH_HEADERS, '生成结果', '状态', '错误信息'], rows.map(row => [
+  return toCsv([...EMAIL_BATCH_HEADERS, '生成结果', '状态', '错误信息'], rows.map((row, index) => [
     ...EMAIL_BATCH_HEADERS.map(header => row.original[header]), row.resultText ?? '',
-    EMAIL_BATCH_STATUS_LABELS[row.status], row.errorMessage ?? '',
+    EMAIL_BATCH_STATUS_LABELS[row.status],
+    row.errorMessage ? formatEmailBatchError(index + 1, row.recordNumber, row.errorMessage) : '',
   ]))
 }
 

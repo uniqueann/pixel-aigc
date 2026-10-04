@@ -95,8 +95,11 @@ describe('邮件助手单个与批量页面', () => {
       sourceText: '有效邮件', instruction: '重点日期', operation: 'summarize', language: 'en',
     } }), { signal: expect.any(AbortSignal) })
     expect(batchPane().getByText('填写错误')).toBeTruthy()
+    expect(batchPane().getByText('序号')).toBeTruthy()
+    expect(batchPane().getByText('第 2 条（CSV 第 3 行）填写错误，只生成有效行；请修正 CSV 后重新上传。')).toBeTruthy()
+    expect(batchPane().getByText('第 2 条（CSV 第 3 行）：原始邮件内容不能为空')).toBeTruthy()
     fireEvent.click(batchPane().getAllByText('详情')[0])
-    expect(screen.getByText('第 2 行邮件详情')).toBeTruthy()
+    expect(screen.getByText('第 1 条（CSV 第 2 行）')).toBeTruthy()
     fireEvent.click(screen.getByText('复制生成结果'))
     await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith('建议回复内容'))
   })

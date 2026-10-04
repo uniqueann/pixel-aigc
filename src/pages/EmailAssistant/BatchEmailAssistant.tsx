@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type TdHTMLAttributes } from 'react'
 import { Alert, App, Button, Card, Descriptions, Image, Input, Modal, Progress, Space, Table, Tag, Upload } from 'antd'
 import { CopyOutlined, DownloadOutlined, InboxOutlined, PauseOutlined, PlayCircleOutlined, RedoOutlined } from '@ant-design/icons'
 import { usePreferencesStore } from '@/features/preferences/store'
 import type { EmailModelConfiguration } from '@/features/email-assistant/useEmailModelConfiguration'
 import type { EmailBatchController } from '@/features/email-assistant/batch/useEmailBatchController'
 import { EMAIL_BATCH_HEADERS, EMAIL_BATCH_MAX_ROWS } from '@/features/email-assistant/options'
+import { formatEmailBatchError, formatEmailBatchLocator } from '@/features/email-assistant/batch/labels'
 import { EMAIL_BATCH_STATUS_LABELS, type EmailBatchRow, type EmailBatchStatus } from '@/features/email-assistant/batch/types'
 import {
   createEmailBatchTemplate, downloadEmailCsv, exportEmailBatchCsv,
@@ -17,6 +18,8 @@ interface Props {
   configuration: EmailModelConfiguration
   singleBusy: boolean
 }
+
+const batchCellLabel = (label: string) => ({ 'data-label': label } as TdHTMLAttributes<HTMLTableCellElement>)
 
 const STATUS_COLORS: Record<EmailBatchStatus, string> = {
   pending: 'default', processing: 'processing', succeeded: 'success',
@@ -33,7 +36,12 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
   const counts = controller.rows.reduce((result, row) => ({ ...result, [row.status]: result[row.status] + 1 }),
     { pending: 0, processing: 0, succeeded: 0, failed: 0, invalid: 0, uncertain: 0 })
   const validCount = controller.rows.length - counts.invalid
-  const selected = controller.rows.find(row => row.id === selectedId)
+  const selectedIndex = controller.rows.findIndex(row => row.id === selectedId)
+  const selected = selectedIndex >= 0 ? controller.rows[selectedIndex] : undefined
+  const sequenceOf = (row: EmailBatchRow) => controller.rows.findIndex(item => item.id === row.id) + 1
+  const issueText = (row: EmailBatchRow) => row.errorMessage ? formatEmailBatchError(sequenceOf(row), row.recordNumber, row.errorMessage) : ''
+  const invalidLocators = controller.rows.flatMap((row, index) => row.status === 'invalid'
+    ? [formatEmailBatchLocator(index + 1, row.recordNumber)] : [])
   const locked = controller.busy || controller.unresolved
   const cannotGenerate = locked || reading || singleBusy || !configuration.ready
   const modelId = controller.modelProfileId ?? configuration.defaultModelProfileId
@@ -119,33 +127,37 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
         </Space>
       </div>
       {singleBusy ? <Alert type="info" showIcon message="单个邮件正在处理，完成后可开始批量生成" className="email-batch-alert" /> : null}
-      {counts.invalid ? <Alert type="warning" showIcon message={`${counts.invalid} 条填写错误，只生成有效行；请修正 CSV 后重新上传错误行。`} className="email-batch-alert" /> : null}
+      {invalidLocators.length ? <Alert type="warning" showIcon className="email-batch-alert"
+        message={`${invalidLocators.join('、')}填写错误，只生成有效行；请修正 CSV 后重新上传。`} /> : null}
       {controller.pauseMessage ? <Alert type="warning" showIcon message={controller.pauseMessage} className="email-batch-alert" /> : null}
       {controller.rows.length ? <div className="email-batch-progress">
         <p role="status" aria-live="polite">共 {controller.rows.length} 条 · 待处理 {counts.pending} · 生成中 {counts.processing} · 成功 {counts.succeeded} · 失败 {counts.failed} · 填写错误 {counts.invalid} · 待确认 {counts.uncertain}</p>
         <Progress percent={validCount ? Math.round((counts.succeeded + counts.failed) / validCount * 100) : 0}
           status={controller.busy ? 'active' : 'normal'} />
       </div> : null}
-      <Table<EmailBatchRow> rowKey="id" size="small" dataSource={controller.rows} scroll={{ x: 1260 }}
+      <Table<EmailBatchRow> className="email-batch-table" rowKey="id" size="small" tableLayout="fixed"
+        dataSource={controller.rows}
         pagination={{ pageSize: 10, showSizeChanger: false, hideOnSinglePage: true }}
         locale={{ emptyText: '上传 CSV 后，可在这里预览邮件并开始生成' }} columns={[
-          { title: 'CSV 行', dataIndex: 'recordNumber', width: 80 },
-          { title: '原始邮件内容', width: 200, render: (_, row) => <span className="email-batch-cell">{row.original['原始邮件内容'] || '—'}</span> },
-          { title: '编写指导', width: 170, render: (_, row) => <span className="email-batch-cell">{row.original['编写指导'] || '—'}</span> },
-          { title: '生成设置', width: 160, render: (_, row) => <span className="email-batch-cell">{row.params ? formatEmailOperation(row.params) : row.original['生成设置'] || '—'}</span> },
-          { title: '语言', width: 80, render: (_, row) => row.params ? formatEmailLanguage(row.params) : row.original['语言'] || '—' },
-          { title: '生成结果', width: 200, render: (_, row) => <span className="email-batch-cell">{row.resultText || '—'}</span> },
-          { title: '状态', width: 230, render: (_, row) => <div><Tag color={STATUS_COLORS[row.status]}>{EMAIL_BATCH_STATUS_LABELS[row.status]}</Tag>
-            {row.errorMessage ? <span className="email-batch-row-error">{row.errorMessage}</span> : null}</div> },
-          { title: '操作', width: 140, fixed: 'right', render: (_, row) => <Space size={0}>
+          { title: '序号', width: '7%', onCell: () => batchCellLabel('序号'), render: (_, row) => sequenceOf(row) },
+          { title: '原始邮件内容', width: '15%', onCell: () => batchCellLabel('原始邮件内容'), render: (_, row) => <span className="email-batch-cell">{row.original['原始邮件内容'] || '—'}</span> },
+          { title: '编写指导', width: '12%', onCell: () => batchCellLabel('编写指导'), render: (_, row) => <span className="email-batch-cell">{row.original['编写指导'] || '—'}</span> },
+          { title: '生成设置', width: '14%', onCell: () => batchCellLabel('生成设置'), render: (_, row) => <span className="email-batch-cell">{row.params ? formatEmailOperation(row.params) : row.original['生成设置'] || '—'}</span> },
+          { title: '语言', width: '8%', onCell: () => batchCellLabel('语言'), render: (_, row) => row.params ? formatEmailLanguage(row.params) : row.original['语言'] || '—' },
+          { title: '生成结果', width: '14%', onCell: () => batchCellLabel('生成结果'), render: (_, row) => <span className="email-batch-cell">{row.resultText || '—'}</span> },
+          { title: '状态', width: '22%', onCell: () => batchCellLabel('状态'), render: (_, row) => <div className="email-batch-status">
+            <Tag color={STATUS_COLORS[row.status]}>{EMAIL_BATCH_STATUS_LABELS[row.status]}</Tag>
+            {row.errorMessage ? <p className="email-batch-row-error">{issueText(row)}</p> : null}
+          </div> },
+          { title: '操作', width: '8%', onCell: () => batchCellLabel('操作'), render: (_, row) => <Space size={0} wrap className="email-batch-row-actions">
             <Button type="link" size="small" onClick={() => setSelectedId(row.id)}>详情</Button>
             <Button type="link" size="small" disabled={!row.resultText} onClick={() => void copyResult(row)}>复制</Button>
           </Space> },
         ]} />
     </Card>
 
-    <Modal title={`第 ${selected?.recordNumber ?? ''} 行邮件详情`} open={!!selected} onCancel={() => setSelectedId(undefined)}
-      width={760} footer={selected?.resultText ? <Button icon={<CopyOutlined />} onClick={() => void copyResult(selected)}>复制生成结果</Button> : null}>
+    <Modal title={selected ? formatEmailBatchLocator(selectedIndex + 1, selected.recordNumber) : ''} open={!!selected} onCancel={() => setSelectedId(undefined)}
+      width="min(760px, calc(100vw - 32px))" footer={selected?.resultText ? <Button icon={<CopyOutlined />} onClick={() => void copyResult(selected)}>复制生成结果</Button> : null}>
       {selected ? <Space direction="vertical" size={16} className="email-batch-detail">
         <Descriptions size="small" column={1} items={[
           { key: 'operation', label: '生效设置', children: selected.params ? formatEmailOperation(selected.params) : selected.original['生成设置'] || '—' },
@@ -155,7 +167,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
         <label>原始邮件内容<Input.TextArea readOnly rows={5} value={selected.original['原始邮件内容']} /></label>
         <label>编写指导<Input.TextArea readOnly rows={2} value={selected.original['编写指导']} /></label>
         <label>生成结果<Input.TextArea readOnly rows={8} value={selected.resultText ?? ''} placeholder="生成结果将在这里显示" /></label>
-        {selected.errorMessage ? <Alert type="warning" showIcon message={selected.errorMessage} /> : null}
+        {selected.errorMessage ? <Alert type="warning" showIcon message={issueText(selected)} /> : null}
       </Space> : null}
     </Modal>
   </div>

@@ -1,7 +1,9 @@
 import Papa from 'papaparse'
 import { describe, expect, it } from 'vitest'
+import { buildEmailAssistRequest } from '../requestBuilder'
 import { EMAIL_BATCH_HEADERS, EMAIL_BATCH_MAX_BYTES } from '../options'
 import { createEmailBatchTemplate, exportEmailBatchCsv, formatEmailOperation, parseEmailBatchCsv, readEmailBatchFile } from './csv'
+import { formatEmailBatchError, formatEmailBatchLocator } from './labels'
 
 const defaults = { operation: 'reply', language: 'zh', polishStyles: ['clear'] } as const
 const preferences = { ...defaults, polishStyles: [...defaults.polishStyles] }
@@ -85,7 +87,26 @@ describe('邮件批量 CSV', () => {
     const parsed = Papa.parse<string[]>(output, { skipEmptyLines: true }).data
     expect(parsed[0]).toEqual([...EMAIL_BATCH_HEADERS, '生成结果', '状态', '错误信息'])
     expect(parsed[1]).toEqual(["'=客户内容", '指导', '回复', '中文', '回复,"谢谢"\n第二段', '成功', ''])
-    expect(parsed[2].slice(-2)).toEqual(['填写错误', '原始邮件内容不能为空'])
+    expect(parsed[2].slice(-2)).toEqual(['填写错误', '第 2 条（CSV 第 3 行）：原始邮件内容不能为空'])
+    expect(parsed[0]).not.toContain('序号')
+  })
+
+  it('序号从 1 递增，错误原因同时标出序号和 CSV 行号', () => {
+    const text = EMAIL_BATCH_HEADERS.join(',') + '\n,,,\n正文,指导,回复,中文\n,缺少正文,回复,中文'
+    const rows = parseEmailBatchCsv(text, preferences)
+    expect(rows.map(row => row.recordNumber)).toEqual([3, 4])
+    expect(formatEmailBatchLocator(1, rows[0].recordNumber)).toBe('第 1 条（CSV 第 3 行）')
+    expect(formatEmailBatchError(2, rows[1].recordNumber, rows[1].errorMessage!)).toBe('第 2 条（CSV 第 4 行）：原始邮件内容不能为空')
+  })
+
+  it('批量「总结」与单个模式提交相同参数，操作类型不会变成回复', () => {
+    const source = '您好，我们上周下的订单 #A1024 还没有收到发货通知，请问什么时候可以发货？谢谢。'
+    const rows = parseEmailBatchCsv(csv([[source, '', '总结', '英语']]), preferences)
+    const single = buildEmailAssistRequest({
+      sourceText: source, instruction: '', operation: 'summarize', language: 'en', polishStyles: ['clear'],
+    }, 'single')
+    expect(rows[0].params).toEqual(single.params)
+    expect(rows[0].params).toEqual({ sourceText: source, operation: 'summarize', language: 'en' })
   })
 
   it('限制文件类型、大小和 UTF-8 编码', async () => {
