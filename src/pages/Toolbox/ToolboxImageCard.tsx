@@ -74,12 +74,13 @@ export function PreviewResultActions({
   onRetry: () => void
 }) {
   const showRetry = status === 'failed' || retry
+  const canDownload = status === 'succeeded' && hasOutput
   return (
     <>
       {showRetry && (
         <Button size="small" autoInsertSpace={false} icon={<RedoOutlined />} disabled={busy} onClick={onRetry}>重试</Button>
       )}
-      {status !== 'failed' && (hasOutput ? (
+      {status !== 'failed' && (canDownload ? (
         <Button size="small" autoInsertSpace={false} icon={<DownloadOutlined />} onClick={onDownload}>下载</Button>
       ) : (
         <Tooltip title="处理完成后可下载">

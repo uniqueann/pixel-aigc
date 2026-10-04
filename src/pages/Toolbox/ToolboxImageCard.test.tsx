@@ -122,4 +122,16 @@ describe('预览区单张下载', () => {
     expect(onDownload).toHaveBeenCalledOnce()
     expect(onRetry).toHaveBeenCalledTimes(2)
   })
+
+  it('重试后状态变为处理中但旧结果还在时，下载保持置灰', () => {
+    const onDownload = vi.fn()
+    const onRetry = vi.fn()
+    render(<PreviewResultActions status="processing" hasOutput retry busy onDownload={onDownload} onRetry={onRetry} />)
+    const locked = screen.getByTitle('处理完成后可下载')
+    expect(locked.querySelector('button')?.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(locked.querySelector('button')!)
+    expect(onDownload).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /重试/ }).hasAttribute('disabled')).toBe(true)
+    expect(onRetry).not.toHaveBeenCalled()
+  })
 })
