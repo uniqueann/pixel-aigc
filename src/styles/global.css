@@ -1420,7 +1420,8 @@ a {
 }
 
 .email-assistant-page {
-  max-width: 1320px;
+  max-width: min(1320px, 100%);
+  min-width: 0;
   margin: 0 auto;
 }
 
@@ -1489,8 +1490,42 @@ a {
   margin-bottom: 16px;
 }
 
-.email-batch-cell,
-.email-batch-row-error {
+.email-batch-table {
+  container-type: inline-size;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.email-batch-table .ant-table,
+.email-batch-table .ant-table-container,
+.email-batch-table .ant-table-content {
+  max-width: 100%;
+}
+
+.email-batch-table table {
+  width: 100% !important;
+  table-layout: fixed;
+}
+
+.email-batch-table .ant-table-cell {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.email-batch-status {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.email-batch-row-actions {
+  max-width: 100%;
+}
+
+.email-batch-cell {
   display: -webkit-box;
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -1500,9 +1535,73 @@ a {
 }
 
 .email-batch-row-error {
-  margin-top: 4px;
+  display: block;
+  width: 100%;
+  margin: 0;
   color: var(--color-text-secondary);
   font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 720px) {
+  .email-batch-table .ant-table-content {
+    overflow: visible;
+  }
+
+  .email-batch-table colgroup,
+  .email-batch-table thead,
+  .email-batch-table .ant-table-measure-row {
+    display: none;
+  }
+
+  .email-batch-table table,
+  .email-batch-table tbody,
+  .email-batch-table tr.ant-table-row,
+  .email-batch-table tr.ant-table-row > td.ant-table-cell {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .email-batch-table table {
+    table-layout: auto !important;
+  }
+
+  .email-batch-table tr.ant-table-row {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .email-batch-table tr.ant-table-row > td.ant-table-cell {
+    padding: 4px 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    text-align: left !important;
+  }
+
+  .email-batch-table tr.ant-table-row > td.ant-table-cell::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .email-batch-cell {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
+  }
+
+  .email-batch-table .ant-table-pagination {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
 }
 
 .email-batch-detail,

@@ -46,6 +46,35 @@ describe('用户模型密钥与邮件调用', () => {
     expect(body.messages[1].content).toContain(params.sourceText)
     expect(body.user_id).toBeUndefined()
   })
+  it('总结提示要求输出要点摘要，回复提示仍然起草回信', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+      choices: [{ finish_reason: 'stop', message: { content: '要点：客户询问送达时间。' } }],
+      usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
+    }), { status: 200 })))
+    globalThis.fetch = fetchMock
+    const source = '您好，我们上周下的订单 #A1024 还没有收到发货通知，请问什么时候可以发货？谢谢。'
+    await generateEmail('user-owned-key', 'deepseek-flash', { sourceText: source, operation: 'summarize', language: 'en' })
+    const summary = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(summary.model).toBe('deepseek-flash')
+    expect(summary.temperature).toBe(0.3)
+    expect(summary.max_tokens).toBe(1600)
+    const summarySystem = summary.messages[0].content as string
+    expect(summarySystem).toContain('输出语言为英语')
+    expect(summarySystem).toContain('只概括来信，不起草回信')
+    expect(summarySystem).toContain('几条要点或一小段概述')
+    expect(summarySystem).toContain('禁止写成回信')
+    expect(summarySystem).toContain('Best regards')
+    expect(summarySystem).not.toContain('起草一封可以直接修改的邮件回复')
+    expect(summary.messages[1].content).toContain(source)
+    expect(summary.messages[1].content).toContain('请只输出摘要，不要写回信。')
+    await generateEmail('user-owned-key', 'deepseek-flash', params)
+    const reply = JSON.parse(fetchMock.mock.calls[1][1].body)
+    const replySystem = reply.messages[0].content as string
+    expect(replySystem).toContain('你是邮件写作助手。')
+    expect(replySystem).toContain('起草一封可以直接修改的邮件回复')
+    expect(replySystem).not.toContain('禁止写成回信')
+    expect(reply.messages[1].content).not.toContain('请只输出摘要')
+  })
   it('密钥无效与输出截断时不把异常内容当成成功结果', async () => {
     globalThis.fetch = vi.fn().mockResolvedValueOnce(new Response('', { status: 401 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '不完整' } }] }), { status: 200 }))
