@@ -114,4 +114,17 @@ describe('积分明细文案', () => {
       summary: '处理中 预扣', delta: -2, deltaText: '-2', balanceAfter: 98,
     })
   })
+
+  it('免费抠图的 0 分流水显示为免费，不显示扣 0 分', () => {
+    const settled = mergeCreditJobEntries([{
+      id: 'free-settle', kind: 'settle', delta: 0, balanceAfter: 30, charged: 0,
+      createdAt: '2026-10-04T08:00:00.000Z', title: '免费抠图', reason: null,
+    }])
+    expect(settled).toMatchObject({ label: '免费抠图', summary: '本月免费额度', delta: 0, deltaText: '免费' })
+    const refunded = mergeCreditJobEntries([{
+      id: 'free-refund', kind: 'refund', delta: 0, balanceAfter: 30, charged: 0,
+      createdAt: '2026-10-04T08:05:00.000Z', title: '免费抠图', reason: null,
+    }])
+    expect(refunded).toMatchObject({ label: '免费抠图', summary: '免费额度已退回', deltaText: '免费' })
+  })
 })

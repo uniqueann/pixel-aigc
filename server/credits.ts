@@ -80,6 +80,23 @@ export function presentCreditLedgerRow(row: {
   provider_params: unknown
 }): CreditLedgerRow {
   const meta = readMeta(row.meta)
+  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)
+  if (meta.free === true) {
+    const failed = row.kind === 'refund'
+    return {
+      id: row.id,
+      createdAt,
+      kind: row.kind,
+      label: '免费抠图',
+      title: '免费抠图',
+      summary: failed ? '免费额度已退回' : '本月免费额度',
+      delta: row.delta,
+      deltaText: '免费',
+      balanceAfter: row.balance_after,
+      charged: typeof row.charged === 'number' ? row.charged : null,
+      reason: row.reason,
+    }
+  }
   const capability = readString(row.capability) ?? readString(meta.capability)
   const title = readString(meta.tool) ? ({ erase:'消除',repaint:'重绘',outpaint:'扩图','bg-remove':'商品抠图' }[String(meta.tool)] ?? String(meta.tool)) : creditJobTitle({
     params: row.params,
@@ -93,7 +110,6 @@ export function presentCreditLedgerRow(row: {
     ? `实扣 ${charged}`
     : ''
   const summary = [title, extra].filter(Boolean).join(' ')
-  const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)
   return {
     id: row.id,
     createdAt,
