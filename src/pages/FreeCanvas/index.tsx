@@ -347,7 +347,7 @@ export default function FreeCanvas() {
         <Button onClick={generation.abandonSubmission}>放弃等待</Button>
       </Space>} />}
       {generation.pollError && <Alert type="warning" message="原任务暂时无法查询" description={generation.pollError.message} action={<Button onClick={generation.modifyParameters}>放弃占位并修改参数</Button>} />}
-      <div className="free-canvas-page-header">
+      <div className="free-canvas-page-header page-tab-row">
         <Segmented
           options={CANVAS_MODES.map((item) => ({ label: item.label, value: item.slug }))}
           value={activeSlug}

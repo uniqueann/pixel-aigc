@@ -254,7 +254,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
 
   return (
     <div className="assets-page">
-      <div className="assets-page-header">
+      <div className="assets-page-header page-tab-row">
         <Segmented
           value={filter}
           onChange={(value) => setFilter(value as Filter)}

@@ -24,6 +24,13 @@
   --radius-md: 10px;
 
   --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif;
+
+  /* 顶部 Segmented 页签底边到本页第一个内容块。只加在页签行上，内容块不再另加 margin-top。 */
+  --page-tab-gap: 16px;
+}
+
+.page-tab-row {
+  margin-bottom: var(--page-tab-gap);
 }
 
 * {
@@ -725,7 +732,6 @@ a {
   display: flex;
   min-width: 0;
   max-width: 100%;
-  margin-bottom: 8px;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
@@ -1249,7 +1255,6 @@ a {
 
 .image-workstation-tool-switcher {
   flex: 0 0 auto;
-  margin-bottom: 12px;
 }
 
 .image-workstation-main {
@@ -1428,10 +1433,6 @@ a {
 .email-assistant-page .generation-task-status-stack,
 .email-result-card {
   margin-top: 16px;
-}
-
-.email-mode-switcher {
-  margin-bottom: 16px;
 }
 
 .email-model-alert,
@@ -1796,7 +1797,7 @@ a {
   display: flex;
   min-width: 0;
   max-width: 1440px;
-  margin: 18px auto 0;
+  margin: 0 auto;
   flex-direction: column;
   gap: 18px;
 }
@@ -2358,13 +2359,26 @@ a {
   }
 }
 
+.assets-page {
+  container: assets-page / inline-size;
+}
+
 .assets-page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  column-gap: 12px;
+  row-gap: var(--page-tab-gap);
   flex-wrap: wrap;
+}
+
+/* 窄屏时视图切换换到页签下一行。页签到这一行保持 16px；
+   这一行到列表收到 12px，避免换行后再叠一层页签间距。
+   换行阈值约等于页签宽度 + 列间距 + 视图按钮（约 307px），这里留一点余量。 */
+@container assets-page (max-width: 340px) {
+  .assets-page-header.page-tab-row {
+    margin-bottom: 12px;
+  }
 }
 
 .assets-view-switch {
@@ -2490,6 +2504,17 @@ a {
   .toolbox-watermark-footer { align-items: stretch; flex-direction: column; margin: 0 -12px; padding-inline: 12px; }
   .toolbox-footer-actions > .ant-btn { flex: 1; }
   .toolbox-image-drop { min-height: 112px; gap: 10px; padding: 12px; }
+}
+
+.toolbox-pipeline-lead {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toolbox-pipeline-lead > .toolbox-section-heading {
+  margin-bottom: 0;
 }
 
 .toolbox-pipeline-settings {

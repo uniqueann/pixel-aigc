@@ -385,7 +385,7 @@ export default function ImageWorkstation() {
   return (
     <div className="image-workstation-page">
       <ToolSwitcher
-        className="image-workstation-tool-switcher"
+        className="image-workstation-tool-switcher page-tab-row"
         options={WORKSTATION_TOOLS.map((item) => ({
           value: item.slug,
           label: item.label,
