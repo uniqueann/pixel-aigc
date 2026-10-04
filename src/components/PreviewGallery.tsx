@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type ReactElement } from 'react'
+import { Children, cloneElement, isValidElement, useEffect, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type ReactElement, type ReactNode } from 'react'
 import { DownloadOutlined, RetweetOutlined } from '@ant-design/icons'
-import { App, Button, Image, Spin } from 'antd'
+import { App, Button, Image, Spin, Tooltip } from 'antd'
 import { blobFromImageSource, downloadFailureMessage, filenameWithMimeExtension } from '@/features/image-workstation/download'
 import { useUserStore } from '@/store/useUserStore'
 import { isCurrentWorkstationHistoryOwner, currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
@@ -38,6 +38,35 @@ export interface PreviewGalleryProps {
   onClose: () => void
   onChange: (index: number) => void
   onDownload?: (item: PreviewItem) => Promise<void> | void
+}
+
+function PreviewDownloadButton({ label, tooltip, split, onClick }: { label: string; tooltip: string; split: boolean; onClick: () => void }) {
+  return (
+    <Tooltip title={tooltip} zIndex={2100}>
+      <div
+        className={`ant-image-preview-operations-operation preview-toolbar-download${split ? ' preview-toolbar-download-split' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-label={label}
+        onClick={onClick}
+        onKeyDown={event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          onClick()
+        }}
+      >
+        {split && <span className="preview-toolbar-divider" aria-hidden="true" />}
+        <DownloadOutlined />
+      </div>
+    </Tooltip>
+  )
+}
+
+function withPreviewDownload(originalNode: ReactNode, download: ReactElement, compare?: ReactElement) {
+  const toolbar = isValidElement(originalNode)
+    ? cloneElement(originalNode, {}, ...Children.toArray(originalNode.props.children), download)
+    : <div className="ant-image-preview-operations">{download}</div>
+  return <>{toolbar}{compare}</>
 }
 
 function PreviewImage({ image, onRetry }: { image: ReactElement<RcPreviewImageProps>; onRetry?: () => void }) {
@@ -182,11 +211,19 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
         onChange: change,
         rootClassName: 'preview-gallery-overlay',
         imageRender: image => isVideo && open ? <VideoPlayer key={item.id} ownerId={item.ownerId} reference={{ objectKey: item.objectKey, url: item.fullSrc, expiresAt: item.expiresAt, retentionExpiresAt: item.retentionExpiresAt }} /> : requiresRead && !localSrc ? <div className="preview-image-frame"><div className="preview-load-state">{readError ? <><span>{readError}</span><Button onClick={() => setReadAttempt(value => value + 1)}>重试读取</Button></> : <Spin />}</div></div> : <PreviewImage image={image} onRetry={requiresRead ? retryImage : undefined} />,
-        toolbarRender: (originalNode) => <>
-          {!isVideo && originalNode}
-          <Button className="preview-toolbar-action" type="text" icon={<DownloadOutlined />} aria-label={isVideo ? '下载视频' : '下载原始大图'} onClick={() => void download()} />
-          {!isVideo && item?.originalSrc && <Button className="preview-toolbar-action" type="text" icon={<RetweetOutlined />} aria-label="对比原图与结果" onClick={() => setComparing(true)} />}
-        </>,
+        toolbarRender: originalNode => withPreviewDownload(
+          isVideo ? null : originalNode,
+          <PreviewDownloadButton
+            key="download"
+            label={isVideo ? '下载视频' : '下载原始大图'}
+            tooltip={isVideo ? '下载视频' : '下载原图'}
+            split={!isVideo}
+            onClick={() => void download()}
+          />,
+          !isVideo && item?.originalSrc
+            ? <Button key="compare" className="preview-toolbar-action" type="text" icon={<RetweetOutlined />} aria-label="对比原图与结果" onClick={() => setComparing(true)} />
+            : undefined,
+        ),
       }}
     />}
     {open && comparing && item?.originalSrc && (!requiresRead || localSrc) && <CompareViewer key={item.id} items={displayItems} current={current} onChange={change} onClose={() => setComparing(false)} />}
