@@ -1611,6 +1611,9 @@ a {
 }
 
 .app-main-content { padding: 20px; overflow: auto; }
+/* 工具箱操作条 sticky 贴底时，滚动容器的 padding-bottom 会把约束矩形抬离视口，
+   条下露出等宽透明缝。工具箱页去掉这块底内边距，让操作条贴住滚动视口底边。 */
+.app-main-content:has(.toolbox-watermark) { padding-bottom: 0; }
 
 .toolbox-watermark-main {
   display: grid;
@@ -1665,6 +1668,7 @@ a {
 
 .toolbox-settings-panel { display: flex; flex-direction: column; gap: 6px; }
 .toolbox-settings-panel > .ant-radio-group { margin: 2px 0 10px; }
+.toolbox-preview-panel > .ant-radio-group { margin-bottom: 12px; }
 .toolbox-settings-panel > .toolbox-layout-options { display: flex; margin-bottom: 0; }
 .toolbox-layout-options .ant-radio-button-wrapper { flex: 1; text-align: center; }
 .toolbox-field-label { display: block; margin-top: 10px; color: var(--color-text-secondary); font-size: 12px; }
@@ -2007,6 +2011,7 @@ a {
   flex-wrap: wrap;
   margin: 0 -20px;
   padding: 10px 20px 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   background: var(--color-bg);
   border-top: 1px solid var(--color-border);
 }
