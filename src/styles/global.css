@@ -2359,29 +2359,20 @@ a {
   }
 }
 
-.assets-page {
-  container: assets-page / inline-size;
-}
-
 .assets-page-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   column-gap: 12px;
-  row-gap: var(--page-tab-gap);
+  row-gap: 0;
   flex-wrap: wrap;
 }
 
-/* 窄屏时视图切换换到页签下一行。页签到这一行保持 16px；
-   这一行到列表收到 12px，避免换行后再叠一层页签间距。
-   换行阈值约等于页签宽度 + 列间距 + 视图按钮（约 307px），这里留一点余量。 */
-@container assets-page (max-width: 340px) {
-  .assets-page-header.page-tab-row {
-    margin-bottom: 12px;
-  }
-}
-
+/* 页签行的 16px 和视图切换的 12px 都在各自的 flex 项上。
+   同一行时行高取较大的那个，页签到列表仍是 16px；
+   视图切换换行后，页签的下边距变成到控件行的 16px，控件自己的 12px 才是到列表的间距。 */
 .assets-view-switch {
+  margin-bottom: 12px;
   margin-left: auto;
   flex-shrink: 0;
 }

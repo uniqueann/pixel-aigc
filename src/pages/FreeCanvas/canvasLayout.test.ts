@@ -85,7 +85,10 @@ describe('自由画布面板布局', () => {
     expect(toolbar).toMatch(/z-index:\s*2/)
     expect(toolbar).toMatch(/bottom:\s*18px/)
     expect(toolbar).toMatch(/left:\s*50%/)
-    expect(block('.free-canvas-page-header')).toMatch(/margin-bottom:\s*8px/)
+    expect(pageSource).toContain('className="free-canvas-page-header page-tab-row"')
+    expect(block(':root')).toMatch(/--page-tab-gap:\s*16px/)
+    expect(block('.page-tab-row')).toMatch(/margin-bottom:\s*var\(--page-tab-gap\)/)
+    expect(block('.free-canvas-page-header')).not.toMatch(/margin-bottom/)
   })
 
   it('生成声音使用不拉伸的标准开关，主生成按钮保持主按钮高度', () => {

@@ -254,17 +254,19 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
 
   return (
     <div className="assets-page">
-      <div className="assets-page-header page-tab-row">
-        <Segmented
-          value={filter}
-          onChange={(value) => setFilter(value as Filter)}
-          options={[
-            { label: '全部', value: 'all' },
-            { label: '图片', value: 'workstation' },
-            { label: '视频', value: 'video' },
-            { label: '邮件助手', value: 'email' },
-          ]}
-        />
+      <div className="assets-page-header">
+        <div className="page-tab-row">
+          <Segmented
+            value={filter}
+            onChange={(value) => setFilter(value as Filter)}
+            options={[
+              { label: '全部', value: 'all' },
+              { label: '图片', value: 'workstation' },
+              { label: '视频', value: 'video' },
+              { label: '邮件助手', value: 'email' },
+            ]}
+          />
+        </div>
         <Space.Compact className="assets-view-switch" role="group" aria-label="展示样式">
           <Tooltip title="列表视图">
             <Button
