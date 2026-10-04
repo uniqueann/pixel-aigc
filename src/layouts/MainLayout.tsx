@@ -2,7 +2,7 @@ import { authEnabled, supabase } from '@/cloud/client'
 import { flushProject } from '@/editor/persistence/projectPersistence'
 import { useCloudStore } from '@/cloud/sync'
 import { useEffect, useState } from 'react'
-import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu, Space } from 'antd'
+import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu } from 'antd'
 import {
   AppstoreOutlined,
   MailOutlined,
@@ -23,6 +23,8 @@ import { useUserStore } from '@/store/useUserStore'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import CreditsLedgerDrawer from '@/features/credits/CreditsLedgerDrawer'
 import SettingsDialog from '@/layouts/SettingsDialog'
+import { CanvasProjectCrumb, CanvasProjectMenu } from '@/layouts/CanvasProjectHeader'
+import { isCanvasRoute } from '@/layouts/projectActions'
 import { usePreferencesStore } from '@/features/preferences/store'
 import PreferencesSyncAlert from '@/features/preferences/PreferencesSyncAlert'
 import { readSidebarState, writeSidebarState } from '@/features/preferences/storage'
@@ -187,8 +189,12 @@ function MainLayoutContent() {
       </Sider>
       <Layout className="app-shell-main">
         <Header className="app-header">
-          <Space size={14}>
-            <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />
+          <div className="app-header-leading">
+            {isCanvasRoute(location.pathname)
+              ? <CanvasProjectCrumb />
+              : <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />}
+          </div>
+          <div className="app-header-trailing">
             {account && (
               <button
                 type="button"
@@ -199,7 +205,8 @@ function MainLayoutContent() {
                 积分 {credits}
               </button>
             )}
-          </Space>
+            {isCanvasRoute(location.pathname) ? <CanvasProjectMenu /> : null}
+          </div>
         </Header>
         <Content className="app-main-content">
           <PreferencesSyncAlert />

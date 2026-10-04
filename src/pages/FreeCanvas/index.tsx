@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Alert, App, Button, Segmented, Space } from 'antd'
 import { Capability } from '@/types'
-import ProjectToolbar from '@/editor/persistence/ProjectToolbar'
-import { flushProject, copyProjectLocally } from '@/editor/persistence/projectPersistence'
+import CloudToolbar from '@/cloud/CloudToolbar'
+import { useCloudStore } from '@/cloud/sync'
+import { useCanvasActionGate } from '@/layouts/canvasActionGate'
+import { flushProject, copyProjectLocally, hasUnfinishedGeneration } from '@/editor/persistence/projectPersistence'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import type { GenerationDraft } from '@/editor/persistence/types'
 import { RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
@@ -290,6 +292,13 @@ export default function FreeCanvas() {
     message.error({ content, duration: 4 })
   }, [message])
 
+  const cloudBusy = useCloudStore((state) => state.busy || state.interacting)
+  const actionsBlocked = importing || generation.submitting || generation.active || !!generation.pendingSubmission
+  useEffect(() => {
+    useCanvasActionGate.setState({ blocked: actionsBlocked })
+    return () => useCanvasActionGate.setState({ blocked: false })
+  }, [actionsBlocked])
+
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (isEditingText(event.target)) return
@@ -320,7 +329,7 @@ export default function FreeCanvas() {
 
   return (
     <div className="free-canvas-page">
-      <ProjectToolbar busy={importing || generation.submitting || generation.active || !!generation.pendingSubmission} onUploadImage={() => fileInput.current?.click()} />
+      <CloudToolbar disabled={actionsBlocked || cloudBusy || hasUnfinishedGeneration()} onUploadImage={() => fileInput.current?.click()} />
       {pickerOpen && <CanvasAssetPicker key={ownerId} ownerId={ownerId} busy={importing} onSelect={importPicture} onClose={() => { if (!importing) setPickerOpen(false) }} />}
       <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="上传图片到画布" onChange={event => {
         const file = event.target.files?.[0]; event.target.value = ''
