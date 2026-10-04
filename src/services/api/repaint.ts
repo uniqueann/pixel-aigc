@@ -1,5 +1,6 @@
 import type { ImageResultReadOptions } from './image-transfer'
 import { normalizeImageBlob } from '@shared/image-format'
+import { BAILIAN_IMAGEEDIT_PROMPT_MAX } from '@shared/prompt-limits'
 import {
   clientTiming, fileToBase64, imageAuthHeader, imageMimeType, MAX_IMAGE_BYTES,
   pngMaskBlob, readImageResult, shouldUseInlineImageTransport,
@@ -8,7 +9,7 @@ import { uploadTaskInput } from './upload'
 
 /** 原图加同尺寸黑白蒙版，返回未涂抹区域保持原像素的 JPEG。 */
 export async function requestRepaint(image: Blob | null, mask: Blob | string, prompt: string, sourceObjectKey?: string, resultOptions: ImageResultReadOptions = {}) {
-  const text = prompt.trim().slice(0, 800)
+  const text = prompt.trim().slice(0, BAILIAN_IMAGEEDIT_PROMPT_MAX)
   if (!text) throw new Error('请先填写重绘描述')
   const prepareStarted = performance.now()
   const painted = pngMaskBlob(mask, '请先涂抹要重绘的区域', '重绘蒙版无效，请重新涂抹')

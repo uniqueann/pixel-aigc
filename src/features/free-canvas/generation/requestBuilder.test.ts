@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import { Capability } from '@/types'
 import { IMAGE_SIZE_PRESETS } from './config'
 import {
@@ -58,6 +59,11 @@ describe('buildTextToVideoRequest', () => {
         count: 1,
       },
     })
+  })
+
+  it('拒绝超过视频模型允许的描述', () => {
+    expect(() => buildTextToVideoRequest('镜'.repeat(VIDEO_PROMPT_MAX + 1), IMAGE_SIZE_PRESETS[0], 5)).toThrow(`视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`)
+    expect(() => buildImageToVideoRequest({ url: 'source.png', width: 100, height: 100 }, '镜'.repeat(VIDEO_PROMPT_MAX + 1), 5)).toThrow(`视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`)
   })
 })
 

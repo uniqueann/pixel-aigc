@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { PROMPT_MAX_LENGTH } from './prompt-limits'
 import {
   RETOUCH_DIRECTION_IDS,
   RETOUCH_FIXED_PROMPT,
@@ -13,8 +14,8 @@ import {
 describe('精修提示词', () => {
   it('补充说明上限按四个方向都选中来预留', () => {
     const base = composeRetouchPrompt([...RETOUCH_DIRECTION_IDS])
-    expect(base.length + RETOUCH_NOTE_PREFIX.length + RETOUCH_NOTE_MAX).toBe(RETOUCH_MODEL_PROMPT_MAX)
-    expect(RETOUCH_NOTE_MAX).toBeGreaterThan(3000)
+    expect(base.length + RETOUCH_NOTE_PREFIX.length + RETOUCH_NOTE_MAX).toBeLessThanOrEqual(RETOUCH_MODEL_PROMPT_MAX)
+    expect(RETOUCH_NOTE_MAX).toBe(PROMPT_MAX_LENGTH)
   })
 
   it('只包含选中的方向，补充说明在约束之前', () => {

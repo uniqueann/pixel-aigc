@@ -1,4 +1,6 @@
 import { Button, Input, Radio, Segmented, Select } from 'antd'
+import GenerationCountPicker from '@/components/GenerationCountPicker'
+import { PROMPT_MAX_LENGTH, VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewResultStrip from '@/components/PreviewResultStrip'
 import { downloadImageSource, extensionForMime } from '@/features/image-workstation/download'
@@ -115,6 +117,7 @@ export default function GenerationPanel({
       thumbSrc: taskIsVideo ? '' : src, fullSrc: src, title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
   })
   const originalModel = task?.modelProfileId ? models.find(item => item.id === task.modelProfileId) : model
+  const imagePromptMax = model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
   const retryUnitPrice = originalResolution === '720p' ? undefined : originalModel?.pricing.creditsPerImage[originalResolution ?? resolution]
   const retryCredits = task ? retryUnitPrice === undefined ? undefined : task.params.count * retryUnitPrice : estimatedCredits
@@ -134,8 +137,8 @@ export default function GenerationPanel({
         <Input.TextArea
           rows={6}
           value={prompt}
-          maxLength={textToVideo ? 4000 : model?.ui.promptMaxLength}
-          showCount={!textToVideo && !!model?.ui.promptMaxLength}
+          maxLength={textToVideo ? VIDEO_PROMPT_MAX : imagePromptMax}
+          showCount
           disabled={formLocked}
           onChange={(event) => onPromptChange(event.target.value)}
           placeholder="例如：雨夜里的未来城市，霓虹灯倒映在街道上"
@@ -168,14 +171,7 @@ export default function GenerationPanel({
       ) : (
         <label className="free-canvas-field">
           <span>生成数量</span>
-          <Radio.Group
-            buttonStyle="solid"
-            value={count}
-            disabled={formLocked}
-            onChange={(event) => onCountChange(Number(event.target.value))}
-          >
-            {[1, 2, 3, 4].filter(value => value <= (model?.ui.maxCount ?? 4)).map((value) => <Radio.Button key={value} value={value}>{value}</Radio.Button>)}
-          </Radio.Group>
+          <GenerationCountPicker value={count} max={model?.ui.maxCount ?? 4} disabled={formLocked} onChange={onCountChange} />
         </label>
       )}
 
@@ -202,7 +198,7 @@ export default function GenerationPanel({
         type="primary"
         block
         loading={submitting}
-        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > 4000)) || (!textToVideo && (modelsLoading || (!!model?.ui.promptMaxLength && prompt.trim().length > model.ui.promptMaxLength))) || !prompt.trim()}
+        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || prompt.trim().length > imagePromptMax)) || !prompt.trim()}
         onClick={onGenerate}
       >
         {active ? '正在生成' : textToVideo ? '生成视频到画布' : '生成到画布'}

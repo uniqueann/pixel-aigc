@@ -1,5 +1,7 @@
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { Button, Input, Radio, Select, Spin } from 'antd'
+import GenerationCountPicker from '@/components/GenerationCountPicker'
+import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewResultStrip from '@/components/PreviewResultStrip'
 import { downloadImageSource, extensionForMime } from '@/features/image-workstation/download'
@@ -153,8 +155,8 @@ export default function DerivedGenerationPanel({
         <span>{imageToVideo ? '动态描述' : '变化描述（可选）'}</span>
         <Input.TextArea
           rows={5}
-          maxLength={imageToVideo ? 4000 : VARIATION_USER_PROMPT_MAX}
-          showCount={!imageToVideo}
+          maxLength={imageToVideo ? VIDEO_PROMPT_MAX : VARIATION_USER_PROMPT_MAX}
+          showCount
           value={prompt}
           disabled={formLocked}
           onChange={(event) => onPromptChange(event.target.value)}
@@ -179,14 +181,7 @@ export default function DerivedGenerationPanel({
       ) : (
         <label className="free-canvas-field">
           <span>生成数量</span>
-          <Radio.Group
-            buttonStyle="solid"
-            value={count}
-            disabled={formLocked}
-            onChange={(event) => onCountChange(Number(event.target.value))}
-          >
-            {[1, 2, 3, 4].filter(value => value <= (model?.ui.maxCount ?? 4)).map((value) => <Radio.Button key={value} value={value}>{value}</Radio.Button>)}
-          </Radio.Group>
+          <GenerationCountPicker value={count} max={model?.ui.maxCount ?? 4} disabled={formLocked} onChange={onCountChange} />
         </label>
       )}
 
@@ -213,7 +208,7 @@ export default function DerivedGenerationPanel({
         type="primary"
         block
         loading={submitting || autoRetrying}
-        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > 4000))}
+        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > VIDEO_PROMPT_MAX))}
         onClick={onGenerate}
       >
         {active ? '正在生成' : imageToVideo ? '生成视频' : `开始裂变 ${count} 张`}

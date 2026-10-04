@@ -1,3 +1,5 @@
+import { promptLimit } from './prompt-limits.js'
+
 export const RELIGHT_DIRECTIONS = ['left', 'right', 'top', 'bottom', 'front', 'back'] as const
 export const RELIGHT_QUALITIES = ['soft', 'hard'] as const
 export const RELIGHT_TEMPERATURES = ['warm', 'neutral', 'cool'] as const
@@ -103,7 +105,7 @@ const longestRelightBaseLength = Math.max(
 )
 
 /** 补充说明上限按最长的一组光效预留。 */
-export const RELIGHT_NOTE_MAX = RELIGHT_MODEL_PROMPT_MAX - longestRelightBaseLength - RELIGHT_NOTE_PREFIX.length
+export const RELIGHT_NOTE_MAX = promptLimit(RELIGHT_MODEL_PROMPT_MAX - longestRelightBaseLength - RELIGHT_NOTE_PREFIX.length)
 
 export function relightNoteLimitMessage() {
   return `补充说明最多 ${RELIGHT_NOTE_MAX} 字`

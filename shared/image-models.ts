@@ -1,4 +1,5 @@
 import type { ImageOperation, ImageResolution } from './image-generation.js'
+import { PROMPT_MAX_LENGTH } from './prompt-limits.js'
 
 export const DRAGONCODE_RATIOS = [
   '1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5',
@@ -59,7 +60,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       ratios: [...DRAGONCODE_SIZES],
       resolutionRatioConstraints: { '4k': [...DRAGONCODE_FOUR_K_RATIOS] },
       maxRefImages: 16,
-      promptMaxLength: 4000,
+      promptMaxLength: PROMPT_MAX_LENGTH,
     },
     pricing: {
       unit: 'image',

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { z } from 'zod'
+import { VIDEO_PROMPT_MAX } from '../../shared/prompt-limits.js'
 import { SEEDANCE_VIDEO_MODEL, VIDEO_RATIOS, type VideoResult } from '../../shared/video-models.js'
 import type { authenticate } from '../auth.js'
 import { runtimeScope, withIdentity } from '../db.js'
@@ -25,7 +26,7 @@ export const VIDEO_HOURLY_LIMIT = 6
 export const VIDEO_GLOBAL_CONCURRENCY = 5
 
 const common = {
-  prompt: z.string().trim().min(1, '请填写视频描述').max(4000),
+  prompt: z.string().trim().min(1, '请填写视频描述').max(VIDEO_PROMPT_MAX, `视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`),
   size: z.object({ width: z.number().int().positive().max(20000), height: z.number().int().positive().max(20000) }).strict(),
   count: z.literal(1), durationSeconds: z.union([z.literal(5), z.literal(10)]),
   resolution: z.literal('720p'), generateAudio: z.boolean().default(false),

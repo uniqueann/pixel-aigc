@@ -6,6 +6,7 @@ import {
   type VariationTaskParams,
 } from '@/types'
 import type { ImageSizePreset } from './config'
+import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import { VARIATION_USER_PROMPT_MAX, variationPromptLimitMessage } from '@shared/variation'
 import { scaleToLongEdge } from '@/features/image-workstation/tools/requestBuilders/imageEdit'
 import type { VideoModelProfile, VideoRatio } from '@shared/video-models'
@@ -63,6 +64,7 @@ export function buildTextToVideoRequest(
 ): CanvasGenerationRequest {
   const normalizedPrompt = prompt.trim()
   if (!normalizedPrompt) throw new Error('请输入画面描述')
+  if (normalizedPrompt.length > VIDEO_PROMPT_MAX) throw new Error(`视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`)
 
   const params: TextToVideoTaskParams = {
     ...(options ? { mode: 'text_to_video' as const, ratio: preset.key as VideoRatio, resolution: '720p' as const, generateAudio: options.generateAudio } : {}),
@@ -112,6 +114,7 @@ export function buildImageToVideoRequest(
   if (!source.url) throw new Error('源图片不可用')
   const normalizedPrompt = prompt.trim()
   if (!normalizedPrompt) throw new Error('请输入动态描述')
+  if (normalizedPrompt.length > VIDEO_PROMPT_MAX) throw new Error(`视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`)
   const params: ImageToVideoTaskParams = {
     ...(options ? { mode: 'image_to_video' as const, ratio: 'adaptive' as const, resolution: '720p' as const, generateAudio: options.generateAudio } : {}),
     sourceImageUrl: source.url,

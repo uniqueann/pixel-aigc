@@ -1140,9 +1140,16 @@ a {
 
 .workstation-relight-compass {
   display: grid;
-  width: 180px;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  width: 100%;
+  max-width: 220px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.workstation-relight-compass .ant-btn {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 0;
 }
 
 .workstation-relight-top { grid-column: 2; }
@@ -1263,9 +1270,57 @@ a {
 .image-workstation-settings {
   display: flex;
   width: 250px;
+  min-width: 0;
+  max-width: 100%;
   flex: 0 0 250px;
   flex-direction: column;
   gap: 18px;
+}
+
+.image-workstation-settings .ant-space,
+.image-workstation-settings .ant-space-item,
+.image-workstation-settings .ant-segmented,
+.image-workstation-settings .ant-select,
+.image-workstation-settings .ant-input-textarea {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.image-workstation-settings .ant-segmented-item {
+  min-width: 0;
+}
+
+.image-workstation-settings .ant-segmented-item-label {
+  overflow: hidden;
+  padding-inline: 4px;
+  text-overflow: ellipsis;
+}
+
+.image-workstation-settings .ant-checkbox-wrapper {
+  max-width: 100%;
+}
+
+.image-workstation-settings .ant-checkbox + span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.generation-count-picker {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.generation-count-picker .ant-radio-group {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+}
+
+.generation-count-picker .ant-radio-button-wrapper {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 0;
+  text-align: center;
 }
 
 .image-workstation-settings .generation-task-status-stack {
@@ -1639,15 +1694,30 @@ a {
 .toolbox-preset-row > .ant-select,
 .toolbox-preset-row > .ant-input { min-width: 0; flex: 1; }
 
+.toolbox-section-heading:has(> .toolbox-preview-title) {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
 .toolbox-section-heading > .toolbox-preview-title {
-  flex: 1 1 160px;
-  flex-wrap: nowrap;
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
   min-width: 0;
+  max-width: 100%;
+}
+
+.toolbox-section-heading > .toolbox-preview-title > strong {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .toolbox-section-heading > .toolbox-preview-title > .toolbox-preview-meta {
+  flex: 1 1 140px;
   min-width: 0;
-  flex: 1 1 auto;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1655,11 +1725,12 @@ a {
 
 .toolbox-section-heading > .toolbox-preview-actions {
   display: flex;
-  flex: none;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  margin-left: auto;
 }
 
 .toolbox-preview-actions .ant-btn-link { height: auto; padding-inline: 0; }
@@ -1726,8 +1797,14 @@ a {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: var(--color-border-strong) transparent;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.toolbox-image-strip::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .toolbox-image-add,
@@ -1841,17 +1918,11 @@ a {
 .toolbox-image-tile:focus-within .toolbox-image-remove:disabled { opacity: 0.45; }
 
 .toolbox-image-more {
-  position: absolute;
-  z-index: 3;
-  right: 8px;
-  bottom: 8px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(17, 17, 20, 0.88);
+  margin: 8px 0 0;
   color: var(--color-text-secondary);
   font-size: 12px;
   line-height: 18px;
-  pointer-events: none;
+  text-align: right;
 }
 
 .toolbox-image-drop-hint {

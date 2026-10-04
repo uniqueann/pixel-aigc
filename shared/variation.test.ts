@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { PROMPT_MAX_LENGTH } from './prompt-limits'
 import {
   VARIATION_FIXED_PROMPT,
   VARIATION_MODEL_PROMPT_MAX,
@@ -8,10 +9,10 @@ import {
 } from './variation'
 
 describe('裂变提示词', () => {
-  it('用户上限等于模型上限减去固定句和衔接语', () => {
-    expect(VARIATION_USER_PROMPT_MAX).toBe(3925)
-    expect(VARIATION_FIXED_PROMPT.length + VARIATION_STEER_PREFIX.length + VARIATION_USER_PROMPT_MAX)
-      .toBe(VARIATION_MODEL_PROMPT_MAX)
+  it('用户上限收口到统一上限，且不超过模型预算减去固定句', () => {
+    const reserved = VARIATION_FIXED_PROMPT.length + VARIATION_STEER_PREFIX.length
+    expect(VARIATION_USER_PROMPT_MAX).toBe(PROMPT_MAX_LENGTH)
+    expect(reserved + VARIATION_USER_PROMPT_MAX).toBeLessThanOrEqual(VARIATION_MODEL_PROMPT_MAX)
   })
 
   it('没写补充时只发送固定句', () => {
@@ -28,8 +29,9 @@ describe('裂变提示词', () => {
     expect(composeVariationPrompt('同款换个颜色')).toContain('同款换个颜色')
   })
 
-  it('写满用户上限时整段正好到达模型上限', () => {
+  it('写满用户上限时整段不超过模型预算', () => {
     const prompt = composeVariationPrompt('景'.repeat(VARIATION_USER_PROMPT_MAX))
-    expect(prompt.length).toBe(VARIATION_MODEL_PROMPT_MAX)
+    expect(prompt.length).toBe(VARIATION_FIXED_PROMPT.length + VARIATION_STEER_PREFIX.length + VARIATION_USER_PROMPT_MAX)
+    expect(prompt.length).toBeLessThanOrEqual(VARIATION_MODEL_PROMPT_MAX)
   })
 })
