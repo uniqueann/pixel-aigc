@@ -8,7 +8,7 @@ createServer(async (req, res) => {
   for await (const chunk of req) {
     size += chunk.length
     const url = req.url ?? ''
-    const limit = url.includes('bg-remove') || url.includes('subject-detect') || url.includes('outpaint') || url.includes('erase') || url.includes('smart-select')
+    const limit = url.includes('repaint') ? 48 * 1024 * 1024 : url.includes('bg-remove') || url.includes('subject-detect') || url.includes('outpaint') || url.includes('erase') || url.includes('smart-select')
       ? 28 * 1024 * 1024
       : 3 * 1024 * 1024
     if (size > limit) { res.writeHead(413).end(); return }
@@ -16,6 +16,7 @@ createServer(async (req, res) => {
   }
   const request = req as VercelRequest
   request.body = Buffer.concat(chunks).toString() || undefined
+  request.rawBody = typeof request.body === 'string' ? request.body : ''
   const response = res as VercelResponse
   response.status = (code: number) => { res.statusCode = code; return response }
   response.json = (body: unknown) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body)); return response }

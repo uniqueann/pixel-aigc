@@ -22,6 +22,9 @@ export async function cloudRequest<T>(path: string, method = 'GET', body?: unkno
     body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(options?.timeoutMs ?? 60000),
   })
   const result = await response.json().catch(() => ({ error: `服务接口异常（HTTP ${response.status}）`, code: 'SERVICE_UNAVAILABLE' }))
-  if (!response.ok) throw new CloudError(response.status, result.error ?? '请求失败', result.code)
+  if (!response.ok) {
+    if (response.status === 402 && typeof window !== 'undefined') window.dispatchEvent(new Event('aigc:recharge'))
+    throw new CloudError(response.status, result.error ?? '请求失败', result.code)
+  }
   return result as T
 }

@@ -1,18 +1,6 @@
 import { cloudRequest } from '@/cloud/client'
-
-export interface CreditLedgerItem {
-  id: string
-  createdAt: string
-  kind: string
-  label: string
-  title: string
-  summary: string
-  delta: number
-  deltaText: string
-  balanceAfter: number
-  charged: number | null
-  reason: string | null
-}
+import type { CreditLedgerItem } from '@shared/credits'
+export type { CreditLedgerItem } from '@shared/credits'
 
 export interface CreditLedgerPage {
   balance: number

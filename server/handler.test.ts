@@ -29,7 +29,20 @@ vi.mock('./erase-storage', () => ({
   loadEraseStoredImage: mocks.loadEraseStoredImage, loadStoredSyncImage: mocks.loadStoredSyncImage, validateSyncImage: mocks.validateSyncImage,
 }))
 vi.mock('./sync-limits', () => ({ withSyncLimit: (_user: unknown, _bucket: string, action: () => Promise<unknown>, metrics?: unknown) => { mocks.metrics.push(metrics); return action() } }))
-import handler from './handler'
+import realHandler from './handler'
+import { SYNC_PRICE_VERSION } from '../shared/billing'
+// 此文件验证路由传输；真实账本事务另见 payments/billing.database.test.ts。
+vi.mock('./sync-billing', async importOriginal => ({
+  ...await importOriginal<typeof import('./sync-billing')>(),
+  withSyncCredits: (_user: unknown, _operation: unknown, _quote: unknown, _input: unknown, action: () => Promise<unknown>) => action(),
+}))
+vi.mock('sharp', () => ({ default: () => ({ metadata: async () => ({width:512,height:512}) }) }))
+const handler = (req: VercelRequest, res: VercelResponse) => {
+  if(['/api/erase','/api/repaint','/api/outpaint','/api/bg-remove'].includes(req.url ?? '') && req.body && typeof req.body === 'object') {
+    req.body = {...req.body,billing:{requestId:'00000000-0000-4000-8000-000000000100',priceVersion:SYNC_PRICE_VERSION,maxCredits:req.url==='/api/outpaint' ? 10 : req.url==='/api/bg-remove' ? 1 : 5}}
+  }
+  return realHandler(req,res)
+}
 import { HttpError } from './errors'
 import { SEEDANCE_VIDEO_MODEL } from '../shared/video-models.js'
 const draft = { prompt: '',presetKey: '1:1',count: 1,durationSeconds: 5 }
@@ -51,7 +64,7 @@ beforeEach(() => {
   mocks.loadEraseStoredImage.mockReset()
   mocks.loadStoredSyncImage.mockReset()
   mocks.putObject.mockReset()
-  mocks.signRead.mockReset()
+  mocks.signRead.mockReset().mockResolvedValue({url:'https://r2.test/saved',expiresAt:123})
   mocks.authenticate.mockResolvedValue({ id: 'owner',email: 'owner@example.com',suggestedName: '测试用户',avatarUrl: null,providers: ['email'] })
   mocks.sql.mockImplementation(async (parts: TemplateStringsArray) => {
     const query=parts.join('?')
@@ -78,11 +91,11 @@ describe('智能抠图同步传输接口', () => {
     await handler({ headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/bg-remove', body: payload } as VercelRequest, response as unknown as VercelResponse)
     return response
   }
-  it('旧内联请求仍返回 PNG，并使用检测限流与阶段记录', async () => {
+  it('内联输入返回可恢复 PNG 对象，并使用检测限流与阶段记录', async () => {
     const res = await mattingRequest({ mimeType: 'image/png', dataBase64: 'aW1n', clientTimingMs: { prepare: 2, upload: 0 } })
     expect(res.status).toHaveBeenCalledWith(200)
-    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/png')
-    expect(res.end).toHaveBeenCalledWith(Buffer.from('png'))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({mimeType:'image/png',bytes:3}))
+    expect(mocks.putObject).toHaveBeenCalledWith(expect.stringMatching(/^temporary\/bg-remove-results/),Buffer.from('png'),'image/png',expect.any(AbortSignal))
     expect(mocks.validateSyncImage).toHaveBeenCalledWith(Buffer.from('img'), 'source', 'image/png', 24_000_000)
     expect(mocks.metrics.at(-1)).toMatchObject({ route: 'bg-remove', transport: 'inline', inputBytes: 3, outputBytes: 3, stageMs: { clientPrepare: 2 } })
   })
@@ -102,6 +115,12 @@ describe('智能抠图同步传输接口', () => {
     expect((await mattingRequest({ sourceImageKey: 'temporary/task-inputs/owner/image', mimeType: 'image/png', dataBase64: 'aW1n' })).status).toHaveBeenCalledWith(400)
     expect((await mattingRequest({ sourceImageUrl: 'https://external.test/a.jpg' })).status).toHaveBeenCalledWith(400)
     expect(mocks.removeBackground).not.toHaveBeenCalled()
+  })
+  it('缺少收费确认的旧请求拒绝执行，不保留免费绕过入口', async () => {
+    const response={setHeader:vi.fn(),status:vi.fn(),json:vi.fn(),end:vi.fn()}
+    response.status.mockReturnValue(response)
+    await realHandler({headers:{authorization:'Bearer test'},method:'POST',url:'/api/bg-remove',body:{mimeType:'image/png',dataBase64:'aW1n'}} as VercelRequest,response as unknown as VercelResponse)
+    expect(response.status).toHaveBeenCalledWith(400);expect(mocks.removeBackground).not.toHaveBeenCalled()
   })
   it('校验失败仍保留读取大小和耗时，不调用腾讯', async () => {
     mocks.loadStoredSyncImage.mockImplementation(async (_owner, _key, _kind, _signal, options) => {
@@ -252,7 +271,7 @@ describe('API 认证、版本和写入边界', () => {
       expect.objectContaining({ requestId: expect.any(String) }),
     )
     expect(response.status).toHaveBeenCalledWith(200)
-    expect(response.setHeader).toHaveBeenCalledWith('Content-Type', 'image/jpeg')
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({mimeType:'image/jpeg'}))
     if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
     else process.env.DASHSCOPE_API_KEY = previous
   })
@@ -271,7 +290,7 @@ describe('API 认证、版本和写入边界', () => {
     if (previous !== undefined) process.env.DASHSCOPE_API_KEY = previous
   })
 
-  it('消除对象键请求读取用户图片并沿用小结果直返', async () => {
+  it('消除对象键请求读取用户图片并保存可恢复小结果', async () => {
     const previous = process.env.DASHSCOPE_API_KEY
     process.env.DASHSCOPE_API_KEY = 'sk-test'
     mocks.loadEraseStoredImage
@@ -286,8 +305,8 @@ describe('API 认证、版本和写入边界', () => {
     await handler(req, res as unknown as VercelResponse)
     expect(mocks.loadEraseStoredImage).toHaveBeenCalledTimes(2)
     expect(mocks.eraseWithBailian).toHaveBeenCalledWith(Buffer.from('source'), Buffer.from('mask'), '移除物体', expect.any(Object))
-    expect(res.end).toHaveBeenCalledWith(Buffer.from('result'))
-    expect(mocks.putObject).not.toHaveBeenCalled()
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({bytes:6}))
+    expect(mocks.putObject).toHaveBeenCalled()
     if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
     else process.env.DASHSCOPE_API_KEY = previous
   })
@@ -341,7 +360,7 @@ describe('API 认证、版本和写入边界', () => {
     else process.env.DASHSCOPE_API_KEY = previous
   })
 
-  it('扩图对象请求读取原图，小结果直接返回图片', async () => {
+  it('扩图对象请求读取原图，小结果保存为可恢复对象', async () => {
     const previous = process.env.DASHSCOPE_API_KEY
     process.env.DASHSCOPE_API_KEY = 'sk-test'
     mocks.loadStoredSyncImage.mockResolvedValue({ bytes: Buffer.from('source'), width: 10, height: 10 })
@@ -357,7 +376,7 @@ describe('API 认证、版本和写入边界', () => {
     expect(mocks.expandWithBailian).toHaveBeenCalledWith(Buffer.from('source'), padding, expect.objectContaining({
       deadlineAt: expect.any(Number),
     }))
-    expect(res.end).toHaveBeenCalledWith(Buffer.from('result'))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({bytes:6}))
     if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
     else process.env.DASHSCOPE_API_KEY = previous
   })

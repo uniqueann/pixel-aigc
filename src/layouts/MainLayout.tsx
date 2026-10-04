@@ -22,6 +22,8 @@ import { NAV_META, SUB_ROUTE_LABELS } from '@/router/meta'
 import { useUserStore } from '@/store/useUserStore'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import CreditsLedgerDrawer from '@/features/credits/CreditsLedgerDrawer'
+import CreditSpendGate from '@/features/credits/CreditSpendGate'
+import { getCreditOrder, refreshBillingBalance, RECHARGE_EVENT } from '@/services/api/billing'
 import SettingsDialog from '@/layouts/SettingsDialog'
 import { CanvasProjectCrumb, CanvasProjectMenu } from '@/layouts/CanvasProjectHeader'
 import { isCanvasRoute } from '@/layouts/projectActions'
@@ -71,7 +73,30 @@ function MainLayoutContent() {
   const [creditsOpen, setCreditsOpen] = useState(false)
   const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia('(max-width: 720px)').matches)
   const account = useUserStore((s) => s.account)
+  const currentUserId=useUserStore(state=>state.userId)
   const credits = useUserStore((s) => s.credits)
+  useEffect(()=>{
+    const open=()=>setCreditsOpen(true)
+    window.addEventListener(RECHARGE_EVENT,open)
+    return()=>window.removeEventListener(RECHARGE_EVENT,open)
+  },[])
+  useEffect(()=>{
+    const id=new URLSearchParams(location.search).get('creditOrder'),owner=account?.userId
+    if(!id || !owner) return
+    queueMicrotask(()=>{if(useUserStore.getState().userId===owner) setCreditsOpen(true)})
+    let active=true,attempt=0,timer:ReturnType<typeof setTimeout>
+    const check=async()=>{
+      try {
+        const order=await getCreditOrder(id,owner)
+        if(!active || useUserStore.getState().userId!==owner) return
+        if(order.status === 'paid') {await refreshBillingBalance(owner);message.success('充值积分已到账');return}
+        if(order.status !== 'pending') return
+      } catch { if(active && attempt===0) message.info('支付确认可能稍有延迟，可在积分明细中查询到账') }
+      if(active && ++attempt<12) timer=setTimeout(()=>void check(),5000)
+    }
+    void check()
+    return()=>{active=false;clearTimeout(timer)}
+  },[location.search,account?.userId,message])
   const toggleSidebar = (open: boolean) => {
     setSidebarOpen(open)
     const state = usePreferencesStore.getState()
@@ -215,7 +240,8 @@ function MainLayoutContent() {
           </ErrorBoundary>
         </Content>
       </Layout>
-      <CreditsLedgerDrawer open={creditsOpen} onClose={() => setCreditsOpen(false)} />
+      <CreditsLedgerDrawer key={`${currentUserId}:${creditsOpen}`} open={creditsOpen} onClose={() => setCreditsOpen(false)} />
+      <CreditSpendGate key={currentUserId} />
       <SettingsDialog
         open={settingsOpen}
         section={settingsSection}

@@ -1,7 +1,9 @@
+import { authorizeSyncQuote } from './billing'
+import { postBilledSyncImage } from './billed-sync'
 import type { ImageResultReadOptions } from './image-transfer'
 import { normalizeImageBlob } from '@shared/image-format'
 import {
-  clientTiming, fileToBase64, imageAuthHeader, imageMimeType, MAX_IMAGE_BYTES,
+  clientTiming, fileToBase64, imageMimeType, MAX_IMAGE_BYTES,
   pngMaskBlob, readImageResult, shouldUseInlineImageTransport,
 } from './image-transfer'
 import { uploadTaskInput } from './upload'
@@ -23,6 +25,7 @@ export async function requestErase(
   const painted = pngMaskBlob(mask, '请先涂抹要消除的区域', '消除蒙版无效，请重新涂抹')
   if (!painted.size || painted.size > MAX_IMAGE_BYTES) throw new Error('消除蒙版不能超过 20 MB')
   if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')
+  const quote = await authorizeSyncQuote('erase', 5)
   if (image && !sourceObjectKey) image = await normalizeImageBlob(image)
   const inline = image && shouldUseInlineEraseTransport(image.size, painted.size, prompt, sourceObjectKey)
   let body: Record<string, unknown>
@@ -41,15 +44,6 @@ export async function requestErase(
     body = { sourceImageKey, maskImageKey, prompt }
   }
   body.clientTimingMs = clientTiming(prepareStarted, uploadMs)
-  const response = await fetch('/api/erase', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await imageAuthHeader()) },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(115_000),
-  })
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { error?: string } | null
-    throw new Error(payload?.error || '消除失败')
-  }
+  const response = await postBilledSyncImage('erase', body, quote)
   return readImageResult(response, '消除', resultOptions)
 }

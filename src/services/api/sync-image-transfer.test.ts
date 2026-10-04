@@ -2,6 +2,11 @@
 
 import { clearOwnedImageSession } from '@/services/api/ownedImages'
 vi.mock('@/features/assets/historyOwner', () => ({ currentWorkstationHistoryOwner: () => 'u' }))
+import { useUserStore } from '@/store/useUserStore'
+vi.mock('@/services/api/billing', () => ({
+  authorizeSyncQuote: async (_operation: string, maxCredits: number) => ({ requestId: '00000000-0000-4000-8000-000000000100', priceVersion: 'aigc-sync-v1', maxCredits, owner: 'u' }),
+  refreshBillingBalance: async () => {}, openCreditRecharge: vi.fn(), recoverSyncResult: async () => null,
+}))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ uploadTaskInput: vi.fn(), signedOwnedObjectUrl: vi.fn() }))
 vi.mock('./upload', () => ({ uploadTaskInput: mocks.uploadTaskInput }))
@@ -16,6 +21,7 @@ import { requestRepaint } from './repaint'
 import { requestOutpaint } from './outpaint'
 
 beforeEach(() => {
+  useUserStore.getState().setUser('u', 'free')
   clearOwnedImageSession()
   mocks.uploadTaskInput.mockReset()
   mocks.signedOwnedObjectUrl.mockReset()

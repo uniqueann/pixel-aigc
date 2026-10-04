@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { readFile, writeFile, chmod } from 'node:fs/promises'
 import postgres from 'postgres'
 import { CREDITS_USAGE, parseCreditsCommand } from './credits-args.js'
+import { INITIAL_CREDITS } from '../shared/billing.js'
 
 const url = process.env.AIGC_ADMIN_DATABASE_URL
 if (!url) throw new Error('请配置迁移管理员连接 AIGC_ADMIN_DATABASE_URL；不得用于线上 API')
@@ -26,6 +27,7 @@ try {
       // 密码仅由随机十六进制组成，不能包含 SQL 语法。
       await tx.unsafe(`create role aigc_server login password '${password}' nosuperuser nocreatedb nocreaterole noinherit nobypassrls`)
       await tx`grant aigc_api to aigc_server`
+      await tx`grant aigc_billing_worker to aigc_server`
     })
     console.log('受限运行账号已创建，连接串已写入 .env.local；未打印密码。请将 AIGC_DATABASE_URL 配置到 Vercel。')
   } else if (command === 'invite') {
@@ -52,9 +54,9 @@ try {
         const [member] = await tx`select user_id from aigc.members where user_id=${parsed.userId} for update`
         if (!member) throw new Error('成员不存在')
         const [created] = await tx`insert into aigc.credit_accounts(user_id,scope,balance)
-          values(${parsed.userId},${parsed.scope},100) on conflict do nothing returning balance`
+          values(${parsed.userId},${parsed.scope},${INITIAL_CREDITS}) on conflict do nothing returning balance`
         if (created) await tx`insert into aigc.credit_ledger(user_id,scope,kind,delta,balance_after,idempotency_key,reason)
-          values(${parsed.userId},${parsed.scope},'grant',100,100,'initial','首次赠送')`
+          values(${parsed.userId},${parsed.scope},'grant',${INITIAL_CREDITS},${INITIAL_CREDITS},'initial','首次赠送')`
         const [prior] = await tx`select delta from aigc.credit_ledger
           where user_id=${parsed.userId} and scope=${parsed.scope} and idempotency_key=${`admin:${parsed.key}`}`
         if (prior) {

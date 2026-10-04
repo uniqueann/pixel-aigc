@@ -81,7 +81,7 @@ export function presentCreditLedgerRow(row: {
 }): CreditLedgerRow {
   const meta = readMeta(row.meta)
   const capability = readString(row.capability) ?? readString(meta.capability)
-  const title = creditJobTitle({
+  const title = readString(meta.tool) ? ({ erase:'消除',repaint:'重绘',outpaint:'扩图','bg-remove':'商品抠图' }[String(meta.tool)] ?? String(meta.tool)) : creditJobTitle({
     params: row.params,
     capability,
     resolution: readResolution(meta, row.provider_params),
@@ -131,7 +131,7 @@ function presentLedgerGroup(rows: ReturnType<typeof asLedgerSource>[]): CreditLe
   if (!rows.length) return undefined
   const presented = rows.map(row => presentCreditLedgerRow(row))
   if (rows.some(row => row.job_id)) {
-    return mergeCreditJobEntries(presented.map(item => ({
+    const merged = mergeCreditJobEntries(presented.map(item => ({
       id: item.id,
       kind: item.kind,
       delta: item.delta,
@@ -141,6 +141,8 @@ function presentLedgerGroup(rows: ReturnType<typeof asLedgerSource>[]): CreditLe
       title: item.title,
       reason: item.reason,
     })))
+    if (rows[0].job_id && readMeta(rows[0].meta).tool) return {...merged,syncRequestId:rows[0].job_id}
+    return merged
   }
   return presented[0]
 }

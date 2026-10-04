@@ -67,6 +67,7 @@ export function formatCreditDelta(delta: number) {
 }
 
 export interface CreditLedgerItem {
+  syncRequestId?: string
   id: string
   createdAt: string
   kind: string

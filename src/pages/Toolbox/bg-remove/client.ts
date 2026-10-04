@@ -1,8 +1,10 @@
+import { authorizeSyncQuote } from '@/services/api/billing'
+import { postBilledSyncImage } from '@/services/api/billed-sync'
 import { invalidateOwnedImage } from '@/services/api/ownedImages'
 import { blobFromImageSource } from '@/features/image-workstation/download'
 import { uploadImage, uploadTaskInput } from '@/services/api/upload'
 import { normalizeImageBlob } from '@shared/image-format'
-import { clientTiming, downloadImageResult, fileToBase64, imageAuthHeader, ImageResultError,
+import { clientTiming, downloadImageResult, fileToBase64, ImageResultError,
   readImageResult, shouldUseInlineImageTransport, throwIfImageRequestAborted } from '@/services/api/image-transfer'
 import { createTask, getTask, liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
@@ -71,10 +73,11 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
       saveTransfer()
     }
   }
+  const quote = await authorizeSyncQuote('bg-remove', 1)
   const source = await normalizeImageBlob(image.file)
   check()
   let uploadMs = 0
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 1; attempt += 1) {
     let body: Record<string, unknown>
     if (shouldUseInlineImageTransport(source.size, 0, '', transfer.sourceImageKey)) {
       body = { mimeType: source.type, dataBase64: await fileToBase64(source) }
@@ -89,19 +92,12 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
     }
     check()
     body.clientTimingMs = clientTiming(started, uploadMs)
-    const response = await fetch('/api/bg-remove', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...(await imageAuthHeader()) },
-      body: JSON.stringify(body), signal: timedSignal(115_000, options.signal),
-    })
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null) as { error?: string; code?: string } | null
-      if (response.status === 404 && payload?.code === 'OBJECT_NOT_FOUND' && transfer.sourceImageKey) {
-        transfer.sourceImageKey = undefined
-        saveTransfer()
-        if (attempt === 0) continue
+    const response = await postBilledSyncImage('bg-remove',body,quote,timedSignal(115_000,options.signal)).catch(error=>{
+      if(error && typeof error === 'object' && 'code' in error && error.code === 'OBJECT_NOT_FOUND') {
+        transfer.sourceImageKey=undefined;saveTransfer()
       }
-      throw new Error(payload?.error || '抠图失败')
-    }
+      throw error
+    })
     check()
     const downloadStarted = performance.now()
     const matte = await readImageResult(response, '抠图', {

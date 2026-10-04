@@ -83,7 +83,7 @@ export async function expandRemoteImage(image: BatchImage, plan: ExpansionPlan, 
     targetWidth,
     targetHeight,
   )
-  const blob = await requestOutpaint(scaled, scaled.type, padding)
+  const blob = await requestOutpaint(scaled, scaled.type, padding,undefined,{sourceSize:plan.sourceSize})
   if (shouldStop()) throw new Error('处理已取消')
   const size = await readSize(blob)
   return { blob, mimeType: 'image/jpeg', width: size.width, height: size.height }

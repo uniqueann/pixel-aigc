@@ -1,8 +1,11 @@
+import { authorizeSyncQuote } from './billing'
+import { postBilledSyncImage } from './billed-sync'
 import type { ImageResultReadOptions } from './image-transfer'
 import { normalizeImageBlob } from '@shared/image-format'
+import { outpaintCreditPrice } from '@shared/billing'
 import { paddingAround, type PixelPadding } from '../../../shared/outpaint'
 import {
-  clientTiming, fileToBase64, imageAuthHeader, imageMimeType, MAX_IMAGE_BYTES,
+  clientTiming, fileToBase64, imageMimeType, MAX_IMAGE_BYTES,
   readImageResult, shouldUseInlineImageTransport,
 } from './image-transfer'
 import { uploadTaskInput } from './upload'
@@ -16,6 +19,12 @@ export async function requestOutpaint(image: Blob | null, mimeType: string, padd
   if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')
   const prepareStarted = performance.now()
   if (image && !sourceObjectKey) image = await normalizeImageBlob(image)
+  let size=resultOptions.sourceSize
+  if (!size && image && typeof createImageBitmap === 'function') {
+    const bitmap=await createImageBitmap(image)
+    size={width:bitmap.width,height:bitmap.height};bitmap.close()
+  }
+  const quote = await authorizeSyncQuote('outpaint', size ? outpaintCreditPrice(size.width,size.height,padding) : 10)
   const inline = image && shouldUseInlineImageTransport(image.size, 0, '', sourceObjectKey)
   let body: Record<string, unknown>
   let uploadMs = 0
@@ -28,15 +37,6 @@ export async function requestOutpaint(image: Blob | null, mimeType: string, padd
     body = { sourceImageKey, padding }
   }
   body.clientTimingMs = clientTiming(prepareStarted, uploadMs)
-  const response = await fetch('/api/outpaint', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await imageAuthHeader()) },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(115_000),
-  })
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { error?: string } | null
-    throw new Error(payload?.error || '扩图失败')
-  }
+  const response = await postBilledSyncImage('outpaint', body, quote)
   return readImageResult(response, '扩图', resultOptions)
 }

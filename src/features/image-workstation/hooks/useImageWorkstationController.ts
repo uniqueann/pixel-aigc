@@ -398,7 +398,7 @@ export function useImageWorkstationController({
       const needsScale = sourceSize.width !== sourceAsset.width || sourceSize.height !== sourceAsset.height
       const input = needsScale ? await renderScaledSource(new File([original], sourceAsset.name || 'source.jpg', { type: original.type }), sourceSize.width, sourceSize.height) : original
       const hasPad = padding.left + padding.right + padding.top + padding.bottom > 0
-      return { targetSize, compare: hasPad ? input : undefined, execute: options => hasPad ? requestOutpaint(imageObjectKey(sourceAsset) && !needsScale ? null : input, input.type, padding, needsScale ? undefined : imageObjectKey(sourceAsset), options) : Promise.resolve(input) }
+      return { targetSize, compare: hasPad ? input : undefined, execute: options => hasPad ? requestOutpaint(imageObjectKey(sourceAsset) && !needsScale ? null : input, input.type, padding, needsScale ? undefined : imageObjectKey(sourceAsset), {...options,sourceSize}) : Promise.resolve(input) }
     },
   }), [completeSync])
 
