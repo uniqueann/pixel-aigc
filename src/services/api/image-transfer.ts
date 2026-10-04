@@ -76,6 +76,7 @@ export async function downloadImageResult(payload: SyncImageObjectResult, tool: 
 }
 
 export interface ImageResultReadOptions {
+  sourceSize?: {width:number;height:number}
   ownerId?: string
   expectedMime?: SyncImageObjectResult['mimeType']
   signal?: AbortSignal

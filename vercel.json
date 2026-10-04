@@ -5,7 +5,8 @@
   "functions": { "api/**/*.ts": { "maxDuration": 120 } },
   "crons": [
     { "path": "/api/internal/email-cleanup", "schedule": "0 1 * * *" },
-    { "path": "/api/internal/image-jobs-sweep", "schedule": "5 1 * * *" }
+    { "path": "/api/internal/image-jobs-sweep", "schedule": "5 1 * * *" },
+    { "path": "/api/internal/credit-payments-reconcile", "schedule": "10 1 * * *" }
   ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/entry?__route=:path*" },

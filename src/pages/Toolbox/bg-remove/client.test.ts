@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { clearOwnedImageSession } from '@/services/api/ownedImages'
 vi.mock('@/features/assets/historyOwner', () => ({ currentWorkstationHistoryOwner: () => 'u' }))
+import { useUserStore } from '@/store/useUserStore'
+vi.mock('@/services/api/billing', () => ({
+  authorizeSyncQuote: async (_operation: string, maxCredits: number) => ({ requestId: '00000000-0000-4000-8000-000000000100', priceVersion: 'aigc-sync-v1', maxCredits, owner: 'u' }),
+  refreshBillingBalance: async () => {}, openCreditRecharge: vi.fn(), recoverSyncResult: async () => null,
+}))
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BatchImage } from './types'
 const mocks = vi.hoisted(() => ({ upload: vi.fn(), signed: vi.fn() }))
@@ -25,6 +30,7 @@ function objectResponse() { return new Response(JSON.stringify({ objectKey: 'tem
   url: 'https://r2.test/result', mimeType: 'image/png', bytes: png.length, expiresAt: Date.now() + 60_000 }), { headers: { 'Content-Type': 'application/json' } }) }
 
 beforeEach(() => {
+  useUserStore.getState().setUser('u', 'free')
   clearOwnedImageSession()
   mocks.upload.mockReset().mockResolvedValue('temporary/task-inputs/u/image')
   mocks.signed.mockReset().mockResolvedValue('https://r2.test/refreshed')
@@ -83,7 +89,7 @@ describe('智能抠图对象传输与可恢复下载', () => {
     expect(mocks.signed).not.toHaveBeenCalled()
   })
 
-  it('已清理的结果重新处理，已清理的原图重新上传一次', async () => {
+  it('已清理的原图不自动再次生成，用户主动重试时重新上传', async () => {
     let current = image(5 * 1024 * 1024)
     current.transfer = { ownerId: 'u', sourceImageKey: 'temporary/task-inputs/u/old', result: {
       objectKey: 'temporary/bg-remove-results/u/old.png', url: 'https://r2.test/old', mimeType: 'image/png',
@@ -91,6 +97,8 @@ describe('智能抠图对象传输与可恢复下载', () => {
     const fetch = vi.fn().mockResolvedValueOnce(new Response('', { status: 404 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'OBJECT_NOT_FOUND' }), { status: 404 })).mockResolvedValueOnce(response())
     vi.stubGlobal('fetch', fetch)
+    await expect(requestMatte(current, () => false, { ownerId: 'u', onTransfer: transfer => { current = { ...current, transfer } } })).rejects.toThrow('图片操作失败')
+    expect(current.transfer?.sourceImageKey).toBeUndefined()
     await requestMatte(current, () => false, { ownerId: 'u', onTransfer: transfer => { current = { ...current, transfer } } })
     expect(mocks.upload).toHaveBeenCalledTimes(1)
     expect(current.transfer?.sourceImageKey).toBe('temporary/task-inputs/u/image')

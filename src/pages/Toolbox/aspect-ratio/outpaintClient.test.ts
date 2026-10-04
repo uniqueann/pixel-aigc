@@ -2,6 +2,12 @@
 
 import { afterEach, expect, it, vi } from 'vitest'
 import { expansionPlan } from './expansion'
+import { useUserStore } from '@/store/useUserStore'
+useUserStore.getState().setUser('u','free')
+vi.mock('@/services/api/billing', () => ({
+  authorizeSyncQuote: async (_operation: string, maxCredits: number) => ({requestId:'00000000-0000-4000-8000-000000000100',priceVersion:'aigc-sync-v1',maxCredits,owner:'u'}),
+  refreshBillingBalance: async () => {},openCreditRecharge:vi.fn(),recoverSyncResult:async()=>null,
+}))
 import { expandRemoteImage } from './outpaintClient'
 import type { BatchImage } from './types'
 

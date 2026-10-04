@@ -1,5 +1,10 @@
 import { BAILIAN_IMAGEEDIT_PROMPT_MAX } from '../shared/prompt-limits.js'
 import { MAX_OUTPAINT_OUTPUT_PIXELS } from '../shared/outpaint.js'
+import { outpaintCreditPrice } from '../shared/billing.js'
+import sharp from 'sharp'
+import { readRequestBody } from './request-body.js'
+import { syncQuoteSchema, withSyncCredits, getSyncCreditResult } from './sync-billing.js'
+import { billingCatalog, createCreditCheckout, getCreditOrder, listCreditOrders, requestCashRefund, handlePaymentWebhook, reconcilePendingCreditOrders } from './payments/service.js'
 import type { VercelRequest, VercelResponse } from './http.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { waitUntil } from '@vercel/functions'
@@ -38,7 +43,6 @@ import { DETECTION_CLIENT_STAGES } from '../shared/detection.js'
 import { listCreditLedger } from './credits.js'
 import { ensureCreditAccount } from './image-jobs/billing.js'
 
-const INLINE_IMAGE_RESPONSE_BYTES = Math.floor(3.5 * 1024 * 1024)
 const SYNC_PROVIDER_DEADLINE_MS = 100_000
 const clientTimingSchema = z.object({
   prepare: z.number().int().min(0).max(300_000),
@@ -81,7 +85,6 @@ async function storeSyncImageResult(
   bytes: Buffer, metrics: SyncRequestMetrics, deadlineAt?: number, mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
 ) {
   metrics.outputBytes = bytes.length
-  if (bytes.length <= INLINE_IMAGE_RESPONSE_BYTES) return { kind: 'inline' as const, bytes, mimeType }
   const objectKey = `temporary/${route}-results/${userId}/${requestId}.${mimeType === 'image/png' ? 'png' : 'jpg'}`
   const writeStarted = Date.now()
   const signal = deadlineAt ? AbortSignal.timeout(Math.max(1, deadlineAt - writeStarted)) : undefined
@@ -98,12 +101,7 @@ async function storeSyncImageResult(
 }
 
 function sendSyncImageResult(res: VercelResponse, result: Awaited<ReturnType<typeof storeSyncImageResult>>) {
-  if (result.kind === 'inline') {
-    res.setHeader('Content-Type', result.mimeType)
-    res.status(200).end(result.bytes)
-  } else {
-    res.status(200).json({ objectKey: result.objectKey, mimeType: result.mimeType, bytes: result.bytes, ...result.signed })
-  }
+  res.status(200).json({ objectKey: result.objectKey, mimeType: result.mimeType, bytes: result.bytes, ...result.signed })
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -116,6 +114,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const route = url.searchParams.get('__route') ?? url.pathname.replace(/^\/api/, '')
     const path = route.split('/').filter(Boolean).map(decodeURIComponent)
     const method = req.method ?? 'GET'
+    const heavy = ['bg-remove','subject-detect','outpaint','erase','repaint','smart-select'].includes(path[0])
+    await readRequestBody(req,path[0] === 'repaint' ? 48*1024*1024 : heavy ? 28*1024*1024 : 3*1024*1024)
+    if (path[0] === 'payments' && path[2] === 'webhook' && path.length === 3 && method === 'POST') {
+      const provider = z.enum(['creem','dodo']).parse(path[1])
+      if (typeof req.rawBody !== 'string') throw new HttpError(400,'支付回调缺少原始请求体','RAW_BODY_REQUIRED')
+      res.status(200).json(await handlePaymentWebhook(provider,req.rawBody,req.headers))
+      return
+    }
+    if (path.join('/') === 'internal/credit-payments-reconcile' && method === 'GET') {
+      const secret=process.env.CRON_SECRET, supplied=req.headers.authorization?.replace(/^Bearer /,'') ?? ''
+      if (!secret || Buffer.byteLength(supplied)!==Buffer.byteLength(secret) || !timingSafeEqual(Buffer.from(supplied),Buffer.from(secret)))
+        throw new HttpError(401,'未授权','AUTH_REQUIRED')
+      res.status(202).json({received:true})
+      waitUntil(reconcilePendingCreditOrders().catch(()=>console.error(JSON.stringify({evt:'credit-payments',code:'RECONCILE_FAILED'}))))
+      return
+    }
     if (path.join('/') === 'internal/video-jobs-callback' && method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
       if (Buffer.byteLength(JSON.stringify(body ?? null)) > 64 * 1024) throw new HttpError(413, '回调内容过大')
@@ -143,7 +157,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const [expired] = await sql`select aigc.expire_overdue_image_jobs() as expired`
           const [deleted] = await sql`select aigc.purge_expired_image_jobs() as deleted`
           const [limited] = await sql`select aigc.purge_expired_sync_requests() as deleted`
-          return { expired: Number(expired.expired), deleted: Number(deleted.deleted), limited: Number(limited.deleted) }
+          const [sync] = await sql`select aigc.expire_sync_credits() as expired`
+          return { expired: Number(expired.expired), deleted: Number(deleted.deleted), limited: Number(limited.deleted), syncExpired:Number(sync.expired) }
         }
         const [row] = await sql`select aigc.purge_expired_email_tasks() as deleted`
         return { deleted: Number(row.deleted) }
@@ -185,14 +200,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     userId = user.id
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
     if (Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? null)) > maxBytes) throw new HttpError(413, '请求内容过大')
+    if (path.join('/') === 'credits/catalog' && method === 'GET') { res.status(200).json(await billingCatalog(user)); return }
+    if (path.join('/') === 'credits/checkout' && method === 'POST') { res.status(200).json(await createCreditCheckout(user,body)); return }
+    if (path.join('/') === 'credits/orders' && method === 'GET') { res.status(200).json(await listCreditOrders(user)); return }
+    if (path[0] === 'credits' && path[1] === 'orders' && path.length === 3 && method === 'GET') { res.status(200).json(await getCreditOrder(user,path[2])); return }
+    if (path[0] === 'credits' && path[1] === 'orders' && path[3] === 'refund-request' && path.length === 4 && method === 'POST') { res.status(200).json(await requestCashRefund(user,path[2],body)); return }
+    if (path[0] === 'credits' && path[1] === 'sync' && path.length === 3 && method === 'GET') { res.status(200).json(await getSyncCreditResult(user,path[2])); return }
     if (path.join('/') === 'bg-remove' && method === 'POST') {
       if (!tencentCiConfig()) throw new HttpError(503, '智能抠图尚未配置腾讯云', 'BG_REMOVE_UNCONFIGURED')
       const inlineInput = z.object({
+        billing: syncQuoteSchema,
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
+        billing: syncQuoteSchema,
         sourceImageKey: z.string().min(1).max(512), clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const input = z.union([objectInput, inlineInput]).parse(body)
@@ -209,7 +232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         recordSyncTiming(metrics, entry)
         console.info(JSON.stringify({ evt: 'bg-remove', requestId, userId, ...entry }))
       }
-      const result = await withSyncLimit(user, 'detection', async () => {
+      const result = await withSyncCredits(user, 'bg-remove', input.billing, input, () => withSyncLimit(user, 'detection', async () => {
         let image: Buffer
         if (objectTransport) {
           image = (await loadStoredSyncImage(user.id, input.sourceImageKey, 'source',
@@ -231,7 +254,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           deadlineAt: start + 100_000, log,
         })
         return storeSyncImageResult('bg-remove', user.id, requestId, png, metrics, start + 105_000, 'image/png')
-      }, metrics)
+      }, metrics))
       sendSyncImageResult(res, result)
       log({ stage: 'complete', ms: Date.now() - start, status: 200, transport: metrics.transport,
         resultTransport: result.kind, bytes: metrics.outputBytes, stageMs: metrics.stageMs })
@@ -266,12 +289,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         bottom: z.number().int().min(0).max(20000),
       }).strict()
       const inlineInput = z.object({
+        billing: syncQuoteSchema,
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         padding,
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
+        billing: syncQuoteSchema,
         sourceImageKey: z.string().min(1).max(512),
         padding,
         clientTimingMs: clientTimingSchema.optional(),
@@ -287,7 +312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         metrics.stageMs.clientUpload = input.clientTimingMs.upload
       }
       const outpaintLog = createDashScopeLog('outpaint')
-      const result = await withSyncLimit(user, 'generation', async () => {
+      const result = await withSyncCredits(user, 'outpaint', input.billing, input, () => withSyncLimit(user, 'generation', async () => {
         let image: Buffer
         if (objectTransport) {
           const readStarted = Date.now()
@@ -309,13 +334,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           try { await validateSyncImage(image, 'source', input.mimeType, MAX_OUTPAINT_OUTPUT_PIXELS) }
           finally { metrics.stageMs.imageValidate = Date.now() - validateStarted }
         }
+        const size = await sharp(image).metadata()
+        const chargedCredits = outpaintCreditPrice(size.width!,size.height!,input.padding)
+        if (chargedCredits>input.billing.maxCredits) throw new HttpError(409,'扩图报价已变化，请重新确认','PRICE_CHANGED')
         const jpeg = await expandWithBailian(image, input.padding, {
           requestId, deadlineAt: start + SYNC_PROVIDER_DEADLINE_MS,
           log: entry => { outpaintLog(entry); recordSyncTiming(metrics, entry) },
         })
         metrics.stageMs.process = Date.now() - processStarted
-        return storeSyncImageResult('outpaint', user.id, requestId, jpeg, metrics, start + 105_000)
-      }, metrics)
+        return { ...await storeSyncImageResult('outpaint', user.id, requestId, jpeg, metrics, start + 105_000), chargedCredits }
+      }, metrics))
       sendSyncImageResult(res, result)
       console.info(JSON.stringify({
         evt: 'outpaint', requestId, userId, status: 200, route: 'outpaint',
@@ -327,6 +355,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path.join('/') === 'erase' && method === 'POST') {
       if (!bailianConfig()) throw new HttpError(503, '图片消除尚未配置阿里云百炼 API Key', 'ERASE_UNAVAILABLE')
       const inlineInput = z.object({
+        billing: syncQuoteSchema,
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         maskMimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
@@ -335,6 +364,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
+        billing: syncQuoteSchema,
         sourceImageKey: z.string().min(1).max(512),
         maskImageKey: z.string().min(1).max(512),
         prompt: z.string().max(BAILIAN_IMAGEEDIT_PROMPT_MAX).optional(),
@@ -351,7 +381,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         metrics.stageMs.clientUpload = input.clientTimingMs.upload
       }
       const eraseLog = createDashScopeLog('erase')
-      const result = await withSyncLimit(user, 'generation', async () => {
+      const result = await withSyncCredits(user, 'erase', input.billing, input, () => withSyncLimit(user, 'generation', async () => {
         let image: Buffer
         let mask: Buffer
         if (objectTransport) {
@@ -384,7 +414,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
         metrics.stageMs.process = Date.now() - processStarted
         return storeSyncImageResult('erase', user.id, requestId, jpeg, metrics)
-      }, metrics)
+      }, metrics))
       sendSyncImageResult(res, result)
       console.info(JSON.stringify({
         evt: 'erase', requestId, userId, status: 200, route: 'erase',
@@ -396,6 +426,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path.join('/') === 'repaint' && method === 'POST') {
       if (!bailianConfig()) throw new HttpError(503, '重绘尚未配置阿里云百炼 API Key', 'REPAINT_UNAVAILABLE')
       const inlineInput = z.object({
+        billing: syncQuoteSchema,
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         maskBase64: z.string().min(1),
@@ -403,6 +434,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
+        billing: syncQuoteSchema,
         sourceImageKey: z.string().min(1).max(512),
         maskImageKey: z.string().min(1).max(512),
         prompt: z.string().min(1).max(BAILIAN_IMAGEEDIT_PROMPT_MAX),
@@ -419,7 +451,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         metrics.stageMs.clientUpload = input.clientTimingMs.upload
       }
       const repaintLog = createDashScopeLog('repaint')
-      const result = await withSyncLimit(user, 'generation', async () => {
+      const result = await withSyncCredits(user, 'repaint', input.billing, input, () => withSyncLimit(user, 'generation', async () => {
         let image: Buffer
         let mask: Buffer
         if (objectTransport) {
@@ -447,7 +479,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
         metrics.stageMs.process = Date.now() - processStarted
         return storeSyncImageResult('repaint', user.id, requestId, jpeg, metrics, start + 105_000)
-      }, metrics)
+      }, metrics))
       sendSyncImageResult(res, result)
       console.info(JSON.stringify({
         evt: 'repaint', requestId, userId, status: 200, route: 'repaint',

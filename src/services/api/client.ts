@@ -29,6 +29,7 @@ apiClient.interceptors.response.use(
       if (authEnabled) window.location.href = '/login'
     }
     const serverMessage = err.response?.data?.error
+    if (err.response?.status === 402 && typeof window !== 'undefined') window.dispatchEvent(new Event('aigc:recharge'))
     return Promise.reject(new ApiError(serverMessage || err.message || '请求失败，请重试', err.response?.status, err.response?.data?.code))
   },
 )
