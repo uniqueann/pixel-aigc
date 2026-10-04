@@ -121,6 +121,22 @@ export function mergeCreditJobEntries(entries: readonly CreditLedgerEntry[]): Cr
   const ordered = [...entries].sort(sortLedgerNewestFirst)
   const newest = ordered[0]
   const oldest = ordered[ordered.length - 1]
+  if (ordered.some(item => item.title === '免费抠图') && !ordered.some(item => item.kind === 'reserve')) {
+    const failed = ordered.some(item => item.kind === 'refund')
+    return {
+      id: newest.id,
+      createdAt: newest.createdAt,
+      kind: failed ? 'refund' : 'settle',
+      label: '免费抠图',
+      title: '免费抠图',
+      summary: failed ? '免费额度已退回' : '本月免费额度',
+      delta: 0,
+      deltaText: '免费',
+      balanceAfter: newest.balanceAfter,
+      charged: 0,
+      reason: oldest.reason,
+    }
+  }
   const title = ordered.map(item => item.title).filter(Boolean).sort((left, right) => right.length - left.length)[0] ?? ''
   const net = ordered.reduce((sum, item) => sum + item.delta, 0)
   const status = creditJobGroupStatus(ordered)

@@ -32,6 +32,7 @@ beforeAll(async()=>{
   for(const id of [owner,other,legacy]) await q('insert into aigc.members(user_id) values($1)',[id])
   await user(()=>q('select aigc.ensure_credit_account($1)',[legacy]),legacy)
   await db.exec(readFileSync('supabase/migrations/20261004152128_aigc_credit_payments.sql','utf8'))
+  await db.exec(readFileSync('supabase/migrations/20261004222317_aigc_free_sync_credit_ledger.sql','utf8'))
 },30000)
 afterAll(()=>db.close())
 
@@ -41,8 +42,8 @@ async function reserve(id:string,operation='erase',amount=5,userId=owner,scope='
     return row.job as Record<string,unknown>
   },userId,scope)
 }
-async function finish(id:string,result:unknown=null) {
-  return user(()=>q('select aigc.finish_sync_credits($1,$2::jsonb,$3)',[id,result ? JSON.stringify(result) : null,result ? null : 'TEST_FAILURE']))
+async function finish(id:string,result:unknown=null,userId=owner,scope='production') {
+  return user(()=>q('select aigc.finish_sync_credits($1,$2::jsonb,$3)',[id,result ? JSON.stringify(result) : null,result ? null : 'TEST_FAILURE']),userId,scope)
 }
 async function makeOrder(userId=owner,scope='production') {
   const id=randomUUID()
@@ -90,6 +91,31 @@ describe('充值与收费操作的数据库闭环',()=>{
     await finish(jobs[0]);expect((await reserve(randomUUID(),'bg-remove',0)).credits_reserved).toBe(0)
     expect((await reserve(randomUUID(),'bg-remove',0,other)).credits_reserved).toBe(0)
     expect((await reserve(randomUUID(),'bg-remove',0,owner,'preview')).credits_reserved).toBe(0)
+  })
+  it('免费抠图的结算、失败退回和超时都写入 0 分明细',async()=>{
+    const month=(await q("select to_char(now() at time zone 'Asia/Shanghai','YYYY-MM') as month"))[0].month
+    const settled=randomUUID()
+    const before=Number((await user(()=>q('select balance from aigc.credit_accounts'),owner,'preview'))[0].balance)
+    expect((await reserve(settled,'bg-remove',0,owner,'preview')).credits_reserved).toBe(0)
+    await finish(settled,{objectKey:`temporary/bg-remove-results/${owner}/${settled}.png`,mimeType:'image/png',bytes:12,chargedCredits:0},owner,'preview')
+    await finish(settled,{objectKey:`temporary/bg-remove-results/${owner}/${settled}.png`,mimeType:'image/png',bytes:12,chargedCredits:0},owner,'preview')
+    const [settle]=await q('select kind,delta,charged,idempotency_key,meta from aigc.credit_ledger where job_id=$1',[settled])
+    expect(settle).toMatchObject({kind:'settle',delta:0,charged:0,idempotency_key:`job:${settled}:settle`,meta:{tool:'bg-remove',free:true,free_month:month}})
+    expect((await q('select count(*)::int as count from aigc.credit_ledger where job_id=$1',[settled]))[0].count).toBe(1)
+    expect(Number((await user(()=>q('select balance from aigc.credit_accounts'),owner,'preview'))[0].balance)).toBe(before)
+    const failed=randomUUID()
+    await reserve(failed,'bg-remove',0,owner,'preview')
+    await finish(failed,null,owner,'preview')
+    const [refund]=await q('select kind,delta,charged,idempotency_key,meta from aigc.credit_ledger where job_id=$1',[failed])
+    expect(refund).toMatchObject({kind:'refund',delta:0,charged:0,idempotency_key:`job:${failed}:refund`,meta:{tool:'bg-remove',free:true,free_month:month}})
+    const timeout=randomUUID()
+    await reserve(timeout,'bg-remove',0,owner,'preview')
+    await q("update aigc.sync_credit_jobs set deadline_at=now()-interval '1 second' where id=$1",[timeout])
+    await user(()=>q('select aigc.expire_sync_credits()'),owner,'preview')
+    await user(()=>q('select aigc.expire_sync_credits()'),owner,'preview')
+    const [expired]=await q('select kind,delta,charged,idempotency_key,meta from aigc.credit_ledger where job_id=$1',[timeout])
+    expect(expired).toMatchObject({kind:'refund',delta:0,charged:0,idempotency_key:`job:${timeout}:refund`,meta:{tool:'bg-remove',free:true,free_month:month}})
+    expect((await q('select count(*)::int as count from aigc.credit_ledger where job_id=$1',[timeout]))[0].count).toBe(1)
   })
   it('扣分记录和充值订单按用户及环境隔离，用户角色不能到账或审批现金退款',async()=>{
     const id=await makeOrder()

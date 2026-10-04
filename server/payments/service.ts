@@ -128,36 +128,82 @@ export async function requestCashRefund(user: BillingUser, id: string, input: un
     return presentOrder(row as StoredCreditOrder)
   })
 }
+function textId(value: unknown) {
+  return typeof value === 'string' && value.length>0 && value.length<=200 ? value : undefined
+}
+function positiveCash(value: unknown) {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value>0 ? value : undefined
+}
+// Creem 退款/争议的订单实体在 object.order.id，结账在 object.checkout.id。
+// transaction.order 只是同一订单号的字符串，事件里可以没有；不能把它当成唯一查找键。
+function creemOrderPaymentId(data: Record<string, unknown>) {
+  const order = data.order
+  if (typeof order === 'string') return textId(order)
+  return textId(record(order).id) ?? textId(record(data.transaction).order)
+}
+function creemCheckoutId(data: Record<string, unknown>) {
+  return textId(record(data.checkout).id)
+}
+function creemEventMeta(data: Record<string, unknown>) {
+  return record(data.metadata ?? record(data.checkout).metadata ?? record(data.order).metadata)
+}
+// reverse_credit_order 按累计现金收回积分。事务上的 refunded_amount 是已退总额；
+// 官方退款对象始终带本次 refund_amount / refund_currency。争议金额和币种在 object.amount / object.currency。
+function creemReversal(type: string, data: Record<string, unknown>) {
+  const transaction = record(data.transaction)
+  if (type === 'dispute.created') return {
+    cash: positiveCash(data.amount),
+    currency: textId(data.currency) ?? textId(transaction.currency),
+  }
+  return {
+    cash: positiveCash(transaction.refunded_amount) ?? positiveCash(data.refund_amount),
+    currency: textId(data.refund_currency) ?? textId(transaction.currency) ?? textId(data.currency),
+  }
+}
 export async function handlePaymentWebhook(provider: PaymentProvider, raw: string, headers: Record<string,string|string[]|undefined>) {
   const event = verifyPaymentEvent(provider,raw,headers)
   const type = String(provider === 'creem' ? event.eventType : event.type)
   const data = record(provider === 'creem' ? event.object : event.data)
-  const meta = record(data.metadata ?? record(data.checkout).metadata)
+  const meta = provider === 'creem' ? creemEventMeta(data) : record(data.metadata ?? record(data.checkout).metadata)
   const eventId = String(event.id ?? headers['webhook-id'] ?? '')
   if (!eventId || eventId.length>200) throw new HttpError(400,'支付事件编号无效','INVALID_REQUEST')
   const supported = provider === 'creem' ? ['checkout.completed','refund.created','dispute.created'] : ['payment.succeeded','refund.succeeded','dispute.opened','dispute.accepted','dispute.expired','dispute.lost']
   if (!supported.includes(type)) return { received: true, ignored: true }
-  let orderId = meta.productScope === 'aigc' ? meta.orderId : undefined
-  const externalPayment = provider === 'creem' ? record(data.transaction).order : data.payment_id
+  const metadataOrderId = meta.productScope === 'aigc' ? meta.orderId : undefined
+  // Dodo 退款和争议的 data.payment_id 就是已保存的付款编号，金额改由重新查询付款得出，不读 Creem 的嵌套字段。
+  const externalPayment = provider === 'creem' ? creemOrderPaymentId(data) : textId(data.payment_id)
+  const checkoutId = provider === 'creem' ? creemCheckoutId(data) : undefined
   const o = await withBillingWorker(async sql => {
-    const rows = typeof orderId === 'string' && orderIdSchema.safeParse(orderId).success
-      ? await sql`select * from aigc.credit_orders where id=${orderId} and scope=${runtimeScope()} and provider=${provider} and provider_mode=${paymentMode()}`
-      : typeof externalPayment === 'string' ? await sql`select * from aigc.credit_orders where payment_id=${externalPayment} and scope=${runtimeScope()} and provider=${provider} and provider_mode=${paymentMode()}` : []
-    return rows[0] as StoredCreditOrder | undefined
+    const scope = runtimeScope(), mode = paymentMode()
+    if (typeof metadataOrderId === 'string' && orderIdSchema.safeParse(metadataOrderId).success) {
+      const rows = await sql`select * from aigc.credit_orders where id=${metadataOrderId} and scope=${scope} and provider=${provider} and provider_mode=${mode}`
+      if (rows[0]) return rows[0] as StoredCreditOrder
+    }
+    if (externalPayment) {
+      const rows = await sql`select * from aigc.credit_orders where payment_id=${externalPayment} and scope=${scope} and provider=${provider} and provider_mode=${mode}`
+      if (rows[0]) return rows[0] as StoredCreditOrder
+    }
+    if (checkoutId) {
+      const rows = await sql`select * from aigc.credit_orders where checkout_id=${checkoutId} and scope=${scope} and provider=${provider} and provider_mode=${mode}`
+      if (rows[0]) return rows[0] as StoredCreditOrder
+    }
+    return undefined
   })
   if (!o) {
     if (meta.productScope === 'aigc' && meta.runtimeScope === runtimeScope()) throw new HttpError(409,'充值订单尚未就绪，请重试回调','ORDER_NOT_READY')
     return { received: true, ignored: true }
   }
-  orderId = o.id
   if (provider === 'creem' && type !== 'checkout.completed') {
-    const transaction = record(data.transaction), paid = record(data.order)
     if (type === 'refund.created' && data.status !== 'succeeded') return { received: true, ignored: true }
-    if (transaction.order !== o.payment_id && paid.id !== o.payment_id && record(data.checkout).id !== o.checkout_id)
+    const paymentId = creemOrderPaymentId(data), checkout = creemCheckoutId(data)
+    if ((paymentId && o.payment_id && paymentId !== o.payment_id) || (checkout && o.checkout_id && checkout !== o.checkout_id)
+      || (!paymentId && !checkout && meta.orderId !== o.id))
       throw new HttpError(409,'退款订单信息不一致','PAYMENT_MISMATCH')
-    const cash = type === 'dispute.created' ? o.amount : Number(transaction.refunded_amount)
-    const currency = String(data.refund_currency ?? transaction.currency ?? data.currency)
-    if (!Number.isSafeInteger(cash) || cash<=0) throw new HttpError(400,'退款金额无效','PAYMENT_MISMATCH')
+    const reversal = creemReversal(type, data)
+    const currency = reversal.currency
+    const cash = reversal.cash ?? (type === 'dispute.created' ? Number(o.amount) : undefined)
+    if (!currency || cash == null || !Number.isSafeInteger(cash) || cash<=0)
+      throw new HttpError(400,'退款金额无效','PAYMENT_MISMATCH')
     await withBillingWorker(sql => sql`select aigc.reverse_credit_order(${o.id},${cash},${currency},${eventId},${type})`)
   } else {
     if (!o.checkout_id) throw new HttpError(409,'支付链接尚未就绪，请重试回调','ORDER_NOT_READY')

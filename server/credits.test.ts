@@ -36,4 +36,26 @@ describe('积分明细展示', () => {
       charged: 2,
     })
   })
+
+  it('免费抠图显示免费文案，不显示实扣 0', () => {
+    const base = {
+      id: '00000000-0000-4000-8000-000000000202',
+      delta: 0,
+      balance_after: 30,
+      charged: 0,
+      reason: null,
+      created_at: '2026-10-04T12:00:00.000Z',
+      capability: null,
+      params: null,
+      requested_count: null,
+      provider_params: null,
+      meta: { tool: 'bg-remove', free: true, free_month: '2026-10' },
+    }
+    expect(presentCreditLedgerRow({ ...base, kind: 'settle' })).toMatchObject({
+      label: '免费抠图', title: '免费抠图', summary: '本月免费额度', deltaText: '免费',
+    })
+    expect(presentCreditLedgerRow({ ...base, kind: 'refund' })).toMatchObject({
+      label: '免费抠图', summary: '免费额度已退回', deltaText: '免费',
+    })
+  })
 })
