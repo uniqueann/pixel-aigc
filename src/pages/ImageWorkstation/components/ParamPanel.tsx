@@ -1,9 +1,12 @@
-import { Button, Checkbox, Input, Segmented, Select, Slider, Space } from 'antd'
+import { Button, Checkbox, Input, Segmented, Select, Space } from 'antd'
+import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
 import { mapDragonCodeSize } from '@shared/image-models'
+import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
+import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import {
   RELIGHT_DEFAULT,
   RELIGHT_DIRECTION_CHOICES,
@@ -46,6 +49,7 @@ interface Props {
 }
 
 const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
+const tallPromptSize = { minRows: 6, maxRows: 10 }
 
 /** 右侧参数面板：按能力和子工具模式渲染对应表单 */
 export default function ParamPanel({
@@ -123,22 +127,14 @@ export default function ParamPanel({
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
             placeholder={fusion ? '例如：把商品放在桌面中央' : retouch ? '例如：保留吊牌文字' : variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
-            autoSize={{ minRows: retouch || fusion ? 3 : 5, maxRows: 10 }}
-            maxLength={fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength}
-            showCount={retouch || variation || fusion}
+            autoSize={variation || retouch || fusion ? tallPromptSize : { minRows: 5, maxRows: 10 }}
+            maxLength={fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH}
+            showCount
           />
         </div>
         <div>
           <div style={labelStyle}>生成数量</div>
-          <Slider
-            min={1}
-            max={maxCount}
-            step={1}
-            marks={Object.fromEntries(Array.from({ length: maxCount }, (_, index) => [index + 1, String(index + 1)]))}
-            value={Math.min(count, maxCount)}
-            disabled={disabled}
-            onChange={onCountChange}
-          />
+          <GenerationCountPicker value={count} max={maxCount} disabled={disabled} onChange={onCountChange} />
         </div>
         <div>
           <div style={labelStyle}>渲染分辨率</div>
@@ -232,15 +228,7 @@ export default function ParamPanel({
         </div>
         <div>
           <div style={labelStyle}>生成数量</div>
-          <Slider
-            min={1}
-            max={maxCount}
-            step={1}
-            marks={Object.fromEntries(Array.from({ length: maxCount }, (_, index) => [index + 1, String(index + 1)]))}
-            value={Math.min(count, maxCount)}
-            disabled={disabled}
-            onChange={onCountChange}
-          />
+          <GenerationCountPicker value={count} max={maxCount} disabled={disabled} onChange={onCountChange} />
         </div>
         <div>
           <div style={labelStyle}>渲染分辨率</div>
@@ -270,7 +258,9 @@ export default function ParamPanel({
             disabled={disabled}
             onChange={(event) => onRepaintPromptChange(event.target.value)}
             placeholder="描述选区里要出现的内容，例如桌面上的透明玻璃花瓶"
-            autoSize={{ minRows: 4, maxRows: 8 }}
+            autoSize={tallPromptSize}
+            maxLength={MAX_ERASE_PROMPT_LENGTH}
+            showCount
           />
         </div>
       </Space>
@@ -287,8 +277,9 @@ export default function ParamPanel({
             disabled={disabled}
             onChange={(event) => onErasePromptChange(event.target.value)}
             placeholder="小物体可留空。大面积消除时描述去掉后应留下的背景，不要写「删除xxx」"
-            autoSize={{ minRows: 3, maxRows: 6 }}
-            maxLength={800}
+            autoSize={tallPromptSize}
+            maxLength={MAX_ERASE_PROMPT_LENGTH}
+            showCount
           />
         </div>
       ) : null}
@@ -356,7 +347,7 @@ export default function ParamPanel({
       </div>
       <div>
         <div style={labelStyle}>生成数量</div>
-        <Slider min={1} max={4} step={1} marks={{ 1: '1', 2: '2', 3: '3', 4: '4' }} />
+        <GenerationCountPicker value={count} max={4} disabled={disabled} onChange={onCountChange} />
       </div>
         </>
       )}

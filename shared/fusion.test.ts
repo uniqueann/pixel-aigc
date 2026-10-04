@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { PROMPT_MAX_LENGTH } from './prompt-limits'
 import {
   FUSION_FIXED_PROMPT,
   FUSION_MODEL_PROMPT_MAX,
@@ -10,9 +11,9 @@ import {
 } from './fusion'
 
 describe('融合提示词', () => {
-  it('补充说明上限等于模型上限减去固定句和衔接语', () => {
-    expect(FUSION_NOTE_MAX).toBe(3889)
-    expect(FUSION_FIXED_PROMPT.length + FUSION_NOTE_PREFIX.length + FUSION_NOTE_MAX).toBe(FUSION_MODEL_PROMPT_MAX)
+  it('补充说明收口到统一上限，且不超过模型预算减去固定句', () => {
+    expect(FUSION_NOTE_MAX).toBe(PROMPT_MAX_LENGTH)
+    expect(FUSION_FIXED_PROMPT.length + FUSION_NOTE_PREFIX.length + FUSION_NOTE_MAX).toBeLessThanOrEqual(FUSION_MODEL_PROMPT_MAX)
   })
 
   it('补充说明接在固定句后面，空说明不写衔接语', () => {

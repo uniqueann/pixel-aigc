@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 import { HttpError } from './errors.js'
 import { fitDashScopeImageSize } from '../shared/erase.js'
+import { BAILIAN_IMAGEEDIT_PROMPT_MAX } from '../shared/prompt-limits.js'
 import {
   bailianConfig,
   createDashScopeLog,
@@ -13,7 +14,7 @@ import {
 } from './dashscope.js'
 import { PROVIDER_URL_SUBMIT_TIMEOUT_MS, shouldUseProviderUrls, stageProviderInputs } from './provider-input-storage.js'
 
-const PROMPT_LIMIT = 800
+const PROMPT_LIMIT = BAILIAN_IMAGEEDIT_PROMPT_MAX
 export const REPAINT_DEADLINE_MS = 100_000
 
 export function fitRepaintSize(width: number, height: number) {

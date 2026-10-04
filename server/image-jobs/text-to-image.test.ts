@@ -41,11 +41,11 @@ describe('真实文生图任务', () => {
   it('不需要原图，描述去首尾空白；拒绝空描述、超过上限与原图字段', () => {
     expect(createImageTaskSchema.parse(payload({ prompt: '  香水瓶  ' })).params).toMatchObject({ prompt: '香水瓶' })
     for (const invalid of [
-      { prompt: '  ' }, { prompt: '字'.repeat(4001) }, { sourceImageKey: 'media/other/source' },
+      { prompt: '  ' }, { prompt: '字'.repeat(3501) }, { sourceImageKey: 'media/other/source' },
       { sourceImageUrl: 'https://external.test/source.png' }, { count: 5 },
       { size: { width: 0, height: 900 } }, { resolution: '8k' },
     ]) expect(createImageTaskSchema.safeParse(payload(invalid)).success).toBe(false)
-    expect(createImageTaskSchema.safeParse(payload({ prompt: '字'.repeat(4000) })).success).toBe(true)
+    expect(createImageTaskSchema.safeParse(payload({ prompt: '字'.repeat(3500) })).success).toBe(true)
   })
 
   it('提交扇出为空参考图并映射目标比例，不读取或签发输入对象', async () => {

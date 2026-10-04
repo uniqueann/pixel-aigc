@@ -4,7 +4,9 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
 import { publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
+import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
+import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import { RELIGHT_NOTE_MAX } from '@shared/relight'
 import { RETOUCH_NOTE_MAX } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
@@ -40,6 +42,10 @@ describe('智能编辑参数面板', () => {
     )
     expect(screen.getByText(/预计输出比例 1:1/)).toBeTruthy()
     expect(screen.getByText(/当前比例不支持 4K/)).toBeTruthy()
+    expect(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节')).toHaveProperty('maxLength', PROMPT_MAX_LENGTH)
+    expect(screen.getByText(`4 / ${PROMPT_MAX_LENGTH}`)).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: '生成数量' })).toBeTruthy()
+    expect(screen.queryByRole('slider')).toBeNull()
   })
 
   it('裂变把补充要求标成可选，并按余量限制字数', () => {
@@ -163,5 +169,35 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByPlaceholderText('例如：略微提亮背景')).toHaveProperty('maxLength', RELIGHT_NOTE_MAX)
     expect(screen.queryByText('后期增强')).toBeNull()
     expect(screen.queryByText('手动调整')).toBeNull()
+    expect(screen.getByText(`0 / ${RELIGHT_NOTE_MAX}`)).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: '生成数量' })).toBeTruthy()
+  })
+
+  it('消除和重绘按百炼上限显示字数，并使用加高的描述框', () => {
+    const shared = {
+      smartEditPrompt: '',
+      onSmartEditPromptChange: () => undefined,
+      count: 1,
+      onCountChange: () => undefined,
+      resolution: '2k' as const,
+      onResolutionChange: () => undefined,
+      erasePrompt: '',
+      onErasePromptChange: () => undefined,
+      repaintPrompt: '',
+      onRepaintPromptChange: () => undefined,
+      outpaintMode: 'free' as const,
+      onOutpaintModeChange: () => undefined,
+      presetPlatform: 'x',
+      onPresetPlatformChange: () => undefined,
+    }
+    const { rerender } = render(<ParamPanel capability={Capability.Inpaint} mode="remove" {...shared} />)
+    const erase = screen.getByPlaceholderText(/小物体可留空/)
+    expect(erase).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
+    expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
+
+    rerender(<ParamPanel capability={Capability.Inpaint} mode="repaint" {...shared} />)
+    const repaint = screen.getByPlaceholderText(/透明玻璃花瓶/)
+    expect(repaint).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
+    expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
   })
 })

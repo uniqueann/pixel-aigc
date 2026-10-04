@@ -1,3 +1,5 @@
+import { BAILIAN_IMAGEEDIT_PROMPT_MAX } from './prompt-limits.js'
+
 /** 万相 imageedit 输入边长限制。消除蒙版必须与送进模型的底图像素一一对应。 */
 export const MIN_EDGE = 512
 export const MAX_EDGE = 4096
@@ -7,7 +9,7 @@ export const ERASE_OVERLAY_HEIGHT = 420
 export const MASK_WHITE_THRESHOLD = 128
 /** 涂抹边缘略膨胀，减少抗锯齿灰边留下的缝。 */
 export const MASK_DILATE_RADIUS = 2
-export const MAX_ERASE_PROMPT_LENGTH = 800
+export const MAX_ERASE_PROMPT_LENGTH = BAILIAN_IMAGEEDIT_PROMPT_MAX
 /** 百炼 prompt 必填；空串会在服务端按字符下标读取并报 string index out of range。描述结果，不要写「删除xxx」。 */
 export const DEFAULT_ERASE_PROMPT = '与周围背景自然融合的干净背景'
 

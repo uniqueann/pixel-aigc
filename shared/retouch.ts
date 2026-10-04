@@ -1,3 +1,5 @@
+import { promptLimit } from './prompt-limits.js'
+
 export const RETOUCH_DIRECTION_IDS = ['blemish', 'brighten', 'sharpen', 'texture'] as const
 
 export type RetouchDirection = typeof RETOUCH_DIRECTION_IDS[number]
@@ -44,9 +46,11 @@ function retouchPromptParts(directions: readonly RetouchDirection[], note?: stri
 }
 
 /** 补充说明上限按四个方向都选中来预留，少选时限额不变。 */
-export const RETOUCH_NOTE_MAX = RETOUCH_MODEL_PROMPT_MAX
+export const RETOUCH_NOTE_MAX = promptLimit(
+  RETOUCH_MODEL_PROMPT_MAX
   - retouchPromptParts([...RETOUCH_DIRECTION_IDS]).join('\n').length
-  - RETOUCH_NOTE_PREFIX.length
+  - RETOUCH_NOTE_PREFIX.length,
+)
 
 export function retouchNoteLimitMessage() {
   return `补充说明最多 ${RETOUCH_NOTE_MAX} 字`

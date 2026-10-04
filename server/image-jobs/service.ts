@@ -27,6 +27,7 @@ import {
   normalizeRetouchDirections,
   retouchNoteLimitMessage,
 } from '../../shared/retouch.js'
+import { PROMPT_MAX_LENGTH } from '../../shared/prompt-limits.js'
 import {
   VARIATION_USER_PROMPT_MAX,
   composeVariationPrompt,
@@ -94,7 +95,7 @@ const imageSourceParams = {
 }
 const imageEditParams = z.object({
   ...imageSourceParams,
-  prompt: z.string().trim().max(4000).optional(),
+  prompt: z.string().trim().max(PROMPT_MAX_LENGTH).optional(),
   retouchDirections: z.array(z.enum(RETOUCH_DIRECTION_IDS)).max(4).optional(),
   referenceImageKey: z.string().trim().min(1).max(512).optional(),
   referenceImageUrl: z.string().max(4000).optional(),
@@ -144,7 +145,7 @@ const variationParams = z.object({
   prompt: z.string().trim().max(VARIATION_USER_PROMPT_MAX).optional(),
 }).strict()
 const textToImageParams = z.object({
-  prompt: z.string().trim().min(1, '请填写画面描述').max(4000, '画面描述不能超过 4000 字'),
+  prompt: z.string().trim().min(1, '请填写画面描述').max(PROMPT_MAX_LENGTH, `画面描述不能超过 ${PROMPT_MAX_LENGTH} 字`),
   size: imageSize.strict(),
   count: z.number().int().min(1).max(4),
   resolution: z.enum(['1k', '2k', '4k']),
@@ -424,10 +425,10 @@ export async function createImageJobInStore(
   if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && !isRelight && !userPrompt) {
     throw new HttpError(400, '请填写编辑要求', 'INVALID_PARAMS')
   }
-  if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && !isRelight && userPrompt.length > (profile.ui.promptMaxLength ?? 4000)) {
+  if (parsed.capability === 'image_edit' && !isRetouch && !isFusion && !isRelight && userPrompt.length > (profile.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)) {
     throw new HttpError(400, '编辑要求过长', 'INVALID_PARAMS')
   }
-  if (parsed.capability === 'text_to_image' && (!userPrompt || userPrompt.length > (profile.ui.promptMaxLength ?? 4000))) {
+  if (parsed.capability === 'text_to_image' && (!userPrompt || userPrompt.length > (profile.ui.promptMaxLength ?? PROMPT_MAX_LENGTH))) {
     throw new HttpError(400, userPrompt ? '画面描述过长' : '请填写画面描述', 'INVALID_PARAMS')
   }
   if (isFusion && referenceKey === sourceKey) {

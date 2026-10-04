@@ -1,4 +1,6 @@
 import { Button, Input, Radio, Segmented, Select } from 'antd'
+import GenerationCountPicker from '@/components/GenerationCountPicker'
+import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewResultStrip from '@/components/PreviewResultStrip'
 import { downloadImageSource, extensionForMime } from '@/features/image-workstation/download'
@@ -134,8 +136,8 @@ export default function GenerationPanel({
         <Input.TextArea
           rows={6}
           value={prompt}
-          maxLength={textToVideo ? 4000 : model?.ui.promptMaxLength}
-          showCount={!textToVideo && !!model?.ui.promptMaxLength}
+          maxLength={textToVideo ? VIDEO_PROMPT_MAX : model?.ui.promptMaxLength}
+          showCount={textToVideo || !!model?.ui.promptMaxLength}
           disabled={formLocked}
           onChange={(event) => onPromptChange(event.target.value)}
           placeholder="例如：雨夜里的未来城市，霓虹灯倒映在街道上"
@@ -168,14 +170,7 @@ export default function GenerationPanel({
       ) : (
         <label className="free-canvas-field">
           <span>生成数量</span>
-          <Radio.Group
-            buttonStyle="solid"
-            value={count}
-            disabled={formLocked}
-            onChange={(event) => onCountChange(Number(event.target.value))}
-          >
-            {[1, 2, 3, 4].filter(value => value <= (model?.ui.maxCount ?? 4)).map((value) => <Radio.Button key={value} value={value}>{value}</Radio.Button>)}
-          </Radio.Group>
+          <GenerationCountPicker value={count} max={model?.ui.maxCount ?? 4} disabled={formLocked} onChange={onCountChange} />
         </label>
       )}
 
@@ -202,7 +197,7 @@ export default function GenerationPanel({
         type="primary"
         block
         loading={submitting}
-        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > 4000)) || (!textToVideo && (modelsLoading || (!!model?.ui.promptMaxLength && prompt.trim().length > model.ui.promptMaxLength))) || !prompt.trim()}
+        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || (!!model?.ui.promptMaxLength && prompt.trim().length > model.ui.promptMaxLength))) || !prompt.trim()}
         onClick={onGenerate}
       >
         {active ? '正在生成' : textToVideo ? '生成视频到画布' : '生成到画布'}

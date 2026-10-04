@@ -1,3 +1,4 @@
+import { BAILIAN_IMAGEEDIT_PROMPT_MAX } from '../shared/prompt-limits.js'
 import { MAX_OUTPAINT_OUTPUT_PIXELS } from '../shared/outpaint.js'
 import type { VercelRequest, VercelResponse } from './http.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
@@ -330,13 +331,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dataBase64: z.string().min(1),
         maskMimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
         maskBase64: z.string().min(1),
-        prompt: z.string().max(800).optional(),
+        prompt: z.string().max(BAILIAN_IMAGEEDIT_PROMPT_MAX).optional(),
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
         sourceImageKey: z.string().min(1).max(512),
         maskImageKey: z.string().min(1).max(512),
-        prompt: z.string().max(800).optional(),
+        prompt: z.string().max(BAILIAN_IMAGEEDIT_PROMPT_MAX).optional(),
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const input = z.union([objectInput, inlineInput]).parse(body)
@@ -398,13 +399,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         maskBase64: z.string().min(1),
-        prompt: z.string().min(1).max(2000),
+        prompt: z.string().min(1).max(BAILIAN_IMAGEEDIT_PROMPT_MAX),
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
         sourceImageKey: z.string().min(1).max(512),
         maskImageKey: z.string().min(1).max(512),
-        prompt: z.string().min(1).max(2000),
+        prompt: z.string().min(1).max(BAILIAN_IMAGEEDIT_PROMPT_MAX),
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const input = z.union([objectInput, inlineInput]).parse(body)

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { PROMPT_MAX_LENGTH } from './prompt-limits'
 import {
   RELIGHT_DIRECTION_INSTRUCTIONS,
   RELIGHT_DIRECTIONS,
@@ -27,8 +28,8 @@ describe('重新打光提示词', () => {
         ),
       ),
     )
-    expect(longest + RELIGHT_NOTE_PREFIX.length + RELIGHT_NOTE_MAX).toBe(RELIGHT_MODEL_PROMPT_MAX)
-    expect(RELIGHT_NOTE_MAX).toBeGreaterThan(3000)
+    expect(longest + RELIGHT_NOTE_PREFIX.length + RELIGHT_NOTE_MAX).toBeLessThanOrEqual(RELIGHT_MODEL_PROMPT_MAX)
+    expect(RELIGHT_NOTE_MAX).toBe(PROMPT_MAX_LENGTH)
   })
 
   it('硬性约束在补充说明后面，且优先级更高', () => {
