@@ -1,8 +1,8 @@
 import { authEnabled, supabase } from '@/cloud/client'
 import { flushProject } from '@/editor/persistence/projectPersistence'
 import { useCloudStore } from '@/cloud/sync'
-import { useEffect, useState } from 'react'
-import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu } from 'antd'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu, Tooltip } from 'antd'
 import {
   AppstoreOutlined,
   MailOutlined,
@@ -29,7 +29,7 @@ import { CanvasProjectCrumb, CanvasProjectMenu } from '@/layouts/CanvasProjectHe
 import { isCanvasRoute } from '@/layouts/projectActions'
 import { usePreferencesStore } from '@/features/preferences/store'
 import PreferencesSyncAlert from '@/features/preferences/PreferencesSyncAlert'
-import { readSidebarState, writeSidebarState } from '@/features/preferences/storage'
+import { clampSidebarWidth, readSidebarState, readSidebarWidth, SIDEBAR_WIDTH_COMPACT, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, writeSidebarState, writeSidebarWidth } from '@/features/preferences/storage'
 import { isPreferencePage, resolveStartPage } from '@shared/preferences'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { rememberTool, seedRecentTool } from '@/features/dashboard/recentWork'
@@ -45,10 +45,199 @@ const NAV_ITEMS = [
   { key: '/assets', icon: <FolderOutlined />, label: '我的资产' },
 ]
 
+const SIDEBAR_FOLD_MIN = 112
+
+function SidebarResizeHandle({ width, onChange }: { width: number; onChange: (width: number, commit: boolean) => void }) {
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const handle = event.currentTarget
+    const sider = handle.closest('.app-sidebar')
+    if (sider instanceof HTMLElement) sider.style.setProperty('transition', 'none')
+    try { handle.setPointerCapture(event.pointerId) } catch { /* 测试环境可能没有指针捕获。 */ }
+    const startX = event.clientX
+    const startWidth = width
+    document.body.classList.add('sidebar-resizing')
+    let frame = 0
+    let latest = startWidth
+    const move = (ev: PointerEvent) => {
+      latest = clampSidebarWidth(startWidth + ev.clientX - startX)
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => onChange(latest, false))
+    }
+    const end = (ev: PointerEvent) => {
+      cancelAnimationFrame(frame)
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', end)
+      handle.removeEventListener('pointercancel', end)
+      try { handle.releasePointerCapture(ev.pointerId) } catch { /* 已经释放。 */ }
+      if (sider instanceof HTMLElement) sider.style.removeProperty('transition')
+      document.body.classList.remove('sidebar-resizing')
+      onChange(latest, true)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', end)
+    handle.addEventListener('pointercancel', end)
+  }
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+    const delta = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
+    if (!delta) return
+    event.preventDefault()
+    onChange(clampSidebarWidth(width + delta), true)
+  }
+  return <div
+    className="sidebar-resize-handle"
+    role="separator"
+    aria-orientation="vertical"
+    aria-label="调整侧边栏宽度"
+    aria-valuemin={SIDEBAR_WIDTH_MIN}
+    aria-valuemax={SIDEBAR_WIDTH_MAX}
+    aria-valuenow={width}
+    aria-valuetext={`${width} 像素`}
+    tabIndex={0}
+    onPointerDown={onPointerDown}
+    onDoubleClick={() => onChange(SIDEBAR_WIDTH_MAX, true)}
+    onKeyDown={onKeyDown}
+  />
+}
+
 /** 嵌套路径（如 /image-workstation/remove）也要能高亮到对应的顶层菜单项 */
 function getActiveTopKey(pathname: string) {
   const first = pathname.split('/').filter(Boolean)[0]
   return first ? `/${first}` : '/'
+}
+
+function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: (key: string) => void }) {
+  const navigate = useNavigate()
+  const account = useUserStore(state => state.account)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (window.matchMedia('(max-width: 720px)').matches) return false
+    const state = usePreferencesStore.getState()
+    return state.preferences.workbench.rememberSidebar ? readSidebarState(state.owner) ?? true : true
+  })
+  const [sidebarWidth, setSidebarWidth] = useState(() => readSidebarWidth(usePreferencesStore.getState().owner) ?? SIDEBAR_WIDTH_MAX)
+  const [canResizeSidebar, setCanResizeSidebar] = useState(() => window.matchMedia('(min-width: 768px)').matches)
+  const [sidebarResizing, setSidebarResizing] = useState(false)
+  const sidebarWidthRef = useRef(sidebarWidth)
+  const toggleSidebar = (open: boolean) => {
+    setSidebarOpen(open)
+    const state = usePreferencesStore.getState()
+    if (state.preferences.workbench.rememberSidebar && !window.matchMedia('(max-width: 720px)').matches) writeSidebarState(state.owner, open)
+  }
+  const changeSidebarWidth = (next: number, commit: boolean) => {
+    const clamped = clampSidebarWidth(next)
+    sidebarWidthRef.current = clamped
+    setSidebarWidth(clamped)
+    if (commit) writeSidebarWidth(usePreferencesStore.getState().owner, clamped)
+  }
+  useEffect(() => {
+    const onReset = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== usePreferencesStore.getState().owner) return
+      sidebarWidthRef.current = SIDEBAR_WIDTH_MAX
+      setSidebarWidth(SIDEBAR_WIDTH_MAX)
+    }
+    window.addEventListener('pixel-sidebar-reset', onReset)
+    return () => window.removeEventListener('pixel-sidebar-reset', onReset)
+  }, [])
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 768px)')
+    const narrow = window.matchMedia('(max-width: 720px)')
+    const onDesktop = (event: MediaQueryListEvent) => setCanResizeSidebar(event.matches)
+    const onNarrow = (event: MediaQueryListEvent) => { if (event.matches) setSidebarOpen(false) }
+    desktop.addEventListener('change', onDesktop)
+    narrow.addEventListener('change', onNarrow)
+    return () => {
+      desktop.removeEventListener('change', onDesktop)
+      narrow.removeEventListener('change', onNarrow)
+    }
+  }, [])
+  useEffect(() => () => { document.body.classList.remove('sidebar-resizing') }, [])
+  const iconOnly = !sidebarOpen || (canResizeSidebar && sidebarWidth < SIDEBAR_WIDTH_COMPACT)
+  const showFold = sidebarOpen && (!canResizeSidebar || sidebarWidth >= SIDEBAR_FOLD_MIN)
+  const accountName = account?.displayName ?? '个人账号'
+  const brandButton = (
+    <button className="app-brand" type="button" onClick={() => navigate('/')} aria-label="返回工作台首页">
+      <span className="app-brand-mark">P</span>
+      {iconOnly ? null : <span className="app-brand-name">Pixel AIGC</span>}
+    </button>
+  )
+  return (
+    <Sider
+      width={canResizeSidebar && sidebarOpen ? sidebarWidth : SIDEBAR_WIDTH_MAX}
+      collapsedWidth={SIDEBAR_WIDTH_MIN}
+      collapsible
+      collapsed={!sidebarOpen}
+      trigger={null}
+      style={sidebarResizing ? { transition: 'none' } : undefined}
+      className={`app-sidebar${sidebarResizing ? ' is-resizing' : ''}${sidebarOpen && iconOnly ? ' is-compact' : ''}`}
+    >
+      <div className={`app-sidebar-header${sidebarOpen ? '' : ' is-collapsed'}`}>
+        {sidebarOpen ? (
+          <>
+            {iconOnly ? <Tooltip title="返回工作台首页" placement="right">{brandButton}</Tooltip> : brandButton}
+            {showFold ? (
+              <button className="sidebar-icon-button" type="button" onClick={() => toggleSidebar(false)} aria-label="收起侧边栏">
+                <MenuFoldOutlined />
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <button className="collapsed-brand-toggle" type="button" onClick={() => toggleSidebar(true)} aria-label="展开侧边栏">
+            <span className="app-brand-mark collapsed-brand-mark">P</span>
+            <MenuUnfoldOutlined className="collapsed-brand-icon" />
+          </button>
+        )}
+      </div>
+      <Menu
+        mode="inline"
+        inlineCollapsed={iconOnly}
+        selectedKeys={[topKey]}
+        items={NAV_ITEMS}
+        onClick={({ key }) => navigate(key)}
+        className="app-sidebar-menu"
+      />
+      <div className="app-sidebar-account">
+        <Dropdown
+          trigger={['click']}
+          placement="topLeft"
+          align={sidebarOpen && !iconOnly ? undefined : { offset: [sidebarOpen ? 12 : 52, 0] }}
+          overlayClassName="account-dropdown"
+          menu={{
+            onClick: ({ key }) => onAccountMenu(key),
+            items: [
+              { key: 'personalization', icon: <UserOutlined />, label: '个性化' },
+              { key: 'settings', icon: <SettingOutlined />, label: '设置' },
+              { key: 'help', icon: <QuestionCircleOutlined />, label: '帮助与支持' },
+              { type: 'divider' },
+              { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
+            ],
+          }}
+        >
+          <button className="account-trigger" type="button" aria-label={iconOnly ? accountName : undefined} title={iconOnly ? accountName : undefined}>
+            <Avatar size={34} src={account?.avatarUrl ?? undefined} icon={account ? undefined : <UserOutlined />}>{account && !account.avatarUrl ? account.displayName.slice(0, 1) : null}</Avatar>
+            {iconOnly ? null : (
+              <span className="account-trigger-copy">
+                <span className="account-name">{accountName}</span>
+                <span className="account-meta">{account?.email ?? '本地模式'}</span>
+              </span>
+            )}
+          </button>
+        </Dropdown>
+      </div>
+      {canResizeSidebar && sidebarOpen ? (
+        <SidebarResizeHandle
+          width={sidebarWidth}
+          onChange={(next, commit) => {
+            setSidebarResizing(!commit)
+            if (!commit) document.body.classList.add('sidebar-resizing')
+            else document.body.classList.remove('sidebar-resizing')
+            changeSidebarWidth(next, commit)
+          }}
+        />
+      ) : null}
+    </Sider>
+  )
 }
 
 export default function MainLayout() {
@@ -63,13 +252,7 @@ export default function MainLayout() {
 
 function MainLayoutContent() {
   const location = useLocation()
-  const navigate = useNavigate()
   const { message } = App.useApp()
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (window.matchMedia('(max-width: 720px)').matches) return false
-    const state = usePreferencesStore.getState()
-    return state.preferences.workbench.rememberSidebar ? readSidebarState(state.owner) ?? true : true
-  })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
   const [creditsOpen, setCreditsOpen] = useState(false)
@@ -77,6 +260,7 @@ function MainLayoutContent() {
   const account = useUserStore((s) => s.account)
   const currentUserId=useUserStore(state=>state.userId)
   const credits = useUserStore((s) => s.credits)
+  const sidebarOwner = usePreferencesStore(state => state.owner)
   useEffect(()=>{
     const open=()=>setCreditsOpen(true)
     window.addEventListener(RECHARGE_EVENT,open)
@@ -99,12 +283,6 @@ function MainLayoutContent() {
     void check()
     return()=>{active=false;clearTimeout(timer)}
   },[location.search,account?.userId,message])
-  const toggleSidebar = (open: boolean) => {
-    setSidebarOpen(open)
-    const state = usePreferencesStore.getState()
-    if (state.preferences.workbench.rememberSidebar && !window.matchMedia('(max-width: 720px)').matches) writeSidebarState(state.owner, open)
-  }
-
   const segments = location.pathname.split('/').filter(Boolean)
   const topKey = getActiveTopKey(location.pathname)
   const topTitle = NAV_META[topKey] ?? NAV_META['/']
@@ -125,10 +303,7 @@ function MainLayoutContent() {
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 720px)')
-    const onChange = (event: MediaQueryListEvent) => {
-      setNarrowScreen(event.matches)
-      if (event.matches) setSidebarOpen(false)
-    }
+    const onChange = (event: MediaQueryListEvent) => setNarrowScreen(event.matches)
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)
   }, [])
@@ -156,69 +331,7 @@ function MainLayoutContent() {
 
   return (
     <Layout className="app-shell" style={{ height: '100vh' }}>
-      <Sider
-        width={260}
-        collapsedWidth={68}
-        collapsible
-        collapsed={!sidebarOpen}
-        trigger={null}
-        className="app-sidebar"
-      >
-        <div className={`app-sidebar-header${sidebarOpen ? '' : ' is-collapsed'}`}>
-          {sidebarOpen ? (
-            <>
-              <button className="app-brand" type="button" onClick={() => navigate('/')} aria-label="返回工作台首页">
-                <span className="app-brand-mark">P</span>
-                <span>Pixel AIGC</span>
-              </button>
-              <button className="sidebar-icon-button" type="button" onClick={() => toggleSidebar(false)} aria-label="收起侧边栏">
-                <MenuFoldOutlined />
-              </button>
-            </>
-          ) : (
-            <button className="collapsed-brand-toggle" type="button" onClick={() => toggleSidebar(true)} aria-label="展开侧边栏">
-              <span className="app-brand-mark collapsed-brand-mark">P</span>
-              <MenuUnfoldOutlined className="collapsed-brand-icon" />
-            </button>
-          )}
-        </div>
-        <Menu
-          mode="inline"
-          inlineCollapsed={!sidebarOpen}
-          selectedKeys={[topKey]}
-          items={NAV_ITEMS}
-          onClick={({ key }) => navigate(key)}
-          className="app-sidebar-menu"
-        />
-        <div className="app-sidebar-account">
-          <Dropdown
-            trigger={['click']}
-            placement="topLeft"
-            align={sidebarOpen ? undefined : { offset: [52, 0] }}
-            overlayClassName="account-dropdown"
-            menu={{
-              onClick: handleAccountMenu,
-              items: [
-                { key: 'personalization', icon: <UserOutlined />, label: '个性化' },
-                { key: 'settings', icon: <SettingOutlined />, label: '设置' },
-                { key: 'help', icon: <QuestionCircleOutlined />, label: '帮助与支持' },
-                { type: 'divider' },
-                { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
-              ],
-            }}
-          >
-            <button className="account-trigger" type="button">
-              <Avatar size={34} src={account?.avatarUrl ?? undefined} icon={account ? undefined : <UserOutlined />}>{account && !account.avatarUrl ? account.displayName.slice(0,1) : null}</Avatar>
-              {sidebarOpen ? (
-                <span className="account-trigger-copy">
-                  <span className="account-name">{account?.displayName ?? '个人账号'}</span>
-                  <span className="account-meta">{account?.email ?? '本地模式'}</span>
-                </span>
-              ) : null}
-            </button>
-          </Dropdown>
-        </div>
-      </Sider>
+      <AppSidebar key={sidebarOwner} topKey={topKey} onAccountMenu={key => handleAccountMenu({ key })} />
       <Layout className="app-shell-main">
         <Header className="app-header">
           <div className="app-header-leading">

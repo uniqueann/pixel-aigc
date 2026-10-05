@@ -15,6 +15,7 @@ import type { PreviewGalleryProps } from '@/components/PreviewGallery'
 import type { WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
 import type { CapabilityFlags } from '@/services/api/capabilities'
 import { rememberTool } from './recentWork'
+import { worksStripFades } from './worksStrip'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), history: vi.fn(), retry: vi.fn(), createUrl: vi.fn(), revokeUrl: vi.fn(),
   capabilities: {} as CapabilityFlags, error: null as Error | null,
@@ -48,6 +49,15 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals() })
+
+describe('最近作品横向渐隐', () => {
+  it('贴边时只在还能滚向的一侧渐隐', () => {
+    expect(worksStripFades({ scrollLeft: 0, clientWidth: 400, scrollWidth: 400 })).toEqual({ left: false, right: false })
+    expect(worksStripFades({ scrollLeft: 0, clientWidth: 400, scrollWidth: 900 })).toEqual({ left: false, right: true })
+    expect(worksStripFades({ scrollLeft: 200, clientWidth: 400, scrollWidth: 900 })).toEqual({ left: true, right: true })
+    expect(worksStripFades({ scrollLeft: 500, clientWidth: 400, scrollWidth: 900 })).toEqual({ left: true, right: false })
+  })
+})
 
 describe('首页工作台', () => {
   it('空首页隐藏继续工作，十九项入口区分未知、关闭及可用状态', async () => {
