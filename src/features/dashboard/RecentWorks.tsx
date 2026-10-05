@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { PictureOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import { Button, Skeleton } from 'antd'
 import { Link } from 'react-router-dom'
@@ -10,6 +10,13 @@ import { isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner
 import { dashboardTime, QUICK_START_GROUPS } from './catalog'
 
 const entries = QUICK_START_GROUPS.flatMap(group => group.entries)
+
+/** 横向溢出时左右渐隐；贴边或一行放得下时对应一侧消失。 */
+export function worksStripFades(metrics: { scrollLeft: number; clientWidth: number; scrollWidth: number }) {
+  const overflow = metrics.scrollWidth - metrics.clientWidth
+  if (overflow <= 2) return { left: false, right: false }
+  return { left: metrics.scrollLeft > 2, right: overflow - metrics.scrollLeft > 2 }
+}
 function workLabel(record: WorkstationHistoryListItem) {
   const slug = record.toolSlug.replace(/_/g, '-')
   return entries.find(entry => entry.href.endsWith(`/${slug}`))?.label ?? (record.video ? '视频作品' : '图片作品')
@@ -58,11 +65,32 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
     meta: { tool: workLabel(item), resolution: `${item.width}×${item.height}`, createdAt: item.createdAt },
   })), [items, ownerId, urls])
   const { openAt, galleryProps } = usePreviewGallery(previews)
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [fades, setFades] = useState({ left: false, right: false })
+  useLayoutEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    const update = () => {
+      const next = worksStripFades({ scrollLeft: el.scrollLeft, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth })
+      setFades(prev => prev.left === next.left && prev.right === next.right ? prev : next)
+    }
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : undefined
+    observer?.observe(el)
+    window.addEventListener('resize', update)
+    return () => {
+      el.removeEventListener('scroll', update)
+      observer?.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [items.length, loading])
   return <section className="dashboard-section" aria-labelledby="dashboard-works-title">
     <div className="dashboard-section-heading"><h2 id="dashboard-works-title">最近作品</h2><Link to="/assets">查看全部</Link></div>
     <p className="dashboard-section-note">仅显示此浏览器已保存的最近作品</p>
     {error ? <div className="dashboard-inline-error" role="alert">{error}<Button size="small" onClick={() => setAttempt(value => value + 1)}>重试读取</Button></div> : null}
-    {loading ? <Skeleton active title={false} paragraph={{ rows: 2 }} /> : items.length ? <div className="dashboard-works-strip" aria-label="最近作品列表">
+    {loading ? <Skeleton active title={false} paragraph={{ rows: 2 }} /> : items.length ? <div className={`dashboard-works-scroller${fades.left ? ' has-left-fade' : ''}${fades.right ? ' has-right-fade' : ''}`}>
+      <div className="dashboard-works-strip" ref={stripRef} aria-label="最近作品列表">
       {items.map(item => <button className="dashboard-work-tile" type="button" key={item.id} onClick={() => openAt(item.id)}
         aria-label={`${item.video ? '播放' : '预览'}${workLabel(item)} ${dashboardTime(item.createdAt)}`}>
         <span className="dashboard-work-cover">
@@ -70,6 +98,7 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
           {item.video ? <span className="dashboard-video-duration">{item.video.durationSeconds} 秒</span> : null}
         </span><strong>{workLabel(item)}</strong><time dateTime={item.createdAt}>{dashboardTime(item.createdAt)}</time>
       </button>)}
+      </div>
     </div> : !error ? <div className="dashboard-empty dashboard-works-empty"><PictureOutlined aria-hidden /><span>此浏览器暂无最近作品</span></div> : null}
     <PreviewGallery {...galleryProps} />
   </section>

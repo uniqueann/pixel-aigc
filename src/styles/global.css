@@ -60,6 +60,11 @@ a {
 .app-sidebar {
   background: #171719 !important;
   border-right: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.app-sidebar.is-resizing {
+  transition: none;
 }
 
 .app-sidebar .ant-layout-sider-children {
@@ -73,6 +78,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   min-height: 44px;
   margin-bottom: 6px;
 }
@@ -134,9 +140,17 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
   padding: 6px 8px;
   font: inherit;
   font-weight: 600;
+}
+
+.app-brand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-brand-mark {
@@ -154,6 +168,7 @@ a {
   display: grid;
   width: 36px;
   height: 36px;
+  flex-shrink: 0;
   place-items: center;
   border-radius: 9px;
   color: var(--color-text-secondary);
@@ -178,7 +193,14 @@ a {
   margin-inline: 0;
   margin-block: 2px;
   width: 100%;
+  min-width: 0;
   border-radius: 9px;
+}
+
+.app-sidebar-menu .ant-menu-title-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-sidebar-menu.ant-menu-inline-collapsed {
@@ -240,10 +262,73 @@ a {
   justify-content: center;
 }
 
-.ant-layout-sider-collapsed .account-trigger {
+.ant-layout-sider-collapsed .account-trigger,
+.app-sidebar.is-compact .account-trigger {
   width: 48px;
   justify-content: center;
   padding-inline: 0;
+}
+
+.app-sidebar.is-compact .app-sidebar-header {
+  justify-content: center;
+}
+
+.app-sidebar.is-compact .app-brand {
+  flex: 0 0 auto;
+}
+
+.app-sidebar.is-compact .app-sidebar-account {
+  display: flex;
+  justify-content: center;
+}
+
+.app-sidebar.is-compact .app-sidebar-menu.ant-menu-inline-collapsed .ant-menu-item {
+  margin-inline: auto;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+  width: 8px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:focus-visible::after,
+.app-sidebar.is-resizing .sidebar-resize-handle::after {
+  background: var(--color-accent);
+}
+
+.sidebar-resize-handle:focus-visible {
+  outline: none;
+}
+
+body.sidebar-resizing,
+body.sidebar-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+@media (max-width: 767px) {
+  .sidebar-resize-handle { display: none; }
 }
 
 .account-trigger-copy {
