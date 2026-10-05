@@ -72,7 +72,8 @@ export interface BailianOutpaintPlan {
 const MIN_EDGE = 512
 const MAX_EDGE = 4096
 const MIN_SCALE = 1
-const MAX_SCALE = 2
+/** 单边一轮最多扩到的倍数。2 表示该边最多再增加一倍原图边长。 */
+export const MAX_SCALE = 2
 const SURPLUS_RATIO = 0.02
 export const MAX_EXPAND_PASSES = 2
 

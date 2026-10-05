@@ -590,6 +590,113 @@ body.sidebar-resizing * {
   color: var(--color-danger);
 }
 
+.credits-ledger-drawer.ant-drawer .ant-drawer-content-wrapper,
+.credits-ledger-drawer.ant-drawer-content-wrapper {
+  max-width: 100vw;
+}
+
+.credits-ledger-drawer .ant-drawer-body {
+  overflow-x: hidden;
+}
+
+.billing-explanation {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.billing-explanation-toggle {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.billing-explanation-toggle:hover {
+  color: var(--color-text-primary);
+}
+
+.billing-explanation-toggle:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.billing-explanation-summary {
+  flex: 1 1 12em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.billing-explanation-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-accent);
+}
+
+.billing-explanation-chevron {
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-0.1em) rotate(45deg);
+}
+
+.billing-explanation-chevron.is-open {
+  transform: translateY(0.1em) rotate(-135deg);
+}
+
+.billing-explanation-panel {
+  padding: 0 12px 12px;
+  color: var(--color-text-secondary);
+}
+
+.billing-explanation-group + .billing-explanation-group {
+  margin-top: 12px;
+}
+
+.billing-explanation-group h3 {
+  margin: 0 0 4px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.billing-explanation-group ul {
+  margin: 0;
+  padding-left: 1.15em;
+}
+
+.billing-explanation-group li {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 390px) {
+  .billing-explanation-toggle {
+    padding: 10px;
+  }
+
+  .billing-explanation-action {
+    white-space: normal;
+  }
+}
+
 .settings-modal-wrap {
   overflow-x: hidden;
 }

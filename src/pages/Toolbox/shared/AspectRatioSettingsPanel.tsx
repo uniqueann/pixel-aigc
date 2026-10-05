@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ColorPicker, Radio } from 'antd'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import { FIT_STRATEGIES } from '../aspect-ratio/strategies'
 import type { AspectRatioSettings, FitStrategy } from '../aspect-ratio/types'
 
 const focuses = [
@@ -15,12 +16,7 @@ const focuses = [
   { fx: 1, fy: 1, label: '右下' },
 ]
 
-const strategies: { label: string; value: FitStrategy }[] = [
-  { label: '留白填充', value: 'letterbox' },
-  { label: '智能裁剪', value: 'crop' },
-  { label: '智能扩展', value: 'outpaint' },
-]
-const allStrategies: FitStrategy[] = ['letterbox', 'crop', 'outpaint']
+const allStrategies: FitStrategy[] = FIT_STRATEGIES.map(item => item.value)
 interface Props {
   settings: AspectRatioSettings
   disabled: boolean
@@ -52,7 +48,7 @@ export default function AspectRatioSettingsPanel({ settings, disabled, onChange,
         value={settings.strategy}
         disabled={disabled}
         onChange={event => onChange({ strategy: event.target.value })}
-        options={strategies.filter(option => allowedStrategies.includes(option.value))}
+        options={FIT_STRATEGIES.filter(option => allowedStrategies.includes(option.value))}
       />
       {settings.strategy === 'letterbox' && <p className="toolbox-hint">留白会把原图完整放进目标尺寸，空白处用所选颜色填上。</p>}
       {settings.strategy === 'outpaint' && (

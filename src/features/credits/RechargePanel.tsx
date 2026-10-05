@@ -3,6 +3,7 @@ import { Alert, Button, Input, Modal, Select, Space } from 'antd'
 import { useUserStore } from '@/store/useUserStore'
 import { BILLING_REFRESH_EVENT, checkoutCredits, getBillingCatalog, getCreditOrder, listCreditOrders, refreshBillingBalance, requestCashRefund } from '@/services/api/billing'
 import { formatCreditPrice, type BillingCatalog, type CreditOrder, type PaymentProvider } from '@shared/billing'
+import BillingExplanation from './BillingExplanation'
 
 const STATUS_LABELS = {pending:'等待支付确认',paid:'已到账',failed:'支付失败',refunded:'已退款',review:'待人工核对'}
 export default function RechargePanel({open,onPaid}:{open:boolean;onPaid:()=>void}) {
@@ -71,7 +72,7 @@ export default function RechargePanel({open,onPaid}:{open:boolean;onPaid:()=>voi
         <span><strong>{pack.name} · {pack.credits} 积分</strong><br/>{formatCreditPrice(pack.amount,catalog.currency)}</span>
         <Button type="primary" disabled={!pack.providers.includes(provider) || catalog.paymentBlocked || Boolean(busy)} loading={busy===pack.id} onClick={()=>void purchase(pack)}>购买</Button>
       </div>)}
-      <small>图片 1K／2K／4K：2／3／5 分；消除、重绘：5 分；扩图：5／10 分。商品抠图本月还可免费 {catalog.freeBgRemoveRemaining} 张，超出 1 分／张。辅助检测和本地工具免费。</small>
+      <BillingExplanation freeBgRemoveRemaining={catalog.freeBgRemoveRemaining} freeBgRemoveMonth={catalog.freeBgRemoveMonth} />
       <small>现金退款需人工审核，仅处理未使用部分，按原支付通道退款；赠送积分不折现。生成失败自动退积分。</small>
     </>}
     {orders.length ? <><strong>充值订单</strong>{orders.map(order=><div key={order.id} style={{padding:'8px 0',borderBottom:'1px solid var(--color-border)'}}>

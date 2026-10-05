@@ -89,10 +89,11 @@ export default function CreditsLedgerDrawer({
     <Drawer
       title={`积分明细 · 余额 ${page?.balance ?? credits}`}
       placement="right"
-      width={420}
+      width="min(420px, 100vw)"
       open={open}
       onClose={onClose}
       className="credits-ledger-drawer"
+      rootClassName="credits-ledger-drawer"
     >
       {open ? <RechargePanel key={owner} open={open} onPaid={()=>void load()} /> : null}
       {error ? <p className="credits-ledger-error">{error}</p> : null}
