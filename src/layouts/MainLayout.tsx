@@ -108,22 +108,31 @@ function getActiveTopKey(pathname: string) {
   return first ? `/${first}` : '/'
 }
 
+function readPreferredSidebarOpen() {
+  const state = usePreferencesStore.getState()
+  return state.preferences.workbench.rememberSidebar ? readSidebarState(state.owner) ?? true : true
+}
+
 function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: (key: string) => void }) {
   const navigate = useNavigate()
   const account = useUserStore(state => state.account)
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (window.matchMedia('(max-width: 720px)').matches) return false
-    const state = usePreferencesStore.getState()
-    return state.preferences.workbench.rememberSidebar ? readSidebarState(state.owner) ?? true : true
-  })
+  // 宽屏下的展开偏好。窄屏自动收起不能改它，也不能把收起写进 localStorage。
+  const [preferredOpen, setPreferredOpen] = useState(readPreferredSidebarOpen)
+  const [narrowLocked, setNarrowLocked] = useState(() => window.matchMedia('(max-width: 720px)').matches)
+  const [narrowManualOpen, setNarrowManualOpen] = useState(false)
+  const sidebarOpen = narrowLocked ? narrowManualOpen : preferredOpen
   const [sidebarWidth, setSidebarWidth] = useState(() => readSidebarWidth(usePreferencesStore.getState().owner) ?? SIDEBAR_WIDTH_MAX)
   const [canResizeSidebar, setCanResizeSidebar] = useState(() => window.matchMedia('(min-width: 768px)').matches)
   const [sidebarResizing, setSidebarResizing] = useState(false)
   const sidebarWidthRef = useRef(sidebarWidth)
   const toggleSidebar = (open: boolean) => {
-    setSidebarOpen(open)
+    if (narrowLocked || window.matchMedia('(max-width: 720px)').matches) {
+      setNarrowManualOpen(open)
+      return
+    }
+    setPreferredOpen(open)
     const state = usePreferencesStore.getState()
-    if (state.preferences.workbench.rememberSidebar && !window.matchMedia('(max-width: 720px)').matches) writeSidebarState(state.owner, open)
+    if (state.preferences.workbench.rememberSidebar) writeSidebarState(state.owner, open)
   }
   const changeSidebarWidth = (next: number, commit: boolean) => {
     const clamped = clampSidebarWidth(next)
@@ -143,8 +152,20 @@ function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: 
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 768px)')
     const narrow = window.matchMedia('(max-width: 720px)')
-    const onDesktop = (event: MediaQueryListEvent) => setCanResizeSidebar(event.matches)
-    const onNarrow = (event: MediaQueryListEvent) => { if (event.matches) setSidebarOpen(false) }
+    const onDesktop = (event: MediaQueryListEvent) => {
+      setCanResizeSidebar(event.matches)
+      if (!event.matches) return
+      setNarrowLocked(false)
+      setNarrowManualOpen(false)
+      const saved = readSidebarWidth(usePreferencesStore.getState().owner) ?? SIDEBAR_WIDTH_MAX
+      sidebarWidthRef.current = saved
+      setSidebarWidth(saved)
+    }
+    const onNarrow = (event: MediaQueryListEvent) => {
+      if (!event.matches) return
+      setNarrowLocked(true)
+      setNarrowManualOpen(false)
+    }
     desktop.addEventListener('change', onDesktop)
     narrow.addEventListener('change', onNarrow)
     return () => {

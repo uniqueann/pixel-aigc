@@ -15,7 +15,6 @@ import type { PreviewGalleryProps } from '@/components/PreviewGallery'
 import type { WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
 import type { CapabilityFlags } from '@/services/api/capabilities'
 import { rememberTool } from './recentWork'
-import { worksStripFades } from './worksStrip'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), history: vi.fn(), retry: vi.fn(), createUrl: vi.fn(), revokeUrl: vi.fn(),
   capabilities: {} as CapabilityFlags, error: null as Error | null,
@@ -51,11 +50,44 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals() })
 
 describe('最近作品横向渐隐', () => {
-  it('贴边时只在还能滚向的一侧渐隐', () => {
-    expect(worksStripFades({ scrollLeft: 0, clientWidth: 400, scrollWidth: 400 })).toEqual({ left: false, right: false })
-    expect(worksStripFades({ scrollLeft: 0, clientWidth: 400, scrollWidth: 900 })).toEqual({ left: false, right: true })
-    expect(worksStripFades({ scrollLeft: 200, clientWidth: 400, scrollWidth: 900 })).toEqual({ left: true, right: true })
-    expect(worksStripFades({ scrollLeft: 500, clientWidth: 400, scrollWidth: 900 })).toEqual({ left: true, right: false })
+  function metricsOf(el: HTMLElement) {
+    const box = { scrollLeft: 0, clientWidth: 400, scrollWidth: 900 }
+    Object.defineProperty(el, 'scrollLeft', { configurable: true, get: () => box.scrollLeft, set: (value: number) => { box.scrollLeft = value } })
+    Object.defineProperty(el, 'clientWidth', { configurable: true, get: () => box.clientWidth })
+    Object.defineProperty(el, 'scrollWidth', { configurable: true, get: () => box.scrollWidth })
+    return box
+  }
+
+  it('scrollLeft 为 0 时没有左侧渐隐，滚走后出现，贴右端时右侧消失', async () => {
+    mocks.history.mockResolvedValue([image('左'), image('右')])
+    mount()
+    const strip = await screen.findByLabelText('最近作品列表')
+    const box = metricsOf(strip)
+    const scroller = strip.parentElement!
+    fireEvent.scroll(strip)
+    expect(scroller.className).not.toContain('has-left-fade')
+    expect(scroller.className).toContain('has-right-fade')
+
+    box.scrollLeft = 80
+    fireEvent.scroll(strip)
+    expect(scroller.className).toContain('has-left-fade')
+    expect(scroller.className).toContain('has-right-fade')
+
+    box.scrollLeft = 0
+    fireEvent(strip, new Event('scrollend'))
+    expect(scroller.className).not.toContain('has-left-fade')
+    expect(scroller.className).toContain('has-right-fade')
+
+    box.scrollLeft = 500
+    fireEvent.scroll(strip)
+    expect(scroller.className).toContain('has-left-fade')
+    expect(scroller.className).not.toContain('has-right-fade')
+
+    box.scrollLeft = 0
+    fireEvent.load(strip)
+    window.dispatchEvent(new Event('resize'))
+    expect(scroller.className).not.toContain('has-left-fade')
+    expect(scroller.className).toContain('has-right-fade')
   })
 })
 
