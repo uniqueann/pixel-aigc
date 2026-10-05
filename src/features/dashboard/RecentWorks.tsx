@@ -70,7 +70,7 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
       const next = worksStripFades({ scrollLeft: el.scrollLeft, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth })
       setFades(prev => prev.left === next.left && prev.right === next.right ? prev : next)
     }
-    // 滚动吸附和图片加载会在事件之后才把 scrollLeft 落回 0，下一帧再读一次。
+    // 吸附可能在事件之后才停稳，下一帧再读一次。起点的 scrollLeft 不一定是 0。
     const update = () => {
       apply()
       cancelAnimationFrame(frame)
