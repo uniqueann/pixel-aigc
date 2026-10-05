@@ -61,7 +61,8 @@ export async function createCreditCheckout(user: BillingUser, input: unknown) {
   await validateProduct(parsed.provider,id,pack[currency],currency)
   const order = await withIdentity(user.id,user.email,async sql => {
     await ensureCreditAccount(sql,user.id)
-    const [account] = await sql`select balance,payment_blocked from aigc.credit_accounts for update`
+    // aigc_api 不能对 credit_accounts 执行 FOR UPDATE。行锁在定义者函数内取得，并保持到本事务结束。
+    const [account] = await sql`select aigc.lock_credit_account_for_checkout(${user.id}) as payment_blocked`
     if (account.payment_blocked) throw new HttpError(409,'积分账户需要人工核对，请联系支持','CREDIT_ACCOUNT_REVIEW')
     const [prior] = await sql`select * from aigc.credit_orders where id=${parsed.orderId}`
     if (prior) {
