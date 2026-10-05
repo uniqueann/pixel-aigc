@@ -550,7 +550,7 @@ a {
 .settings-layout:not(.is-narrow) {
   flex: 1 1 auto;
   align-items: stretch;
-  min-height: 430px;
+  min-height: 0;
   overflow: hidden;
   grid-template-rows: minmax(0, 1fr);
 }
@@ -612,6 +612,8 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 12px 16px;
+  /* 换行后的输入框会贴住下一行；用和单行相同的上下内边距把行距拉开。 */
+  padding-block: 14px;
 }
 
 .settings-layout.is-narrow .setting-row:has(.ant-select),
@@ -713,11 +715,37 @@ a {
 }
 
 .settings-modal .ant-modal-body { max-height: calc(100dvh - 160px); overflow: hidden; overscroll-behavior: contain; }
+
+/* 桌面端固定弹窗高度，避免切换标签时上下跳动。窄屏不套用，高度仍随内容收缩。 */
+@media (min-width: 721px) {
+  .settings-modal .ant-modal-content {
+    display: flex;
+    flex-direction: column;
+    height: min(640px, calc(100dvh - 48px));
+  }
+
+  .settings-modal .ant-modal-header {
+    flex-shrink: 0;
+  }
+
+  .settings-modal .ant-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+}
+
 .preferences-group-title { margin: 24px 0 12px; font-size: 14px; }
 .preferences-sync-status { margin: -12px 0 16px; color: var(--color-text-secondary); font-size: 12px; }
 .personalization-panel .setting-row { padding-block: 14px; }
 .preference-control { flex: 0 0 180px; min-width: 0; max-width: 100%; }
 .preference-control > .ant-select { width: 100%; max-width: 100%; }
+/* 开关比 180px 控件列窄，默认贴在列的左边，右缘会比下拉框短一截。 */
+.preference-control:has(> .ant-switch) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
 .preferences-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .preferences-counts label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
 .preferences-counts .ant-select { width: 100%; }
@@ -754,6 +782,7 @@ a {
     align-items: center;
     justify-content: space-between;
     gap: 12px 16px;
+    padding-block: 14px;
   }
   .setting-row:has(.ant-select),
   .setting-row:has(.ant-space-compact),

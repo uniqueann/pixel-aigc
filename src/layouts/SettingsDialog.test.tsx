@@ -105,6 +105,20 @@ describe('设置弹窗窄屏布局', () => {
     expect(content).toMatch(/overflow-y:\s*auto/)
     expect(content).toMatch(/min-height:\s*0/)
   })
+
+  it('桌面端弹窗高度固定，开关贴右，窄屏行距统一且不锁高度', () => {
+    const start = SETTINGS_CSS.indexOf('@media (min-width: 721px)')
+    const desktop = SETTINGS_CSS.slice(start, SETTINGS_CSS.indexOf('@media', start + 10))
+    expect(desktop).toMatch(/height:\s*min\(640px,\s*calc\(100dvh - 48px\)\)/)
+    expect(desktop).toMatch(/max-height:\s*none/)
+    const switchRule = SETTINGS_CSS.match(/\.preference-control:has\(> \.ant-switch\)\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(switchRule).toMatch(/justify-content:\s*flex-end/)
+    const narrowRow = SETTINGS_CSS.match(/\.settings-layout\.is-narrow \.setting-row\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(narrowRow).toMatch(/padding-block:\s*14px/)
+    const mobile = SETTINGS_CSS.slice(SETTINGS_CSS.lastIndexOf('@media (max-width: 720px)'))
+    expect(mobile).not.toMatch(/min\(640px/)
+    expect(mobile).toMatch(/padding:\s*var\(--page-tab-gap\) 22px 22px/)
+  })
 })
 
 describe('设置弹窗当前标签可见', () => {
