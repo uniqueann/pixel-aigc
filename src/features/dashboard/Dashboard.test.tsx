@@ -89,6 +89,52 @@ describe('最近作品横向渐隐', () => {
     expect(scroller.className).not.toContain('has-left-fade')
     expect(scroller.className).toContain('has-right-fade')
   })
+
+  it('刷新后 scrollLeft 停在 3 时没有左渐隐，离开起点才出现', async () => {
+    const box = { scrollLeft: 3, clientWidth: 723, scrollWidth: 1368 }
+    const keys = ['scrollLeft', 'clientWidth', 'scrollWidth'] as const
+    const originals = keys.map(key => ({ key, descriptor: Object.getOwnPropertyDescriptor(Element.prototype, key)! }))
+    for (const key of keys) {
+      const original = originals.find(item => item.key === key)!.descriptor
+      Object.defineProperty(Element.prototype, key, {
+        configurable: true,
+        enumerable: true,
+        get(this: Element) {
+          return this.classList?.contains('dashboard-works-strip') ? box[key] : original.get!.call(this)
+        },
+        set(this: Element, value: number) {
+          if (this.classList?.contains('dashboard-works-strip') && key === 'scrollLeft') box.scrollLeft = value
+          else original.set?.call(this, value)
+        },
+      })
+    }
+    try {
+      mocks.history.mockResolvedValue(Array.from({ length: 8 }, (_, index) => image(`作品${index}`)))
+      mount()
+      const strip = await screen.findByLabelText('最近作品列表')
+      const scroller = strip.parentElement!
+      expect(strip.scrollLeft).toBe(3)
+      expect(scroller.className).not.toContain('has-left-fade')
+      expect(scroller.className).toContain('has-right-fade')
+
+      box.scrollLeft = 80
+      fireEvent.scroll(strip)
+      expect(scroller.className).toContain('has-left-fade')
+      expect(scroller.className).toContain('has-right-fade')
+
+      box.scrollLeft = 3
+      fireEvent(strip, new Event('scrollend'))
+      expect(scroller.className).not.toContain('has-left-fade')
+      expect(scroller.className).toContain('has-right-fade')
+
+      box.scrollLeft = 1368 - 723
+      fireEvent.scroll(strip)
+      expect(scroller.className).toContain('has-left-fade')
+      expect(scroller.className).not.toContain('has-right-fade')
+    } finally {
+      for (const item of originals) Object.defineProperty(Element.prototype, item.key, item.descriptor)
+    }
+  })
 })
 
 describe('首页工作台', () => {
