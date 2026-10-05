@@ -33,6 +33,7 @@ beforeAll(async()=>{
   await user(()=>q('select aigc.ensure_credit_account($1)',[legacy]),legacy)
   await db.exec(readFileSync('supabase/migrations/20261004152128_aigc_credit_payments.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20261004222317_aigc_free_sync_credit_ledger.sql','utf8'))
+  await db.exec(readFileSync('supabase/migrations/20261005034700_aigc_checkout_account_lock.sql','utf8'))
 },30000)
 afterAll(()=>db.close())
 
@@ -156,6 +157,76 @@ describe('充值与收费操作的数据库闭环',()=>{
     const later=await makeOrder(legacy);await pay(later)
     await user(()=>q('update aigc.credit_orders set refund_requested=true where id=$1',[old]),legacy)
     await expect(q("select aigc.prepare_cash_refund($1,'production',199,$2,'审核员','旧订单审核')",[old,`old-review:${old}`])).rejects.toThrow('未使用充值积分不足')
+  })
+  it('aigc_api 按下单语句锁定账户并写入订单，不能直接锁行或改余额',async()=>{
+    await q("update aigc.credit_accounts set payment_blocked=false where user_id=$1 and scope='production'",[owner])
+    const id=randomUUID()
+    const created=await user(async()=>{
+      await q('select aigc.ensure_credit_account($1)',[owner])
+      const [locked]=await q('select aigc.lock_credit_account_for_checkout($1) as payment_blocked',[owner])
+      expect(locked.payment_blocked).toBe(false)
+      const locks=await q(`select c.relname from pg_locks l join pg_class c on c.oid=l.relation
+        where l.pid=pg_backend_pid() and l.locktype='relation' and l.mode='RowShareLock' and c.relname='credit_accounts'`)
+      expect(locks).toEqual([{relname:'credit_accounts'}])
+      expect(await q('select * from aigc.credit_orders where id=$1',[id])).toEqual([])
+      const [count]=await q("select count(*)::integer as count from aigc.credit_orders where created_at>now()-interval '1 hour'")
+      expect(Number(count.count)).toBeLessThan(20)
+      const [row]=await q(`insert into aigc.credit_orders(id,user_id,scope,provider,provider_mode,pack_id,product_id,amount,currency,credits)
+        values($1,$2,'production','dodo','live','starter','prod_checkout',990,'CNY',100) returning *`,[id,owner])
+      return row
+    })
+    expect(created).toMatchObject({id,user_id:owner,status:'pending',checkout_url:null,amount:990,credits:100})
+    const [updated]=await user(()=>q(`update aigc.credit_orders set checkout_id=$2,checkout_url=$3,updated_at=now() where id=$1 returning *`,[id,`ch_${id}`,'https://checkout.example/pay']))
+    expect(updated).toMatchObject({id,checkout_id:`ch_${id}`,checkout_url:'https://checkout.example/pay'})
+    const again=await user(async()=>{
+      const [locked]=await q('select aigc.lock_credit_account_for_checkout($1) as payment_blocked',[owner])
+      const [prior]=await q('select id,checkout_url from aigc.credit_orders where id=$1',[id])
+      return {locked,prior}
+    })
+    expect(again.locked.payment_blocked).toBe(false)
+    expect(again.prior).toEqual({id,checkout_url:'https://checkout.example/pay'})
+    await expect(user(()=>q('select balance,payment_blocked from aigc.credit_accounts for update'))).rejects.toThrow(/permission denied for table credit_accounts/)
+    await expect(user(()=>q('update aigc.credit_accounts set balance=balance'))).rejects.toThrow(/permission denied/)
+    await expect(user(()=>q('update aigc.credit_accounts set payment_blocked=false'))).rejects.toThrow(/permission denied/)
+    await expect(user(()=>q('select aigc.lock_credit_account_for_checkout($1)',[owner]),other)).rejects.toThrow('积分账户不可用')
+    await expect(worker(()=>q('select aigc.lock_credit_account_for_checkout($1)',[owner]))).rejects.toThrow(/permission denied/)
+    const [privileges]=await q(`select
+      has_table_privilege('aigc_api','aigc.credit_accounts','SELECT') as api_select,
+      has_table_privilege('aigc_api','aigc.credit_accounts','UPDATE') as api_update,
+      has_column_privilege('aigc_api','aigc.credit_accounts','balance','UPDATE') as balance_update,
+      has_column_privilege('aigc_api','aigc.credit_accounts','payment_blocked','UPDATE') as blocked_update,
+      has_function_privilege('aigc_api','aigc.lock_credit_account_for_checkout(uuid)','EXECUTE') as api_execute,
+      has_function_privilege('aigc_billing_worker','aigc.lock_credit_account_for_checkout(uuid)','EXECUTE') as worker_execute`)
+    expect(privileges).toEqual({api_select:true,api_update:false,balance_update:false,blocked_update:false,api_execute:true,worker_execute:false})
+    const [definition]=await q("select pg_get_functiondef('aigc.lock_credit_account_for_checkout(uuid)'::regprocedure) as def")
+    expect(String(definition.def).toLowerCase()).toContain('for update')
+  })
+  it('冻结账户的下单锁返回真，退款列更新和对账时间戳仍按原授权可用',async()=>{
+    await user(()=>q('select aigc.ensure_credit_account($1)',[other]),other)
+    await q("update aigc.credit_accounts set payment_blocked=true where user_id=$1 and scope='production'",[other])
+    try {
+      const [locked]=await user(()=>q('select aigc.lock_credit_account_for_checkout($1) as payment_blocked',[other]),other)
+      expect(locked.payment_blocked).toBe(true)
+      await user(()=>q('select aigc.ensure_credit_account($1)',[other]),other,'preview')
+      const [preview]=await user(()=>q('select aigc.lock_credit_account_for_checkout($1) as payment_blocked',[other]),other,'preview')
+      expect(preview.payment_blocked).toBe(false)
+    } finally {
+      await q("update aigc.credit_accounts set payment_blocked=false where user_id=$1 and scope='production'",[other])
+    }
+    const id=await makeOrder()
+    await pay(id)
+    const [refunded]=await user(()=>q(`update aigc.credit_orders set refund_requested=true,refund_reason=$2,
+      refund_requested_at=coalesce(refund_requested_at,now()),updated_at=now() where id=$1 and status='paid' returning *`,[id,'不想要了']))
+    expect(refunded).toMatchObject({id,refund_requested:true,refund_reason:'不想要了',status:'paid'})
+    const pending=await makeOrder()
+    const claimed=await worker(()=>q(`update aigc.credit_orders set last_checked_at=now()
+      where id=$1 and scope='production' and (last_checked_at is null or last_checked_at<now()-interval '20 seconds') returning id`,[pending]))
+    expect(claimed).toEqual([{id:pending}])
+    expect(await worker(()=>q(`update aigc.credit_orders set last_checked_at=now()
+      where id=$1 and scope='production' and (last_checked_at is null or last_checked_at<now()-interval '20 seconds') returning id`,[pending]))).toEqual([])
+    const listed=await worker(()=>q(`select id from aigc.credit_orders where scope='production' and provider_mode='live'
+      and status='pending' and checkout_id is not null and id=$1`,[pending]))
+    expect(listed).toEqual([{id:pending}])
   })
   it('退款未发生时可以取消冻结，已发生现金退款不能再释放',async()=>{
     const id=await makeOrder(other);await pay(id)
