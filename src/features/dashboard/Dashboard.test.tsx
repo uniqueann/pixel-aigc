@@ -15,7 +15,7 @@ import type { PreviewGalleryProps } from '@/components/PreviewGallery'
 import type { WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
 import type { CapabilityFlags } from '@/services/api/capabilities'
 import { rememberTool } from './recentWork'
-import { worksStripFades } from './RecentWorks'
+import { worksStripFades } from './worksStrip'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), history: vi.fn(), retry: vi.fn(), createUrl: vi.fn(), revokeUrl: vi.fn(),
   capabilities: {} as CapabilityFlags, error: null as Error | null,

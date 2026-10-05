@@ -120,7 +120,6 @@ function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: 
   const [canResizeSidebar, setCanResizeSidebar] = useState(() => window.matchMedia('(min-width: 768px)').matches)
   const [sidebarResizing, setSidebarResizing] = useState(false)
   const sidebarWidthRef = useRef(sidebarWidth)
-  const sidebarOwner = usePreferencesStore(state => state.owner)
   const toggleSidebar = (open: boolean) => {
     setSidebarOpen(open)
     const state = usePreferencesStore.getState()
@@ -132,11 +131,6 @@ function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: 
     setSidebarWidth(clamped)
     if (commit) writeSidebarWidth(usePreferencesStore.getState().owner, clamped)
   }
-  useEffect(() => {
-    const next = readSidebarWidth(sidebarOwner) ?? SIDEBAR_WIDTH_MAX
-    sidebarWidthRef.current = next
-    setSidebarWidth(next)
-  }, [sidebarOwner])
   useEffect(() => {
     const onReset = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== usePreferencesStore.getState().owner) return
@@ -266,6 +260,7 @@ function MainLayoutContent() {
   const account = useUserStore((s) => s.account)
   const currentUserId=useUserStore(state=>state.userId)
   const credits = useUserStore((s) => s.credits)
+  const sidebarOwner = usePreferencesStore(state => state.owner)
   useEffect(()=>{
     const open=()=>setCreditsOpen(true)
     window.addEventListener(RECHARGE_EVENT,open)
@@ -336,7 +331,7 @@ function MainLayoutContent() {
 
   return (
     <Layout className="app-shell" style={{ height: '100vh' }}>
-      <AppSidebar topKey={topKey} onAccountMenu={key => handleAccountMenu({ key })} />
+      <AppSidebar key={sidebarOwner} topKey={topKey} onAccountMenu={key => handleAccountMenu({ key })} />
       <Layout className="app-shell-main">
         <Header className="app-header">
           <div className="app-header-leading">
