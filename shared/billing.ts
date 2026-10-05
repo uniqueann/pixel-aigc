@@ -11,9 +11,9 @@ export const SYNC_TOOL_LABELS: Record<SyncCreditOperation, string> = {
 }
 
 export const CREDIT_PACKS = [
-  { id: 'starter', name: '体验包', credits: 100, CNY: 990, USD: 199 },
-  { id: 'standard', name: '常用包', credits: 320, CNY: 2900, USD: 499 },
-  { id: 'studio', name: '工作室包', credits: 1150, CNY: 9900, USD: 1499 },
+  { id: 'starter', name: '体验包', credits: 100, CNY: 990, USD: 299 },
+  { id: 'standard', name: '常用包', credits: 320, CNY: 2900, USD: 699 },
+  { id: 'studio', name: '工作室包', credits: 1150, CNY: 9900, USD: 1999 },
 ] as const
 export type CreditPackId = typeof CREDIT_PACKS[number]['id']
 
