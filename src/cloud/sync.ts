@@ -1,13 +1,14 @@
 import { create } from 'zustand'
 import { projectWriteSchema, type CloudProject, type ProjectWrite } from '../../shared/cloud'
-import { cloudEnabled, CloudError, cloudRequest } from './client'
+import { authEnabled, cloudEnabled, CloudError, cloudRequest } from './client'
 import { accessAssets, assetPlaceholder, hydrateAssets, uploadCloudImage } from './assets'
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { currentSnapshot, flushProject, hasUnfinishedGeneration, replaceSnapshot, updateRuntimeAssetAccess } from '@/editor/persistence/projectPersistence'
 import { blobFromImageSource } from '@/features/image-workstation/download'
-import { persistableSnapshot } from '@/editor/persistence/snapshot'
-import { saveConflictSnapshot } from '@/editor/persistence/database'
+import { parseSnapshot, persistableSnapshot } from '@/editor/persistence/snapshot'
+import { persistenceScope, readSavedProjectSnapshot, saveConflictSnapshot } from '@/editor/persistence/database'
+import { useUserStore } from '@/store/useUserStore'
 import type { ProjectSnapshot } from '@/editor/persistence/types'
 
 export const useCloudStore = create<{ busy: boolean; interacting: boolean; error?: string; status: string }>(() => ({ interacting: false, busy: false, status: '尚未同步' }))
@@ -17,25 +18,56 @@ function inputOf(snapshot: ProjectSnapshot): ProjectWrite {
   return projectWriteSchema.parse({ name: snapshot.project.name.trim() || '未命名画布', document: snapshot.project.document, drafts: snapshot.drafts, schemaVersion: 1 })
 }
 const fingerprint = (snapshot: ProjectSnapshot) => JSON.stringify(inputOf(snapshot))
-export async function openCloudProject(id: string) {
-  if (useCloudStore.getState().busy) throw new Error('请等待当前同步完成')
-  useCloudStore.setState({ busy: true })
-  try {
-  await flushProject()
-  const before = JSON.stringify(persistableSnapshot(currentSnapshot()))
-  const remote = await cloudRequest<CloudProject>(`/projects/${encodeURIComponent(id)}`)
-  if (JSON.stringify(persistableSnapshot(currentSnapshot())) !== before) throw new Error('读取期间本地内容发生变化，请先保存后重新打开')
-  const snapshot: ProjectSnapshot = {
-    schemaVersion: 1, cloud: { revision: remote.revision, pending: false }, drafts: remote.drafts, recoveries: {},
-    project: { id: remote.id, name: remote.name, document: remote.document, createdAt: remote.createdAt, updatedAt: remote.updatedAt, generations: {},
-      assets: Object.fromEntries(remote.assets.map(asset => [asset.id, { ...asset, url: assetPlaceholder(asset.id), storage: { provider: 'r2' as const, objectKey: asset.objectKey, projectId: id } }])) },
+export interface OpenProjectOptions { expectedUserId?: string; signal?: AbortSignal; onCommitStart?: () => void }
+
+/** 本机和云端打开共用保存、并发、取消和归属检查。 */
+async function openProject(id: string, source: 'local' | 'cloud', options?: OpenProjectOptions) {
+  const ownerId = options?.expectedUserId ?? persistenceScope()
+  const check = () => {
+    options?.signal?.throwIfAborted()
+    const projectOwner = usePersistenceStore.getState().ownerId
+    if (persistenceScope() !== ownerId || (projectOwner !== undefined && projectOwner !== ownerId)
+      || (authEnabled && useUserStore.getState().userId !== ownerId)) throw new Error('账号已切换，已取消项目打开')
   }
-  const hydrated = await hydrateAssets(snapshot)
-  if (JSON.stringify(persistableSnapshot(currentSnapshot())) !== before) throw new Error('读取期间本地内容发生变化，请先保存后重新打开')
-  await replaceSnapshot(hydrated)
-  useCloudStore.setState({ error: undefined, status: '云端已保存' })
+  const current = () => useEditorStore.getState().project ? JSON.stringify(persistableSnapshot(currentSnapshot())) : undefined
+  check()
+  if (useCloudStore.getState().busy) throw new Error('请等待当前同步完成')
+  if (!usePersistenceStore.getState().writable) throw new Error('请先取得项目编辑权')
+  useCloudStore.setState({ busy: true })
+  clearTimeout(timer)
+  try {
+    if (hasUnfinishedGeneration()) throw new Error('请先处理未完成的任务')
+    await flushProject()
+    check()
+    const before = current()
+    const requestOptions = { signal: options?.signal, expectedUserId: authEnabled ? ownerId : undefined }
+    let snapshot: ProjectSnapshot
+    if (source === 'local') {
+      const raw = await readSavedProjectSnapshot(id, ownerId)
+      check()
+      if (!raw) throw new Error('本机存档不存在，请返回首页重新选择')
+      snapshot = parseSnapshot(raw)
+      if (snapshot.project.id !== id) throw new Error('本机存档与项目编号不一致')
+    } else {
+      const remote = await cloudRequest<CloudProject>(`/projects/${encodeURIComponent(id)}`, 'GET', undefined, requestOptions)
+      check()
+      if (remote.id !== id) throw new Error('云端项目与项目编号不一致')
+      snapshot = {
+        schemaVersion: 1, cloud: { revision: remote.revision, pending: false }, drafts: remote.drafts, recoveries: {},
+        project: { id: remote.id, name: remote.name, document: remote.document, createdAt: remote.createdAt, updatedAt: remote.updatedAt, generations: {},
+          assets: Object.fromEntries(remote.assets.map(asset => [asset.id, { ...asset, url: assetPlaceholder(asset.id), storage: { provider: 'r2' as const, objectKey: asset.objectKey, projectId: id } }])) },
+      }
+    }
+    const hydrated = await hydrateAssets(snapshot, requestOptions)
+    check()
+    if (current() !== before) throw new Error('读取期间本地内容发生变化，请先保存后重新打开')
+    options?.onCommitStart?.()
+    await replaceSnapshot(hydrated, { signal: options?.signal, expectedScope: ownerId })
+    useCloudStore.setState({ error: undefined, status: source === 'cloud' ? '云端已保存' : '已恢复本机存档' })
   } finally { useCloudStore.setState({ busy: false }) }
 }
+export const openCloudProject = (id: string, options?: OpenProjectOptions) => openProject(id, 'cloud', options)
+export const openLocalProject = (id: string, options?: OpenProjectOptions) => openProject(id, 'local', options)
 async function createRemote(snapshot: ProjectSnapshot) {
   const input = inputOf(snapshot)
   const remote = await cloudRequest<CloudProject>('/projects', 'POST', { ...input, id: snapshot.project.id,

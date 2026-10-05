@@ -10,13 +10,14 @@ import { useUserStore } from '@/store/useUserStore'
 import { useTaskStore } from '@/store/useTaskStore'
 import { EMAIL_BATCH_HEADERS } from '@/features/email-assistant/options'
 import EmailAssistant from './index'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 
-const mocks = vi.hoisted(() => ({ submit: vi.fn(), find: vi.fn(), get: vi.fn(), copy: vi.fn(), download: vi.fn() }))
-vi.mock('@/cloud/client', () => ({ authEnabled: false }))
-vi.mock('react-router-dom', () => ({ useOutletContext: () => ({ openModelSettings: vi.fn() }) }))
+const mocks = vi.hoisted(() => ({ submit: vi.fn(), find: vi.fn(), get: vi.fn(), copy: vi.fn(), download: vi.fn(), list: vi.fn(), auth: false }))
+vi.mock('@/cloud/client', () => ({ get authEnabled() { return mocks.auth } }))
+vi.mock('react-router-dom', async importOriginal => ({ ...await importOriginal<typeof import('react-router-dom')>(), useOutletContext: () => ({ openModelSettings: vi.fn() }) }))
 vi.mock('@/services/api/task', () => ({
   createTask: mocks.submit, findTaskByRequest: mocks.find, getTaskByRequest: mocks.find, getTask: mocks.get,
-  saveTaskEdit: vi.fn(), listTasks: vi.fn().mockResolvedValue({ items: [], total: 0 }), deleteTask: vi.fn(),
+  saveTaskEdit: vi.fn(), listTasks: mocks.list, deleteTask: vi.fn(),
 }))
 vi.mock('@/features/model-settings/useModelSettings', () => ({
   useModelSettings: () => ({
@@ -47,6 +48,7 @@ async function importCsv(lines: string[]) {
 describe('邮件助手单个与批量页面', () => {
   let client: QueryClient
   let wrapper: ({ children }: { children: ReactNode }) => ReactNode
+  let entry: string
   beforeEach(() => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} })
@@ -54,6 +56,8 @@ describe('邮件助手单个与批量页面', () => {
     const computedStyle = window.getComputedStyle.bind(window)
     vi.spyOn(window, 'getComputedStyle').mockImplementation(element => computedStyle(element))
     mocks.submit.mockReset().mockResolvedValue(completed())
+    mocks.auth = false
+    mocks.list.mockReset().mockResolvedValue({ items: [], total: 0 })
     mocks.find.mockReset().mockResolvedValue(undefined)
     mocks.get.mockReset().mockResolvedValue(completed())
     mocks.copy.mockReset().mockResolvedValue(undefined)
@@ -67,9 +71,64 @@ describe('邮件助手单个与批量页面', () => {
     useUserStore.setState({ userId: '账号一', account: null })
     useTaskStore.setState({ tasks: {} })
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    wrapper = ({ children }) => <StrictMode><QueryClientProvider client={client}><App>{children}</App></QueryClientProvider></StrictMode>
+    entry = '/email'
+    wrapper = ({ children }) => <StrictMode><MemoryRouter initialEntries={[entry]}><QueryClientProvider client={client}><App>{children}</App></QueryClientProvider></MemoryRouter></StrictMode>
   })
   afterEach(() => { cleanup(); client?.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); useUserStore.setState({ userId: null }) })
+
+  function EntryControls() {
+    const navigate = useNavigate(), location = useLocation()
+    return <><output data-testid="entry-url">{location.search}</output><button onClick={() => navigate('/email?mode=single&operation=summarize')}>快捷总结</button></>
+  }
+
+  it('批量快捷入口直接显示批量，单个快捷入口预选操作且消耗一次性参数', async () => {
+    entry = '/email?mode=batch'
+    const first = render(<><EmailAssistant /><EntryControls /></>, { wrapper })
+    expect(document.querySelector('.email-batch-panel')?.parentElement?.hidden).toBe(false)
+    first.unmount()
+    entry = '/email?mode=single&operation=grammar'
+    render(<><EmailAssistant /><EntryControls /></>, { wrapper })
+    await waitFor(() => expect(screen.getByTestId('entry-url').textContent).toBe('?mode=single'))
+    expect(document.querySelector('.email-single-panel input[value="grammar"]')).toHaveProperty('checked', true)
+    expect(screen.getByPlaceholderText('粘贴需要处理的邮件内容')).toHaveProperty('value', '')
+    expect(mocks.submit).not.toHaveBeenCalled()
+  })
+
+  it('同页选择快捷操作清空表单，正在生成时保留原始输入', async () => {
+    render(<><EmailAssistant /><EntryControls /></>, { wrapper })
+    fireEvent.change(screen.getByPlaceholderText('粘贴需要处理的邮件内容'), { target: { value: '上一封邮件' } })
+    fireEvent.click(screen.getByText('快捷总结'))
+    await waitFor(() => expect(document.querySelector('.email-single-panel input[value="summarize"]')).toHaveProperty('checked', true))
+    expect(screen.getByPlaceholderText('粘贴需要处理的邮件内容')).toHaveProperty('value', '')
+    let resolve!: (task: GenerationTask<unknown>) => void
+    mocks.submit.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    fireEvent.change(screen.getByPlaceholderText('粘贴需要处理的邮件内容'), { target: { value: '正在处理的邮件' } })
+    fireEvent.click(buttonByText(within(document.querySelector('.email-single-panel') as HTMLElement), /^生\s*成$/))
+    await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByText('快捷总结'))
+    await waitFor(() => expect(screen.getByTestId('entry-url').textContent).toBe('?mode=single'))
+    expect(screen.getByPlaceholderText('粘贴需要处理的邮件内容')).toHaveProperty('value', '正在处理的邮件')
+    await act(async () => { resolve(completed()); await Promise.resolve() })
+  })
+
+  it('显式快捷入口不会被迟到历史覆盖，普通入口仍恢复最新任务', async () => {
+    mocks.auth = true
+    let resolve!: (value: unknown) => void
+    mocks.list.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    entry = '/email?mode=single&operation=grammar'
+    const first = render(<EmailAssistant />, { wrapper })
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
+    await act(async () => { resolve({ items: [completed()], total: 1 }); await Promise.resolve() })
+    expect(mocks.get).not.toHaveBeenCalled()
+    expect(document.querySelector('.email-single-panel input[value="grammar"]')).toHaveProperty('checked', true)
+    expect(screen.getByPlaceholderText('粘贴需要处理的邮件内容')).toHaveProperty('value', '')
+    first.unmount()
+    entry = '/email'
+    mocks.list.mockResolvedValue({ items: [completed()], total: 1 })
+    render(<EmailAssistant />, { wrapper })
+    await waitFor(() => expect(screen.getByPlaceholderText('粘贴需要处理的邮件内容')).toHaveProperty('value', '客户邮件'))
+    expect(mocks.get).toHaveBeenCalledWith('已完成邮件')
+  })
 
   it('默认单个模式，页签切换保留单个输入和批量预览', async () => {
     render(<EmailAssistant />, { wrapper })

@@ -20,7 +20,8 @@ function isEmailAssistTask(task: GenerationTask<unknown>): task is GenerationTas
     && typeof params.language === 'string'
 }
 
-export function useEmailAssistantController() {
+export function useEmailAssistantController(options?: { autoRestoreLatest?: boolean }) {
+  const [autoRestoreLatest] = useState(() => options?.autoRestoreLatest ?? true)
   const upsertTask = useTaskStore((state) => state.upsertTask)
   const [activeTaskId, setActiveTaskId] = useState<string>()
   const [task, setTask] = useState<GenerationTask<EmailAssistTaskParams>>()
@@ -92,12 +93,15 @@ export function useEmailAssistantController() {
 
   useEffect(() => {
     if (!authEnabled) return
+    let active = true
     queueMicrotask(() => {
+      if (!active) return
       void refreshHistory().then(async items => {
-        if (!touchedRef.current && items[0]) await openTask(items[0].id)
+        if (active && autoRestoreLatest && !touchedRef.current && items[0]) await openTask(items[0].id)
       }).catch(() => { /* 历史读取失败不阻止新任务。 */ })
     })
-  }, [openTask, refreshHistory])
+    return () => { active = false }
+  }, [autoRestoreLatest, openTask, refreshHistory])
 
   const flushEdit = useCallback(async () => {
     if (editTimerRef.current) clearTimeout(editTimerRef.current)
@@ -203,7 +207,12 @@ export function useEmailAssistantController() {
     await refreshHistory()
   }, [flushEdit, refreshHistory, task?.id])
 
-  useEffect(() => () => { if (editTimerRef.current) clearTimeout(editTimerRef.current); void flushEdit() }, [flushEdit])
+  useEffect(() => () => {
+    ++selectionEpochRef.current
+    selectedTaskIdRef.current = undefined
+    if (editTimerRef.current) clearTimeout(editTimerRef.current)
+    void flushEdit()
+  }, [flushEdit])
 
   const status = task?.status
   return {

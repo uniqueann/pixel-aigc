@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { App } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
@@ -17,7 +18,7 @@ vi.mock('@/services/api/modelSettings', () => ({
   getModelSettings: mocks.getSettings, getModelProfiles: mocks.getProfiles,
   saveDeepSeekKey: mocks.saveKey, deleteDeepSeekKey: vi.fn(), saveDefaultEmailModel: vi.fn(), testDeepSeekKey: vi.fn(),
 }))
-vi.mock('react-router-dom', () => ({ useOutletContext: () => ({ openModelSettings: vi.fn() }) }))
+vi.mock('react-router-dom', async importOriginal => ({ ...await importOriginal<typeof import('react-router-dom')>(), useOutletContext: () => ({ openModelSettings: vi.fn() }) }))
 vi.mock('@/features/email-assistant/useEmailAssistantController', () => ({
   useEmailAssistantController: () => ({
     generate: mocks.generate, formLocked: false, submitting: false, resultText: '', history: [],
@@ -56,7 +57,7 @@ describe('邮件模型配置状态', () => {
     mocks.generate.mockReset().mockResolvedValue({ status: 'succeeded' })
     useUserStore.getState().setUser('测试用户一', 'free')
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    wrapper = ({ children }) => <QueryClientProvider client={client}><App>{children}</App></QueryClientProvider>
+    wrapper = ({ children }) => <MemoryRouter initialEntries={['/email']}><QueryClientProvider client={client}><App>{children}</App></QueryClientProvider></MemoryRouter>
   })
 
   afterEach(() => { cleanup(); client.clear(); useUserStore.getState().setAccount(null); vi.unstubAllGlobals() })

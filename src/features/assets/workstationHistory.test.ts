@@ -160,6 +160,39 @@ describe('工作站本地历史', () => {
     expect((await listHistoryMetadata(OWNER_A)).map(item => item.id)).toEqual(['keep'])
     expect((await readHistoryImage(OWNER_A, { id: 'keep' }))?.size).toBe(4)
   })
+  it('首页只读最近八项缩略图，不补读原图、不删过期视频，账号分别筛选', async () => {
+    const db = await openHistoryDatabase()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(['metadata', 'thumbnails'], 'readwrite')
+      for (let index = 0; index < 10; index++) {
+        const { result: _result, ...fields } = record(`本机${index}`, new Date(Date.UTC(2026, 9, 5, index)).toISOString()); void _result
+        tx.objectStore('metadata').put({ ownerId: OWNER_A, ...fields })
+        if (index !== 9) tx.objectStore('thumbnails').put({ ownerId: OWNER_A, id: fields.id, thumbnail: new Blob(['缩略图']) })
+      }
+      tx.objectStore('metadata').put({ ...record('其他账号', '2026-10-05T11:00:00Z'), result: undefined, ownerId: OWNER_B })
+      tx.objectStore('metadata').put({ ...record('过期视频', '2026-10-05T12:00:00Z'), result: undefined, ownerId: OWNER_A, mediaType: 'video', video: { retentionExpiresAt: '2000-01-01' } })
+      tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+    const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+    const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+    const remove = vi.spyOn(IDBObjectStore.prototype, 'delete')
+    const items = await listHistoryPreviews(OWNER_A, true, { limit: 8, readOnly: true })
+    expect(items.map(item => item.id)).toEqual(['本机9', '本机8', '本机7', '本机6', '本机5', '本机4', '本机3', '本机2'])
+    expect(items[0].thumbnail).toBeUndefined()
+    expect(get.mock.contexts.map(store => (store as IDBObjectStore).name)).toEqual(Array(8).fill('thumbnails'))
+    expect(getAll.mock.contexts.some(store => (store as IDBObjectStore).name === 'workstationResults')).toBe(false)
+    expect(remove).not.toHaveBeenCalled()
+    get.mockRestore(); getAll.mockRestore(); remove.mockRestore()
+    expect((await listHistoryPreviews(OWNER_B, true, { limit: 8, readOnly: true })).map(item => item.id)).toEqual(['其他账号'])
+    const verify = await openHistoryDatabase()
+    const expired = await new Promise(resolve => {
+      const request = verify.transaction('metadata').objectStore('metadata').get([OWNER_A, '过期视频'])
+      request.onsuccess = () => resolve(request.result)
+    })
+    verify.close()
+    expect(expired).toBeTruthy()
+  })
   it('主动删除保留对象标记，正常 50 条淘汰不写删除标记', async () => {
     await recordWorkstationHistory(OWNER_A, { ...record('result', '2026-09-30T12:00:00.000Z'), objectKey: 'key', taskId: 'task', ordinal: 2 })
     await deleteWorkstationHistory(OWNER_A, 'result')

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ request: vi.fn(), flush: vi.fn(), backup: vi.fn(), upload: vi.fn(), access: vi.fn(), blob: vi.fn() }))
-vi.mock('./client', () => ({ cloudEnabled: true, cloudRequest: mocks.request, CloudError: class extends Error { constructor(public status: number, message: string) { super(message) } } }))
+vi.mock('./client', () => ({ authEnabled: false, cloudEnabled: true, cloudRequest: mocks.request, CloudError: class extends Error { constructor(public status: number, message: string) { super(message) } } }))
 vi.mock('./assets', () => ({ uploadCloudImage: mocks.upload, accessAssets: mocks.access, assetPlaceholder: (id: string) => `/__aigc_asset__/${id}`, hydrateAssets: async (value: unknown) => value }))
 vi.mock('@/editor/persistence/database', () => ({ saveConflictSnapshot: mocks.backup }))
 vi.mock('@/features/image-workstation/download', () => ({ blobFromImageSource: mocks.blob }))
