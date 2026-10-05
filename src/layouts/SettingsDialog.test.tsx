@@ -81,6 +81,30 @@ describe('设置弹窗窄屏布局', () => {
     expect(SETTINGS_CSS).toContain('.settings-modal .preferences-global-error')
     expect(SETTINGS_CSS).toContain('position: sticky')
   })
+
+  it('窄屏标签栏随内容收缩，设置项和开关保持横向排列', () => {
+    const narrowLayout = SETTINGS_CSS.match(/\.settings-layout\.is-narrow\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(narrowLayout).toMatch(/min-height:\s*0/)
+    expect(narrowLayout).toMatch(/align-content:\s*start/)
+    const rowRules = SETTINGS_CSS.match(/\.settings-layout\.is-narrow \.setting-row\s*\{[^}]*\}/g) ?? []
+    expect(rowRules.some(rule => /flex-direction:\s*row/.test(rule))).toBe(true)
+    expect(rowRules.some(rule => /flex-direction:\s*column/.test(rule))).toBe(false)
+    expect(SETTINGS_CSS).toMatch(/\.setting-row > \.ant-switch[\s\S]{0,180}width:\s*auto/)
+    expect(SETTINGS_CSS).toContain('padding: var(--page-tab-gap) 22px 22px')
+    const mobileBody = SETTINGS_CSS.slice(SETTINGS_CSS.lastIndexOf('@media (max-width: 720px)'))
+    expect(mobileBody).toMatch(/\.settings-layout[\s\S]*?min-height:\s*0/)
+    expect(mobileBody).toMatch(/overflow-y:\s*auto/)
+    expect(SETTINGS_CSS).toMatch(/\.settings-layout\.is-narrow\s*\{[^}]*overflow:\s*visible/)
+  })
+
+  it('桌面端左栏铺满高度，超长时只滚动右侧内容', () => {
+    const shell = SETTINGS_CSS.match(/\.settings-layout:not\(\.is-narrow\) > \.settings-menu-shell\s*\{[^}]*\}/)?.[0] ?? ''
+    const content = SETTINGS_CSS.match(/\.settings-layout:not\(\.is-narrow\) > \.settings-content\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(shell).toMatch(/background:\s*var\(--color-bg\)/)
+    expect(shell).toMatch(/border-inline-end:\s*1px solid var\(--color-border\)/)
+    expect(content).toMatch(/overflow-y:\s*auto/)
+    expect(content).toMatch(/min-height:\s*0/)
+  })
 })
 
 describe('设置弹窗当前标签可见', () => {
