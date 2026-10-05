@@ -24,6 +24,7 @@ import { SubjectDetectionCache } from './aspect-ratio/subjectCache'
 import { cropProgressLabel, unavailableCropSummary } from './aspect-ratio/subjectFocus'
 import { PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
 import { datedDownloadName } from './shared/dateStamp'
+import { LOCAL_TEMPLATE_LABEL } from './shared/presetLabels'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 
 
@@ -445,7 +446,7 @@ export default function AspectRatioTool() {
             onRetry={() => void refetchCapabilities()} />}
           templates={
           <div className="toolbox-presets">
-            <label className="toolbox-field-label">本机模板</label>
+            <label className="toolbox-field-label">{LOCAL_TEMPLATE_LABEL}</label>
             <div className="toolbox-preset-row">
               <Select
                 placeholder="选择已保存模板"

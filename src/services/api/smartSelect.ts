@@ -4,10 +4,11 @@ import type { NormBox, NormPoint, SegmentSession } from '@shared/smart-select'
 import { fitMattingWorkingSize, SMART_SELECT_MISS_CODE, SMART_SELECT_MISS_MESSAGE } from '@shared/smart-select'
 import type { DetectionClientTiming } from '@shared/detection'
 import { measureClientDetection } from './detectionTiming'
+import { SMART_SELECT_LABEL } from './smartSelectLabels'
 
 export const SMART_SELECT_TIMEOUT_MS = 60_000
-export const SMART_SELECT_TIMEOUT_MESSAGE = '智能选区超时，请重试'
-export const SMART_SELECT_RETRY_MESSAGE = '智能选区失败，请重试'
+export const SMART_SELECT_TIMEOUT_MESSAGE = `${SMART_SELECT_LABEL}超时，请重试`
+export const SMART_SELECT_RETRY_MESSAGE = `${SMART_SELECT_LABEL}失败，请重试`
 
 export interface SmartSelectRequest {
   imageUrl: string
@@ -106,7 +107,7 @@ function mockMask(width: number, height: number, point: NormPoint): SmartSelectR
   canvas.width = width
   canvas.height = height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error('当前浏览器不支持智能选区')
+  if (!context) throw new Error(`当前浏览器不支持${SMART_SELECT_LABEL}`)
   const radius = Math.max(8, Math.min(width, height) * 0.12)
   context.fillStyle = '#ffffff'
   context.beginPath()

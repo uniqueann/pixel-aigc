@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { App, Button, Input, Select } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
+import { LOCAL_TEMPLATE_LABEL } from './presetLabels'
 
 interface Preset<T> { id: string; name: string; settings: T }
 export interface PresetApi<T> {
@@ -58,7 +59,7 @@ export default function PresetControls<T extends object>({ scope, settings, api,
     finally { if (current.active) setSaving(false) }
   }
   return <div className="toolbox-presets">
-    <label className="toolbox-field-label">本机模板</label>
+    <label className="toolbox-field-label">{LOCAL_TEMPLATE_LABEL}</label>
     <div className="toolbox-preset-row">
       <Select placeholder="选择已保存模板" value={currentId} disabled={locked}
         options={visible.map(preset => ({ value: preset.id, label: preset.name }))} allowClear onClear={() => setSelectedId(null)}

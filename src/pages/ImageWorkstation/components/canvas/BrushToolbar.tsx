@@ -8,6 +8,7 @@ import {
   SwapOutlined,
   UndoOutlined,
 } from '@ant-design/icons'
+import { SMART_SELECT_LABEL } from '@/services/api/smartSelectLabels'
 
 export type PaintTool = 'brush' | 'eraser'
 
@@ -73,7 +74,7 @@ export default function BrushToolbar({
         : smartSelectError ? '智能选区配置加载失败，请重试' : '正在加载智能选区配置…'}>
         <span>
           <Button
-            aria-label="智能选区"
+            aria-label={SMART_SELECT_LABEL}
             type={smartSelectEnabled ? 'primary' : 'text'}
             icon={<AimOutlined />}
             disabled={refineMode || !smartSelectReady}

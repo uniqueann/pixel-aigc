@@ -12,6 +12,7 @@ import { deletePreset, listPresets, savePreset, type WatermarkPreset } from './w
 import { WatermarkRenderer } from './watermark/renderer'
 import { type BatchImage, type WatermarkSettings } from './watermark/types'
 import { datedDownloadName } from './shared/dateStamp'
+import { LOCAL_TEMPLATE_LABEL } from './shared/presetLabels'
 import { inspectImage, inspectLogo, MAX_ZIP_BYTES, queueLimitMessage, hasWatermark } from './watermark/validation'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { initialWatermarkSettings, watermarkMemory } from '@/features/preferences/toolParameters'
@@ -325,7 +326,7 @@ export default function WatermarkTool() {
         <WatermarkSettingsPanel settings={settings} disabled={controlsLocked} onChange={updateSettings} onLogo={chooseLogo}
           templates={
           <div className="toolbox-presets">
-            <label className="toolbox-field-label">本机模板</label>
+            <label className="toolbox-field-label">{LOCAL_TEMPLATE_LABEL}</label>
             <div className="toolbox-preset-row">
               <Select placeholder="选择已保存模板" value={selectedPresetId} disabled={controlsLocked} options={presets.map(preset => ({ value: preset.id, label: preset.name }))} onChange={choosePreset} allowClear onClear={() => setSelectedPresetId(null)} />
               <Button disabled={!selectedPresetId || controlsLocked} onClick={() => void removePreset()}>删除</Button>
