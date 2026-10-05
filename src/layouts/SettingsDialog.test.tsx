@@ -94,6 +94,16 @@ describe('设置弹窗窄屏布局', () => {
     const mobileBody = SETTINGS_CSS.slice(SETTINGS_CSS.lastIndexOf('@media (max-width: 720px)'))
     expect(mobileBody).toMatch(/\.settings-layout[\s\S]*?min-height:\s*0/)
     expect(mobileBody).toMatch(/overflow-y:\s*auto/)
+    expect(SETTINGS_CSS).toMatch(/\.settings-layout\.is-narrow\s*\{[^}]*overflow:\s*visible/)
+  })
+
+  it('桌面端左栏铺满高度，超长时只滚动右侧内容', () => {
+    const shell = SETTINGS_CSS.match(/\.settings-layout:not\(\.is-narrow\) > \.settings-menu-shell\s*\{[^}]*\}/)?.[0] ?? ''
+    const content = SETTINGS_CSS.match(/\.settings-layout:not\(\.is-narrow\) > \.settings-content\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(shell).toMatch(/background:\s*var\(--color-bg\)/)
+    expect(shell).toMatch(/border-inline-end:\s*1px solid var\(--color-border\)/)
+    expect(content).toMatch(/overflow-y:\s*auto/)
+    expect(content).toMatch(/min-height:\s*0/)
   })
 })
 
