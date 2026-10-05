@@ -65,17 +65,30 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
   useLayoutEffect(() => {
     const el = stripRef.current
     if (!el) return
-    const update = () => {
+    let frame = 0
+    const apply = () => {
       const next = worksStripFades({ scrollLeft: el.scrollLeft, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth })
       setFades(prev => prev.left === next.left && prev.right === next.right ? prev : next)
     }
+    // 滚动吸附和图片加载会在事件之后才把 scrollLeft 落回 0，下一帧再读一次。
+    const update = () => {
+      apply()
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(apply)
+    }
     update()
     el.addEventListener('scroll', update, { passive: true })
+    el.addEventListener('scrollend', update)
+    el.addEventListener('load', update, true)
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : undefined
     observer?.observe(el)
+    for (const child of el.children) observer?.observe(child)
     window.addEventListener('resize', update)
     return () => {
+      cancelAnimationFrame(frame)
       el.removeEventListener('scroll', update)
+      el.removeEventListener('scrollend', update)
+      el.removeEventListener('load', update, true)
       observer?.disconnect()
       window.removeEventListener('resize', update)
     }

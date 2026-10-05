@@ -35,7 +35,7 @@
 .dashboard-works-empty { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 100px; margin: 0; border: 1px dashed var(--color-border); border-radius: var(--radius-md); }
 .dashboard-works-scroller { position: relative; min-width: 0; }
 .dashboard-works-strip {
-  display: flex; gap: 14px; overflow-x: auto; padding: 3px 3px 10px; scroll-snap-type: x proximity;
+  display: flex; width: 100%; min-width: 0; gap: 14px; overflow-x: auto; padding: 3px 3px 10px; scroll-snap-type: x proximity;
   color-scheme: dark; scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent;
 }
 .dashboard-works-strip::-webkit-scrollbar { height: 8px; }
