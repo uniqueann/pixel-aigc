@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { App, Button, Card, Col, Input, Popconfirm, Radio, Row, Select, Space } from 'antd'
 import { CopyOutlined, RedoOutlined } from '@ant-design/icons'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
@@ -20,13 +20,16 @@ interface Props {
   configuration: EmailModelConfiguration
   gate: EmailGenerationGate
   openModelSettings: () => void
+  entryOperation?: EmailAssistOperation
+  entryKey?: string
+  onEntryConsumed?: () => void
 }
 
-export default function SingleEmailAssistant({ controller, configuration, gate, openModelSettings }: Props) {
+export default function SingleEmailAssistant({ controller, configuration, gate, openModelSettings, entryOperation, entryKey, onEntryConsumed }: Props) {
   const { message } = App.useApp()
   const [sourceText, setSourceText] = useState('')
   const [instruction, setInstruction] = useState('')
-  const [operation, setOperation] = useState<EmailAssistOperation>(() => usePreferencesStore.getState().preferences.email.operation)
+  const [operation, setOperation] = useState<EmailAssistOperation>(() => entryOperation ?? usePreferencesStore.getState().preferences.email.operation)
   const [language, setLanguage] = useState<EmailAssistLanguage>(() => usePreferencesStore.getState().preferences.email.language)
   const [polishStyles, setPolishStyles] = useState<EmailPolishStyle[]>(() => usePreferencesStore.getState().preferences.email.polishStyles)
   const [modelProfileId, setModelProfileId] = useState<string>()
@@ -35,6 +38,30 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
   const selectedModelProfileId = modelProfileId ?? defaultModelProfileId
   const generationBlocked = gate.owner === 'batch'
   const { acquire, release } = gate
+  const handledEntry = useRef(entryOperation ? entryKey : undefined)
+  const { newTask, formLocked } = controller
+
+  useEffect(() => {
+    if (!entryOperation || !entryKey) return
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      if (handledEntry.current === entryKey) { onEntryConsumed?.(); return }
+      handledEntry.current = entryKey
+      if (formLocked || gate.owner) {
+        message.warning('当前邮件正在处理，请完成后再开始新的操作')
+        onEntryConsumed?.(); return
+      }
+      void newTask().then(() => {
+        if (!active) return
+        const defaults = usePreferencesStore.getState().preferences.email
+        setSourceText(''); setInstruction(''); setOperation(entryOperation)
+        setLanguage(defaults.language); setPolishStyles(defaults.polishStyles); setModelProfileId(undefined)
+        onEntryConsumed?.()
+      }).catch(reason => { if (active) message.error(reason instanceof Error ? reason.message : '无法开始新的邮件操作') })
+    })
+    return () => { active = false }
+  }, [entryOperation, entryKey, formLocked, gate.owner, message, newTask, onEntryConsumed])
 
   useEffect(() => {
     if (controller.formLocked) acquire('single')

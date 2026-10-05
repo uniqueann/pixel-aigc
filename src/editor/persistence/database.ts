@@ -1,3 +1,5 @@
+import { rememberSavedProject } from '@/features/dashboard/recentWork'
+
 const DATABASE_NAME = 'pixel-aigc-projects'
 export type StoreName = 'projects' | 'mockTasks'
 
@@ -20,16 +22,24 @@ export async function databaseOperation<T>(
   store: StoreName,
   mode: IDBTransactionMode,
   operation: (store: IDBObjectStore) => IDBRequest<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
+  signal?.throwIfAborted()
   const db = await openDatabase()
+  if (signal?.aborted) { db.close(); signal.throwIfAborted() }
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(store, mode)
-    const request = operation(transaction.objectStore(store))
-    transaction.oncomplete = () => { db.close(); resolve(request.result) }
+    const abort = () => { try { transaction.abort() } catch { /* 已提交的事务无需再次取消。 */ } }
+    signal?.addEventListener('abort', abort, { once: true })
+    let request: IDBRequest<T> | undefined
+    transaction.oncomplete = () => { signal?.removeEventListener('abort', abort); db.close(); resolve(request!.result) }
     transaction.onabort = transaction.onerror = () => {
+      signal?.removeEventListener('abort', abort)
       db.close()
-      reject(transaction.error ?? request.error ?? new Error('本地存储操作失败'))
+      reject(signal?.aborted ? signal.reason : transaction.error ?? request?.error ?? new Error('本地存储操作失败'))
     }
+    try { request = operation(transaction.objectStore(store)) }
+    catch (error) { signal?.removeEventListener('abort', abort); abort(); db.close(); reject(error) }
   })
 }
 
@@ -38,11 +48,18 @@ export const setPersistenceUser = (id: string) => { persistenceUser = id }
 export const persistenceScope = () => persistenceUser ?? 'anonymous'
 const currentKey = () => persistenceUser ? `${persistenceUser}:current` : 'current'
 export const readCurrentSnapshot = () => databaseOperation<unknown>('projects', 'readonly', store => store.get(currentKey()))
-export async function writeCurrentSnapshot(snapshot: unknown) {
+export const readSavedProjectSnapshot = (id: string, ownerId = persistenceScope()) =>
+  databaseOperation<unknown>('projects', 'readonly', store => store.get(`${ownerId}:project:${id}`))
+export async function writeCurrentSnapshot(snapshot: unknown, signal?: AbortSignal) {
   const key = currentKey()
+  const ownerId = persistenceScope()
   const id = (snapshot as { project?: { id?: string } })?.project?.id
-  if (id) await databaseOperation('projects', 'readwrite', store => store.put(snapshot, `${persistenceScope()}:project:${id}`))
-  return databaseOperation('projects', 'readwrite', store => store.put(snapshot, key))
+  const result = await databaseOperation('projects', 'readwrite', store => {
+    if (id) store.put(snapshot, `${ownerId}:project:${id}`)
+    return store.put(snapshot, key)
+  }, signal)
+  if (id) rememberSavedProject(ownerId, snapshot as Parameters<typeof rememberSavedProject>[1])
+  return result
 }
 export const readLegacySnapshot = () => databaseOperation<unknown>('projects', 'readonly', store => store.get('current'))
 export const saveConflictSnapshot = (snapshot: unknown) => databaseOperation('projects', 'readwrite', store => store.put(snapshot, `${persistenceScope()}:conflict:${crypto.randomUUID()}`))

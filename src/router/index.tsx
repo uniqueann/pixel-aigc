@@ -4,7 +4,7 @@ import Dashboard from '@/pages/Dashboard'
 import EmailAssistant from '@/pages/EmailAssistant'
 import ImageWorkstation from '@/pages/ImageWorkstation'
 import Toolbox from '@/pages/Toolbox'
-import FreeCanvas from '@/pages/FreeCanvas'
+import CanvasProjectRoute from '@/features/dashboard/CanvasProjectRoute'
 import Assets from '@/pages/Assets'
 
 export const router = createBrowserRouter([
@@ -32,7 +32,7 @@ export const router = createBrowserRouter([
         path: 'canvas',
         children: [
           { index: true, element: <Navigate to="text-to-image" replace /> },
-          { path: ':mode', element: <FreeCanvas /> },
+          { path: ':mode', element: <CanvasProjectRoute /> },
         ],
       },
       { path: 'assets', element: <Assets /> },

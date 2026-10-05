@@ -98,9 +98,9 @@ function changed(ownerId: string) {
   }
 }
 
-export async function listHistoryMetadata(ownerId: string, includeVideos = false): Promise<WorkstationHistoryMetadata[]> {
+export async function listHistoryMetadata(ownerId: string, includeVideos = false, options: { readOnly?: boolean } = {}): Promise<WorkstationHistoryMetadata[]> {
   requireOwner(ownerId)
-  if (includeVideos) await pruneExpiredVideos(ownerId)
+  if (includeVideos && !options.readOnly) await pruneExpiredVideos(ownerId)
   return transaction([METADATA], 'readonly', (tx, done) => {
     const request = tx.objectStore(METADATA).index('ownerId').getAll(ownerId)
     request.onsuccess = () => done(request.result.map(({ ownerId: _ownerId, ...fields }) => { void _ownerId; return fields })
@@ -202,14 +202,28 @@ async function makeThumbnails() {
     }
   } finally { makingThumbnail = false }
 }
-export async function listHistoryPreviews(ownerId: string, includeVideos = false): Promise<WorkstationHistoryListItem[]> {
-  const items = await listHistoryMetadata(ownerId, includeVideos)
+export async function listHistoryPreviews(ownerId: string, includeVideos = false, options: { limit?: number; readOnly?: boolean } = {}): Promise<WorkstationHistoryListItem[]> {
+  const metadata = await listHistoryMetadata(ownerId, includeVideos, options)
+  const items = options.limit === undefined ? metadata : metadata.slice(0, Math.max(0, Math.floor(options.limit)))
+  if (items.length === 0) return []
   const thumbnails = await transaction<Array<{ id: string; thumbnail: Blob }>>([THUMBNAILS], 'readonly', (tx, done) => {
+    if (options.limit !== undefined) {
+      const found: Array<{ id: string; thumbnail: Blob }> = []
+      let remaining = items.length
+      for (const item of items) {
+        const request = tx.objectStore(THUMBNAILS).get([ownerId, item.id])
+        request.onsuccess = () => {
+          if (request.result) found.push(request.result)
+          if (--remaining === 0) done(found)
+        }
+      }
+      return
+    }
     const request = tx.objectStore(THUMBNAILS).index('ownerId').getAll(ownerId)
     request.onsuccess = () => done(request.result)
   })
   const byId = new Map(thumbnails.map(item => [item.id, item.thumbnail]))
-  for (const item of items) if (item.mediaType !== 'video' && !byId.has(item.id)) enqueueThumbnail(ownerId, item.id, undefined, item)
+  if (!options.readOnly) for (const item of items) if (item.mediaType !== 'video' && !byId.has(item.id)) enqueueThumbnail(ownerId, item.id, undefined, item)
   return items.map(item => ({ ...item, thumbnail: byId.get(item.id) }))
 }
 export async function listHistoryDeletions(ownerId: string): Promise<DeletedResult[]> {

@@ -12,16 +12,27 @@ export const supabase = authEnabled && !cloudConfigurationError ? createClient(s
 export class CloudError extends Error {
   constructor(public status: number, message: string, public code = 'REQUEST_FAILED') { super(message) }
 }
-export async function cloudRequest<T>(path: string, method = 'GET', body?: unknown, options?: { timeoutMs?: number; expectedUserId?: string }): Promise<T> {
+export interface CloudRequestOptions { timeoutMs?: number; expectedUserId?: string; signal?: AbortSignal }
+export async function cloudRequest<T>(path: string, method = 'GET', body?: unknown, options?: CloudRequestOptions): Promise<T> {
   if (!supabase) throw new CloudError(503, '账号服务未启用', 'AUTH_DISABLED')
+  options?.signal?.throwIfAborted()
   const { data } = await supabase!.auth.getSession()
   if (options?.expectedUserId && data.session?.user.id !== options.expectedUserId)
-    throw new CloudError(401, '账号已切换，请重新读取个性化设置', 'ACCOUNT_CHANGED')
+    throw new CloudError(401, '账号已切换，请重新读取', 'ACCOUNT_CHANGED')
+  options?.signal?.throwIfAborted()
+  const timeout = AbortSignal.timeout(options?.timeoutMs ?? 60000)
   const response = await fetch(`/api${path}`, { method,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token ?? ''}` },
-    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(options?.timeoutMs ?? 60000),
+    body: body === undefined ? undefined : JSON.stringify(body), signal: options?.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
   })
   const result = await response.json().catch(() => ({ error: `服务接口异常（HTTP ${response.status}）`, code: 'SERVICE_UNAVAILABLE' }))
+  options?.signal?.throwIfAborted()
+  if (options?.expectedUserId) {
+    const latest = await supabase.auth.getSession()
+    if (latest.data.session?.user.id !== options.expectedUserId)
+      throw new CloudError(401, '账号已切换，请重新读取', 'ACCOUNT_CHANGED')
+  }
+  options?.signal?.throwIfAborted()
   if (!response.ok) {
     if (response.status === 402 && typeof window !== 'undefined') window.dispatchEvent(new Event('aigc:recharge'))
     throw new CloudError(response.status, result.error ?? '请求失败', result.code)

@@ -1,4 +1,5 @@
 import { hydrateAssets } from '@/cloud/assets'
+import { authEnabled } from '@/cloud/client'
 import { useEditorStore } from '@/editor/store'
 import { useTaskStore } from '@/store/useTaskStore'
 import { useUserStore } from '@/store/useUserStore'
@@ -151,7 +152,7 @@ async function acquireLock() {
 export function initializePersistence(): Promise<void> {
   if (initialization) return initialization
   initialization = (async () => {
-    usePersistenceStore.setState({ phase: 'loading', error: undefined })
+    usePersistenceStore.setState({ phase: 'loading', ownerId: persistenceScope(), error: undefined })
     try {
       const writable = await acquireLock()
       usePersistenceStore.setState({ writable })
@@ -201,24 +202,37 @@ export function hasUnfinishedGeneration() {
   return unresolved || Object.values(project?.generations ?? {}).some((job) => ['pending', 'queued', 'processing'].includes(job.status) && !recoveryForTask(job.backendTaskId ?? '')?.abandoned)
 }
 
-export async function replaceSnapshot(snapshot: ProjectSnapshot) {
+export async function replaceSnapshot(snapshot: ProjectSnapshot, options?: { signal?: AbortSignal; expectedScope?: string }) {
+  const scopeIsCurrent = () => {
+    const scope = options?.expectedScope, projectOwner = usePersistenceStore.getState().ownerId
+    return scope === undefined || (persistenceScope() === scope && (projectOwner === undefined || projectOwner === scope)
+      && (!authEnabled || useUserStore.getState().userId === scope))
+  }
+  const assertScope = () => { if (!scopeIsCurrent()) throw new Error('账号已切换，已取消项目打开') }
+  const assertActive = () => { assertScope(); options?.signal?.throwIfAborted() }
+  assertActive()
   if (!usePersistenceStore.getState().writable) throw new Error('当前页面没有项目编辑权')
   if (hasUnfinishedGeneration()) throw new Error('请先处理未完成的任务')
   const valid = parseSnapshot(snapshot)
   if (useEditorStore.getState().project && usePersistenceStore.getState().phase === 'ready') await flushProject()
+  assertActive()
   const previousPhase = usePersistenceStore.getState().phase
   // 替换期间卸载业务入口，并与自动保存共用同一条写入队列。
   usePersistenceStore.setState({ phase: 'loading' })
   clearTimeout(timer)
   const operation = queue.catch(() => undefined).then(async () => {
+    assertActive()
     const compact = persistableSnapshot(valid)
-    await writeCurrentSnapshot(compact)
+    await writeCurrentSnapshot(compact, options?.signal)
+    // 事务提交后立即应用；换账号时仅保留原账号存档，不写入新账号的编辑器。
+    assertScope()
     applySnapshot(parseSnapshot(compact))
     revision += 1
     savedRevision = revision
     usePersistenceStore.setState({ phase: 'ready' })
   }).catch((error: unknown) => {
-    usePersistenceStore.setState({ phase: previousPhase, status: 'error', error: error instanceof Error ? error.message : '替换项目失败' })
+    if (scopeIsCurrent())
+      usePersistenceStore.setState({ phase: previousPhase, status: options?.signal?.aborted ? 'saved' : 'error', error: options?.signal?.aborted ? undefined : error instanceof Error ? error.message : '替换项目失败' })
     throw error
   })
   queue = operation

@@ -31,6 +31,8 @@ import { usePreferencesStore } from '@/features/preferences/store'
 import PreferencesSyncAlert from '@/features/preferences/PreferencesSyncAlert'
 import { readSidebarState, writeSidebarState } from '@/features/preferences/storage'
 import { isPreferencePage, resolveStartPage } from '@shared/preferences'
+import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import { rememberTool, seedRecentTool } from '@/features/dashboard/recentWork'
 
 const { Sider, Content, Header } = Layout
 
@@ -113,8 +115,13 @@ function MainLayoutContent() {
   }, [topTitle, subTitle])
 
   useEffect(() => {
+    try {
+      const ownerId = currentWorkstationHistoryOwner()
+      seedRecentTool(ownerId, usePreferencesStore.getState().preferences.recent.page)
+      rememberTool(ownerId, location.pathname + location.search)
+    } catch { /* 账号尚未就绪时不记录导航。 */ }
     if (isPreferencePage(location.pathname)) usePreferencesStore.getState().update({ recent: { page: location.pathname } })
-  }, [location.pathname])
+  }, [location.pathname, location.search])
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 720px)')

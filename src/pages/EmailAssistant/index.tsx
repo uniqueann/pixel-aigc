@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useOutletContext, useSearchParams } from 'react-router-dom'
 import { Alert, Button } from 'antd'
 import { authEnabled } from '@/cloud/client'
 import ToolSwitcher from '@/components/ToolSwitcher'
@@ -8,6 +8,7 @@ import { useEmailGenerationGate } from '@/features/email-assistant/useEmailGener
 import { useEmailModelConfiguration } from '@/features/email-assistant/useEmailModelConfiguration'
 import { useEmailBatchController } from '@/features/email-assistant/batch/useEmailBatchController'
 import { useUserStore } from '@/store/useUserStore'
+import { EMAIL_OPERATIONS } from '@/features/email-assistant/options'
 import SingleEmailAssistant from './SingleEmailAssistant'
 import BatchEmailAssistant from './BatchEmailAssistant'
 
@@ -20,17 +21,30 @@ export default function EmailAssistant() {
 
 function EmailAssistantSession() {
   const { openModelSettings } = useOutletContext<{ openModelSettings: () => void }>()
-  const [mode, setMode] = useState('single')
-  const [batchVisited, setBatchVisited] = useState(false)
+  const [params, setParams] = useSearchParams()
+  const { key: entryKey } = useLocation()
+  const mode = params.get('mode') === 'batch' ? 'batch' : 'single'
+  const entryOperation = mode === 'single' ? EMAIL_OPERATIONS.find(item => item.value === params.get('operation'))?.value : undefined
+  const [batchVisited, setBatchVisited] = useState(mode === 'batch')
   const configuration = useEmailModelConfiguration()
   const gate = useEmailGenerationGate()
-  const single = useEmailAssistantController()
+  const single = useEmailAssistantController({ autoRestoreLatest: !entryOperation && !params.has('mode') })
   const batch = useEmailBatchController(gate)
   const { settingsQuery, profilesQuery } = configuration
+  useEffect(() => {
+    if (mode === 'batch' && !batchVisited) queueMicrotask(() => setBatchVisited(true))
+  }, [mode, batchVisited])
+  const consumeEntry = useCallback(() => {
+    if (!params.has('operation')) return
+    const next = new URLSearchParams(params)
+    next.delete('operation'); next.set('mode', 'single')
+    setParams(next, { replace: true })
+  }, [params, setParams])
 
   return <div className="email-assistant-page">
     <ToolSwitcher className="page-tab-row" options={MODES} value={mode} onChange={value => {
-      setMode(value)
+      const next = new URLSearchParams(params)
+      next.set('mode', value); next.delete('operation'); setParams(next)
       if (value === 'batch') setBatchVisited(true)
       if (value === 'single') void single.refreshHistory?.().catch(() => undefined)
     }} />
@@ -44,9 +58,10 @@ function EmailAssistantSession() {
     <div hidden={mode !== 'single'}>
       {gate.owner === 'batch' ? <Alert className="email-model-alert" type="info" showIcon
         message={batch.unresolved ? '批量邮件等待确认原任务状态，确认后可继续单个生成' : '批量邮件正在处理，暂停并等待当前邮件完成后可继续单个生成'} /> : null}
-      <SingleEmailAssistant controller={single} configuration={configuration} gate={gate} openModelSettings={openModelSettings} />
+      <SingleEmailAssistant controller={single} configuration={configuration} gate={gate} openModelSettings={openModelSettings}
+        entryOperation={entryOperation} entryKey={entryKey} onEntryConsumed={consumeEntry} />
     </div>
-    {batchVisited ? <div hidden={mode !== 'batch'}>
+    {batchVisited || mode === 'batch' ? <div hidden={mode !== 'batch'}>
       <BatchEmailAssistant controller={batch} configuration={configuration} singleBusy={gate.owner === 'single'} />
     </div> : null}
   </div>

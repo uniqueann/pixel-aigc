@@ -6,7 +6,7 @@ import { RETOUCH_DIRECTION_IDS } from './retouch.js'
 export const COUNT_TOOLS = ['smart-edit', 'relight', 'variation', 'fusion', 'retouch'] as const
 export type CountTool = typeof COUNT_TOOLS[number]
 export const WORKSTATION_SLUGS = [...COUNT_TOOLS, 'remove', 'repaint', 'outpaint'] as const
-export const TOOLBOX_SLUGS = ['bg-remove', 'watermark', 'aspect-ratio'] as const
+export const TOOLBOX_SLUGS = ['bg-remove', 'watermark', 'aspect-ratio', 'pipeline'] as const
 export const START_PAGES = ['/', '/email', '/image-workstation', '/toolbox', '/canvas', '/assets', 'last'] as const
 export type AssetViewMode = 'grid' | 'list'
 
