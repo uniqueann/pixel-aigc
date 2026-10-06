@@ -51,11 +51,18 @@ describe('裂变侧栏能力状态', () => {
     expect(screen.queryByText('正在加载模型配置…')).toBeNull()
   })
 
-  it('图生视频未开放时禁用提交并说明真人素材限制', () => {
+  it('图生视频未开放时保留源图，隐藏收费表单', () => {
     renderPanel({ mode: 'image-to-video', prompt: '镜头推进', generateDisabled: true, estimatedCredits: undefined })
-    expect(screen.getByText('视频生成尚未开放，请检查登录与服务配置。')).toBeTruthy()
-    expect(screen.getByText('积分预估暂不可用')).toBeTruthy()
-    expect(screen.queryByText(/预计消耗/)).toBeNull()
-    expect((screen.getByRole('button', { name: '生成视频' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
+    expect(screen.getByText('mug.jpg')).toBeTruthy()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^生成视频/ })).toBeNull()
+    expect(screen.queryByText(/积分预估|预计消耗|服务配置/)).toBeNull()
+  })
+
+  it('缺失裂变报价时不显示零积分，并禁止提交', () => {
+    renderPanel({ estimatedCredits: undefined })
+    expect(screen.queryByText(/预扣 0 积分/)).toBeNull()
+    expect((screen.getByRole('button', { name: /开始裂变.*报价暂不可用/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

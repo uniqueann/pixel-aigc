@@ -14,6 +14,8 @@ import {
   RedoOutlined,
 } from '@ant-design/icons'
 import { MAX_FILES } from './shared/inspect'
+import CreditActionButton from '@/features/credits/CreditActionButton'
+import type { CreditQuote } from '@/features/credits/quotes'
 
 export interface ToolboxImageItem {
   id: string
@@ -65,6 +67,7 @@ export function PreviewResultActions({
   busy = false,
   onDownload,
   onRetry,
+  retryQuote,
 }: {
   status: ToolboxImageItem['status']
   hasOutput: boolean
@@ -72,13 +75,14 @@ export function PreviewResultActions({
   busy?: boolean
   onDownload: () => void
   onRetry: () => void
+  retryQuote?: CreditQuote
 }) {
   const showRetry = status === 'failed' || retry
   const canDownload = status === 'succeeded' && hasOutput
   return (
     <>
       {showRetry && (
-        <Button size="small" autoInsertSpace={false} icon={<RedoOutlined />} disabled={busy} onClick={onRetry}>重试</Button>
+        <CreditActionButton size="small" autoInsertSpace={false} icon={<RedoOutlined />} disabled={busy} quote={retryQuote} onClick={onRetry}>重试</CreditActionButton>
       )}
       {status !== 'failed' && (canDownload ? (
         <Button size="small" autoInsertSpace={false} icon={<DownloadOutlined />} onClick={onDownload}>下载</Button>

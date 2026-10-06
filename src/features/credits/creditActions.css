@@ -1,0 +1,22 @@
+.credit-action-button.ant-btn {
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 32px;
+  white-space: normal;
+}
+
+.credit-action-button.ant-btn-sm {
+  min-height: 24px;
+}
+
+.credit-action-button > span {
+  overflow-wrap: anywhere;
+}
+
+.credit-quote-notice {
+  margin: 8px 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

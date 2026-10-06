@@ -8,7 +8,7 @@ import { useUserStore } from '@/store/useUserStore'
 import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import ToolboxImageCard, { PreviewItemNotice, PreviewResultActions } from './ToolboxImageCard'
-import { processRemovalBatch, recompositeBatch } from './bg-remove/batch'
+import { imagesNeedingRemoval, processRemovalBatch, recompositeBatch } from './bg-remove/batch'
 import { requestMatte } from './bg-remove/client'
 import { compositeMatte } from './bg-remove/composite'
 import { createBgRemoveZip, downloadBlob, namesForImages } from './bg-remove/download'
@@ -20,6 +20,12 @@ import { applyEdgeRefineResult, loadBgRemoveSession, saveBgRemoveSession, setEdg
 import { PREVIEW_MAX_DIMENSION, type BatchImage, type BgRemoveSettings } from './bg-remove/types'
 import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
+import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
+import { bgRemoveBatchQuote } from '@/features/credits/batchQuotes'
+import { useBillingCatalog } from '@/features/credits/useBillingCatalog'
+import { creditQuoteBlocked } from '@/features/credits/quotes'
+import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
+import { syncCreditPrice } from '@shared/billing'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败'
@@ -68,6 +74,8 @@ export default function BgRemoveTool() {
   const addingCountRef = useRef(0)
   const pendingBytesRef = useRef(0)
   const { capabilities: { bgRemove: serviceReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
+  const mockGateway = isCanvasMockGateway()
+  const billing = useBillingCatalog(!mockGateway && serviceReady === true)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
 
@@ -78,6 +86,9 @@ export default function BgRemoveTool() {
   const outputBytes = downloadable.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
   const busy = processing || adding || packaging
   const controlsLocked = processing || packaging
+  const quoteFor = (ids?: string[]) => bgRemoveBatchQuote(items, billing.data, { ids, mock: mockGateway, loading: billing.isPending && billing.fetchStatus === 'fetching' })
+  const generateQuote = quoteFor()
+  const needsRemoval = (ids?: string[]) => imagesNeedingRemoval(items, ids).some(item => !item.matte)
 
   useLayoutEffect(() => {
     settingsRef.current = settings
@@ -290,7 +301,11 @@ export default function BgRemoveTool() {
   }
 
   async function processImages(onlyIds?: string[]) {
-    if (!serviceReady) {
+    if (creditQuoteBlocked(quoteFor(onlyIds))) {
+      message.warning('报价暂不可用，请重新加载')
+      return
+    }
+    if (needsRemoval(onlyIds) && !serviceReady) {
       message.warning(serviceReady === false ? '智能抠图即将上线，腾讯云商品抠图的配置还没填好'
         : capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
       return
@@ -390,6 +405,7 @@ export default function BgRemoveTool() {
                   status={selected.status}
                   hasOutput={Boolean(selected.output)}
                   busy={busy}
+                  retryQuote={quoteFor([selected.id])}
                   onDownload={() => downloadOne(selected.id)}
                   onRetry={() => { void processImages([selected.id]) }}
                 />
@@ -422,6 +438,10 @@ export default function BgRemoveTool() {
           <CapabilityStatus ready={serviceReady} error={capabilityError}
             unavailableMessage="智能抠图即将上线。腾讯云商品抠图的配置还没填好，现在不能开始处理。"
             onRetry={() => void refetchCapabilities()} />
+          <CreditQuoteNotice quote={generateQuote} onRetry={() => void billing.refetch()} />
+          <CreditBalanceNotice quote={generateQuote} />
+          {billing.data && <p className="toolbox-hint">本月还可免费抠图 {billing.data.freeBgRemoveRemaining} 张，超出后每张 {syncCreditPrice('bg-remove')} 积分。</p>}
+          <CreditSettlementHint quote={generateQuote} />
         </section>
       </div>
       <PreviewGallery {...galleryProps} onDownload={item => downloadOne(item.id)} />
@@ -433,9 +453,9 @@ export default function BgRemoveTool() {
         </div>
         <div className="toolbox-footer-actions">
           <Button icon={<DownloadOutlined />} disabled={!downloadable.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
-          {failed.length > 0 && !processing && <Button disabled={busy || !serviceReady} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>}
+          {failed.length > 0 && !processing && <CreditActionButton quote={quoteFor(failed.map(item => item.id))} disabled={busy || (needsRemoval(failed.map(item => item.id)) && !serviceReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>}
           {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
-            <Button type="primary" disabled={!serviceReady || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</Button>
+            <CreditActionButton quote={generateQuote} type="primary" disabled={(needsRemoval() && !serviceReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
           )}
         </div>
       </div>

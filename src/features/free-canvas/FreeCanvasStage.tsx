@@ -26,6 +26,7 @@ import {
   normalizeNodeTransform,
 } from './geometry'
 import type { FreeCanvasStageHandle, FreeCanvasStageProps, NodeTransform } from './types'
+import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 
 const ARTBOARD_FILL = '#f7f7f5'
 const ARTBOARD_STROKE = '#d6d6d2'
@@ -251,6 +252,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   generationActive,
   variationEnabled = false,
   imageToVideoEnabled = false,
+  imageToVideoState = imageToVideoEnabled ? 'ready' : 'soon',
   onSelectNode,
   onTransformNode,
   onViewportChange,
@@ -877,14 +879,14 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
             </span>
           </Tooltip>
           <span className="free-canvas-node-actions-divider" />
-          <Tooltip title={imageToVideoEnabled ? '让这张图片动起来' : '请先确认登录与视频模型配置'}>
+          <Tooltip title={imageToVideoEnabled ? '让这张图片动起来' : `视频生成${capabilityAvailabilityLabel(imageToVideoState)}`}>
             <span><Button
               size="small"
               type="text"
               icon={<VideoCameraAddOutlined />}
               disabled={generationActive || !imageToVideoEnabled}
               onClick={() => onNodeGenerationAction('image-to-video', selectedImage.id)}
-            >生成视频</Button></span>
+            >图生视频{imageToVideoState === 'ready' ? '' : ` · ${capabilityAvailabilityLabel(imageToVideoState)}`}</Button></span>
           </Tooltip>
         </div>
       )}

@@ -1,6 +1,8 @@
 import { Alert, Button, Spin } from 'antd'
 import type { GenerationTask } from '@/types'
 import { Capability } from '@/types'
+import CreditActionButton from '@/features/credits/CreditActionButton'
+import type { CreditQuote } from '@/features/credits/quotes'
 
 const WARNING_LABELS: Record<string, string> = {
   RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO: '当前比例不支持 4K，已按 2K 生成',
@@ -35,6 +37,7 @@ interface GenerationTaskStatusProps {
   onRetry?: () => void
   retryLabel?: string
   retryDisabled?: boolean
+  retryQuote?: CreditQuote
   onModifyParameters?: () => void
   onRefetch?: () => void
 }
@@ -58,6 +61,7 @@ export default function GenerationTaskStatus({
   onRetry,
   retryLabel = '按原参数重试',
   retryDisabled = false,
+  retryQuote,
   onModifyParameters,
   onRefetch,
 }: GenerationTaskStatusProps) {
@@ -79,7 +83,7 @@ export default function GenerationTaskStatus({
           ) : null}
           {terminalFailure && (onRetry || onModifyParameters) ? (
             <div className="generation-task-status-actions">
-              {onRetry ? <Button size="small" type="primary" loading={submitting} disabled={retryDisabled} onClick={onRetry}>{retryLabel}</Button> : null}
+              {onRetry ? <CreditActionButton size="small" type="primary" loading={submitting} disabled={retryDisabled} quote={retryQuote} onClick={onRetry}>{retryLabel}</CreditActionButton> : null}
               {onModifyParameters ? <Button size="small" onClick={onModifyParameters}>修改参数</Button> : null}
             </div>
           ) : null}

@@ -17,6 +17,10 @@ import VideoCreditEstimate from './VideoCreditEstimate'
 import VideoGenerationSettings from './VideoGenerationSettings'
 import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits'
 import type { VideoModelProfile } from '@shared/video-models'
+import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
+import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
+import type { CapabilityAvailability } from '@/components/capabilityAvailability'
+import VideoAvailabilityNotice from './VideoAvailabilityNotice'
 
 export type DerivedGenerationMode = 'variation' | 'image-to-video'
 
@@ -30,6 +34,8 @@ interface DerivedGenerationPanelProps {
   onAudioChange?: (value: boolean) => void
   videoConfigured?: boolean
   videoModel?: VideoModelProfile
+  videoAvailability?: CapabilityAvailability
+  onReloadModels?: () => void
   task?: GenerationTask<CanvasGenerationTaskParams>
   submitting: boolean
   autoRetrying: boolean
@@ -93,6 +99,7 @@ export default function DerivedGenerationPanel({
   estimatedCredits, mockGateway = true, resolutionAdjusted = false, preparationPhase,
   historyError, historySaved, onRetrySave, resultAssets,
   generateAudio = false, onAudioChange, videoConfigured = false, videoModel,
+  videoAvailability, onReloadModels,
 }: DerivedGenerationPanelProps) {
   const imageToVideo = mode === 'image-to-video'
   const balance = useUserStore(state => state.credits)
@@ -118,13 +125,17 @@ export default function DerivedGenerationPanel({
       thumbSrc: imageToVideo ? '' : src, fullSrc: src, originalSrc: imageToVideo || sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `${imageToVideo ? '视频' : '裂变'}结果 ${(image?.ordinal ?? index) + 1}` }
   })
   const model = models.find(item => item.id === modelProfileId)
-  const originalModel = models.find(item => item.id === task?.modelProfileId) ?? model
+  const originalModel = task ? models.find(item => item.id === task.modelProfileId) : model
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
-  const retryCredits = task ? task.params.count * (originalResolution === '720p' ? 0 : originalModel?.pricing?.creditsPerImage[originalResolution ?? resolution] ?? 0) : estimatedCredits
+  const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, originalResolution ?? resolution) : estimatedCredits
   const retryVideoDuration = task && 'durationSeconds' in task.params ? task.params.durationSeconds : durationSeconds
-  const retryVideoCredits = videoCreditsForDuration(videoModel, retryVideoDuration)
+  const retryVideoCredits = videoCreditsForDuration(task && task.modelProfileId !== videoModel?.id ? undefined : videoModel, retryVideoDuration)
   const videoCreditSubmitBlocked = imageToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: estimatedCredits, balance })
   const videoRetryBlocked = imageToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: retryVideoCredits, balance })
+  const videoState = mockGateway ? 'ready' : videoAvailability ?? (modelsLoading ? 'loading' : videoConfigured ? 'ready' : 'soon')
+  const showForm = !imageToVideo || videoState === 'ready'
+  const quote = creditQuote(estimatedCredits, { mock: mockGateway, loading: modelsLoading })
+  const retryQuote = creditQuote(imageToVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
 
   return (
     <aside className="free-canvas-generation-panel free-canvas-derived-panel">
@@ -139,7 +150,7 @@ export default function DerivedGenerationPanel({
         />
         <div>
           <h2>{title}</h2>
-          <p>{imageToVideo ? '让选中的图片按描述动起来。' : '基于选中的图片探索更多视觉方案。'}</p>
+          {showForm && <p>{imageToVideo ? '让选中的图片按描述动起来。' : '基于选中的图片探索更多视觉方案。'}</p>}
         </div>
       </div>
 
@@ -151,6 +162,7 @@ export default function DerivedGenerationPanel({
         </div>
       </div>
 
+      {!showForm ? <VideoAvailabilityNotice state={videoState} onRetry={onReloadModels} /> : <>
       <label className="free-canvas-field">
         <span>{imageToVideo ? '动态描述' : '变化描述（可选）'}</span>
         <Input.TextArea
@@ -193,7 +205,7 @@ export default function DerivedGenerationPanel({
         {resolutionAdjusted && <p role="status">当前模型或图片比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
         {modelsLoading
           ? <p role="status">正在加载模型配置…</p>
-          : <p>{mockGateway ? '模拟生成，不消耗积分' : `本次预计预扣 ${estimatedCredits ?? 0} 积分，按实际成功张数结算。失败后由你决定是否再次生成。`}</p>}
+          : <p>{mockGateway ? '模拟生成，不消耗积分' : estimatedCredits === undefined ? '模型积分报价尚未就绪，请重新加载。' : `本次预计预扣 ${estimatedCredits} 积分，按实际成功张数结算。失败后由你决定是否再次生成。`}</p>}
       </>}
 
       {modelsLoading || imageToVideo ? null : generateDisabled ? (
@@ -203,22 +215,27 @@ export default function DerivedGenerationPanel({
         loading={modelsLoading} configured={videoConfigured || mockGateway} />
         <p>保持原图比例；首期暂不支持含真人人脸的图片。</p>
         <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} /></>}
-      <Button
+      <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
+      <CreditActionButton
         className="free-canvas-generate"
         type="primary"
         block
         loading={submitting || autoRetrying}
+        quote={quote}
         disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > VIDEO_PROMPT_MAX))}
         onClick={onGenerate}
       >
         {active ? '正在生成' : imageToVideo ? '生成视频' : `开始裂变 ${count} 张`}
-      </Button>
+      </CreditActionButton>
+      <CreditSettlementHint quote={quote} />
+      {!imageToVideo && <CreditBalanceNotice quote={quote} />}
       {preparationPhase && <p role="status">{preparationPhase}</p>}
       {!imageToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
-        手动重试将按原参数创建新任务，生成 {task.params.count} 张，预计预扣 {retryCredits} 积分。
+        手动重试将按原参数创建新任务，生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计预扣 ${retryCredits} 积分。`}
       </p>}
       {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
-
+      </>}
+      {(task?.status === 'failed' || task?.status === 'cancelled') && showForm && <CreditQuoteNotice quote={retryQuote} onRetry={onReloadModels} />}
       <GenerationTaskStatus
         task={task}
         submitting={submitting}
@@ -231,8 +248,9 @@ export default function DerivedGenerationPanel({
         historyError={historyError}
         historySaved={historySaved}
         onRetrySave={onRetrySave}
-        onRetry={onRetry}
-        retryDisabled={imageToVideo && (generateDisabled || modelsLoading || videoRetryBlocked)}
+        onRetry={imageToVideo && videoState !== 'ready' ? undefined : onRetry}
+        retryDisabled={imageToVideo ? videoState !== 'ready' || generateDisabled || videoRetryBlocked : modelsLoading || generateDisabled}
+        retryQuote={retryQuote}
         retryLabel={!imageToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
@@ -243,7 +261,7 @@ export default function DerivedGenerationPanel({
         return downloadImageSource(item.fullSrc, `裂变结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
       }} />}
 
-      <p className="free-canvas-panel-hint">结果会落在画板内可见位置；生成后仍可继续作为新的派生起点。</p>
+      {showForm && <p className="free-canvas-panel-hint">结果会落在画板内可见位置；生成后仍可继续作为新的派生起点。</p>}
     </aside>
   )
 }

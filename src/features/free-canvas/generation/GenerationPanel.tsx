@@ -1,4 +1,4 @@
-import { Button, Input, Radio, Segmented, Select } from 'antd'
+import { Input, Radio, Segmented, Select } from 'antd'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { PROMPT_MAX_LENGTH, VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
@@ -17,6 +17,10 @@ import VideoCreditEstimate from './VideoCreditEstimate'
 import VideoGenerationSettings from './VideoGenerationSettings'
 import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits'
 import type { VideoModelProfile } from '@shared/video-models'
+import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
+import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
+import type { CapabilityAvailability } from '@/components/capabilityAvailability'
+import VideoAvailabilityNotice from './VideoAvailabilityNotice'
 
 interface GenerationPanelProps {
   mode: string
@@ -28,6 +32,8 @@ interface GenerationPanelProps {
   onAudioChange?: (value: boolean) => void
   videoConfigured?: boolean
   videoModel?: VideoModelProfile
+  videoAvailability?: CapabilityAvailability
+  onReloadModels?: () => void
   task?: GenerationTask<CanvasGenerationTaskParams>
   submitting: boolean
   active: boolean
@@ -89,6 +95,7 @@ export default function GenerationPanel({
   modelsLoading = false, generateDisabled = false, mockGateway = true,
   historyError, historySaved, onRetrySave, resultAssets,
   generateAudio = false, onAudioChange, videoConfigured = false, videoModel,
+  videoAvailability, onReloadModels,
 }: GenerationPanelProps) {
   const textToVideo = mode === 'text-to-video'
   const balance = useUserStore(state => state.credits)
@@ -116,22 +123,25 @@ export default function GenerationPanel({
       posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
       thumbSrc: taskIsVideo ? '' : src, fullSrc: src, title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
   })
-  const originalModel = task?.modelProfileId ? models.find(item => item.id === task.modelProfileId) : model
+  const originalModel = task ? models.find(item => item.id === task.modelProfileId) : model
   const imagePromptMax = model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
-  const retryUnitPrice = originalResolution === '720p' ? undefined : originalModel?.pricing.creditsPerImage[originalResolution ?? resolution]
-  const retryCredits = task ? retryUnitPrice === undefined ? undefined : task.params.count * retryUnitPrice : estimatedCredits
-  const retryVideoCredits = videoCreditsForDuration(videoModel, taskDuration)
+  const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, originalResolution ?? resolution) : estimatedCredits
+  const retryVideoCredits = videoCreditsForDuration(task && task.modelProfileId !== videoModel?.id ? undefined : videoModel, taskDuration)
   const videoCreditSubmitBlocked = textToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: estimatedCredits, balance })
   const videoRetryBlocked = taskIsVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: retryVideoCredits, balance })
+  const videoState = mockGateway ? 'ready' : videoAvailability ?? (modelsLoading ? 'loading' : videoConfigured ? 'ready' : 'soon')
+  const showForm = !textToVideo || videoState === 'ready'
+  const quote = creditQuote(estimatedCredits, { mock: mockGateway, loading: modelsLoading })
+  const retryQuote = creditQuote(taskIsVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
 
   return (
     <aside className="free-canvas-generation-panel">
       <div>
         <h2>{textToVideo ? '文生视频' : '文生图'}</h2>
-        <p>{textToVideo ? '描述镜头内容，生成结果会作为可播放视频加入画布。' : '输入创意描述，结果会直接加入当前视口中心。'}</p>
+        {showForm && <p>{textToVideo ? '描述镜头内容，生成结果会作为可播放视频加入画布。' : '输入创意描述，结果会直接加入当前视口中心。'}</p>}
       </div>
-
+      {!showForm ? <VideoAvailabilityNotice state={videoState} onRetry={onReloadModels} /> : <>
       <label className="free-canvas-field">
         <span>画面描述</span>
         <Input.TextArea
@@ -193,21 +203,26 @@ export default function GenerationPanel({
         loading={modelsLoading} configured={videoConfigured || mockGateway} />}
       {textToVideo && <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />}
 
-      <Button
+      <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
+      <CreditActionButton
         className="free-canvas-generate"
         type="primary"
         block
         loading={submitting}
+        quote={quote}
         disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || prompt.trim().length > imagePromptMax)) || !prompt.trim()}
         onClick={onGenerate}
       >
         {active ? '正在生成' : textToVideo ? '生成视频到画布' : '生成到画布'}
-      </Button>
+      </CreditActionButton>
+      <CreditSettlementHint quote={quote} />
+      {!textToVideo && <CreditBalanceNotice quote={quote} />}
       {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
-        手动重试将按原参数创建新任务，生成 {task.params.count} 张，{retryCredits === undefined ? '原模型积分报价尚未就绪，请先确认模型配置。' : `预计预扣 ${retryCredits} 积分。`}
+        手动重试将按原参数创建新任务，生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计预扣 ${retryCredits} 积分。`}
       </p>}
       {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
-
+      </>}
+      {(task?.status === 'failed' || task?.status === 'cancelled') && (!taskIsVideo || showForm) && <CreditQuoteNotice quote={retryQuote} onRetry={onReloadModels} />}
       <GenerationTaskStatus
         task={task}
         submitting={submitting}
@@ -220,8 +235,9 @@ export default function GenerationPanel({
         historyError={historyError}
         historySaved={historySaved}
         onRetrySave={onRetrySave}
-        onRetry={onRetry}
-        retryDisabled={!!taskIsVideo && (generateDisabled || modelsLoading || videoRetryBlocked)}
+        onRetry={taskIsVideo && videoState !== 'ready' ? undefined : onRetry}
+        retryDisabled={taskIsVideo ? videoState !== 'ready' || generateDisabled || videoRetryBlocked : modelsLoading || generateDisabled}
+        retryQuote={retryQuote}
         retryLabel={!taskIsVideo && !textToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
@@ -232,7 +248,7 @@ export default function GenerationPanel({
         return downloadImageSource(item.fullSrc, `生成结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
       }} />}
 
-      <p className="free-canvas-panel-hint">生成期间可移动占位位置；完成后，{textToVideo ? '视频' : '图片'}会保留该位置和尺寸。</p>
+      {showForm && <p className="free-canvas-panel-hint">生成期间可移动占位位置；完成后，{textToVideo ? '视频' : '图片'}会保留该位置和尺寸。</p>}
     </aside>
   )
 }

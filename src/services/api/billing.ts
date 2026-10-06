@@ -7,7 +7,7 @@ export const RECHARGE_EVENT = 'aigc:recharge'
 export const SPEND_CONFIRM_EVENT = 'aigc:spend-confirm'
 export const BILLING_REFRESH_EVENT = 'aigc:billing-refresh'
 export function openCreditRecharge() { window.dispatchEvent(new Event(RECHARGE_EVENT)) }
-export const getBillingCatalog = (owner: string) => cloudRequest<BillingCatalog>('/credits/catalog','GET',undefined,{expectedUserId:owner})
+export const getBillingCatalog = (owner: string, signal?: AbortSignal) => cloudRequest<BillingCatalog>('/credits/catalog','GET',undefined,{expectedUserId:owner,signal})
 export const listCreditOrders = (owner: string) => cloudRequest<{items:CreditOrder[]}>('/credits/orders','GET',undefined,{expectedUserId:owner})
 export const getCreditOrder = (id: string,owner: string) => cloudRequest<CreditOrder>(`/credits/orders/${id}`,'GET',undefined,{expectedUserId:owner})
 export const checkoutCredits = (packId: CreditPackId,provider: PaymentProvider,orderId: string,owner: string,expectedAmount:number,expectedCurrency:CreditCurrency) =>

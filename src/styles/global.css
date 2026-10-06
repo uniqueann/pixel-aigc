@@ -1688,8 +1688,14 @@ body.sidebar-resizing * {
 
 .image-workstation-footer-actions {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: 8px;
+}
+
+.image-workstation-footer-actions > span {
+  max-width: 100%;
 }
 
 .workstation-upload {

@@ -156,6 +156,7 @@ export function useImageWorkstationController({
   const syncRecoveryRef = useRef<{ descriptor: SyncImageObjectResult; complete: (blob: Blob) => Promise<GenerationTask<unknown>>; epoch: number; ownerId: string }>()
   const fusionInputsRef = useRef(new FusionInputPreparation())
   const inputRetryRef = useRef<InputRetryContext>()
+  const [inputRetryRequest, setInputRetryRequest] = useState<WorkstationGenerationRequest>()
   const submissionGateRef = useRef<number>()
   const inputPreparationRef = useRef<FusionPreparationState>()
   const [inputPreparation, setInputPreparation] = useState<FusionPreparationState>()
@@ -175,6 +176,7 @@ export function useImageWorkstationController({
     setResultReadError(undefined); setHistoryError(undefined); setHistorySaved(false); setReadingResults(false)
     setSubmissionError(undefined); setProtocolError(undefined)
     inputRetryRef.current = undefined
+    setInputRetryRequest(undefined)
     submissionGateRef.current = undefined
     updateInputPreparation(undefined)
     setSubmitting(false)
@@ -494,6 +496,7 @@ export function useImageWorkstationController({
       if (!isCurrent() || isPreparationCancelled(error)) throw fusionAbortError()
       if (isFusionInputPreparationError(error) && snapshot) {
         inputRetryRef.current = snapshot
+        setInputRetryRequest(snapshot.request)
         if (inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, phase: 'failed' })
       } else {
         updateInputPreparation(undefined)
@@ -668,6 +671,7 @@ export function useImageWorkstationController({
     retrySave,
     submissionError,
     inputPreparation,
+    inputRetryRequest,
     canRetryInputPreparation: inputPreparation?.phase === 'failed' && !submitting,
     retryInputPreparation,
     cancelInputPreparation,
