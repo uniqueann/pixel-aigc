@@ -19,6 +19,7 @@ import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits
 import type { VideoModelProfile } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
+import { modelProfileIdForRetry } from './retryModel'
 import type { CapabilityAvailability } from '@/components/capabilityAvailability'
 import VideoAvailabilityNotice from './VideoAvailabilityNotice'
 
@@ -125,11 +126,12 @@ export default function DerivedGenerationPanel({
       thumbSrc: imageToVideo ? '' : src, fullSrc: src, originalSrc: imageToVideo || sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `${imageToVideo ? '视频' : '裂变'}结果 ${(image?.ordinal ?? index) + 1}` }
   })
   const model = models.find(item => item.id === modelProfileId)
-  const originalModel = task ? models.find(item => item.id === task.modelProfileId) : model
+  const originalModelId = task ? modelProfileIdForRetry(task) : undefined
+  const originalModel = task ? models.find(item => item.id === originalModelId) : model
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
   const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, originalResolution ?? resolution) : estimatedCredits
   const retryVideoDuration = task && 'durationSeconds' in task.params ? task.params.durationSeconds : durationSeconds
-  const retryVideoCredits = videoCreditsForDuration(task && task.modelProfileId !== videoModel?.id ? undefined : videoModel, retryVideoDuration)
+  const retryVideoCredits = videoCreditsForDuration(task && originalModelId !== videoModel?.id ? undefined : videoModel, retryVideoDuration)
   const videoCreditSubmitBlocked = imageToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: estimatedCredits, balance })
   const videoRetryBlocked = imageToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: retryVideoCredits, balance })
   const videoState = mockGateway ? 'ready' : videoAvailability ?? (modelsLoading ? 'loading' : videoConfigured ? 'ready' : 'soon')
