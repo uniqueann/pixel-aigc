@@ -4,7 +4,7 @@ import type { BillingCatalog } from '@shared/billing'
 import { Capability } from '@/types'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, type BatchImage } from '@/pages/Toolbox/aspect-ratio/types'
-import { creditQuote, creditQuoteLabel, imageCreditAmount, outpaintCreditAmount } from './quotes'
+import { creditQuote, creditQuoteLabel, imageCreditAmount, outpaintCreditAmount, positiveQuoteCount } from './quotes'
 import { aspectRatioBatchQuote, bgRemoveBatchQuote } from './batchQuotes'
 import { workstationRequestQuote } from '@/features/image-workstation/creditQuote'
 
@@ -20,6 +20,16 @@ describe('操作报价与实际提交参数', () => {
     expect(effective.resolution).toBe('2k')
     expect(imageCreditAmount(model, effective.count, effective.resolution)).toBe(6)
     expect(imageCreditAmount(model, 3, '1k')).toBe(6)
+  })
+
+  it('未上传导致有效张数为 0 时，报价改用当前选择的张数', () => {
+    expect(positiveQuoteCount(0, 2)).toBe(2)
+    expect(positiveQuoteCount(Number.NaN, 3)).toBe(3)
+    expect(positiveQuoteCount(4, 1)).toBe(4)
+    expect(positiveQuoteCount(0, 0)).toBeUndefined()
+    expect(imageCreditAmount(model, positiveQuoteCount(0, 1) ?? 0, '1k')).toBe(2)
+    expect(imageCreditAmount(model, positiveQuoteCount(0, 2) ?? 0, '1k')).toBe(4)
+    expect(imageCreditAmount(model, positiveQuoteCount(1, 2) ?? 0, '2k')).toBe(3)
   })
 
   it('缺失、非法报价和未知模型不能成为零积分', () => {
