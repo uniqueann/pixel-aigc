@@ -80,5 +80,9 @@ export interface ImageJobStore {
   hourlyOldest(): Promise<Date | undefined>
   userActiveCount(): Promise<number>
   globalActiveCount(): Promise<number>
+  /** 当前环境里该供应商尚未结束的图片任务，跨用户。 */
+  providerActiveCount(provider: string): Promise<number>
+  /** 当前环境里该模型尚未结束的图片任务，跨用户。 */
+  modelActiveCount(modelProfileId: string): Promise<number>
   expireUserOverdue(now: Date): Promise<void>
 }

@@ -8,6 +8,11 @@ export const DEFAULT_QWEN_REQUEST_TIMEOUT_MS = 30_000
 /** 俄勒冈到北京的建连有时超过共享百炼客户端的 4 秒。只给千问放宽。 */
 export const DEFAULT_QWEN_CONNECT_TIMEOUT_MS = 10_000
 export const DEFAULT_QWEN_MAX_PARALLEL = 1
+/** 同一环境里进行中的百炼文生图任务。低于账号约 10 个异步任务的上限。 */
+export const DEFAULT_QWEN_ACTIVE_LIMIT = 8
+/** qwen-image-3.0-pro 约 5 RPM，单独再收紧。 */
+export const DEFAULT_QWEN_PRO_ACTIVE_LIMIT = 4
+const THROTTLE_BACKOFF_CAP_MS = 60_000
 
 const ALLOWED_MODELS = new Set<string>(QWEN_IMAGE_MODEL_IDS)
 
@@ -125,4 +130,52 @@ export function qwenImageSettings(env: NodeJS.ProcessEnv = process.env): QwenIma
 export function qwenImageAvailable(env: NodeJS.ProcessEnv = process.env) {
   const settings = qwenImageSettings(env)
   return qwenImageEnabled(env) && !!settings && settings.models.length > 0
+}
+
+export function qwenImageConcurrencyLimits(env: NodeJS.ProcessEnv = process.env) {
+  return {
+    providerActive: readNumber(env, 'QWEN_IMAGE_ACTIVE_LIMIT', DEFAULT_QWEN_ACTIVE_LIMIT, 1, 100),
+    proActive: readNumber(env, 'QWEN_IMAGE_PRO_ACTIVE_LIMIT', DEFAULT_QWEN_PRO_ACTIVE_LIMIT, 1, 100),
+  }
+}
+
+/**
+ * 限流后的重新提交间隔。Pro 从 15 秒起，3.0 从 8 秒起，翻倍后封顶 60 秒，再加 0–50% 抖动。
+ * 这样单任务不会按轮询间隔（3 秒）去撞 Pro 的 5 RPM。attempts 为已经失败的次数，从 1 起算。
+ */
+export function qwenThrottleBackoffMs(attempts: number, model?: string, random = Math.random) {
+  const pro = model === 'qwen-image-3.0-pro' || model?.endsWith(':qwen-image-3.0-pro') === true
+  const start = pro ? 15_000 : 8_000
+  const exponent = Math.min(3, Math.max(0, Math.floor(attempts) - 1))
+  const base = Math.min(THROTTLE_BACKOFF_CAP_MS, start * 2 ** exponent)
+  const drawn = random()
+  const unit = Number.isFinite(drawn) ? drawn : 0
+  const jitter = Math.floor(base * 0.5 * Math.min(1, Math.max(0, unit)))
+  return base + jitter
+}
+
+export type QwenForcedThrottle = 'rate' | 'quota'
+
+/**
+ * 只在能确认不是生产时生效。Production 的 VERCEL_ENV 或 AIGC_RUNTIME_SCOPE 都会关掉。
+ * 两个都没设置时也不生效，避免误开。
+ */
+export function qwenForcedThrottle(env: NodeJS.ProcessEnv = process.env): QwenForcedThrottle | null {
+  const raw = env.QWEN_IMAGE_FORCE_THROTTLE?.trim().toLowerCase()
+  const mode: QwenForcedThrottle | null = raw === 'true' || raw === '1' || raw === 'rate' || raw === 'ratequota'
+    ? 'rate'
+    : raw === 'quota' || raw === 'allocation' || raw === 'allocationquota'
+      ? 'quota'
+      : null
+  if (!mode || !qwenForceThrottleAllowed(env)) return null
+  return mode
+}
+
+function qwenForceThrottleAllowed(env: NodeJS.ProcessEnv) {
+  const vercel = env.VERCEL_ENV?.trim().toLowerCase()
+  const scope = env.AIGC_RUNTIME_SCOPE?.trim().toLowerCase()
+  if (vercel === 'production' || scope === 'production') return false
+  if (vercel === 'preview' || vercel === 'development') return true
+  if (!vercel && (scope === 'local' || scope === 'preview')) return true
+  return false
 }

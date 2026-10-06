@@ -65,6 +65,26 @@ export function isContentRejection(code: string, message: string) {
     || /审核|违规|content.?moderat|safety|nsfw/i.test(`${code} ${message}`)
 }
 
+/** 任务还在排队重试时写在明细上，此时积分仍被预扣。 */
+export const QWEN_THROTTLE_PENDING_MESSAGE = '图片服务请求过于频繁，请稍后重试'
+/** 限流一直排到截止、预扣已退回。 */
+export const QWEN_THROTTLE_REFUND_MESSAGE = '当前排队人数较多，请稍后重试（积分已退回）'
+/** 额度用尽，不排队。任务创建后会退回预扣。 */
+export const QWEN_QUOTA_EXHAUSTED_MESSAGE = '图片服务额度已用尽，请稍后再试（积分已退回）'
+/** 创建前就被并发上限挡住，没有预扣。 */
+export const QWEN_QUEUE_FULL_MESSAGE = '当前排队人数较多，请稍后重试'
+
+/**
+ * AllocationQuota / insufficient_quota：百炼把它用于 Token 配额或免费额度用尽。
+ * 官方限流说明里，RPM（RateQuota）和突发（BurstRate）通常一分钟内恢复；
+ * AllocationQuota 的文案是 “increase your quota” / “Free allocated quota exceeded”，
+ * 300 秒截止内不一定恢复，所以直接失败而不是排队。
+ */
+export function isQwenQuotaExhausted(code: string, message: string) {
+  if (/AllocationQuota|insufficient[_\s-]?quota/i.test(code)) return true
+  return /free allocated quota exceeded|allocated quota exceeded|please increase your quota/i.test(message)
+}
+
 export function mapQwenFailure(status: number, code: string, message: string) {
   const text = dashScopeFailureText(code, message, '文生图')
   if (isContentRejection(code, message)) {
@@ -79,8 +99,13 @@ export function mapQwenFailure(status: number, code: string, message: string) {
   if (code === 'Arrearage' || /欠费|arrearage/i.test(`${code} ${message}`)) {
     return new ProviderError('INSUFFICIENT_BALANCE', text, false, 402)
   }
+  if (isQwenQuotaExhausted(code, message)) {
+    return new ProviderError('RATE_LIMIT', QWEN_QUOTA_EXHAUSTED_MESSAGE, false, 429)
+  }
   if (status === 429 || /^Throttling/i.test(code) || /rate.?limit|too many requests/i.test(message)) {
-    return new ProviderError('RATE_LIMIT', '图片服务请求过于频繁，请稍后重试', true, 429)
+    const error = new ProviderError('RATE_LIMIT', QWEN_THROTTLE_PENDING_MESSAGE, true, 429)
+    error.holdPending = true
+    return error
   }
   if (status === 408 || status === 504) {
     return new ProviderError('TIMEOUT', '图片服务请求超时，请稍后重试', true, 504)

@@ -59,6 +59,7 @@ beforeAll(async () => {
     '20260930234407_sync_image_transfer_retention.sql',
     '20261001120433_bg_remove_transfer_retention.sql',
     '20261002031941_detection_metrics_retention.sql',
+    '20261006120000_qwen_image_throttle_queue.sql',
   ]) await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'))
   await db.query('insert into aigc.members(user_id) values($1)', [userId])
 }, 30000)
@@ -214,6 +215,44 @@ describe('积分账本与同步请求限流', () => {
     expect(balance.rows[0].balance).toBe(94)
     const ledger = await db.query<{ kind: string; delta: number }>('select kind,delta from aigc.credit_ledger where job_id=$1 order by created_at', [id])
     expect(ledger.rows).toEqual([{ kind: 'reserve', delta: -5 }, { kind: 'refund', delta: 5 }])
+  })
+
+  it('限流排队到截止时全额退款，已送出的任务仍按超时文案', async () => {
+    const throttled = randomUUID()
+    const sent = randomUUID()
+    await asUser(async sql => {
+      const billing = createSqlBilling(sql)
+      expect(await billing.reserve({ userId, jobId: throttled, amount: 4, meta: {} })).toEqual({ ok: true })
+      expect(await billing.reserve({ userId, jobId: sent, amount: 3, meta: {} })).toEqual({ ok: true })
+      await insertJob(sql, throttled, 4, 1, 'text_to_image')
+      await insertJob(sql, sent, 3, 1, 'text_to_image')
+      await sql`update aigc.image_jobs set deadline_at=now()-interval '1 minute', status='queued',
+        model_profile_id='bailian:qwen-image-3.0-pro', provider='bailian' where id=${throttled}`
+      await sql`update aigc.image_jobs set deadline_at=now()-interval '1 minute', status='processing',
+        model_profile_id='bailian:qwen-image-3.0', provider='bailian' where id=${sent}`
+      await sql`insert into aigc.image_job_items(job_id,ordinal,user_id,scope,status,error_code)
+        values(${throttled},0,${userId},'production','pending','RATE_LIMIT')`
+      await sql`insert into aigc.image_job_items(job_id,ordinal,user_id,scope,status,provider_task_id)
+        values(${sent},0,${userId},'production','submitted','task-already-sent')`
+      await sql`select aigc.expire_overdue_image_jobs(${userId})`
+    })
+    const jobs = await db.query<{ id: string; status: string; billing_state: string; credits_charged: number; error_code: string; error_message: string }>(
+      'select id,status,billing_state,credits_charged,error_code,error_message from aigc.image_jobs where id in ($1,$2)',
+      [throttled, sent],
+    )
+    const byId = Object.fromEntries(jobs.rows.map(row => [row.id, row]))
+    expect(byId[throttled]).toMatchObject({
+      status: 'expired', billing_state: 'released', credits_charged: 0,
+      error_code: 'RATE_LIMIT', error_message: '当前排队人数较多，请稍后重试（积分已退回）',
+    })
+    expect(byId[sent]).toMatchObject({
+      status: 'expired', billing_state: 'released', credits_charged: 0,
+      error_code: 'TASK_TIMEOUT', error_message: '任务处理超时，请重试',
+    })
+    const providerCount = await db.query<{ used: string }>(
+      "select aigc.image_provider_active_count('production','bailian') as used",
+    )
+    expect(Number(providerCount.rows[0].used)).toBe(0)
   })
 
   it('定时清扫入口可以不传用户参数调用', async () => {

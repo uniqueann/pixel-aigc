@@ -34,6 +34,11 @@ import {
   variationPromptLimitMessage,
 } from '../../shared/variation.js'
 import { findImageModel } from '../../shared/image-models.js'
+import { qwenImageConcurrencyLimits, qwenThrottleBackoffMs } from '../image-providers/qwen-image/config.js'
+import {
+  QWEN_QUEUE_FULL_MESSAGE,
+  QWEN_THROTTLE_REFUND_MESSAGE,
+} from '../image-providers/qwen-image/errors.js'
 import { configuredImageModels, imageProviderById } from '../image-providers/registry.js'
 import {
   ProviderError,
@@ -257,6 +262,8 @@ export interface ImageJobRuntime {
   billing: BillingPort
   crop: typeof cropToSourceAspect
   providerFor: (id: string) => ImageProvider | undefined
+  /** 限流退避的抖动。缺省用 Math.random。 */
+  random?: () => number
 }
 
 type ItemPatch = Partial<ImageJobItemRow>
@@ -584,6 +591,7 @@ export async function createImageJobInStore(
   if (await store.globalActiveCount() >= IMAGE_GLOBAL_CONCURRENCY) {
     throw new HttpError(429, '服务当前任务较多，请稍后重试', 'GLOBAL_CONCURRENCY')
   }
+  await assertBailianImageCapacity(store, profile)
   const policy = imageJobPolicy(provider)
   const timeoutMs = policy.taskTimeoutMs
   const jobId = randomUUID()
@@ -614,6 +622,24 @@ export async function createImageJobInStore(
   return { bundle, created: true, provider }
 }
 
+async function assertBailianImageCapacity(
+  store: ImageJobStore,
+  profile: { provider: string; id: string; model: string },
+) {
+  if (profile.provider !== 'bailian') return
+  const limits = qwenImageConcurrencyLimits()
+  if (await store.providerActiveCount(profile.provider) >= limits.providerActive) {
+    throw new HttpError(429, QWEN_QUEUE_FULL_MESSAGE, 'PROVIDER_CONCURRENCY', {
+      extra: rateLimitExtra(15),
+    })
+  }
+  if (profile.model === 'qwen-image-3.0-pro' && await store.modelActiveCount(profile.id) >= limits.proActive) {
+    throw new HttpError(429, QWEN_QUEUE_FULL_MESSAGE, 'MODEL_CONCURRENCY', {
+      extra: rateLimitExtra(15),
+    })
+  }
+}
+
 function nextPollInterval(job: ImageJobRow, runtime: ImageJobRuntime) {
   if (job.capability === 'text_to_video') return 60_000
   const provider = runtime.providerFor(job.provider)
@@ -639,7 +665,7 @@ async function submitBatch(
       providerParams: bundle.job.provider_params,
     }, ctx)
     return bundle.items.map(item => item.status === 'pending'
-      ? { ordinal: item.ordinal, patch: { status: 'submitted', provider_task_id: submitted.providerTaskId, attempts: item.attempts + 1 } }
+      ? { ordinal: item.ordinal, patch: submittedPatch(item, submitted.providerTaskId) }
       : { ordinal: item.ordinal, patch: {} })
   } catch (error) {
     return bundle.items.map(item => item.status === 'pending'
@@ -648,8 +674,26 @@ async function submitBatch(
   }
 }
 
+function submittedPatch(item: ImageJobItemRow, providerTaskId: string): ItemPatch {
+  return {
+    status: 'submitted',
+    provider_task_id: providerTaskId,
+    attempts: item.attempts + 1,
+    error_code: null,
+    error_message: null,
+  }
+}
+
 function submitFailurePatch(item: ImageJobItemRow, error: unknown): ItemPatch {
   const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN', '图片任务提交失败')
+  // 瞬时限流：上游没有 task id，保持 pending，截止前按退避再提交。
+  if (failure.holdPending) {
+    return {
+      attempts: item.attempts + 1,
+      error_code: failure.code,
+      error_message: failure.message,
+    }
+  }
   // 建连失败时请求还没送出，留下 pending，等后续轮询在截止时间前再提交。
   if (failure.requestSent === false) return { attempts: item.attempts + 1 }
   return {
@@ -700,7 +744,7 @@ export async function runProviderSubmits(
       }, ctx)
       return {
         ordinal: item.ordinal,
-        patch: { status: 'submitted', provider_task_id: submitted.providerTaskId, attempts: item.attempts + 1 },
+        patch: submittedPatch(item, submitted.providerTaskId),
       }
     } catch (error) {
       return { ordinal: item.ordinal, patch: submitFailurePatch(item, error) }
@@ -727,6 +771,20 @@ export async function failImageJobBeforeSubmit(store: ImageJobStore, bundle: Ima
   return finalizeJob(store, bundle.job, items, runtime, false)
 }
 
+function throttledWithoutUpstreamTask(items: ImageJobItemRow[]) {
+  if (!items.length || items.some(item => item.provider_task_id || item.status === 'succeeded')) return false
+  return items.some(item => item.error_code === 'RATE_LIMIT')
+}
+
+function deferredThrottlePollAt(job: ImageJobRow, items: ImageJobItemRow[], runtime: ImageJobRuntime) {
+  const held = items.filter(item => item.status === 'pending' && !item.provider_task_id && item.error_code === 'RATE_LIMIT')
+  if (!held.length) return undefined
+  const attempts = Math.max(...held.map(item => item.attempts))
+  const model = typeof job.provider_params.model === 'string' ? job.provider_params.model : job.model_profile_id
+  const random = runtime.random ?? Math.random
+  return new Date(runtime.now() + qwenThrottleBackoffMs(attempts, model, random))
+}
+
 export async function finalizeJob(
   store: ImageJobStore,
   job: ImageJobRow,
@@ -737,6 +795,8 @@ export async function finalizeJob(
   options?: { keepScheduledPoll?: boolean },
 ) {
   const reduced = reduceJobStatus(items, runtime.now(), new Date(job.deadline_at).getTime())
+  const throttledQueue = reduced.status === 'expired' && throttledWithoutUpstreamTask(items)
+  const deferredPoll = deferredThrottlePollAt(job, items, runtime)
   const warnings = mergeWarnings(job.warnings, reduced.warnings, lateDelivery && reduced.status === 'succeeded' ? [LATE_RESULT_WARNING] : [])
   const terminal = reduced.status === 'succeeded' || reduced.status === 'failed' || reduced.status === 'expired'
   const succeeded = items.filter(item => item.status === 'succeeded').length
@@ -767,10 +827,10 @@ export async function finalizeJob(
     status: reduced.status,
     warnings,
     error_code: reduced.status === 'expired'
-      ? 'TASK_TIMEOUT'
+      ? (throttledQueue ? 'RATE_LIMIT' : 'TASK_TIMEOUT')
       : reduced.status === 'failed' ? (items.find(item => item.error_code)?.error_code ?? 'GENERATION_FAILED') : job.error_code,
     error_message: reduced.status === 'expired'
-      ? '任务处理超时，请重试'
+      ? (throttledQueue ? QWEN_THROTTLE_REFUND_MESSAGE : '任务处理超时，请重试')
       : reduced.status === 'failed'
         ? (items.find(item => item.error_message)?.error_message ?? (job.capability === 'text_to_video' ? '视频生成失败，请稍后重试' : '图片生成失败，请稍后重试'))
         : job.error_message,
@@ -779,9 +839,10 @@ export async function finalizeJob(
     completed_at: terminal ? new Date(runtime.now()) : job.completed_at,
     ...(job.capability === 'text_to_video' && reduced.status === 'succeeded' && job.status !== 'succeeded'
       ? { expires_at: new Date(runtime.now() + VIDEO_RETENTION_MS), error_code: null, error_message: null } : {}),
-    next_poll_at: options?.keepScheduledPoll
-      ? job.next_poll_at
-      : nextPollAt(runtime.now(), nextPollInterval(job, runtime)),
+    next_poll_at: deferredPoll
+      ?? (options?.keepScheduledPoll
+        ? job.next_poll_at
+        : nextPollAt(runtime.now(), nextPollInterval(job, runtime))),
     lease_until: null,
     provider_params: providerParams,
   })

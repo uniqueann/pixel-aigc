@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_QWEN_IMAGE_BASE_URL,
+  qwenForcedThrottle,
   qwenImageAvailable,
+  qwenImageConcurrencyLimits,
   qwenImageEnabled,
   qwenImageSettings,
+  qwenThrottleBackoffMs,
   resolveQwenEnableThinking,
 } from './config.js'
 
@@ -102,5 +105,45 @@ describe('qwen image 配置', () => {
     process.env.QWEN_IMAGE_PROMPT_EXTEND = 'false'
     process.env.QWEN_IMAGE_THINKING = 'true'
     expect(resolveQwenEnableThinking(qwenImageSettings(), true)).toBe(false)
+  })
+
+  it('并发上限有默认值，非法数字回退', () => {
+    expect(qwenImageConcurrencyLimits({})).toEqual({ providerActive: 8, proActive: 4 })
+    expect(qwenImageConcurrencyLimits({ QWEN_IMAGE_ACTIVE_LIMIT: '3', QWEN_IMAGE_PRO_ACTIVE_LIMIT: '2' })).toEqual({
+      providerActive: 3, proActive: 2,
+    })
+    expect(qwenImageConcurrencyLimits({ QWEN_IMAGE_ACTIVE_LIMIT: '0', QWEN_IMAGE_PRO_ACTIVE_LIMIT: 'nope' })).toEqual({
+      providerActive: 1, proActive: 4,
+    })
+  })
+
+  it('限流退避按模型和次数增长，并带上抖动', () => {
+    expect(qwenThrottleBackoffMs(1, 'qwen-image-3.0-pro', () => 0)).toBe(15_000)
+    expect(qwenThrottleBackoffMs(1, 'bailian:qwen-image-3.0-pro', () => 1)).toBe(22_500)
+    expect(qwenThrottleBackoffMs(2, 'qwen-image-3.0-pro', () => 0)).toBe(30_000)
+    expect(qwenThrottleBackoffMs(4, 'qwen-image-3.0-pro', () => 0)).toBe(60_000)
+    expect(qwenThrottleBackoffMs(1, 'qwen-image-3.0', () => 0)).toBe(8_000)
+    expect(qwenThrottleBackoffMs(2, 'qwen-image-3.0', () => 0)).toBe(16_000)
+    expect(qwenThrottleBackoffMs(3, 'qwen-image-3.0', () => 1)).toBe(48_000)
+  })
+
+  it('强制限流只在非生产环境打开', () => {
+    expect(qwenForcedThrottle({})).toBeNull()
+    expect(qwenForcedThrottle({ QWEN_IMAGE_FORCE_THROTTLE: 'true' })).toBeNull()
+    expect(qwenForcedThrottle({
+      QWEN_IMAGE_FORCE_THROTTLE: 'true', VERCEL_ENV: 'production', AIGC_RUNTIME_SCOPE: 'preview',
+    })).toBeNull()
+    expect(qwenForcedThrottle({
+      QWEN_IMAGE_FORCE_THROTTLE: 'true', VERCEL_ENV: 'preview', AIGC_RUNTIME_SCOPE: 'production',
+    })).toBeNull()
+    expect(qwenForcedThrottle({
+      QWEN_IMAGE_FORCE_THROTTLE: 'true', VERCEL_ENV: 'preview',
+    })).toBe('rate')
+    expect(qwenForcedThrottle({
+      QWEN_IMAGE_FORCE_THROTTLE: 'quota', AIGC_RUNTIME_SCOPE: 'local',
+    })).toBe('quota')
+    expect(qwenForcedThrottle({
+      QWEN_IMAGE_FORCE_THROTTLE: 'yes', VERCEL_ENV: 'preview',
+    })).toBeNull()
   })
 })
