@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapQwenFailure } from './errors.js'
+import { connectErrorLogFields, isPreSendConnectError, mapQwenFailure } from './errors.js'
 
 describe('qwen image 错误映射', () => {
   it('内容审核和侵权不可重试', () => {
@@ -25,5 +25,27 @@ describe('qwen image 错误映射', () => {
     expect(mapQwenFailure(400, 'InvalidParameter', 'size is invalid').retryable).toBe(false)
     expect(mapQwenFailure(500, 'InternalError', 'An internal error has occurred.').retryable).toBe(true)
     expect(mapQwenFailure(200, 'InternalError', 'An internal error has occurred.').retryable).toBe(false)
+  })
+
+  it('只有请求还没写出的建连失败才允许稍后重提', () => {
+    const connectTimeout = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT', name: 'ConnectTimeoutError' }),
+    })
+    const refused = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' })
+    const reset = new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })
+    const bare = new TypeError('fetch failed')
+    const aborted = new DOMException('The operation was aborted', 'AbortError')
+    expect(isPreSendConnectError(connectTimeout)).toBe(true)
+    expect(isPreSendConnectError(refused)).toBe(true)
+    expect(isPreSendConnectError(Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' }))).toBe(true)
+    expect(isPreSendConnectError(reset)).toBe(false)
+    expect(isPreSendConnectError(bare)).toBe(false)
+    expect(isPreSendConnectError(aborted)).toBe(false)
+    expect(connectErrorLogFields(connectTimeout)).toMatchObject({
+      error: 'fetch failed',
+      errorName: 'TypeError',
+      errorCode: 'UND_ERR_CONNECT_TIMEOUT',
+      cause: 'ConnectTimeoutError: Connect Timeout Error',
+    })
   })
 })

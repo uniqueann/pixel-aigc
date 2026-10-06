@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ProviderError } from '../types.js'
-import { createQwenImageProvider } from './client.js'
+import { createQwenImageProvider, qwenAgentOptions, selectQwenFetch } from './client.js'
+import { CONNECT_TIMEOUT_MS, defaultDashScopeFetch } from '../../dashscope.js'
 import type { QwenImageSettings } from './config.js'
 import {
+  QWEN_END_TIME,
+  QWEN_SCHEDULED_TIME,
+  QWEN_SUBMIT_TIME,
   QWEN_TASK_ID,
   pollCanceled,
   pollFailedInternal,
@@ -11,7 +15,10 @@ import {
   pollRunning,
   pollSucceededChoices,
   pollSucceededContentImages,
+  pollSucceededContentUrl,
+  pollSucceededData,
   pollSucceededOne,
+  pollSucceededResults,
   pollUnknown,
   qwenImageUrl,
   submitInvalidKey,
@@ -27,6 +34,7 @@ const settings: QwenImageSettings = {
   promptExtend: true,
   enableThinking: true,
   requestTimeoutMs: 30_000,
+  connectTimeoutMs: 10_000,
   retryCount: 0,
   pollIntervalMs: 3_000,
   initialPollDelayMs: 5_000,
@@ -119,22 +127,54 @@ describe('qwen image 客户端', () => {
       .resolves.toMatchObject({ state: 'queued', raw: 'PENDING' })
     await expect(provider.getStatus!(QWEN_TASK_ID, context(vi.fn().mockResolvedValue(jsonResponse(pollRunning)))))
       .resolves.toMatchObject({ state: 'processing', raw: 'RUNNING' })
-    const done = await provider.getStatus!(QWEN_TASK_ID, context(vi.fn().mockResolvedValue(jsonResponse(pollSucceededOne))))
+    const ctx = context(vi.fn().mockResolvedValue(jsonResponse(pollSucceededOne)))
+    const done = await provider.getStatus!(QWEN_TASK_ID, ctx)
     expect(done).toEqual({
       state: 'succeeded',
       resultUrls: [qwenImageUrl(0)],
-      vendor: { outputWidth: 1328, outputHeight: 1328, outputImageCount: 1, outputImageType: 'qima_output_1k' },
+      vendor: {
+        outputWidth: 1328,
+        outputHeight: 1328,
+        outputImageCount: 1,
+        outputImageType: 'qima_output_1k',
+        submitTime: QWEN_SUBMIT_TIME,
+        scheduledTime: QWEN_SCHEDULED_TIME,
+        endTime: QWEN_END_TIME,
+        imageShape: 'choices-content-image',
+      },
     })
+    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'qwen-image-status',
+      raw: 'SUCCEEDED',
+      imageShape: 'choices-content-image',
+      submitTime: QWEN_SUBMIT_TIME,
+      scheduledTime: QWEN_SCHEDULED_TIME,
+      endTime: QWEN_END_TIME,
+    }))
+    const running = context(vi.fn().mockResolvedValue(jsonResponse(pollRunning)))
+    await provider.getStatus!(QWEN_TASK_ID, running)
+    expect(running.log).toHaveBeenCalledWith(expect.objectContaining({
+      raw: 'RUNNING',
+      submitTime: QWEN_SUBMIT_TIME,
+      scheduledTime: QWEN_SCHEDULED_TIME,
+    }))
   })
 
-  it('多图同时接受一个 content 数组和多个 choice', async () => {
+  it('多图同时接受一个 content 数组和多个 choice，并记下命中的字段', async () => {
     for (const body of [pollSucceededContentImages(4), pollSucceededChoices(4)]) {
       const state = await provider.getStatus!(QWEN_TASK_ID, context(vi.fn().mockResolvedValue(jsonResponse(body))))
       expect(state).toMatchObject({
         state: 'succeeded',
         resultUrls: [0, 1, 2, 3].map(qwenImageUrl),
+        vendor: { imageShape: 'choices-content-image' },
       })
     }
+    await expect(provider.getStatus!(QWEN_TASK_ID, context(vi.fn().mockResolvedValue(jsonResponse(pollSucceededContentUrl)))))
+      .resolves.toMatchObject({ vendor: { imageShape: 'choices-content-url' }, resultUrls: [qwenImageUrl(0)] })
+    await expect(provider.getStatus!(QWEN_TASK_ID, context(vi.fn().mockResolvedValue(jsonResponse(pollSucceededResults)))))
+      .resolves.toMatchObject({ vendor: { imageShape: 'output-results' }, resultUrls: [qwenImageUrl(0), qwenImageUrl(1)] })
+    await expect(provider.getStatus!(QWEN_TASK_ID, context(vi.fn().mockResolvedValue(jsonResponse(pollSucceededData)))))
+      .resolves.toMatchObject({ vendor: { imageShape: 'data' }, resultUrls: [qwenImageUrl(0)] })
   })
 
   it('任务失败、审核拒绝和取消都是终态', async () => {
@@ -149,6 +189,36 @@ describe('qwen image 客户端', () => {
   it('UNKNOWN 继续查询，不把可能还在排队的任务立刻判失败', async () => {
     await expect(provider.getStatus!(QWEN_TASK_ID, context(vi.fn().mockResolvedValue(jsonResponse(pollUnknown)))))
       .resolves.toMatchObject({ state: 'processing', raw: 'UNKNOWN' })
+  })
+
+  it('建连超时记下原因码，并且请求还没送出', async () => {
+    const connectTimeout = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT', name: 'ConnectTimeoutError' }),
+    })
+    const retrying = createQwenImageProvider(() => ({ ...settings, retryCount: 2 }))
+    const fetchImpl = vi.fn().mockRejectedValue(connectTimeout)
+    const ctx = context(fetchImpl)
+    await expect(retrying.submit!(input, ctx)).rejects.toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', retryable: true, requestSent: false,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'qwen-image-submit', error: 'fetch failed', errorCode: 'UND_ERR_CONNECT_TIMEOUT',
+    }))
+    const reset = new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })
+    const resetFetch = vi.fn().mockRejectedValue(reset)
+    await expect(provider.submit!(input, context(resetFetch))).rejects.toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', requestSent: undefined,
+    })
+    expect(resetFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('生产 fetch 使用 10 秒建连，不复用百炼 4 秒客户端', () => {
+    expect(CONNECT_TIMEOUT_MS).toBe(4_000)
+    expect(qwenAgentOptions(10_000).connectTimeout).toBe(10_000)
+    const injected = vi.fn() as unknown as typeof fetch
+    expect(selectQwenFetch(injected, 10_000)).toBe(injected)
+    expect(selectQwenFetch(globalThis.fetch, 10_000)).not.toBe(defaultDashScopeFetch)
   })
 
   it('请求超时映射为可重试的 TIMEOUT', async () => {

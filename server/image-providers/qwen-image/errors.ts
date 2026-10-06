@@ -1,5 +1,50 @@
 import { dashScopeFailureText } from '../../dashscope.js'
+import { describeError } from '../../errors.js'
 import { ProviderError } from '../types.js'
+
+const PRE_SEND_CODES = new Set([
+  'UND_ERR_CONNECT_TIMEOUT',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'EHOSTUNREACH',
+])
+
+function errorChain(error: unknown) {
+  const chain: Error[] = []
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+    chain.push(current)
+    current = current.cause
+  }
+  return chain
+}
+
+/**
+ * 连接还没建立、请求字节还没写出。ECONNRESET / 裸 fetch failed / 读超时都不算：
+ * 那些情况下上游可能已经收到提交，不能再发一单。
+ */
+export function isPreSendConnectError(error: unknown) {
+  return errorChain(error).some(item => {
+    const code = 'code' in item && typeof item.code === 'string' ? item.code : ''
+    return PRE_SEND_CODES.has(code) || item.name === 'ConnectTimeoutError'
+  })
+}
+
+export function connectErrorLogFields(error: unknown) {
+  const chain = errorChain(error)
+  const codes = chain.flatMap(item => {
+    const code = 'code' in item && typeof item.code === 'string' ? item.code : ''
+    return code ? [code] : []
+  })
+  const described = describeError(error)
+  return {
+    error: described.message,
+    errorName: described.name,
+    ...(codes.length ? { errorCode: codes.join(',') } : {}),
+    ...(described.cause ? { cause: described.cause } : {}),
+  }
+}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)

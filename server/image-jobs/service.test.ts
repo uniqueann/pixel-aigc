@@ -9,6 +9,7 @@ import { dragonCodeProvider } from '../image-providers/dragoncode/index.js'
 import { createMemoryStore } from './memory-store.js'
 import {
   IMAGE_LEASE_MS,
+  applyCatalogVendorCost,
   advanceJobInStore,
   assertFusionRequest,
   assertRelightRequest,
@@ -262,6 +263,17 @@ describe('图片任务存储状态机', () => {
     expect(winners).toHaveLength(1)
     expect(fetchResult).toHaveBeenCalledTimes(1)
     expect(IMAGE_LEASE_MS).toBe(30_000)
+  })
+
+  it('没有币种的目录价不补进任务，千问按返回张数乘单价', () => {
+    const qwen = { model_profile_id: 'bailian:qwen-image-3.0-pro', provider_params: { resolution: '1k' } }
+    expect(applyCatalogVendorCost(qwen, { outputImageCount: 2 }, 2)).toEqual({
+      outputImageCount: 2, cost: 0.5, currency: 'CNY',
+    })
+    expect(applyCatalogVendorCost(qwen, { cost: 0.01 }, 2)).toEqual({ cost: 0.01 })
+    const gpt = { model_profile_id: 'dragoncode:gpt-image-2', provider_params: { resolution: '1k' } }
+    expect(applyCatalogVendorCost(gpt, undefined, 1)).toBeUndefined()
+    expect(applyCatalogVendorCost(gpt, { cost: 0.0085, creditsCost: 1 }, 1)).toEqual({ cost: 0.0085, creditsCost: 1 })
   })
 
   it('把上游 cost / credits_cost 写入已有 provider_params JSON', async () => {

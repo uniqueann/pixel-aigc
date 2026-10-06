@@ -56,7 +56,8 @@ describe('qwen image 配置', () => {
       promptExtend: true,
       enableThinking: true,
       pollIntervalMs: 3_000,
-      initialPollDelayMs: 5_000,
+      initialPollDelayMs: 3_000,
+      connectTimeoutMs: 10_000,
       taskTimeoutMs: 300_000,
       maxParallel: 1,
     })

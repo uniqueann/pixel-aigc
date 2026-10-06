@@ -2,9 +2,11 @@ export const QWEN_IMAGE_MODEL_IDS = ['qwen-image-3.0', 'qwen-image-3.0-pro'] as 
 
 export const DEFAULT_QWEN_IMAGE_BASE_URL = 'https://dashscope.aliyuncs.com'
 export const DEFAULT_QWEN_POLL_INTERVAL_MS = 3_000
-export const DEFAULT_QWEN_INITIAL_POLL_DELAY_MS = 5_000
+export const DEFAULT_QWEN_INITIAL_POLL_DELAY_MS = 3_000
 export const DEFAULT_QWEN_TASK_TIMEOUT_MS = 300_000
 export const DEFAULT_QWEN_REQUEST_TIMEOUT_MS = 30_000
+/** 俄勒冈到北京的建连有时超过共享百炼客户端的 4 秒。只给千问放宽。 */
+export const DEFAULT_QWEN_CONNECT_TIMEOUT_MS = 10_000
 export const DEFAULT_QWEN_MAX_PARALLEL = 1
 
 const ALLOWED_MODELS = new Set<string>(QWEN_IMAGE_MODEL_IDS)
@@ -16,6 +18,7 @@ export interface QwenImageSettings {
   promptExtend: boolean
   enableThinking: boolean
   requestTimeoutMs: number
+  connectTimeoutMs: number
   retryCount: number
   pollIntervalMs: number
   initialPollDelayMs: number
@@ -83,6 +86,7 @@ export function qwenImageSettings(env: NodeJS.ProcessEnv = process.env): QwenIma
     promptExtend: readOptionalBoolean(env, 'QWEN_IMAGE_PROMPT_EXTEND', true),
     enableThinking: readOptionalBoolean(env, 'QWEN_IMAGE_THINKING', true),
     requestTimeoutMs: readNumber(env, 'QWEN_IMAGE_REQUEST_TIMEOUT_MS', DEFAULT_QWEN_REQUEST_TIMEOUT_MS, 5_000, 120_000),
+    connectTimeoutMs: readNumber(env, 'QWEN_IMAGE_CONNECT_TIMEOUT_MS', DEFAULT_QWEN_CONNECT_TIMEOUT_MS, 1_000, 30_000),
     retryCount: readNumber(env, 'QWEN_IMAGE_REQUEST_RETRY_COUNT', 2, 0, 5),
     pollIntervalMs: Math.max(3_000, readNumber(env, 'QWEN_IMAGE_POLL_INTERVAL_MS', DEFAULT_QWEN_POLL_INTERVAL_MS, 3_000, 30_000)),
     initialPollDelayMs: readNumber(env, 'QWEN_IMAGE_INITIAL_POLL_DELAY_MS', DEFAULT_QWEN_INITIAL_POLL_DELAY_MS, 0, 60_000),

@@ -52,12 +52,19 @@ export type ProviderErrorCode =
 
 export interface ProviderVendorUsage {
   cost?: number
+  /** 成本币种。上游没给时，由模型目录的 vendorCurrency 补上。 */
+  currency?: string
   creditsCost?: number
   expiresAt?: string | number
   outputWidth?: number
   outputHeight?: number
   outputImageCount?: number
   outputImageType?: string
+  submitTime?: string
+  scheduledTime?: string
+  endTime?: string
+  /** 多图结果是从响应的哪一段解析出来的。 */
+  imageShape?: string
 }
 
 /** 任务层轮询节奏。未实现时使用与 GPT-Image-2 相同的默认值。 */
@@ -97,6 +104,8 @@ export interface ImageProvider {
 }
 
 export class ProviderError extends Error {
+  /** false 表示请求字节还没写到连接上，可以安全地再提交一次。未设置表示不确定。 */
+  requestSent?: boolean
   constructor(
     public code: ProviderErrorCode,
     message: string,

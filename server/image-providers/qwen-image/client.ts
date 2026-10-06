@@ -1,8 +1,8 @@
+import { Agent, fetch as undiciFetch } from 'undici'
 import type { NormalizedImageRequest } from '../../../shared/image-generation.js'
 import {
   connectRetryDelay,
   dashScopeHost,
-  defaultDashScopeFetch,
   isTransientConnectError,
 } from '../../dashscope.js'
 import { fetchImageBytes, isAbortOrTimeout, requestHost, retryBackoffMs } from '../http.js'
@@ -23,13 +23,29 @@ import {
   qwenImageSettings,
   type QwenImageSettings,
 } from './config.js'
-import { asFiniteNumber, asString, isRecord, mapQwenFailure, readRequestCode } from './errors.js'
+import { asFiniteNumber, asString, connectErrorLogFields, isPreSendConnectError, isRecord, mapQwenFailure, readRequestCode } from './errors.js'
 import { QWEN_IMAGE_CAPABILITIES, mapQwenImageRequest, parseQwenSize } from './mapping.js'
 
 export const QWEN_GENERATION_PATH = '/api/v1/services/aigc/image-generation/generation'
 
-function resolveFetch(ctx: ProviderContext): typeof fetch {
-  return ctx.fetch === globalThis.fetch ? defaultDashScopeFetch : ctx.fetch
+const qwenAgents = new Map<number, Agent>()
+
+export function qwenAgentOptions(connectTimeoutMs: number) {
+  return { connectTimeout: connectTimeoutMs, headersTimeout: 40_000, bodyTimeout: 40_000 }
+}
+
+/** 测试注入的 fetch 原样使用。生产路径用千问自己的建连超时，不改消除/重绘/扩图的 4 秒。 */
+export function selectQwenFetch(ctxFetch: typeof fetch, connectTimeoutMs: number): typeof fetch {
+  if (ctxFetch !== globalThis.fetch) return ctxFetch
+  let agent = qwenAgents.get(connectTimeoutMs)
+  if (!agent) {
+    agent = new Agent(qwenAgentOptions(connectTimeoutMs))
+    qwenAgents.set(connectTimeoutMs, agent)
+  }
+  return (input, init) => undiciFetch(
+    input as Parameters<typeof undiciFetch>[0],
+    { ...(init as object), dispatcher: agent } as Parameters<typeof undiciFetch>[1],
+  ) as unknown as Promise<Response>
 }
 
 function taskStatus(payload: unknown) {
@@ -43,18 +59,25 @@ function taskId(payload: unknown) {
 }
 
 function pushUrl(urls: string[], value: unknown) {
+  const before = urls.length
   if (typeof value === 'string' && value.trim()) urls.push(value.trim())
   else if (Array.isArray(value)) {
     for (const item of value) if (typeof item === 'string' && item.trim()) urls.push(item.trim())
   }
+  return urls.length > before
 }
+
+export type QwenImageShape = 'choices-content-image' | 'choices-content-url' | 'output-results' | 'data'
 
 /**
  * n>1 的异步响应文档只给了单张示例。按文档结构收集：
- * 每个 choice 的 content[].image（字符串或字符串数组），再回退 results[].url 与 data[].url。
+ * 每个 choice 的 content[].image（字符串或字符串数组），再回退 content[].url、results[].url 与 data[].url。
+ * shape 记进状态日志，用来区分排队样本里实际命中了哪一段。
  */
-export function readQwenImageUrls(payload: unknown) {
+export function readQwenImageUrls(payload: unknown): { urls: string[]; shape?: QwenImageShape } {
   const urls: string[] = []
+  let sawImage = false
+  let sawContentUrl = false
   const root = isRecord(payload) ? payload : undefined
   const output = root && isRecord(root.output) ? root.output : undefined
   const choices = Array.isArray(output?.choices) ? output.choices : Array.isArray(root?.choices) ? root.choices : []
@@ -62,21 +85,52 @@ export function readQwenImageUrls(payload: unknown) {
     if (!isRecord(choice) || !isRecord(choice.message) || !Array.isArray(choice.message.content)) continue
     for (const part of choice.message.content) {
       if (!isRecord(part)) continue
-      pushUrl(urls, part.image)
-      if (!part.image) pushUrl(urls, part.url)
+      if (part.image) sawImage = pushUrl(urls, part.image) || sawImage
+      else if (pushUrl(urls, part.url)) sawContentUrl = true
     }
   }
-  if (!urls.length && output && Array.isArray(output.results)) {
+  if (urls.length) {
+    let shape: QwenImageShape | undefined
+    if (sawImage) shape = 'choices-content-image'
+    else if (sawContentUrl) shape = 'choices-content-url'
+    return { urls, shape }
+  }
+  if (output && Array.isArray(output.results)) {
     for (const item of output.results) {
       if (isRecord(item)) pushUrl(urls, item.url)
     }
+    if (urls.length) return { urls, shape: 'output-results' }
   }
-  if (!urls.length && root && Array.isArray(root.data)) {
+  if (root && Array.isArray(root.data)) {
     for (const item of root.data) {
       if (isRecord(item)) pushUrl(urls, item.url)
     }
+    if (urls.length) return { urls, shape: 'data' }
   }
-  return urls
+  return { urls }
+}
+
+export function readQwenTimings(payload: unknown) {
+  const output = isRecord(payload) && isRecord(payload.output) ? payload.output : undefined
+  return {
+    submitTime: output ? asString(output.submit_time) : undefined,
+    scheduledTime: output ? asString(output.scheduled_time) : undefined,
+    endTime: output ? asString(output.end_time) : undefined,
+  }
+}
+
+export function readQwenTaskMeta(payload: unknown, imageShape?: QwenImageShape): ProviderVendorUsage | undefined {
+  const usage = readQwenUsage(payload)
+  const timings = readQwenTimings(payload)
+  const vendor: ProviderVendorUsage = {
+    ...(usage ?? {}),
+    ...(timings.submitTime ? { submitTime: timings.submitTime } : {}),
+    ...(timings.scheduledTime ? { scheduledTime: timings.scheduledTime } : {}),
+    ...(timings.endTime ? { endTime: timings.endTime } : {}),
+    ...(imageShape ? { imageShape } : {}),
+  }
+  if (!usage && !vendor.submitTime && !vendor.scheduledTime && !vendor.endTime && !vendor.imageShape) return undefined
+  return vendor
 }
 
 export function readQwenUsage(payload: unknown): ProviderVendorUsage | undefined {
@@ -108,7 +162,7 @@ async function qwenCall(
   settings: QwenImageSettings,
   label: string,
 ) {
-  const fetchImpl = resolveFetch(ctx)
+  const fetchImpl = selectQwenFetch(ctx.fetch, settings.connectTimeoutMs)
   let lastError: unknown
   for (let attempt = 0; attempt <= settings.retryCount; attempt += 1) {
     const started = ctx.now()
@@ -147,9 +201,12 @@ async function qwenCall(
         }
         throw error
       }
-      const timeout = isAbortOrTimeout(error)
+      const preSend = isPreSendConnectError(error)
+      const timeout = !preSend && isAbortOrTimeout(error)
       const connect = isTransientConnectError(error)
-      const retry = (timeout || connect) && attempt < settings.retryCount
+      // 提交的建连重试最多一次。两次 10 秒建连仍短于 30 秒租约，避免轮询重入时再发一单。
+      const budget = label === 'qwen-image-submit' && preSend ? Math.min(settings.retryCount, 1) : settings.retryCount
+      const retry = (timeout || connect) && attempt < budget
       ctx.log({
         stage: label,
         attempt,
@@ -157,11 +214,16 @@ async function qwenCall(
         host: requestHost(url) ?? dashScopeHost(url),
         ms: ctx.now() - started,
         requestId: ctx.requestId,
-        error: error instanceof Error ? error.message : String(error),
+        ...connectErrorLogFields(error),
       })
       if (retry) {
         await ctx.sleep(connect ? connectRetryDelay(attempt) : retryBackoffMs(attempt))
         continue
+      }
+      if (preSend) {
+        const failure = new ProviderError('UPSTREAM_UNAVAILABLE', '文生图服务连接失败，请稍后重试', true, 502)
+        failure.requestSent = false
+        throw failure
       }
       if (timeout) throw new ProviderError('TIMEOUT', '图片服务请求超时，请稍后重试', true, 504)
       throw new ProviderError('UPSTREAM_UNAVAILABLE', '文生图服务连接失败，请稍后重试', true, 502)
@@ -198,8 +260,9 @@ function generationBody(input: ProviderSubmitInput, settings: QwenImageSettings)
 function failedTask(payload: unknown): ProviderTaskState {
   const { code, message } = readRequestCode(payload)
   const status = taskStatus(payload)
+  const vendor = readQwenTaskMeta(payload)
   if (status === 'CANCELED') {
-    return { state: 'failed', code: 'UNKNOWN', message: '图片任务已取消', retryable: false, vendor: readQwenUsage(payload) }
+    return { state: 'failed', code: 'UNKNOWN', message: '图片任务已取消', retryable: false, vendor }
   }
   const failure = mapQwenFailure(200, code, message)
   // 任务已经 FAILED，再查也不会成功。HTTP 5xx 才在 qwenCall 里重试。
@@ -208,8 +271,24 @@ function failedTask(payload: unknown): ProviderTaskState {
     code: failure.code,
     message: failure.message,
     retryable: false,
-    vendor: readQwenUsage(payload),
+    vendor,
   }
+}
+
+function logTask(ctx: ProviderContext, payload: unknown, status: string, imageShape?: QwenImageShape, resultCount?: number) {
+  const timings = readQwenTimings(payload)
+  const usage = readQwenUsage(payload)
+  ctx.log({
+    stage: 'qwen-image-status',
+    raw: status,
+    ...(resultCount !== undefined ? { resultCount } : {}),
+    ...(imageShape ? { imageShape } : {}),
+    ...(timings.submitTime ? { submitTime: timings.submitTime } : {}),
+    ...(timings.scheduledTime ? { scheduledTime: timings.scheduledTime } : {}),
+    ...(timings.endTime ? { endTime: timings.endTime } : {}),
+    ...(usage?.outputImageCount !== undefined ? { outputImageCount: usage.outputImageCount } : {}),
+    ...(usage?.outputImageType ? { outputImageType: usage.outputImageType } : {}),
+  })
 }
 
 export function createQwenImageProvider(
@@ -290,21 +369,16 @@ export function createQwenImageProvider(
         'qwen-image-status',
       )
       const status = taskStatus(payload) ?? 'UNKNOWN'
-      const vendor = readQwenUsage(payload)
+      const parsed = status === 'SUCCEEDED' ? readQwenImageUrls(payload) : undefined
+      const vendor = readQwenTaskMeta(payload, parsed?.shape)
+      logTask(ctx, payload, status, parsed?.shape, parsed?.urls.length)
       if (status === 'PENDING') return { state: 'queued', raw: status, vendor }
       if (status === 'RUNNING' || status === 'UNKNOWN') return { state: 'processing', raw: status, vendor }
       if (status === 'SUCCEEDED') {
-        const resultUrls = readQwenImageUrls(payload)
+        const resultUrls = parsed?.urls ?? []
         if (!resultUrls.length) {
           return { state: 'failed', code: 'BAD_RESPONSE', message: '图片服务没有返回结果地址', retryable: false, vendor }
         }
-        ctx.log({
-          stage: 'qwen-image-status',
-          raw: status,
-          resultCount: resultUrls.length,
-          outputImageCount: vendor?.outputImageCount,
-          outputImageType: vendor?.outputImageType,
-        })
         return { state: 'succeeded', resultUrls, vendor }
       }
       if (status === 'FAILED' || status === 'CANCELED') return failedTask(payload)

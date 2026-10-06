@@ -33,6 +33,7 @@ import {
   composeVariationPrompt,
   variationPromptLimitMessage,
 } from '../../shared/variation.js'
+import { findImageModel } from '../../shared/image-models.js'
 import { configuredImageModels, imageProviderById } from '../image-providers/registry.js'
 import {
   ProviderError,
@@ -78,6 +79,9 @@ type User = Awaited<ReturnType<typeof authenticate>>
 export const IMAGE_HOURLY_LIMIT = 20
 export const IMAGE_USER_CONCURRENCY = 2
 export const IMAGE_GLOBAL_CONCURRENCY = 20
+/** 一次任务最多 4 张，下载和写 R2 同时进行，但不超过这个上限。 */
+const RESULT_DOWNLOAD_PARALLEL = 4
+const VENDOR_COST_SCALE = 1_000_000
 export const IMAGE_LEASE_MS = 30_000
 /** 与 GPT-Image-2 现有默认值一致。供应商未提供 jobPolicy 时使用。 */
 export const DEFAULT_IMAGE_JOB_POLICY: ImageJobPolicy = {
@@ -264,6 +268,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
+function vendorItemRecord(vendor: ProviderVendorUsage) {
+  return {
+    cost: vendor.cost,
+    credits_cost: vendor.creditsCost,
+    expires_at: vendor.expiresAt,
+    ...(vendor.currency ? { currency: vendor.currency } : {}),
+    ...(vendor.outputWidth !== undefined ? { output_width: vendor.outputWidth } : {}),
+    ...(vendor.outputHeight !== undefined ? { output_height: vendor.outputHeight } : {}),
+    ...(vendor.outputImageCount !== undefined ? { output_image_count: vendor.outputImageCount } : {}),
+    ...(vendor.outputImageType !== undefined ? { output_image_type: vendor.outputImageType } : {}),
+    ...(vendor.submitTime ? { submit_time: vendor.submitTime } : {}),
+    ...(vendor.scheduledTime ? { scheduled_time: vendor.scheduledTime } : {}),
+    ...(vendor.endTime ? { end_time: vendor.endTime } : {}),
+    ...(vendor.imageShape ? { image_shape: vendor.imageShape } : {}),
+  }
+}
+
 export function mergeVendorUsage(
   providerParams: Record<string, unknown>,
   outcomes: SubmitOutcome[],
@@ -272,27 +293,49 @@ export function mergeVendorUsage(
   const items = isRecord(previous.items) ? { ...previous.items } : {}
   for (const outcome of outcomes) {
     if (!outcome.vendor) continue
-    items[String(outcome.ordinal)] = {
-      cost: outcome.vendor.cost,
-      credits_cost: outcome.vendor.creditsCost,
-      expires_at: outcome.vendor.expiresAt,
-      ...(outcome.vendor.outputWidth !== undefined ? { output_width: outcome.vendor.outputWidth } : {}),
-      ...(outcome.vendor.outputHeight !== undefined ? { output_height: outcome.vendor.outputHeight } : {}),
-      ...(outcome.vendor.outputImageCount !== undefined ? { output_image_count: outcome.vendor.outputImageCount } : {}),
-      ...(outcome.vendor.outputImageType !== undefined ? { output_image_type: outcome.vendor.outputImageType } : {}),
-    }
+    items[String(outcome.ordinal)] = vendorItemRecord(outcome.vendor)
   }
   let cost = 0
   let creditsCost = 0
+  let currency: string | undefined
   for (const value of Object.values(items)) {
     if (!isRecord(value)) continue
     if (typeof value.cost === 'number') cost += value.cost
     if (typeof value.credits_cost === 'number') creditsCost += value.credits_cost
+    if (!currency && typeof value.currency === 'string') currency = value.currency
   }
   return {
     ...providerParams,
-    vendor: { cost, credits_cost: creditsCost, items },
+    vendor: { cost, credits_cost: creditsCost, ...(currency ? { currency } : {}), items },
   }
+}
+
+function scaleVendorCost(unitRaw: string, count: number) {
+  const unit = Number(unitRaw)
+  if (!Number.isFinite(unit) || unit < 0 || !Number.isInteger(count) || count <= 0) return undefined
+  return Math.round(unit * VENDOR_COST_SCALE) * count / VENDOR_COST_SCALE
+}
+
+/**
+ * 上游没回传金额时，用模型目录的单价乘以本次实际返回的张数。
+ * 已有 cost（包括 0）保持不变，避免盖掉 DragonCode 的账单。
+ */
+export function applyCatalogVendorCost(
+  job: Pick<ImageJobRow, 'model_profile_id' | 'provider_params'>,
+  vendor: ProviderVendorUsage | undefined,
+  returnedCount: number,
+): ProviderVendorUsage | undefined {
+  if (vendor?.cost !== undefined) return vendor
+  const profile = findImageModel(job.model_profile_id)
+  // 只补标了币种的目录价。GPT Image 2 的账单仍以上游返回的 cost 为准。
+  if (!profile?.pricing.vendorCurrency) return vendor
+  const resolution = job.provider_params.resolution
+  const unitRaw = resolution === '1k' || resolution === '2k' || resolution === '4k'
+    ? profile.pricing.vendorCost?.[resolution]
+    : undefined
+  const cost = unitRaw ? scaleVendorCost(unitRaw, returnedCount) : undefined
+  if (cost === undefined) return vendor
+  return { ...vendor, cost, currency: profile.pricing.vendorCurrency }
 }
 
 export function defaultImageJobRuntime(): ImageJobRuntime {
@@ -595,13 +638,21 @@ async function submitBatch(
       ? { ordinal: item.ordinal, patch: { status: 'submitted', provider_task_id: submitted.providerTaskId, attempts: item.attempts + 1 } }
       : { ordinal: item.ordinal, patch: {} })
   } catch (error) {
-    const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN', '图片任务提交失败')
     return bundle.items.map(item => item.status === 'pending'
-      ? {
-          ordinal: item.ordinal,
-          patch: { status: 'failed', attempts: item.attempts + 1, error_code: failure.code, error_message: failure.message },
-        }
+      ? { ordinal: item.ordinal, patch: submitFailurePatch(item, error) }
       : { ordinal: item.ordinal, patch: {} })
+  }
+}
+
+function submitFailurePatch(item: ImageJobItemRow, error: unknown): ItemPatch {
+  const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN', '图片任务提交失败')
+  // 建连失败时请求还没送出，留下 pending，等后续轮询在截止时间前再提交。
+  if (failure.requestSent === false) return { attempts: item.attempts + 1 }
+  return {
+    status: 'failed',
+    attempts: item.attempts + 1,
+    error_code: failure.code,
+    error_message: failure.message,
   }
 }
 
@@ -648,14 +699,7 @@ export async function runProviderSubmits(
         patch: { status: 'submitted', provider_task_id: submitted.providerTaskId, attempts: item.attempts + 1 },
       }
     } catch (error) {
-      const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN', '图片任务提交失败')
-      return {
-        ordinal: item.ordinal,
-        patch: {
-          status: 'failed', attempts: item.attempts + 1,
-          error_code: failure.code, error_message: failure.message,
-        },
-      }
+      return { ordinal: item.ordinal, patch: submitFailurePatch(item, error) }
     }
   })
 }
@@ -686,6 +730,7 @@ export async function finalizeJob(
   runtime: ImageJobRuntime,
   lateDelivery: boolean,
   outcomes: SubmitOutcome[] = [],
+  options?: { keepScheduledPoll?: boolean },
 ) {
   const reduced = reduceJobStatus(items, runtime.now(), new Date(job.deadline_at).getTime())
   const warnings = mergeWarnings(job.warnings, reduced.warnings, lateDelivery && reduced.status === 'succeeded' ? [LATE_RESULT_WARNING] : [])
@@ -730,11 +775,26 @@ export async function finalizeJob(
     completed_at: terminal ? new Date(runtime.now()) : job.completed_at,
     ...(job.capability === 'text_to_video' && reduced.status === 'succeeded' && job.status !== 'succeeded'
       ? { expires_at: new Date(runtime.now() + VIDEO_RETENTION_MS), error_code: null, error_message: null } : {}),
-    next_poll_at: nextPollAt(runtime.now(), nextPollInterval(job, runtime)),
+    next_poll_at: options?.keepScheduledPoll
+      ? job.next_poll_at
+      : nextPollAt(runtime.now(), nextPollInterval(job, runtime)),
     lease_until: null,
     provider_params: providerParams,
   })
   return { job: next, items }
+}
+
+async function runBounded<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
+  if (!items.length) return
+  let cursor = 0
+  const slots = Math.min(Math.max(1, limit), items.length)
+  await Promise.all(Array.from({ length: slots }, async () => {
+    while (cursor < items.length) {
+      const current = items[cursor]
+      cursor += 1
+      await worker(current)
+    }
+  }))
 }
 
 async function persistDownloadedResult(
@@ -801,6 +861,10 @@ export async function collectAdvancePatches(
   const salvage = canSalvage(job, now, items)
   const ctx = providerContext(runtime, job.request_id)
   const outcomes: SubmitOutcome[] = []
+  // 只重提还没有 task id 的明细。已送出的提交即使响应丢失也不再发，避免上游建两个任务。
+  if (!overdue && provider.submit && items.some(item => item.status === 'pending' && !item.provider_task_id && !item.result_object_key)) {
+    outcomes.push(...await runProviderSubmits({ job, items }, provider, job.user_id, runtime))
+  }
   const grouped = new Map<string, ImageJobItemRow[]>()
   for (const item of items) {
     if (item.result_object_key) continue
@@ -843,40 +907,44 @@ export async function collectAdvancePatches(
         continue
       }
       if (state.state !== 'succeeded') continue
+      const returned = shared
+        ? group.filter(item => state.resultUrls[item.ordinal]).length
+        : (state.resultUrls[0] ? 1 : 0)
+      const vendor = applyCatalogVendorCost(job, state.vendor, returned)
+      const vendorForPriced = (item: ImageJobItemRow) => (shared && item.ordinal !== lead.ordinal ? undefined : vendor)
+      logProviderUsage(runtime, provider, job, lead.ordinal, vendor)
       if (!shared) {
         const resultUrl = state.resultUrls[0]
         if (!resultUrl) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回结果地址')
-        logProviderUsage(runtime, provider, job, lead.ordinal, state.vendor)
         const downloaded = await provider.fetchResult(resultUrl, ctx)
         outcomes.push({
           ordinal: lead.ordinal,
           patch: await persistDownloadedResult(job, lead, downloaded.bytes, downloaded.mimeType, runtime),
-          vendor: state.vendor,
+          vendor,
         })
         continue
       }
-      logProviderUsage(runtime, provider, job, lead.ordinal, state.vendor)
-      for (const item of group) {
+      await runBounded(group, RESULT_DOWNLOAD_PARALLEL, async (item) => {
         const resultUrl = state.resultUrls[item.ordinal]
         if (!resultUrl) {
           outcomes.push({
             ordinal: item.ordinal,
             patch: { status: 'failed', error_code: 'BAD_RESPONSE', error_message: '图片服务返回的图片数量不足' },
-            vendor: vendorFor(item),
+            vendor: vendorForPriced(item),
           })
-          continue
+          return
         }
         try {
           const downloaded = await provider.fetchResult(resultUrl, ctx)
           outcomes.push({
             ordinal: item.ordinal,
             patch: await persistDownloadedResult(job, item, downloaded.bytes, downloaded.mimeType, runtime),
-            vendor: vendorFor(item),
+            vendor: vendorForPriced(item),
           })
         } catch (error) {
           recordPollError(outcomes, runtime, job, item, error, overdue)
         }
-      }
+      })
     } catch (error) {
       for (const item of group) recordPollError(outcomes, runtime, job, item, error, overdue)
     }
@@ -975,7 +1043,7 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
     const store = createSqlStore(sql, user.id)
     const items = await applyItemPatches(store, created.bundle.job.id, created.bundle.items, outcomes)
     const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
-    const finalized = await finalizeJob(store, created.bundle.job, items, billingRuntime, false, outcomes)
+    const finalized = await finalizeJob(store, created.bundle.job, items, billingRuntime, false, outcomes, { keepScheduledPoll: true })
     return toClientImageTask(finalized, runtime)
   })
 }

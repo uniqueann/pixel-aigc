@@ -3,6 +3,9 @@ import { submitSuccess } from '../image-providers/dragoncode/fixtures.js'
 import { MOCK_PNG_1X1 } from '../image-providers/mock.js'
 import { imageProviderById } from '../image-providers/registry.js'
 import {
+  QWEN_END_TIME,
+  QWEN_SCHEDULED_TIME,
+  QWEN_SUBMIT_TIME,
   pollFailedModeration,
   pollRunning,
   pollSucceededContentImages,
@@ -14,6 +17,7 @@ import {
   advanceJobInStore,
   createImageJobInStore,
   createImageTaskSchema,
+  finalizeJob,
   runProviderSubmits,
   type ImageJobRuntime,
 } from './service.js'
@@ -23,6 +27,7 @@ const user = { id: '00000000-0000-4000-8000-000000000001', email: 'alice@example
 const KEYS = [
   'DRAGONCODE_API_KEY', 'DRAGONCODE_TASK_TIMEOUT_MS', 'DRAGONCODE_INITIAL_POLL_DELAY_MS',
   'DASHSCOPE_API_KEY', 'QWEN_IMAGE_ENABLED', 'QWEN_IMAGE_TASK_TIMEOUT_MS', 'QWEN_IMAGE_INITIAL_POLL_DELAY_MS',
+  'QWEN_IMAGE_REQUEST_RETRY_COUNT',
 ] as const
 const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
 
@@ -163,9 +168,13 @@ describe('图片任务按模型供应商分发', () => {
     expect(fetchImpl.mock.calls.filter(call => String(call[0]) === qwenImageUrl(0))).toHaveLength(1)
     expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'bailian-usage', outputImageCount: 3, outputImageType: 'qima_output_2k',
+      imageShape: 'choices-content-image', submitTime: QWEN_SUBMIT_TIME, scheduledTime: QWEN_SCHEDULED_TIME,
+      endTime: QWEN_END_TIME, cost: 0.54, currency: 'CNY',
     }))
     expect(advanced.job.provider_params.vendor).toMatchObject({
-      items: { '0': { output_image_count: 3, output_image_type: 'qima_output_2k' } },
+      cost: 0.54,
+      currency: 'CNY',
+      items: { '0': { output_image_count: 3, output_image_type: 'qima_output_2k', cost: 0.54, currency: 'CNY', image_shape: 'choices-content-image' } },
     })
     expect(advanced.job.provider_params.vendor).not.toMatchObject({ items: { '1': expect.anything() } })
   })
@@ -243,5 +252,81 @@ describe('图片任务按模型供应商分发', () => {
       createMemoryStore(user.id), user, text('00000000-0000-4000-8000-000000000305', 1, 'bailian:qwen-image-3.0'), rt,
     )).rejects.toMatchObject({ status: 503, code: 'TEXT_TO_IMAGE_UNAVAILABLE' })
     expect(rt.billing.reserve).not.toHaveBeenCalled()
+  })
+
+  it('建连失败不退款，下一轮轮询再提交；连接重置则失败退款', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    process.env.QWEN_IMAGE_REQUEST_RETRY_COUNT = '0'
+    delete process.env.DRAGONCODE_API_KEY
+    const connectTimeout = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT', name: 'ConnectTimeoutError' }),
+    })
+    let submits = 0
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/image-generation/generation')) {
+        submits += 1
+        if (submits === 1) throw connectTimeout
+        return jsonResponse(submitPending)
+      }
+      return jsonResponse(pollRunning)
+    })
+    const rt = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000308', 2, 'bailian:qwen-image-3.0-pro'), rt)
+    const scheduled = created.bundle.job.next_poll_at
+    const pendingItems = await applySubmits(store, created, rt)
+    expect(pendingItems.map(item => item.status)).toEqual(['pending', 'pending'])
+    expect(pendingItems.every(item => item.provider_task_id == null)).toBe(true)
+    const held = await finalizeJob(store, created.bundle.job, pendingItems, rt, false, [], { keepScheduledPoll: true })
+    expect(held.job.status).toBe('queued')
+    expect(held.job.billing_state).toBe('reserved')
+    expect(held.job.next_poll_at).toEqual(scheduled)
+    expect(rt.billing.release).not.toHaveBeenCalled()
+    const retried = await advanceJobInStore(store, {
+      job: { ...held.job, next_poll_at: new Date(0) },
+      items: held.items,
+    }, rt, { alreadyLeased: true })
+    expect(retried.items.map(item => item.provider_task_id)).toEqual(['qwen-task-fixture-001', 'qwen-task-fixture-001'])
+    expect(submits).toBe(2)
+
+    const reset = new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })
+    const resetRt = runtime(vi.fn(async () => { throw reset }))
+    const resetStore = createMemoryStore(user.id)
+    const resetCreated = await createImageJobInStore(resetStore, user, text('00000000-0000-4000-8000-000000000309', 1, 'bailian:qwen-image-3.0'), resetRt)
+    const failedItems = await applySubmits(resetStore, resetCreated, resetRt)
+    const failed = await finalizeJob(resetStore, resetCreated.bundle.job, failedItems, resetRt, false)
+    expect(failed.job.status).toBe('failed')
+    expect(failed.items[0].error_message).toBe('文生图服务连接失败，请稍后重试')
+    expect(resetRt.billing.release).toHaveBeenCalledWith(resetCreated.bundle.job.id)
+  })
+
+  it('多张结果并行下载', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    delete process.env.DRAGONCODE_API_KEY
+    let imageStarts = 0
+    let release: () => void = () => undefined
+    const bothStarted = new Promise<void>(resolve => { release = resolve })
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/image-generation/generation')) return jsonResponse(submitPending)
+      if (url.includes('/tasks/')) return jsonResponse(pollSucceededContentImages(2))
+      imageStarts += 1
+      if (imageStarts === 2) release()
+      await bothStarted
+      return new Response(MOCK_PNG_1X1, { status: 200, headers: { 'Content-Type': 'image/png' } })
+    })
+    const rt = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000310', 2, 'bailian:qwen-image-3.0'), rt)
+    const items = await applySubmits(store, created, rt)
+    const advanced = await Promise.race([
+      advanceJobInStore(store, { job: { ...created.bundle.job, next_poll_at: new Date(0) }, items }, rt, { alreadyLeased: true }),
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('downloads did not overlap')), 500)),
+    ])
+    expect(imageStarts).toBe(2)
+    expect(advanced.items.map(item => item.status)).toEqual(['succeeded', 'succeeded'])
   })
 })
