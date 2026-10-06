@@ -3,6 +3,9 @@
 import { App } from 'antd'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defaultImageModel, publicImageModel } from '@shared/image-models'
+import { defaultPreferences } from '@shared/preferences'
+import { usePreferencesStore } from '@/features/preferences/store'
 
 const mocks = vi.hoisted(() => ({
   tool: 'variation',
@@ -11,12 +14,14 @@ const mocks = vi.hoisted(() => ({
     error: null as Error | null,
     refetch: vi.fn(),
   },
-  controller: { outputAssets: [], formLocked: false, replaceSourceAsset: vi.fn() },
+  controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined },
+  models: [] as unknown[],
+  modelsLoading: false,
 }))
 vi.mock('react-router-dom', () => ({ useParams: () => ({ tool: mocks.tool }), useNavigate: () => vi.fn() }))
 vi.mock('@/hooks/useCapabilities', () => ({ useCapabilities: () => mocks.status }))
 vi.mock('@/features/image-workstation/hooks/useImageWorkstationController', () => ({ useImageWorkstationController: () => mocks.controller }))
-vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ models: [], loading: false, refetch: vi.fn() }) }))
+vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ models: mocks.models, loading: mocks.modelsLoading, refetch: vi.fn() }) }))
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false }))
 vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
 
@@ -35,6 +40,12 @@ describe('图片工作站配置提示', () => {
     mocks.status.capabilities = { imageEdit: undefined, variation: undefined, repaint: undefined, smartSelect: undefined }
     mocks.status.error = null
     mocks.status.refetch.mockReset()
+    mocks.models = []
+    mocks.modelsLoading = false
+    mocks.controller.inputAsset = undefined
+    mocks.controller.outputAssets = []
+    mocks.controller.formLocked = false
+    usePreferencesStore.setState({ preferences: defaultPreferences(), memoryEpoch: 0 })
   })
 
   afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -72,6 +83,63 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByText('裂变 · 即将上线')).toBeTruthy()
     expect(screen.getByText('该能力即将上线，目前还不能提交生成任务。')).toBeTruthy()
     expect(screen.queryByText('补充要求（可选）')).toBeNull()
+  })
+
+  it('未上传时按所选张数和分辨率显示报价，按钮保持禁用', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts = { 'smart-edit': 1, relight: 1, variation: 2, fusion: 1, retouch: 1 }
+    usePreferencesStore.setState({ preferences, memoryEpoch: 1 })
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    const cases = [
+      ['smart-edit', '生成 · 2 积分'],
+      ['relight', '生成 · 2 积分'],
+      ['variation', '生成 · 4 积分'],
+      ['fusion', '生成 · 2 积分'],
+      ['retouch', '生成 · 2 积分'],
+      ['remove', '生成 · 5 积分'],
+      ['repaint', '生成 · 5 积分'],
+      ['outpaint', '生成 · 最多 10 积分'],
+    ] as const
+    for (const [tool, label] of cases) {
+      mocks.tool = tool
+      const view = render(<App><ImageWorkstation /></App>)
+      const button = buttonByText(new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+      expect(button.textContent?.replace(/\s+/g, '')).toContain(label.replace(/\s+/g, ''))
+      expect(button.disabled).toBe(true)
+      expect(view.container.textContent).toContain(tool === 'fusion' ? '请上传商品图' : '请先上传需要处理的图片')
+      view.unmount()
+    }
+  })
+
+  it('未上传时改张数会更新报价，上传后仍按有效分辨率报价', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts['smart-edit'] = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
+    mocks.tool = 'smart-edit'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    const view = render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 · 2 积分/).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('radio', { name: '2' }))
+    expect(buttonByText(/生成 · 4 积分/).disabled).toBe(true)
+
+    view.unmount()
+    preferences.image.resolution = '2k'
+    preferences.image.counts['smart-edit'] = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 3 })
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 · 3 积分/).disabled).toBe(false)
+
+    cleanup()
+    preferences.image.resolution = '4k'
+    usePreferencesStore.setState({ preferences, memoryEpoch: 4 })
+    render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 · 3 积分/)).toBeTruthy()
+    expect(screen.queryByText(/生成 · 5 积分/)).toBeNull()
   })
 
   it('确认重绘未配置后才显示不能用的提示', () => {

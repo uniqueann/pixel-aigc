@@ -40,7 +40,7 @@ import { freeOutpaintGeometry, presetOutpaintGeometry } from './utils/outpaintGe
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
-import { creditQuote, creditQuoteBlocked, imageCreditAmount, outpaintCreditAmount } from '@/features/credits/quotes'
+import { creditQuote, creditQuoteBlocked, imageCreditAmount, outpaintCreditAmount, positiveQuoteCount } from '@/features/credits/quotes'
 import { useImageModels } from '@/features/credits/useImageModels'
 import { workstationRequestQuote } from '@/features/image-workstation/creditQuote'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
@@ -393,7 +393,7 @@ export default function ImageWorkstation() {
     ? creditQuote(syncCreditPrice(inpaintMode === 'remove' ? 'erase' : 'repaint'), { mock: mockGateway })
     : activeTool.capability === Capability.Outpaint
       ? creditQuote(outpaintCredits, { maximum: true, mock: mockGateway && outpaintCredits !== 0 })
-      : creditQuote(imageCreditAmount(activeModel, effectiveParameters.count, effectiveParameters.resolution), { loading: activeConfiguration.loading, mock: mockGateway })
+      : creditQuote(imageCreditAmount(activeModel, positiveQuoteCount(effectiveParameters.count, activeCount) ?? 0, effectiveParameters.resolution), { loading: activeConfiguration.loading, mock: mockGateway })
   const retryQuote = workstationRequestQuote(controller.activeTask, [...imageModels, ...variationModels], {
     mock: mockGateway, loading: controller.activeTask?.capability === Capability.Variation ? variationConfiguration.loading : imageConfiguration.loading,
   })

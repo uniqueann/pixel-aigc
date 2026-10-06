@@ -22,6 +22,13 @@ export function imageCreditAmount(model: PublicImageModel | undefined, count: nu
     ? unitPrice * count : undefined
 }
 
+/** 有效张数还不是正整数时（例如尚未上传、张数被算成 0），报价改用当前选择。 */
+export function positiveQuoteCount(effectiveCount: number, selectedCount: number): number | undefined {
+  if (Number.isInteger(effectiveCount) && effectiveCount > 0) return effectiveCount
+  if (Number.isInteger(selectedCount) && selectedCount > 0) return selectedCount
+  return undefined
+}
+
 export interface OutpaintQuoteGeometry {
   sourceSize: { width: number; height: number }
   targetSize: { width: number; height: number }
