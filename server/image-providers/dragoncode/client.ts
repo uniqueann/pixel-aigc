@@ -8,7 +8,14 @@ import type {
   ProviderTaskState,
 } from '../types.js'
 import { ProviderError } from '../types.js'
-import { dragonCodeConfig, isDragonCodeConfigured, type DragonCodeConfig } from './config.js'
+import {
+  DEFAULT_INITIAL_POLL_DELAY_MS,
+  DEFAULT_POLL_INTERVAL_MS,
+  DEFAULT_TASK_TIMEOUT_MS,
+  dragonCodeConfig,
+  isDragonCodeConfigured,
+  type DragonCodeConfig,
+} from './config.js'
 import {
   asString,
   dragonCodeFailure,
@@ -76,6 +83,15 @@ export function createDragonCodeProvider(
     },
     mapRequest(req: NormalizedImageRequest, model: string) {
       return mapDragonCodeRequest(req, model)
+    },
+    jobPolicy(env?: NodeJS.ProcessEnv) {
+      const config = readConfig(env)
+      return {
+        taskTimeoutMs: config?.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS,
+        pollIntervalMs: config?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+        initialPollDelayMs: config?.initialPollDelayMs ?? DEFAULT_INITIAL_POLL_DELAY_MS,
+        maxParallel: config?.maxParallel ?? 4,
+      }
     },
     async submit(input: ProviderSubmitInput, ctx: ProviderContext) {
       const config = configOf()

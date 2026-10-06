@@ -40,6 +40,8 @@ export interface ImageModelProfile {
     unit: 'image'
     creditsPerImage: Partial<Record<ImageResolution, number>>
     vendorCost?: Partial<Record<ImageResolution, string>>
+    /** 供应商成本的币种。GPT Image 2 的 vendorCost 历史数据未标币种，千问按人民币记录。 */
+    vendorCurrency?: string
   }
   defaultFor?: ImageOperation[]
   enabled: boolean
@@ -69,6 +71,54 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
     },
     defaultFor: ['image_edit', 'variation'],
     enabled: true,
+  },
+  // 开关关闭时不要把 enabled 改成 true：积分说明和本地 Mock 只看这个字段。
+  // 服务端在 QWEN_IMAGE_ENABLED=true 且已配置百炼 Key 时才把它们列入 /api/image-models。
+  {
+    id: 'bailian:qwen-image-3.0',
+    provider: 'bailian',
+    model: 'qwen-image-3.0',
+    label: 'Qwen Image 3.0',
+    operations: ['text_to_image'],
+    ui: {
+      supportsMask: false,
+      maxCount: 4,
+      resolutions: ['1k', '2k'],
+      sizeMode: 'ratio',
+      ratios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+      maxRefImages: 0,
+      promptMaxLength: PROMPT_MAX_LENGTH,
+    },
+    pricing: {
+      unit: 'image',
+      creditsPerImage: { '1k': 3, '2k': 3 },
+      vendorCost: { '1k': '0.18', '2k': '0.18' },
+      vendorCurrency: 'CNY',
+    },
+    enabled: false,
+  },
+  {
+    id: 'bailian:qwen-image-3.0-pro',
+    provider: 'bailian',
+    model: 'qwen-image-3.0-pro',
+    label: 'Qwen Image 3.0 Pro',
+    operations: ['text_to_image'],
+    ui: {
+      supportsMask: false,
+      maxCount: 4,
+      resolutions: ['1k', '2k'],
+      sizeMode: 'ratio',
+      ratios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+      maxRefImages: 0,
+      promptMaxLength: PROMPT_MAX_LENGTH,
+    },
+    pricing: {
+      unit: 'image',
+      creditsPerImage: { '1k': 4, '2k': 8 },
+      vendorCost: { '1k': '0.25', '2k': '0.50' },
+      vendorCurrency: 'CNY',
+    },
+    enabled: false,
   },
 ]
 

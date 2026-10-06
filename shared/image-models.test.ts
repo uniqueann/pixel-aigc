@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { PROMPT_MAX_LENGTH } from './prompt-limits'
 import {
   DRAGONCODE_RATIOS,
   DRAGONCODE_SIZES,
+  IMAGE_MODEL_PROFILES,
   RESOLUTION_DOWNGRADED_4K,
+  defaultImageModel,
   mapDragonCodeSize,
   nearestRatio,
+  publicImageModel,
 } from './image-models'
 
 const exact: Array<[number, number, string]> = [
@@ -53,6 +57,20 @@ describe('nearestRatio / mapDragonCodeSize', () => {
   it('可限制候选比例集合', () => {
     expect(nearestRatio(1000, 1000, ['16:9', '9:16'])).toBe('16:9')
     expect(DRAGONCODE_RATIOS).toHaveLength(13)
+    expect(defaultImageModel('text_to_image')?.id).toBe('dragoncode:gpt-image-2')
+    const qwen = IMAGE_MODEL_PROFILES.filter(profile => profile.provider === 'bailian')
+    expect(qwen.map(profile => profile.id)).toEqual(['bailian:qwen-image-3.0', 'bailian:qwen-image-3.0-pro'])
+    expect(qwen.map(profile => profile.pricing.creditsPerImage)).toEqual([
+      { '1k': 3, '2k': 3 },
+      { '1k': 4, '2k': 8 },
+    ])
+    for (const profile of qwen) {
+      expect(profile.enabled).toBe(false)
+      expect(profile.ui.promptMaxLength).toBe(PROMPT_MAX_LENGTH)
+      expect(profile.ui.resolutions).toEqual(['1k', '2k'])
+      expect(publicImageModel(profile).pricing).toEqual({ unit: 'image', creditsPerImage: profile.pricing.creditsPerImage })
+      expect(JSON.stringify(publicImageModel(profile))).not.toContain('vendorCost')
+    }
     expect(DRAGONCODE_SIZES).toEqual([
       'auto', '1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5',
       '16:9', '9:16', '2:1', '1:2', '21:9', '9:21',

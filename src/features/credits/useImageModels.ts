@@ -7,7 +7,7 @@ import { useUserStore } from '@/store/useUserStore'
 import { billingRuntimeScope } from './useBillingCatalog'
 
 const mock = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
-const mockModels = IMAGE_MODEL_PROFILES.map(publicImageModel)
+const mockModels = IMAGE_MODEL_PROFILES.filter(profile => profile.enabled).map(publicImageModel)
 
 export function useImageModels(operation: ImageOperation) {
   const owner = useUserStore(state => state.userId)

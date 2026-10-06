@@ -36,6 +36,14 @@ describe('项目快照校验与迁移', () => {
     expect(parseSnapshot(serializeSnapshot(snapshot)).drafts['text-to-image']).toEqual(snapshot.drafts['text-to-image'])
   })
 
+  it('文生图草稿记住自动扩写，非法值会被拒绝', () => {
+    snapshot.drafts['text-to-image'] = { ...snapshot.drafts['text-to-image'], enableThinking: true }
+    expect(parseSnapshot(serializeSnapshot(snapshot)).drafts['text-to-image'].enableThinking).toBe(true)
+    const broken = JSON.parse(serializeSnapshot(snapshot)) as { drafts: { 'text-to-image': { enableThinking: unknown } } }
+    broken.drafts['text-to-image'].enableThinking = 'yes'
+    expect(() => parseSnapshot(broken)).toThrow('自动扩写设置无效')
+  })
+
   it('视频恢复保留声音与 720p 配置，图生视频只靠对象键即可恢复派生侧栏', () => {
     const source = snapshot.project.document.scenes[0].nodes[0]
     if (source.type !== 'image') throw new Error('测试数据类型错误')
@@ -65,19 +73,19 @@ describe('项目快照校验与迁移', () => {
     snapshot.recoveries.request = {
       projectId: snapshot.project.id, sceneId: snapshot.project.document.activeSceneId,
       request: { capability: Capability.TextToImage, requestId: 'request', modelProfileId: 'chosen-model',
-        params: { prompt: '真实文生图', size: { width: Number(width), height: Number(height) }, count: 2, resolution: '4k' } },
+        params: { prompt: '真实文生图', size: { width: Number(width), height: Number(height) }, count: 2, resolution: '4k', enableThinking: true } },
       context: { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
       placements: [], replacedPlaceholderIds: [], applied: false,
     }
     const restored = parseSnapshot(serializeSnapshot(snapshot))
     expect(restored.recoveries.request).toEqual(snapshot.recoveries.request)
     expect(restoreTaskDrafts(restored)['text-to-image']).toMatchObject({
-      prompt: '真实文生图', presetKey, count: 2, modelProfileId: 'chosen-model', resolution: '4k',
+      prompt: '真实文生图', presetKey, count: 2, modelProfileId: 'chosen-model', resolution: '4k', enableThinking: true,
     })
   })
 
   it('旧文生图恢复请求没有新字段时，保留项目草稿中的模型和分辨率', () => {
-    snapshot.drafts['text-to-image'] = { ...snapshot.drafts['text-to-image'], modelProfileId: 'chosen-model', resolution: '2k' }
+    snapshot.drafts['text-to-image'] = { ...snapshot.drafts['text-to-image'], modelProfileId: 'chosen-model', resolution: '2k', enableThinking: true }
     snapshot.recoveries.request = {
       projectId: snapshot.project.id, sceneId: snapshot.project.document.activeSceneId,
       request: { capability: Capability.TextToImage, requestId: 'request', params: { prompt: '旧任务', size: { width: 1024, height: 768 }, count: 1 } },
@@ -85,7 +93,7 @@ describe('项目快照校验与迁移', () => {
       placements: [], replacedPlaceholderIds: [], applied: false,
     }
     expect(restoreTaskDrafts(parseSnapshot(snapshot))['text-to-image']).toMatchObject({
-      prompt: '旧任务', presetKey: '4:3', modelProfileId: 'chosen-model', resolution: '2k',
+      prompt: '旧任务', presetKey: '4:3', modelProfileId: 'chosen-model', resolution: '2k', enableThinking: true,
     })
     Object.assign(snapshot.recoveries.request.request.params, { resolution: '8k' })
     expect(() => parseSnapshot(snapshot)).toThrow('任务恢复分辨率无效')

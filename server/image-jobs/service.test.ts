@@ -9,6 +9,7 @@ import { dragonCodeProvider } from '../image-providers/dragoncode/index.js'
 import { createMemoryStore } from './memory-store.js'
 import {
   IMAGE_LEASE_MS,
+  applyCatalogVendorCost,
   advanceJobInStore,
   assertFusionRequest,
   assertRelightRequest,
@@ -264,6 +265,17 @@ describe('图片任务存储状态机', () => {
     expect(IMAGE_LEASE_MS).toBe(30_000)
   })
 
+  it('没有币种的目录价不补进任务，千问按返回张数乘单价', () => {
+    const qwen = { model_profile_id: 'bailian:qwen-image-3.0-pro', provider_params: { resolution: '1k' } }
+    expect(applyCatalogVendorCost(qwen, { outputImageCount: 2 }, 2)).toEqual({
+      outputImageCount: 2, cost: 0.5, currency: 'CNY',
+    })
+    expect(applyCatalogVendorCost(qwen, { cost: 0.01 }, 2)).toEqual({ cost: 0.01 })
+    const gpt = { model_profile_id: 'dragoncode:gpt-image-2', provider_params: { resolution: '1k' } }
+    expect(applyCatalogVendorCost(gpt, undefined, 1)).toBeUndefined()
+    expect(applyCatalogVendorCost(gpt, { cost: 0.0085, creditsCost: 1 }, 1)).toEqual({ cost: 0.0085, creditsCost: 1 })
+  })
+
   it('把上游 cost / credits_cost 写入已有 provider_params JSON', async () => {
     const store = createMemoryStore(user.id)
     const rt = runtime(createMockImageProvider({
@@ -287,8 +299,28 @@ describe('图片任务存储状态机', () => {
       items: { '0': { cost: 0.0085, credits_cost: 1, expires_at: 1_759_116_436 } },
     })
     expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({
-      stage: 'dragoncode-usage', cost: 0.0085, creditsCost: 1,
+      stage: 'mock-usage', cost: 0.0085, creditsCost: 1,
     }))
+  })
+
+  it('DragonCode 适配器的用量日志仍使用 dragoncode-usage', async () => {
+    const store = createMemoryStore(user.id)
+    const provider = {
+      ...createMockImageProvider({
+        async getStatus() {
+          return { state: 'succeeded' as const, resultUrls: ['https://mock.local/a.png'], vendor: { cost: 0.0085, creditsCost: 1 } }
+        },
+      }),
+      id: 'dragoncode',
+    }
+    const rt = runtime(provider)
+    const created = await createImageJobInStore(store, user, params(), rt)
+    await store.updateItem(created.bundle.job.id, 0, { status: 'submitted', provider_task_id: 't-dragon' })
+    await advanceJobInStore(store, {
+      job: { ...created.bundle.job, next_poll_at: new Date(0) },
+      items: await store.listItems(created.bundle.job.id),
+    }, rt, { alreadyLeased: true })
+    expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'dragoncode-usage', cost: 0.0085 }))
   })
 
   it('客户端任务带上 resultImages.objectKey，供同域下载', async () => {

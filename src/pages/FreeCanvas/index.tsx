@@ -223,7 +223,13 @@ export default function FreeCanvas() {
     try {
       const request = activeSlug === 'text-to-video'
         ? buildTextToVideoRequest(prompt, preset, durationSeconds, videoModel ? { model: videoModel, generateAudio: drafts['text-to-video'].generateAudio ?? false } : undefined)
-        : buildTextToImageRequest(prompt, textToImageParameters.preset, textToImageParameters.count, { resolution: textToImageParameters.resolution, modelProfileId: textToImageParameters.model?.id })
+        : buildTextToImageRequest(prompt, textToImageParameters.preset, textToImageParameters.count, {
+            resolution: textToImageParameters.resolution,
+            modelProfileId: textToImageParameters.model?.id,
+            ...(textToImageParameters.model?.provider === 'bailian'
+              ? { enableThinking: drafts['text-to-image'].enableThinking === true }
+              : {}),
+          })
       if (activeSlug === 'text-to-image') {
         updateDraft({ modelProfileId: textToImageParameters.model?.id, resolution: textToImageParameters.requestedResolution })
       }
@@ -471,6 +477,8 @@ export default function FreeCanvas() {
             resolution={textToImageParameters.resolution}
             onModelChange={modelProfileId => updateDraft({ modelProfileId })}
             onResolutionChange={resolution => updateDraft({ resolution })}
+            enableThinking={drafts['text-to-image'].enableThinking ?? false}
+            onThinkingChange={enableThinking => updateDraft({ enableThinking })}
             estimatedCredits={activeSlug === 'text-to-video' ? videoCreditsForDuration(videoModel, durationSeconds) : textToImageParameters.estimatedCredits}
             resolutionAdjusted={textToImageParameters.resolutionAdjusted}
             ratioAdjusted={textToImageParameters.ratioAdjusted}

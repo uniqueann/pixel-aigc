@@ -1,4 +1,4 @@
-import { Input, Radio, Segmented, Select } from 'antd'
+import { Input, Radio, Segmented, Select, Switch } from 'antd'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { PROMPT_MAX_LENGTH, VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
@@ -55,6 +55,8 @@ interface GenerationPanelProps {
   resolution?: '1k' | '2k' | '4k'
   onModelChange?: (modelProfileId: string) => void
   onResolutionChange?: (resolution: '1k' | '2k' | '4k') => void
+  enableThinking?: boolean
+  onThinkingChange?: (value: boolean) => void
   estimatedCredits?: number
   resolutionAdjusted?: boolean
   ratioAdjusted?: boolean
@@ -91,6 +93,7 @@ export default function GenerationPanel({
   onModifyParameters,
   onRefetch,
   models = [], modelProfileId, resolution = '2k', onModelChange, onResolutionChange,
+  enableThinking = false, onThinkingChange,
   estimatedCredits, resolutionAdjusted = false, ratioAdjusted = false, countAdjusted = false,
   modelsLoading = false, generateDisabled = false, mockGateway = true,
   historyError, historySaved, onRetrySave, resultAssets,
@@ -190,6 +193,13 @@ export default function GenerationPanel({
         <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="文生图分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
           {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
         </Radio.Group></label>
+        {model?.provider === 'bailian' && <>
+          <label className="free-canvas-field free-canvas-switch-field">
+            <span>自动扩写</span>
+            <Switch aria-label="自动扩写" checked={enableThinking} disabled={formLocked} onChange={onThinkingChange} />
+          </label>
+          <p>开启后模型会自动丰富画面描述，生成约慢 3 倍，可能加入未要求的内容</p>
+        </>}
         {resolutionAdjusted && <p role="status">当前模型或画面比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
         {ratioAdjusted && <p role="status">当前模型不支持所选比例，已按 {presetKey} 计算本次参数。</p>}
         {countAdjusted && <p role="status">当前模型最多支持本次数量，已按 {count} 张计算本次参数与积分。</p>}

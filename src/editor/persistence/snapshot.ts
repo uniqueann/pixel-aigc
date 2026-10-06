@@ -147,6 +147,7 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       if (draft.modelProfileId !== undefined) string(draft.modelProfileId)
       if (draft.resolution !== undefined && !(mode === 'text-to-video' ? ['720p'] : ['1k', '2k', '4k']).includes(String(draft.resolution))) throw new Error('生成草稿分辨率无效')
       if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
+      if (draft.enableThinking !== undefined && typeof draft.enableThinking !== 'boolean') throw new Error('自动扩写设置无效')
     }
     if (value.drafts.derived !== undefined) {
       const draft = value.drafts.derived
@@ -175,6 +176,7 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       if ((typeof params.count !== 'number' || ![1, 2, 3, 4].includes(params.count))) throw new Error('任务恢复数量无效')
       if (params.resolution !== undefined && !(record.request.capability === Capability.TextToVideo ? ['720p'] : ['1k', '2k', '4k']).includes(String(params.resolution))) throw new Error('任务恢复分辨率无效')
       if (params.generateAudio !== undefined && typeof params.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
+      if (params.enableThinking !== undefined && typeof params.enableThinking !== 'boolean') throw new Error('自动扩写设置无效')
       if (record.request.capability === Capability.Variation) {
         if (params.sourceImageKey !== undefined) {
           string(params.sourceImageKey)

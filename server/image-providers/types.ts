@@ -52,8 +52,27 @@ export type ProviderErrorCode =
 
 export interface ProviderVendorUsage {
   cost?: number
+  /** 成本币种。上游没给时，由模型目录的 vendorCurrency 补上。 */
+  currency?: string
   creditsCost?: number
   expiresAt?: string | number
+  outputWidth?: number
+  outputHeight?: number
+  outputImageCount?: number
+  outputImageType?: string
+  submitTime?: string
+  scheduledTime?: string
+  endTime?: string
+  /** 多图结果是从响应的哪一段解析出来的。 */
+  imageShape?: string
+}
+
+/** 任务层轮询节奏。未实现时使用与 GPT-Image-2 相同的默认值。 */
+export interface ImageJobPolicy {
+  taskTimeoutMs: number
+  pollIntervalMs: number
+  initialPollDelayMs: number
+  maxParallel: number
 }
 
 export type ProviderTaskState =
@@ -66,13 +85,18 @@ export interface MappedImageRequest {
   fanOut: number
   warnings: string[]
   expectedAspect?: number
+  /** 为 true 时一次上游请求返回 n 张，任务层只提交一次并按序号分配结果。 */
+  batch?: boolean
 }
 
 export interface ImageProvider {
   readonly id: string
   readonly capabilities: (model: string) => ProviderCapabilities
   configured(env?: NodeJS.ProcessEnv): boolean
+  /** 同一供应商下按模型再过滤。未实现时表示该供应商的已配置状态适用于全部模型。 */
+  acceptsModel?(model: string, env?: NodeJS.ProcessEnv): boolean
   mapRequest(req: NormalizedImageRequest, model: string): MappedImageRequest
+  jobPolicy?(env?: NodeJS.ProcessEnv): ImageJobPolicy
   submit?(input: ProviderSubmitInput, ctx: ProviderContext): Promise<{ providerTaskId: string }>
   getStatus?(providerTaskId: string, ctx: ProviderContext): Promise<ProviderTaskState>
   run?(input: ProviderSubmitInput, ctx: ProviderContext & { deadline: number }): Promise<Uint8Array[]>
@@ -80,6 +104,8 @@ export interface ImageProvider {
 }
 
 export class ProviderError extends Error {
+  /** false 表示请求字节还没写到连接上，可以安全地再提交一次。未设置表示不确定。 */
+  requestSent?: boolean
   constructor(
     public code: ProviderErrorCode,
     message: string,

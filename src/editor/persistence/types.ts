@@ -32,6 +32,8 @@ export interface GenerationDraft {
   modelProfileId?: string
   resolution?: '1k' | '2k' | '4k' | '720p'
   generateAudio?: boolean
+  /** 文生图千问「自动扩写」。未设置视为关闭。 */
+  enableThinking?: boolean
 }
 
 export interface CanvasDrafts {
