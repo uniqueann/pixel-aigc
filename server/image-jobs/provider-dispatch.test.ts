@@ -47,7 +47,7 @@ function runtime(fetchImpl: typeof fetch) {
     getObject: vi.fn(async () => ({ bytes: MOCK_PNG_1X1, contentType: 'image/png' })),
     putObject: vi.fn(async () => undefined),
     billing,
-    crop: vi.fn(async (bytes: Uint8Array, width: number, height: number) => ({ bytes, width, height, mimeType: 'image/png', cropped: false })),
+    crop: async (bytes) => ({ bytes: new Uint8Array(bytes), width: 1, height: 1, mimeType: 'image/png', cropped: false }),
     providerFor: imageProviderById,
   } satisfies ImageJobRuntime & { setNow: (value: number) => void; billing: typeof billing }
   return rt
@@ -93,7 +93,9 @@ describe('图片任务按模型供应商分发', () => {
     process.env.DRAGONCODE_TASK_TIMEOUT_MS = '180000'
     process.env.DRAGONCODE_INITIAL_POLL_DELAY_MS = '8000'
     process.env.QWEN_IMAGE_TASK_TIMEOUT_MS = '120000'
-    const fetchImpl = vi.fn(async () => jsonResponse(submitSuccess))
+    const fetchImpl = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => jsonResponse(submitSuccess),
+    )
     const rt = runtime(fetchImpl)
     const store = createMemoryStore(user.id)
     const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000301'), rt)
@@ -209,7 +211,7 @@ describe('图片任务按模型供应商分发', () => {
     process.env.QWEN_IMAGE_ENABLED = 'true'
     process.env.DASHSCOPE_API_KEY = 'sk-dash'
     delete process.env.DRAGONCODE_API_KEY
-    const rt = runtime(vi.fn())
+    const rt = runtime(vi.fn(async () => jsonResponse({})))
     const store = createMemoryStore(user.id)
     const fourK = createImageTaskSchema.parse({
       capability: 'text_to_image',
@@ -236,7 +238,7 @@ describe('图片任务按模型供应商分发', () => {
     process.env.DRAGONCODE_API_KEY = 'sk-dragon'
     process.env.DASHSCOPE_API_KEY = 'sk-dash'
     delete process.env.QWEN_IMAGE_ENABLED
-    const rt = runtime(vi.fn())
+    const rt = runtime(vi.fn(async () => jsonResponse({})))
     await expect(createImageJobInStore(
       createMemoryStore(user.id), user, text('00000000-0000-4000-8000-000000000305', 1, 'bailian:qwen-image-3.0'), rt,
     )).rejects.toMatchObject({ status: 503, code: 'TEXT_TO_IMAGE_UNAVAILABLE' })
