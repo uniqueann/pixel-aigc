@@ -26,6 +26,10 @@ import { PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from
 import { datedDownloadName } from './shared/dateStamp'
 import { LOCAL_TEMPLATE_LABEL } from './shared/presetLabels'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
+import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
+import { aspectRatioBatchQuote } from '@/features/credits/batchQuotes'
+import { creditQuoteBlocked, type CreditQuote } from '@/features/credits/quotes'
+import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 
 
 function errorMessage(error: unknown) {
@@ -94,6 +98,9 @@ export default function AspectRatioTool() {
   const controlsLocked = processing || packaging
   const currentPreview = selected && !processing && previewState?.imageId === selected.id && previewState.settings === settings ? previewState : null
   const upscale = selected ? fitScale(settings.strategy === 'crop' ? 'crop' : 'letterbox', selected.width, selected.height, preset.width, preset.height) : 1
+  const quoteFor = (ids?: string[]) => aspectRatioBatchQuote(items, settings, preset.width, preset.height, { ids, mock: isCanvasMockGateway() })
+  const generateQuote = quoteFor()
+  const needsRemote = (quote: CreditQuote) => settings.strategy === 'outpaint' && (quote.status !== 'ready' || quote.credits > 0)
 
   function commitItems(next: BatchImage[]) {
     if (!mountedRef.current) return
@@ -282,7 +289,12 @@ export default function AspectRatioTool() {
     if (processingRef.current || addingCountRef.current) return
     const targets = itemsRef.current.filter(item => (onlyIds ? onlyIds.includes(item.id) : item.status !== 'succeeded'))
     if (!targets.length) return
-    if (settings.strategy === 'outpaint' && !outpaintReady) {
+    const quote = quoteFor(onlyIds)
+    if (creditQuoteBlocked(quote)) {
+      message.warning('无法计算本次费用，请检查扩图范围')
+      return
+    }
+    if (needsRemote(quote) && !outpaintReady) {
       message.warning(outpaintReady === false ? '智能扩展还没配好阿里云百炼 API Key'
         : capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
       return
@@ -416,6 +428,7 @@ export default function AspectRatioTool() {
                   hasOutput={Boolean(selected.output)}
                   retry={selected.status === 'succeeded' && Boolean(selected.cropFocus?.unavailable)}
                   busy={busy}
+                  retryQuote={quoteFor([selected.id])}
                   onDownload={() => { void downloadOne(selected.id) }}
                   onRetry={() => { void processImages([selected.id]) }}
                 />
@@ -483,13 +496,15 @@ export default function AspectRatioTool() {
           {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
         </div>
         <div className="toolbox-footer-actions">
+          <CreditQuoteNotice quote={generateQuote} />
           <Button icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
-          {failed.length > 0 && !processing && <Button disabled={busy || (settings.strategy === 'outpaint' && !outpaintReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>}
+          {failed.length > 0 && !processing && <CreditActionButton quote={quoteFor(failed.map(item => item.id))} disabled={busy || (needsRemote(quoteFor(failed.map(item => item.id))) && !outpaintReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>}
           {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
-            <Button type="primary" disabled={(settings.strategy === 'outpaint' && !outpaintReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</Button>
+            <CreditActionButton quote={generateQuote} type="primary" disabled={(needsRemote(generateQuote) && !outpaintReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
           )}
         </div>
       </div>
+      <CreditBalanceNotice quote={generateQuote} /><CreditSettlementHint quote={generateQuote} />
     </div>
   )
 }

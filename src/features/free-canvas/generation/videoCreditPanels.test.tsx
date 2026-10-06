@@ -96,7 +96,7 @@ function ImageVideoPanel({ model, configured = true, generateDisabled = false }:
 
 function quoteButton(name: string) {
   const estimate = screen.getByText(/预计消耗/)
-  const button = screen.getByRole('button', { name })
+  const button = screen.getByRole('button', { name: new RegExp(`^${name} ·`) })
   expect(estimate.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   return button as HTMLButtonElement
 }
@@ -141,7 +141,7 @@ describe('视频面板积分预估', () => {
     expect(screen.queryByText(/预计消耗/)).toBeNull()
     expect(screen.queryByText(/积分不足/)).toBeNull()
     expect(screen.queryByText(/undefined|NaN/)).toBeNull()
-    expect((screen.getByRole('button', { name: buttonName }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: new RegExp(`^${buttonName} ·`) }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it.each([
@@ -152,28 +152,23 @@ describe('视频面板积分预估', () => {
     render(<Panel model={SEEDANCE_VIDEO_MODEL} />)
     expect(screen.getByText('预计消耗 50 积分')).toBeTruthy()
     expect(screen.queryByText(/积分不足/)).toBeNull()
-    expect((screen.getByRole('button', { name: buttonName }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: new RegExp(`^${buttonName} ·`) }) as HTMLButtonElement).disabled).toBe(false)
     fireEvent.click(screen.getByText('10 秒'))
     expect(screen.getByText('预计消耗 100 积分')).toBeTruthy()
     expect(screen.getByText('积分不足，需要 100 积分，当前 68')).toBeTruthy()
-    expect((screen.getByRole('button', { name: buttonName }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: new RegExp(`^${buttonName} ·`) }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it.each([
     ['文生视频', TextVideoPanel, '生成视频到画布'],
     ['图生视频', ImageVideoPanel, '生成视频'],
-  ] as const)('%s 在生成开关关闭时仍显示预估，并保留尚未开放提示', (_label, Panel, buttonName) => {
+  ] as const)('%s 在生成开关关闭时隐藏报价和表单', (_label, Panel, buttonName) => {
     useUserStore.setState({ credits: 68 })
     render(<Panel model={SEEDANCE_VIDEO_MODEL} configured={false} generateDisabled />)
-    expect(screen.getByText('视频生成尚未开放，请检查登录与服务配置。')).toBeTruthy()
-    expect(screen.getByText('预计消耗 50 积分')).toBeTruthy()
-    expect(screen.getByText(/有声和无声同价/)).toBeTruthy()
-    expect(screen.queryByText(/积分不足/)).toBeNull()
-    expect((screen.getByRole('button', { name: buttonName }) as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.click(screen.getByText('10 秒'))
-    expect(screen.getByText('预计消耗 100 积分')).toBeTruthy()
-    expect(screen.getByText('积分不足，需要 100 积分，当前 68')).toBeTruthy()
-    expect(screen.getByText('视频生成尚未开放，请检查登录与服务配置。')).toBeTruthy()
+    expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
+    expect(screen.queryByText(/预计消耗|有声和无声同价|积分不足/)).toBeNull()
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByRole('button', { name: new RegExp(`^${buttonName}`) })).toBeNull()
   })
 
   it('模拟模式不显示收费数字，也不因余额为 0 禁用提交', () => {
@@ -182,14 +177,14 @@ describe('视频面板积分预估', () => {
     expect(screen.getByText('模拟生成，不消耗积分')).toBeTruthy()
     expect(screen.queryByText(/预计消耗/)).toBeNull()
     expect(screen.queryByText(/积分不足/)).toBeNull()
-    expect((screen.getByRole('button', { name: '生成视频到画布' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: /^生成视频到画布 ·/ }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it.each([390, 320])('%ipx 下面板报价换行且样式不允许横向撑出', (width) => {
     useUserStore.setState({ credits: 68 })
     render(
       <div style={{ width, maxWidth: '100%' }}>
-        <TextVideoPanel model={SEEDANCE_VIDEO_MODEL} configured={false} generateDisabled />
+        <TextVideoPanel model={SEEDANCE_VIDEO_MODEL} />
       </div>,
     )
     const panel = document.querySelector('.free-canvas-generation-panel')

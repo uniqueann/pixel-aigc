@@ -1,5 +1,7 @@
 import { useUserStore } from '@/store/useUserStore'
 import { videoCreditEstimateText, videoCreditShortfallText } from './videoCredits'
+import { Button } from 'antd'
+import { openCreditRecharge } from '@/services/api/billing'
 
 export default function VideoCreditEstimate({ credits, mockGateway, loading = false }: {
   credits?: number
@@ -13,7 +15,7 @@ export default function VideoCreditEstimate({ credits, mockGateway, loading = fa
   return (
     <>
       <p className="free-canvas-credit-estimate" role={estimate === '积分预估暂不可用' ? 'status' : undefined}>{estimate}</p>
-      {shortfall ? <p className="free-canvas-credit-warning" role="status">{shortfall}</p> : null}
+      {shortfall ? <p className="free-canvas-credit-warning" role="status">{shortfall}<Button size="small" type="link" onClick={openCreditRecharge}>去充值</Button></p> : null}
     </>
   )
 }

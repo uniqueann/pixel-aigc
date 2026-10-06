@@ -7,6 +7,8 @@ import { createImageAsset } from '@/editor/services/assetService'
 import { Capability, type GenerationTask, type TextToImageTaskParams } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 import GenerationPanel from './GenerationPanel'
+import { buildTextToVideoRequest } from './requestBuilder'
+import { IMAGE_SIZE_PRESETS } from './config'
 
 const model = publicImageModel(defaultImageModel('text_to_image')!)
 const failedTask: GenerationTask<TextToImageTaskParams> = {
@@ -31,7 +33,7 @@ describe('自由画布文生图侧栏', () => {
   it('配置加载期间阻止生成，完成后按有效分辨率展示积分', () => {
     const { rerender } = renderPanel({ modelsLoading: true, generateDisabled: true })
     expect(screen.getByText('正在加载文生图模型配置…')).toBeTruthy()
-    expect((screen.getByRole('button', { name: '生成到画布' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^生成到画布 ·/ }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByText('文生图模型尚未就绪，请检查登录与模型配置。')).toBeNull()
     rerender(<GenerationPanel mode="text-to-image" prompt="森林" presetKey="1:1" count={2} durationSeconds={5}
       submitting={false} active={false} formLocked={false} polling={false}
@@ -46,7 +48,7 @@ describe('自由画布文生图侧栏', () => {
   it('缺少报价时显示重读提示，不伪装成免费生成', () => {
     renderPanel({ estimatedCredits: undefined, generateDisabled: true })
     expect(screen.getByText('模型积分报价尚未就绪，请重新读取文生图配置。')).toBeTruthy()
-    expect((screen.getByRole('button', { name: '生成到画布' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^生成到画布 ·/ }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByText(/预计预扣 0 积分/)).toBeNull()
   })
 
@@ -57,20 +59,20 @@ describe('自由画布文生图侧栏', () => {
   })
 
   it('文生视频画面描述按共享上限计数', () => {
-    renderPanel({ mode: 'text-to-video', prompt: '' })
+    renderPanel({ mode: 'text-to-video', prompt: '', videoConfigured: true })
     expect(screen.getByText(`0 / ${PROMPT_MAX_LENGTH}`)).toBeTruthy()
   })
 
   it('恢复的超长提示词被模型长度限制阻止提交', () => {
     renderPanel({ prompt: '图'.repeat(11), models: [{ ...model, ui: { ...model.ui, promptMaxLength: 10 } }] })
-    expect((screen.getByRole('button', { name: '生成到画布' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^生成到画布 ·/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('手动重试展示原请求参数的数量和积分，而不套用当前草稿', () => {
     const retry = vi.fn()
     renderPanel({ task: failedTask, count: 1, resolution: '1k', estimatedCredits: 2, onRetry: retry })
     expect(screen.getByText('手动重试将按原参数创建新任务，生成 2 张，预计预扣 6 积分。')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '按原参数重试 2 张' }))
+    fireEvent.click(screen.getByRole('button', { name: '按原参数重试 2 张 · 6 积分' }))
     expect(retry).toHaveBeenCalledTimes(1)
   })
 
@@ -87,14 +89,33 @@ describe('自由画布文生图侧栏', () => {
     expect(retrySave).toHaveBeenCalledTimes(1)
   })
 
-  it('未开放的视频禁用提交，并保留时长和声音设置', () => {
+  it('未开放的视频只显示公告，不暴露表单和报价', () => {
     renderPanel({ mode: 'text-to-video', generateDisabled: true, estimatedCredits: undefined })
-    expect(screen.getByText('视频生成尚未开放，请检查登录与服务配置。')).toBeTruthy()
-    expect(screen.getByText('积分预估暂不可用')).toBeTruthy()
-    expect(screen.queryByText(/预计消耗/)).toBeNull()
-    expect((screen.getByRole('button', { name: '生成视频到画布' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.queryByRole('combobox', { name: '文生图模型' })).toBeNull()
-    expect(screen.getByText('10 秒')).toBeTruthy()
-    expect(screen.getByRole('switch', { name: '生成声音' }).getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('switch', { name: '生成声音' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^生成视频到画布/ })).toBeNull()
+    expect(screen.queryByText(/积分预估|预计消耗|检查登录与服务/)).toBeNull()
+  })
+
+  it('原模型不在报价列表中时禁止收费重试', () => {
+    const retry = vi.fn()
+    renderPanel({ task: { ...failedTask, modelProfileId: 'removed-model' }, onRetry: retry })
+    const button = screen.getByRole('button', { name: /按原参数重试 2 张.*报价暂不可用/ }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    fireEvent.click(button)
+    expect(retry).not.toHaveBeenCalled()
+  })
+
+  it('关闭视频入口后仍保留原任务查询，不提供新生成或收费重试', () => {
+    const refetch = vi.fn()
+    const request = buildTextToVideoRequest('镜头缓慢推进', IMAGE_SIZE_PRESETS[0], 5)
+    const task = { ...failedTask, capability: Capability.TextToVideo, params: request.params, status: 'processing' as const }
+    renderPanel({ mode: 'text-to-video', task, active: true, formLocked: true, videoAvailability: 'soon', pollError: new Error('暂时断网'), onRefetch: refetch })
+    expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
+    expect(screen.getByText('任务仍然保留，可以重新查询同一任务。')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^生成视频到画布|按原参数重试/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重新查询' }))
+    expect(refetch).toHaveBeenCalledOnce()
   })
 })

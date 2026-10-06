@@ -30,6 +30,9 @@ import { listTasks, type TaskSummary } from '@/services/api/task'
 import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 import { usePreferencesStore } from '@/features/preferences/store'
+import { useCapabilities } from '@/hooks/useCapabilities'
+import { capabilityAvailability } from '@/components/capabilityAvailability'
+import VideoAvailabilityNotice from '@/features/free-canvas/generation/VideoAvailabilityNotice'
 
 type Filter = 'all' | 'workstation' | 'video' | 'email'
 type ViewMode = 'grid' | 'list'
@@ -70,6 +73,10 @@ export default function Assets() {
 function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const { capabilities, error: capabilityError, refetch: reloadCapabilities } = useCapabilities()
+  const videoEnabled = capabilities.textToVideo === true || capabilities.imageToVideo === true
+    ? true : capabilities.textToVideo === false && capabilities.imageToVideo === false ? false : undefined
+  const videoState = capabilityAvailability(videoEnabled, capabilityError)
   const [filter, setFilter] = useState<Filter>('all')
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode)
   const [loading, setLoading] = useState(true)
@@ -135,15 +142,15 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     const isActive = () => active && isCurrentWorkstationHistoryOwner(ownerId)
     queueMicrotask(() => {
       if (!isActive()) return
-      void refresh(isActive).catch(error => { if (isActive()) setHistoryError(error instanceof Error ? error.message : '历史读取失败') })
+      void refresh(isActive).catch(() => { if (isActive()) setHistoryError('作品加载失败，请重新加载') })
       if (authEnabled) {
         void Promise.all([hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: abort.signal }), hydrateVideoJobs(ownerId, abort.signal)])
           .then(([result]) => {
             if (!isActive()) return
-            if (result.failed) setHistoryError(`有 ${result.failed} 项结果未能补记，请重试读取与保存`)
+            if (result.failed) setHistoryError(`有 ${result.failed} 项作品加载失败，请重新加载`)
             return refresh(isActive, false)
           })
-          .catch(error => { if (isActive()) setHistoryError(error instanceof Error ? error.message : '历史补记失败') })
+          .catch(() => { if (isActive()) setHistoryError('作品加载失败，请重新加载') })
           .finally(() => { if (isActive()) setHydrating(false) })
       }
     })
@@ -169,10 +176,10 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       await refresh(isActive)
       if (authEnabled && isActive()) {
         const [result] = await Promise.all([hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: lifetimeAbortRef.current.signal }), hydrateVideoJobs(ownerId, lifetimeAbortRef.current.signal)])
-        if (isActive() && result.failed) setHistoryError(`有 ${result.failed} 项结果未能补记，请重试读取与保存`)
+        if (isActive() && result.failed) setHistoryError(`有 ${result.failed} 项作品加载失败，请重新加载`)
         if (isActive()) await refresh(isActive, false)
       }
-    } catch (error) { if (isActive()) setHistoryError(error instanceof Error ? error.message : '历史读取失败') }
+    } catch { if (isActive()) setHistoryError('作品加载失败，请重新加载') }
     finally { if (isActive()) setHydrating(false) }
   }
 
@@ -288,17 +295,18 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           </Tooltip>
         </Space.Compact>
       </div>
-      {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>重试历史读取与保存</Button>} /> : null}
+      {filter === 'video' && videoState !== 'ready' ? <VideoAvailabilityNotice state={videoState} onRetry={() => void reloadCapabilities()} /> : null}
+      {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>重新加载</Button>} /> : null}
       {loading ? (
         <div className="assets-loading"><Spin /> 正在读取历史任务…</div>
       ) : hydrating && visible.length === 0 && filter !== 'email' ? (
-        <div className="assets-loading"><Spin /> 正在补记当前账号的云端图片与视频任务…</div>
+        <div className="assets-loading"><Spin /> 正在加载作品…</div>
       ) : visible.length === 0 ? (
         <EmptyState
           description={filter === 'email'
             ? '暂无邮件任务'
-            : '暂无当前账号的历史任务。旧版未标记账号的本地记录已隔离；已完成的云端图片与视频任务会自动补记。'}
-          action={<Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : filter === 'video' ? '/canvas/text-to-video' : '/image-workstation/repaint')}>去生成</Button>}
+            : filter === 'video' ? '暂无视频作品' : '暂无作品，完成的图片和视频会显示在这里。'}
+          action={filter === 'video' && videoState !== 'ready' ? undefined : <Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : filter === 'video' ? capabilities.textToVideo === true ? '/canvas/text-to-video' : '/canvas/text-to-image' : '/image-workstation/repaint')}>{filter === 'video' && capabilities.textToVideo !== true ? '打开画布' : '去生成'}</Button>}
         />
       ) : (
         <div className={viewMode === 'grid' ? 'assets-grid' : 'assets-list'}>

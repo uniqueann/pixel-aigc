@@ -25,9 +25,8 @@ import {
 import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
 import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
-import { listImageModels, type PublicImageModel } from '@/services/api/imageModels'
 import { liveCapabilityReady } from '@/services/api/task'
-import { defaultImageModel, publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
+import { defaultImageModel } from '@shared/image-models'
 import { normalizeRetouchDirections } from '@shared/retouch'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
@@ -37,9 +36,15 @@ import ImageAssetStrip from './components/ImageAssetStrip'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
 import { workstationGenerateBlockReason } from './utils/generateGate'
-import { presetOutpaintGeometry } from './utils/outpaintGeometry'
+import { freeOutpaintGeometry, presetOutpaintGeometry } from './utils/outpaintGeometry'
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
+import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
+import { creditQuote, creditQuoteBlocked, imageCreditAmount, outpaintCreditAmount } from '@/features/credits/quotes'
+import { useImageModels } from '@/features/credits/useImageModels'
+import { workstationRequestQuote } from '@/features/image-workstation/creditQuote'
+import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
+import { syncCreditPrice } from '@shared/billing'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
@@ -55,10 +60,10 @@ export default function ImageWorkstation() {
   const [retouchNote, setRetouchNote] = useState('')
   const [fusionNote, setFusionNote] = useState('')
   const [relightNote, setRelightNote] = useState('')
-  const [imageModels, setImageModels] = useState<PublicImageModel[]>(() =>
-    IMAGE_MODEL_PROFILES.filter(profile => profile.operations.includes('image_edit')).map(publicImageModel))
-  const [variationModels, setVariationModels] = useState<PublicImageModel[]>(() =>
-    IMAGE_MODEL_PROFILES.filter(profile => profile.operations.includes('variation')).map(publicImageModel))
+  const imageConfiguration = useImageModels('image_edit')
+  const variationConfiguration = useImageModels('variation')
+  const imageModels = imageConfiguration.models
+  const variationModels = variationConfiguration.models
   const [modelProfileId, setModelProfileId] = useState(() => defaultImageModel('image_edit')?.id)
   const [variationModelId, setVariationModelId] = useState(() => defaultImageModel('variation')?.id)
   const [erasePrompt, setErasePrompt] = useState('')
@@ -103,8 +108,12 @@ export default function ImageWorkstation() {
         : activeTool.slug === 'remove'
           ? erasePrompt
           : repaintPrompt
-  const activeModelId = variationTool ? variationModelId : modelProfileId
   const activeModels = variationTool ? variationModels : imageModels
+  const activeConfiguration = variationTool ? variationConfiguration : imageConfiguration
+  const selectedModelId = variationTool ? variationModelId : modelProfileId
+  const activeModel = activeModels.find(model => model.id === selectedModelId)
+    ?? activeModels.find(model => model.defaultFor?.includes(variationTool ? 'variation' : 'image_edit')) ?? activeModels[0]
+  const activeModelId = activeModel?.id
   const controller = useImageWorkstationController({
     activeTool,
     initialAsset: fusionTool ? fusionProduct : sourceAsset,
@@ -112,7 +121,7 @@ export default function ImageWorkstation() {
     count: activeCount,
     resolution: editResolution,
     modelProfileId: activeModelId,
-    modelUi: (activeModels.find(model => model.id === activeModelId) ?? activeModels[0])?.ui,
+    modelUi: activeModel?.ui,
     capabilityReady,
     retouchDirections,
     relight: relightOptions,
@@ -120,7 +129,7 @@ export default function ImageWorkstation() {
     referenceAsset: fusionReference,
     useProductAsset: fusionTool,
   })
-  const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, (activeModels.find(model => model.id === activeModelId) ?? activeModels[0])?.ui)
+  const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
   const replaceSourceAsset = controller.replaceSourceAsset
 
   const inpaintMode = activeTool.slug === 'repaint' ? 'repaint' : activeTool.slug === 'remove' ? 'remove' : undefined
@@ -222,25 +231,6 @@ export default function ImageWorkstation() {
   useEffect(() => { uploadRef.current = handleImageUpload }, [handleImageUpload])
 
   useEffect(() => {
-    let active = true
-    void listImageModels('image_edit').then(items => {
-      if (!active || !items.length) return
-      setImageModels(items)
-      setModelProfileId(current => items.some(item => item.id === current)
-        ? current
-        : (items.find(item => item.defaultFor?.includes('image_edit')) ?? items[0]).id)
-    }).catch(() => undefined)
-    void listImageModels('variation').then(items => {
-      if (!active || !items.length) return
-      setVariationModels(items)
-      setVariationModelId(current => items.some(item => item.id === current)
-        ? current
-        : (items.find(item => item.defaultFor?.includes('variation')) ?? items[0]).id)
-    }).catch(() => undefined)
-    return () => { active = false }
-  }, [])
-
-  useEffect(() => {
     if (activeTool.slug !== 'outpaint') return
     const handoff = takeOutpaintHandoff()
     if (!handoff) return
@@ -313,6 +303,10 @@ export default function ImageWorkstation() {
   }
 
   const handleGenerate = async () => {
+    if (creditQuoteBlocked(generateQuote)) {
+      message.warning('请等待报价加载完成，或重新加载报价')
+      return
+    }
     if (configurationReady === undefined) {
       message.warning(capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
       return
@@ -356,6 +350,10 @@ export default function ImageWorkstation() {
   }
 
   const handleRetry = async () => {
+    if (controller.activeTask?.status !== 'succeeded' && creditQuoteBlocked(retryQuote)) {
+      message.warning('原任务报价暂不可用，请修改参数后重新生成')
+      return
+    }
     try {
       await controller.retry()
       message.success(controller.activeTask?.status === 'succeeded' ? '已重试读取已有结果' : '已按原参数重新提交')
@@ -381,6 +379,25 @@ export default function ImageWorkstation() {
       ? presetOutpaintGeometry(inputWidth, inputHeight, presetTargetSize.width, presetTargetSize.height, outpaintOutputMode).targetSize
       : outpaintTargetSize ?? inputSize
     : undefined
+  const mockGateway = isCanvasMockGateway()
+  let outpaintCredits: number | undefined = syncCreditPrice('outpaint', 2)
+  if (activeTool.capability === Capability.Outpaint && inputWidth && inputHeight) {
+    try {
+      const geometry = presetTargetSize
+        ? presetOutpaintGeometry(inputWidth, inputHeight, presetTargetSize.width, presetTargetSize.height, outpaintOutputMode)
+        : freeOutpaintGeometry(inputWidth, inputHeight, predictedOutpaintSize?.width ?? inputWidth, predictedOutpaintSize?.height ?? inputHeight)
+      outpaintCredits = outpaintCreditAmount(geometry)
+    } catch { outpaintCredits = undefined }
+  }
+  const generateQuote = inpaintMode
+    ? creditQuote(syncCreditPrice(inpaintMode === 'remove' ? 'erase' : 'repaint'), { mock: mockGateway })
+    : activeTool.capability === Capability.Outpaint
+      ? creditQuote(outpaintCredits, { maximum: true, mock: mockGateway && outpaintCredits !== 0 })
+      : creditQuote(imageCreditAmount(activeModel, effectiveParameters.count, effectiveParameters.resolution), { loading: activeConfiguration.loading, mock: mockGateway })
+  const retryQuote = workstationRequestQuote(controller.activeTask, [...imageModels, ...variationModels], {
+    mock: mockGateway, loading: controller.activeTask?.capability === Capability.Variation ? variationConfiguration.loading : imageConfiguration.loading,
+  })
+  const inputRetryQuote = workstationRequestQuote(controller.inputRetryRequest, imageModels, { mock: mockGateway, loading: imageConfiguration.loading })
 
   return (
     <div className="image-workstation-page">
@@ -482,7 +499,8 @@ export default function ImageWorkstation() {
               onPresetPlatformChange={presetPlatform => updateParameters({ presetPlatform })}
             />
           ) : null}
-          {fusionTool ? <FusionInputStatus state={controller.inputPreparation} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}
+          {fusionTool ? <FusionInputStatus state={controller.inputPreparation} retryQuote={inputRetryQuote} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}
+          {(controller.activeTask?.status === 'failed' || controller.activeTask?.status === 'cancelled') && <CreditQuoteNotice quote={retryQuote} onRetry={() => { void imageConfiguration.refetch(); void variationConfiguration.refetch() }} />}
           <GenerationTaskStatus
             task={controller.activeTask}
             submitting={controller.submitting && !controller.inputPreparation}
@@ -499,11 +517,13 @@ export default function ImageWorkstation() {
             onRetrySave={() => void controller.retrySave()}
             pollError={controller.pollError}
             onRetry={() => void handleRetry()}
+            retryQuote={controller.activeTask?.status === 'succeeded' ? undefined : retryQuote}
             onModifyParameters={controller.modifyParameters}
             onRefetch={() => void controller.refetch()}
           />
         </aside>
       </div>
+      {!edgeRefine && configurationReady === true && <CreditQuoteNotice quote={generateQuote} onRetry={() => void activeConfiguration.refetch()} />}
       <div className="image-workstation-footer">
         <div>
           {fusionTool
@@ -531,19 +551,21 @@ export default function ImageWorkstation() {
             </Button>
             <Tooltip title={generateBlockReason}>
               <span>
-                <Button
+                <CreditActionButton
                   type="primary"
                   loading={controller.submitting}
+                  quote={generateQuote}
                   disabled={Boolean(generateBlockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                   onClick={handleGenerate}
                 >
                   生成
-                </Button>
+                </CreditActionButton>
               </span>
             </Tooltip>
           </div>
         )}
       </div>
+      {!edgeRefine && <><CreditBalanceNotice quote={generateQuote} /><CreditSettlementHint quote={generateQuote} /></>}
     </div>
   )
 }

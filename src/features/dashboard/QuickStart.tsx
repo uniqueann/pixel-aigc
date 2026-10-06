@@ -3,12 +3,13 @@ import { Alert, Button } from 'antd'
 import { Link } from 'react-router-dom'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { QUICK_START_GROUPS, entryReady, type QuickStartEntry } from './catalog'
+import { capabilityAvailability, capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 
 const icons = { image: <PictureOutlined />, batch: <AppstoreOutlined />, generate: <BgColorsOutlined />, email: <MailOutlined /> }
 
 export function ToolEntry({ entry, ready, error, recent = false }: { entry: QuickStartEntry; ready: boolean | undefined; error?: boolean; recent?: boolean }) {
   const contents = <><span>{entry.label}</span>{ready === true ? <RightOutlined aria-hidden />
-    : <small>{ready === false ? '即将上线' : error ? '加载失败' : '加载中…'}</small>}</>
+    : <small>{capabilityAvailabilityLabel(capabilityAvailability(ready, error))}</small>}</>
   return ready === true
     ? <Link className="dashboard-tool-link" to={entry.href} aria-label={`${recent ? '继续使用' : '打开'}${entry.label}`}>{contents}</Link>
     : <span className="dashboard-tool-link is-unavailable" aria-disabled="true">{contents}</span>

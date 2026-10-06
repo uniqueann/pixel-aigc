@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { Asset, GenerationJob, NodeId, Scene, ViewportState } from '@/editor/types'
+import type { CapabilityAvailability } from '@/components/capabilityAvailability'
 
 export interface NodeTransform {
   x: number
@@ -20,6 +21,7 @@ export interface FreeCanvasStageProps {
   generationActive: boolean
   variationEnabled?: boolean
   imageToVideoEnabled?: boolean
+  imageToVideoState?: CapabilityAvailability
   onSelectNode: (nodeId?: NodeId) => void
   onTransformNode: (nodeId: NodeId, transform: NodeTransform) => void
   onViewportChange: (viewport: ViewportState) => void

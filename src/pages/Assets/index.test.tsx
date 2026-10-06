@@ -6,6 +6,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Capability } from '@/types'
 
+const flags = vi.hoisted(() => ({ textToVideo: false as boolean | undefined, imageToVideo: false as boolean | undefined, error: null as Error | null, refetch: vi.fn() }))
+vi.mock('@/hooks/useCapabilities', () => ({ useCapabilities: () => ({ capabilities: flags, error: flags.error, refetch: flags.refetch }) }))
 const openAt = vi.fn()
 const historyItem = {
   id: 'hist-1',
@@ -26,6 +28,8 @@ vi.mock('@/features/assets/hydrateImageJobs', () => ({
 }))
 vi.mock('@/services/api/task', () => ({ listTasks: () => Promise.resolve({ items: [] }) }))
 vi.mock('@/components/PreviewGallery', () => ({ default: () => null }))
+vi.mock('@/components/VideoPoster', () => ({ default: () => <span>视频封面</span> }))
+vi.mock('@/services/api/ownedVideos', () => ({ downloadOwnedVideo: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/components/usePreviewGallery', () => ({
   usePreviewGallery: () => ({ openAt, galleryProps: {} }),
 }))
@@ -38,6 +42,7 @@ vi.mock('@/features/assets/workstationHistory', () => ({
 import Assets from './index'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { listHistoryPreviews } from '@/features/assets/workstationHistory'
+import { downloadOwnedVideo } from '@/services/api/ownedVideos'
 
 function renderAssets() {
   return render(
@@ -71,6 +76,7 @@ function expectThumbnailKeepsPreviewAccess(cover: HTMLElement) {
 describe('我的资产缩略图预览入口', () => {
   beforeEach(() => {
     openAt.mockReset()
+    flags.textToVideo = false; flags.imageToVideo = false; flags.error = null; flags.refetch.mockReset()
     vi.mocked(listHistoryPreviews).mockReset().mockResolvedValue([historyItem])
     localStorage.clear()
     usePreferencesStore.getState().reset()
@@ -120,5 +126,51 @@ describe('我的资产缩略图预览入口', () => {
     expect(screen.getByRole('button', { name: '查看融合大图' })).toBeTruthy()
     fireEvent.click(cover)
     expect(openAt).toHaveBeenCalledWith('text-image-1')
+  })
+
+  it('视频未开放的空状态没有去生成入口，也不暴露内部术语', async () => {
+    vi.mocked(listHistoryPreviews).mockResolvedValue([])
+    const { container } = renderAssets()
+    await waitFor(() => screen.getByText('暂无作品，完成的图片和视频会显示在这里。'))
+    fireEvent.click(screen.getByText('视频'))
+    expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '去生成' })).toBeNull()
+    expect(container.textContent).not.toMatch(/补记|未标记账号|旧版记录|已隔离/)
+  })
+
+  it('视频能力加载失败可重试，不能误认为即将上线', async () => {
+    flags.textToVideo = undefined; flags.error = new Error('网络错误')
+    vi.mocked(listHistoryPreviews).mockResolvedValue([])
+    renderAssets()
+    await waitFor(() => screen.getByText('暂无作品，完成的图片和视频会显示在这里。'))
+    fireEvent.click(screen.getByText('视频'))
+    expect(screen.queryByText('视频生成即将上线。')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重试加载视频功能' }))
+    expect(flags.refetch).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: '去生成' })).toBeNull()
+  })
+
+  it('视频关闭时已有作品仍可播放和下载', async () => {
+    const video = { url: '', objectKey: 'videos/history.mp4', ordinal: 0, width: 1280, height: 720, mimeType: 'video/mp4' as const, durationSeconds: 5, sizeBytes: 1024, hasAudio: false, retentionExpiresAt: '2099-11-01T00:00:00Z' }
+    vi.mocked(listHistoryPreviews).mockResolvedValue([{ ...historyItem, id: 'video-1', toolSlug: 'text-to-video', capability: Capability.TextToVideo, mediaType: 'video', video }])
+    renderAssets()
+    await waitFor(() => screen.getByRole('button', { name: '播放Seedance 视频' }))
+    fireEvent.click(screen.getByText('视频'))
+    expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '播放Seedance 视频' }))
+    expect(openAt).toHaveBeenCalledWith('video-1')
+    fireEvent.click(buttonByText('下载'))
+    await waitFor(() => expect(downloadOwnedVideo).toHaveBeenCalledWith(video, 'Seedance_5.0秒.mp4', 'anonymous'))
+  })
+
+  it('仅开放图生视频时保留画布入口，不能误显示视频即将上线', async () => {
+    flags.imageToVideo = true
+    vi.mocked(listHistoryPreviews).mockResolvedValue([])
+    renderAssets()
+    await waitFor(() => screen.getByText('暂无作品，完成的图片和视频会显示在这里。'))
+    fireEvent.click(screen.getByText('视频'))
+    expect(screen.queryByText('视频生成即将上线。')).toBeNull()
+    expect(screen.getByRole('button', { name: '打开画布' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '去生成' })).toBeNull()
   })
 })

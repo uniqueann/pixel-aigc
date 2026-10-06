@@ -24,7 +24,7 @@ export function resolveCanvasTextToImageParameters(draft: TextToImageDraftInput,
   const preset = presets.find(item => item.key === draft.presetKey) ?? presets[0] ?? IMAGE_SIZE_PRESETS[0]
   const requestedResolution = draft.resolution && draft.resolution !== '720p' ? draft.resolution : defaultResolution
   const effective = effectiveImageParameters(Math.min(4, draft.count), requestedResolution, preset, model?.ui)
-  const creditsPerImage = model?.pricing.creditsPerImage[effective.resolution]
+  const creditsPerImage = model?.pricing?.creditsPerImage?.[effective.resolution]
   const pricingReady = typeof creditsPerImage === 'number' && Number.isFinite(creditsPerImage) && creditsPerImage >= 0
   return {
     model, preset, presets, requestedResolution, ...effective,

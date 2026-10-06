@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('react-router-dom', () => ({ useParams: () => ({ tool: mocks.tool }), useNavigate: () => vi.fn() }))
 vi.mock('@/hooks/useCapabilities', () => ({ useCapabilities: () => mocks.status }))
 vi.mock('@/features/image-workstation/hooks/useImageWorkstationController', () => ({ useImageWorkstationController: () => mocks.controller }))
-vi.mock('@/services/api/imageModels', () => ({ listImageModels: () => Promise.resolve([]) }))
+vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ models: [], loading: false, refetch: vi.fn() }) }))
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false }))
 vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
 
@@ -45,7 +45,7 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByRole('status', { hidden: true }).textContent).toBe('正在加载功能配置…')
     expect(container.textContent).not.toContain('即将上线')
     expect(container.textContent).not.toContain('还不能用')
-    expect(buttonByText(/^生\s*成$/).disabled).toBe(true)
+    expect(buttonByText(/^生成 ·/).disabled).toBe(true)
 
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     rerender(<App><ImageWorkstation /></App>)
