@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { defaultImageModel, publicImageModel } from '@shared/image-models'
 import { createImageAsset } from '@/editor/services/assetService'
+import { useEditorStore } from '@/editor/store'
+import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
+import { Capability, type GenerationTask, type VariationTaskParams } from '@/types'
 import DerivedGenerationPanel from './DerivedGenerationPanel'
 
 const source = createImageAsset({ id: 'source', name: 'mug.jpg', url: 'data:image/png;base64,aa', width: 800, height: 600 })
@@ -35,7 +39,10 @@ function renderPanel(props: Partial<Parameters<typeof DerivedGenerationPanel>[0]
 }
 
 describe('裂变侧栏能力状态', () => {
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    usePersistenceStore.setState({ recoveries: {} })
+  })
 
   it('配置加载中显示加载文案，不显示未就绪错误，源卡片跟随传入素材', () => {
     renderPanel({ generateDisabled: true, modelsLoading: true })
@@ -58,6 +65,38 @@ describe('裂变侧栏能力状态', () => {
     expect(screen.queryByRole('textbox')).toBeNull()
     expect(screen.queryByRole('button', { name: /^生成视频/ })).toBeNull()
     expect(screen.queryByText(/积分预估|预计消耗|服务配置/)).toBeNull()
+  })
+
+  it('刷新后失败裂变丢掉模型编号时，仍按原模型报价并允许重试', () => {
+    const original = publicImageModel(defaultImageModel('variation')!)
+    const current = { ...original, id: 'draft-model', label: '当前草稿', pricing: { ...original.pricing, creditsPerImage: { '1k': 9, '2k': 9, '4k': 9 } } }
+    const task: GenerationTask<VariationTaskParams> = {
+      id: 'variation-task', capability: Capability.Variation,
+      params: { prompt: '柔和光线', sourceImageKey: 'owned', count: 2, resolution: '2k', size: { width: 2048, height: 1152 } },
+      status: 'failed', creditsCost: 0, createdAt: '2026-10-03T00:00:00Z', updatedAt: '2026-10-03T00:00:00Z',
+    }
+    const project = useEditorStore.getState().createProject('裂变重试报价')
+    const retry = vi.fn()
+    usePersistenceStore.setState({
+      recoveries: {
+        'retry-request': {
+          projectId: project.id, sceneId: project.document.activeSceneId,
+          request: { capability: Capability.Variation, requestId: 'retry-request', modelProfileId: original.id, params: task.params },
+          context: { inputAssetIds: ['source'], autoRetryRemaining: 0, automaticRetry: false },
+          placements: [], replacedPlaceholderIds: [], backendTaskId: task.id, applied: false,
+        },
+      },
+    })
+    renderPanel({
+      task, models: [original, current], modelProfileId: current.id, resolution: '1k', count: 4, estimatedCredits: 9, onRetry: retry,
+    })
+    expect(screen.getByText('手动重试将按原参数创建新任务，生成 2 张，预计预扣 6 积分。')).toBeTruthy()
+    expect(screen.queryByText('原模型报价暂不可用，请修改参数后重新生成。')).toBeNull()
+    expect(screen.queryByText('报价暂不可用，请重新加载。')).toBeNull()
+    const button = screen.getByRole('button', { name: '按原参数重试 2 张 · 6 积分' }) as HTMLButtonElement
+    expect(button.disabled).toBe(false)
+    fireEvent.click(button)
+    expect(retry).toHaveBeenCalledTimes(1)
   })
 
   it('缺失裂变报价时不显示零积分，并禁止提交', () => {

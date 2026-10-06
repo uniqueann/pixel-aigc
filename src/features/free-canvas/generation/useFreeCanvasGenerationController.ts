@@ -36,6 +36,7 @@ import { calculateDerivedPlacements, calculateGenerationPlacements, calculateNod
 import { canSubmitFreeCanvasTextToImage, canSubmitFreeCanvasVariation, canSubmitFreeCanvasVideo, useCanvasVideoConfiguration, isCanvasMockGateway } from './availability'
 import { saveCanvasTaskHistory } from './history'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
+import { modelProfileIdForRetry } from './retryModel'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
 const EMPTY_RESULT_ERROR = '任务完成但未返回结果'
@@ -110,7 +111,7 @@ function requestForRetry(task: CanvasGenerationTask): CanvasGenerationRequest {
     capability: task.capability as CanvasGenerationRequest['capability'],
     params: task.params,
     requestId: crypto.randomUUID(),
-    modelProfileId: task.modelProfileId ?? recoveryForTask(task.id)?.request.modelProfileId,
+    modelProfileId: modelProfileIdForRetry(task),
     priceVersion: task.capability === Capability.TextToVideo ? useCanvasVideoConfiguration.getState().models[0]?.pricing.version ?? recoveryForTask(task.id)?.request.priceVersion : undefined,
   }
 }
@@ -193,18 +194,24 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const restoredTask = useMemo(() => {
     if (!restoredGeneration?.backendTaskId
       || !isCanvasGenerationParams(restoredGeneration.input, restoredGeneration.capability)) return undefined
-    return tasks[restoredGeneration.backendTaskId] as CanvasGenerationTask | undefined
-      ?? {
-        id: restoredGeneration.backendTaskId,
-        capability: restoredGeneration.capability,
-        status: restoredGeneration.status,
-        params: restoredGeneration.input,
-        errorMessage: restoredGeneration.error,
-        creditsCost: 0,
-        createdAt: restoredGeneration.createdAt,
-        updatedAt: restoredGeneration.updatedAt,
-      }
-  }, [restoredGeneration, tasks])
+    const stored = tasks[restoredGeneration.backendTaskId] as CanvasGenerationTask | undefined
+    const recoveredModelProfileId = Object.values(recoveries).find((record) => (
+      record.backendTaskId === restoredGeneration.backendTaskId && record.projectId === project?.id
+    ))?.request.modelProfileId
+    const modelProfileId = stored?.modelProfileId ?? recoveredModelProfileId
+    if (stored) return (stored.modelProfileId || !modelProfileId) ? stored : { ...stored, modelProfileId }
+    return {
+      id: restoredGeneration.backendTaskId,
+      capability: restoredGeneration.capability,
+      status: restoredGeneration.status,
+      params: restoredGeneration.input,
+      ...(modelProfileId ? { modelProfileId } : {}),
+      errorMessage: restoredGeneration.error,
+      creditsCost: 0,
+      createdAt: restoredGeneration.createdAt,
+      updatedAt: restoredGeneration.updatedAt,
+    }
+  }, [project?.id, recoveries, restoredGeneration, tasks])
 
   const readScene = useCallback(() => {
     if (!sceneId) return undefined

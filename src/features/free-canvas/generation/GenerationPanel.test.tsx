@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultImageModel, IMAGE_MODEL_PROFILES, publicImageModel } from '@shared/image-models'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import { createImageAsset } from '@/editor/services/assetService'
+import { useEditorStore } from '@/editor/store'
+import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
+import type { GenerationRecovery } from '@/editor/persistence/types'
 import { Capability, type GenerationTask, type TextToImageTaskParams } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 import GenerationPanel from './GenerationPanel'
@@ -27,9 +30,27 @@ function renderPanel(props: Partial<Parameters<typeof GenerationPanel>[0]> = {})
     models={[model]} modelProfileId={model.id} resolution="2k" estimatedCredits={3} mockGateway={false} {...props} />)
 }
 
+function rememberRetry(task: GenerationTask<TextToImageTaskParams>, modelProfileId: string): GenerationRecovery {
+  const project = useEditorStore.getState().createProject('重试报价')
+  return {
+    projectId: project.id,
+    sceneId: project.document.activeSceneId,
+    request: { capability: Capability.TextToImage, requestId: 'retry-request', modelProfileId, params: task.params },
+    context: { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
+    placements: [],
+    replacedPlaceholderIds: [],
+    backendTaskId: task.id,
+    applied: false,
+  }
+}
+
 describe('自由画布文生图侧栏', () => {
   beforeEach(() => useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111' }))
-  afterEach(() => { cleanup(); useUserStore.setState({ userId: null }) })
+  afterEach(() => {
+    cleanup()
+    useUserStore.setState({ userId: null })
+    usePersistenceStore.setState({ recoveries: {} })
+  })
 
   it('配置加载期间阻止生成，完成后按有效分辨率展示积分', () => {
     const { rerender } = renderPanel({ modelsLoading: true, generateDisabled: true })
@@ -113,6 +134,39 @@ describe('自由画布文生图侧栏', () => {
     expect(screen.queryByRole('switch', { name: '生成声音' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^生成视频到画布/ })).toBeNull()
     expect(screen.queryByText(/积分预估|预计消耗|检查登录与服务/)).toBeNull()
+  })
+
+  it('刷新后失败任务丢掉模型编号时，仍按恢复记录里的原模型报价并允许重试', () => {
+    const qwenPro = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0-pro')!)
+    const reloaded = { ...failedTask, modelProfileId: undefined, params: { ...failedTask.params, count: 1, resolution: '2k' as const } }
+    const retry = vi.fn()
+    usePersistenceStore.setState({ recoveries: { 'retry-request': rememberRetry(reloaded, qwenPro.id) } })
+    renderPanel({
+      task: reloaded, count: 4, resolution: '1k', estimatedCredits: 2, onRetry: retry,
+      models: [model, qwenPro], modelProfileId: model.id,
+    })
+    expect(screen.getByText('本次预计预扣 2 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
+    expect(screen.getByText('手动重试将按原参数创建新任务，生成 1 张，预计预扣 8 积分。')).toBeTruthy()
+    expect(screen.queryByText('原模型报价暂不可用，请修改参数后重新生成。')).toBeNull()
+    expect(screen.queryByText('报价暂不可用，请重新加载。')).toBeNull()
+    const button = screen.getByRole('button', { name: '按原参数重试 1 张 · 8 积分' }) as HTMLButtonElement
+    expect(button.disabled).toBe(false)
+    fireEvent.click(button)
+    expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('刷新后原模型已不在报价列表时，不借用当前草稿模型', () => {
+    const reloaded = { ...failedTask, modelProfileId: undefined }
+    const retry = vi.fn()
+    usePersistenceStore.setState({ recoveries: { 'retry-request': rememberRetry(reloaded, 'removed-model') } })
+    renderPanel({ task: reloaded, onRetry: retry })
+    expect(screen.getByText(/原模型报价暂不可用/)).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toContain('报价暂不可用，请重新加载。')
+    const button = screen.getByRole('button', { name: /按原参数重试 2 张.*报价暂不可用/ }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    fireEvent.click(button)
+    expect(retry).not.toHaveBeenCalled()
+    expect(screen.queryByText(/预计预扣 6 积分/)).toBeNull()
   })
 
   it('原模型不在报价列表中时禁止收费重试', () => {

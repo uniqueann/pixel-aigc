@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defaultImageModel, IMAGE_MODEL_PROFILES, publicImageModel } from '@shared/image-models'
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore, recoveryForTask } from '@/editor/persistence/persistenceStore'
 import { defaultDrafts } from '@/editor/persistence/types'
@@ -10,6 +12,7 @@ import { useUserStore } from '@/store/useUserStore'
 import { Capability, type GenerationTask, type TextToImageTaskParams } from '@/types'
 import { useCanvasTextToImageConfiguration } from './availability'
 import { type CanvasGenerationRequest } from './requestBuilder'
+import GenerationPanel from './GenerationPanel'
 import { useFreeCanvasGenerationController } from './useFreeCanvasGenerationController'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -75,6 +78,7 @@ describe('自由画布真实文生图闭环', () => {
     await act(async () => root.render(<Harness sceneId={sceneId} />))
   })
   afterEach(async () => {
+    cleanup()
     await act(async () => root.unmount())
     container.remove()
     useUserStore.setState({ userId: null })
@@ -204,6 +208,37 @@ describe('自由画布真实文生图闭环', () => {
     await act(async () => controller.resumeSubmission())
     expect(mocks.create.mock.calls[1][0]).toEqual(request)
     expect(controller.pendingSubmission).toBeUndefined()
+  })
+
+  it.each(['failed', 'cancelled'] as const)('刷新后 %s 文生图任务按原模型报价，重试按钮可用', async (status) => {
+    const original = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0-pro')!)
+    const current = publicImageModel(defaultImageModel('text_to_image')!)
+    request = {
+      capability: Capability.TextToImage, requestId: crypto.randomUUID(), modelProfileId: original.id,
+      params: { prompt: '雨夜城市', count: 1, resolution: '2k', size: { width: 2048, height: 1152 } },
+    }
+    await generate()
+    await poll({ ...controller.task!, status, errorMessage: '生成失败', updatedAt: '2026-10-03T00:01:00Z' })
+    await reload()
+    expect(controller.task).toMatchObject({ status, modelProfileId: original.id, params: { count: 1, resolution: '2k' } })
+    expect(controller.task?.modelProfileId).not.toBe(current.id)
+    const retrying: Array<Promise<unknown>> = []
+    render(<GenerationPanel mode="text-to-image" prompt="另一段描述" presetKey="1:1" count={4} durationSeconds={5}
+      task={controller.task} submitting={false} active={false} formLocked polling={false}
+      onPromptChange={() => undefined} onPresetChange={() => undefined} onCountChange={() => undefined}
+      onDurationChange={() => undefined} onGenerate={() => undefined} onRetry={() => { retrying.push(controller.retry()) }}
+      onModifyParameters={() => undefined} onRefetch={() => undefined}
+      models={[current, original]} modelProfileId={current.id} resolution="1k" estimatedCredits={2} mockGateway={false} />)
+    expect(screen.getByText('本次预计预扣 2 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
+    expect(screen.getByText('手动重试将按原参数创建新任务，生成 1 张，预计预扣 8 积分。')).toBeTruthy()
+    expect(screen.queryByText('原模型报价暂不可用，请修改参数后重新生成。')).toBeNull()
+    expect(screen.queryByText('报价暂不可用，请重新加载。')).toBeNull()
+    const button = screen.getByRole('button', { name: '按原参数重试 1 张 · 8 积分' }) as HTMLButtonElement
+    expect(button.disabled).toBe(false)
+    fireEvent.click(button)
+    await act(async () => { await retrying[0] })
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+    expect(mocks.create.mock.calls[1][0]).toMatchObject({ modelProfileId: original.id, params: request.params })
   })
 
   it('项目切换后到达的提交响应不写入新项目', async () => {

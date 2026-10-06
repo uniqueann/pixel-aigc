@@ -19,6 +19,7 @@ import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits
 import type { VideoModelProfile } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
+import { modelProfileIdForRetry } from './retryModel'
 import type { CapabilityAvailability } from '@/components/capabilityAvailability'
 import VideoAvailabilityNotice from './VideoAvailabilityNotice'
 
@@ -126,11 +127,12 @@ export default function GenerationPanel({
       posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
       thumbSrc: taskIsVideo ? '' : src, fullSrc: src, title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
   })
-  const originalModel = task ? models.find(item => item.id === task.modelProfileId) : model
+  const originalModelId = task ? modelProfileIdForRetry(task) : undefined
+  const originalModel = task ? models.find(item => item.id === originalModelId) : model
   const imagePromptMax = model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
   const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, originalResolution ?? resolution) : estimatedCredits
-  const retryVideoCredits = videoCreditsForDuration(task && task.modelProfileId !== videoModel?.id ? undefined : videoModel, taskDuration)
+  const retryVideoCredits = videoCreditsForDuration(task && originalModelId !== videoModel?.id ? undefined : videoModel, taskDuration)
   const videoCreditSubmitBlocked = textToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: estimatedCredits, balance })
   const videoRetryBlocked = taskIsVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: retryVideoCredits, balance })
   const videoState = mockGateway ? 'ready' : videoAvailability ?? (modelsLoading ? 'loading' : videoConfigured ? 'ready' : 'soon')
