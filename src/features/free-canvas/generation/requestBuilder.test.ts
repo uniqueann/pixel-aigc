@@ -44,6 +44,14 @@ describe('buildTextToImageRequest', () => {
     })
     expect(buildTextToImageRequest('森林', IMAGE_SIZE_PRESETS[0], 1, { resolution: '1k' })).not.toHaveProperty('modelProfileId')
   })
+
+  it('只在明确传入时带上自动扩写', () => {
+    expect(buildTextToImageRequest('森林', IMAGE_SIZE_PRESETS[0], 1, { resolution: '1k', enableThinking: true }).params)
+      .toMatchObject({ enableThinking: true })
+    expect(buildTextToImageRequest('森林', IMAGE_SIZE_PRESETS[0], 1, { resolution: '1k', enableThinking: false }).params)
+      .toMatchObject({ enableThinking: false })
+    expect(buildTextToImageRequest('森林', IMAGE_SIZE_PRESETS[0], 1, { resolution: '1k' }).params).not.toHaveProperty('enableThinking')
+  })
 })
 
 describe('buildTextToVideoRequest', () => {

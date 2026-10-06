@@ -11,7 +11,7 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
   const job = placeholder?.type === 'generation' ? project.generations[placeholder.generationId] : undefined
   const request = record?.request ?? (job ? { capability: job.capability, params: job.input } : undefined)
   if (!request || !request.params || typeof request.params !== 'object') return drafts
-  const params = request.params as { prompt?: string; size?: { width: number; height: number }; count?: number; durationSeconds?: number; sourceImageUrl?: string; sourceImageKey?: string; mode?: string; generateAudio?: boolean; resolution?: '1k' | '2k' | '4k' | '720p' }
+  const params = request.params as { prompt?: string; size?: { width: number; height: number }; count?: number; durationSeconds?: number; sourceImageUrl?: string; sourceImageKey?: string; mode?: string; generateAudio?: boolean; enableThinking?: boolean; resolution?: '1k' | '2k' | '4k' | '720p' }
   const sourceId = record?.context.inputAssetIds[0] ?? job?.inputAssetIds[0]
   const source = sourceId ? project.assets[sourceId] : undefined
   if (source?.type === 'image' && (request.capability === Capability.Variation || params.mode === 'image_to_video' || params.sourceImageKey || params.sourceImageUrl)) {
@@ -43,5 +43,6 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
     ...(record?.request.modelProfileId ? { modelProfileId: record.request.modelProfileId } : {}),
     ...(params.resolution ? { resolution: params.resolution } : {}),
     ...(params.generateAudio !== undefined ? { generateAudio: params.generateAudio } : {}),
+    ...(mode === 'text-to-image' && params.enableThinking !== undefined ? { enableThinking: params.enableThinking } : {}),
   } }
 }

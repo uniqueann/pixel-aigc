@@ -37,7 +37,7 @@ export function buildTextToImageRequest(
   prompt: string,
   preset: ImageSizePreset,
   count: number,
-  options?: { resolution: '1k' | '2k' | '4k'; modelProfileId?: string },
+  options?: { resolution: '1k' | '2k' | '4k'; modelProfileId?: string; enableThinking?: boolean },
 ): CanvasGenerationRequest {
   const normalizedPrompt = prompt.trim()
   if (!normalizedPrompt) throw new Error('请输入画面描述')
@@ -47,6 +47,7 @@ export function buildTextToImageRequest(
     size: options ? scaleToLongEdge(preset.width, preset.height, { '1k': 1024, '2k': 2048, '4k': 4096 }[options.resolution]) : { width: preset.width, height: preset.height },
     count: Math.min(4, Math.max(1, Math.round(count))),
     ...(options ? { resolution: options.resolution } : {}),
+    ...(options?.enableThinking !== undefined ? { enableThinking: options.enableThinking } : {}),
   }
   return {
     capability: Capability.TextToImage,

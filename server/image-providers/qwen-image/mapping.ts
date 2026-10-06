@@ -1,6 +1,7 @@
 import type { ImageResolution, NormalizedImageRequest } from '../../../shared/image-generation.js'
 import { RESOLUTION_DOWNGRADED_4K, nearestRatio, ratioValue } from '../../../shared/image-models.js'
 import type { MappedImageRequest } from '../types.js'
+import { qwenImageSettings, resolveQwenEnableThinking } from './config.js'
 
 export const QWEN_IMAGE_RATIOS = ['1:1', '4:3', '3:4', '16:9', '9:16'] as const
 export type QwenImageRatio = typeof QWEN_IMAGE_RATIOS[number]
@@ -80,6 +81,7 @@ export function mapQwenImageRequest(req: NormalizedImageRequest, model: string):
           : [],
       }
     : mapQwenImageSize(pixels.width, pixels.height, req.target.resolution)
+  const requested = req.extra?.enableThinking === true
   return {
     providerParams: {
       model,
@@ -87,6 +89,7 @@ export function mapQwenImageRequest(req: NormalizedImageRequest, model: string):
       resolution: mapped.resolution,
       n: count,
       batch: true,
+      enableThinking: resolveQwenEnableThinking(qwenImageSettings(), requested),
     },
     batch: true,
     fanOut: count,

@@ -4,6 +4,7 @@ import {
   qwenImageAvailable,
   qwenImageEnabled,
   qwenImageSettings,
+  resolveQwenEnableThinking,
 } from './config.js'
 
 const KEYS = [
@@ -54,7 +55,7 @@ describe('qwen image 配置', () => {
       baseUrl: 'https://other.cn-beijing.maas.aliyuncs.com',
       models: ['qwen-image-3.0', 'qwen-image-3.0-pro'],
       promptExtend: true,
-      enableThinking: true,
+      thinkingOverride: undefined,
       pollIntervalMs: 3_000,
       initialPollDelayMs: 3_000,
       connectTimeoutMs: 10_000,
@@ -80,8 +81,26 @@ describe('qwen image 配置', () => {
     process.env.QWEN_IMAGE_MAX_PARALLEL = '9'
     const settings = qwenImageSettings()
     expect(settings?.models).toEqual(['qwen-image-3.0'])
-    expect(settings).toMatchObject({ promptExtend: false, enableThinking: false, taskTimeoutMs: 120_000, maxParallel: 4 })
+    expect(settings).toMatchObject({ promptExtend: false, thinkingOverride: false, taskTimeoutMs: 120_000, maxParallel: 4 })
     process.env.QWEN_IMAGE_MODELS = 'not-a-model'
     expect(qwenImageAvailable()).toBe(false)
+  })
+
+  it('思考默认跟随请求，只有显式 true/false 才覆盖', () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    delete process.env.QWEN_IMAGE_THINKING
+    expect(qwenImageSettings()?.thinkingOverride).toBeUndefined()
+    expect(resolveQwenEnableThinking(qwenImageSettings(), false)).toBe(false)
+    expect(resolveQwenEnableThinking(qwenImageSettings(), true)).toBe(true)
+    process.env.QWEN_IMAGE_THINKING = 'yes'
+    expect(qwenImageSettings()?.thinkingOverride).toBeUndefined()
+    process.env.QWEN_IMAGE_THINKING = 'true'
+    expect(resolveQwenEnableThinking(qwenImageSettings(), false)).toBe(true)
+    process.env.QWEN_IMAGE_THINKING = 'false'
+    expect(resolveQwenEnableThinking(qwenImageSettings(), true)).toBe(false)
+    process.env.QWEN_IMAGE_PROMPT_EXTEND = 'false'
+    process.env.QWEN_IMAGE_THINKING = 'true'
+    expect(resolveQwenEnableThinking(qwenImageSettings(), true)).toBe(false)
   })
 })

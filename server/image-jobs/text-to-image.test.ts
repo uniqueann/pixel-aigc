@@ -46,6 +46,9 @@ describe('真实文生图任务', () => {
       { size: { width: 0, height: 900 } }, { resolution: '8k' },
     ]) expect(createImageTaskSchema.safeParse(payload(invalid)).success).toBe(false)
     expect(createImageTaskSchema.safeParse(payload({ prompt: '字'.repeat(3500) })).success).toBe(true)
+    expect(createImageTaskSchema.safeParse(payload({ enableThinking: true })).success).toBe(true)
+    expect(createImageTaskSchema.safeParse(payload({ enableThinking: false })).success).toBe(true)
+    expect(createImageTaskSchema.safeParse(payload({ enableThinking: 'true' })).success).toBe(false)
   })
 
   it('提交扇出为空参考图并映射目标比例，不读取或签发输入对象', async () => {
@@ -62,6 +65,19 @@ describe('真实文生图任务', () => {
     expect(rt.signRead).not.toHaveBeenCalled()
     expect(rt.getObject).not.toHaveBeenCalled()
     expect(rt.billing.reserve).toHaveBeenCalledWith(expect.objectContaining({ amount: 6, meta: expect.objectContaining({ capability: 'text_to_image' }) }))
+  })
+
+  it('GPT Image 2 接受思考开关但不写入供应商参数，积分与关闭时相同', async () => {
+    const rt = runtime(mappedProvider())
+    const created = await createImageJobInStore(createMemoryStore(user.id), user, createImageTaskSchema.parse(payload({ enableThinking: true })), rt)
+    expect(created.bundle.job.params).toMatchObject({ enableThinking: true })
+    expect(created.bundle.job.provider_params).not.toHaveProperty('enableThinking')
+    expect(created.bundle.job.credits_reserved).toBe(6)
+    const off = await createImageJobInStore(createMemoryStore(user.id), user, createImageTaskSchema.parse({
+      ...payload({ enableThinking: false }),
+      requestId: '00000000-0000-4000-8000-000000000204',
+    }), rt)
+    expect(off.bundle.job.credits_reserved).toBe(created.bundle.job.credits_reserved)
   })
 
   it('4K 不支持目标比例时降到 2K 并按有效价格预扣', async () => {

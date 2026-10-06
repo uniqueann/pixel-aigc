@@ -16,7 +16,8 @@ P0 把阿里云百炼 `qwen-image-3.0` 和 `qwen-image-3.0-pro` 接进现有图�
 - GPT Image 2 继续按张扇出，`n` 仍是 1。任务层的超时、轮询间隔和并发改从供应商的 `jobPolicy()` 读取。
 - 成功图片下载后写入 R2。同一任务的多张图并行下载（最多 4 张同时），供应商 URL 24 小时失效，不能拿来长期展示。
 - 上游不回传金额。成功后按模型目录单价乘以实际返回张数写入 `provider_params.vendor.cost`，并带 `currency: CNY`。公开的模型接口和任务接口都不返回 `vendorCost`。DashScope 没有 `credits_cost`，该字段保持 0；用户积分仍在 `credits_charged`。
-- 状态日志 `qwen-image-status` 和用量日志 `bailian-usage` 带上 `submitTime` / `scheduledTime` / `endTime`（来自任务结果）以及 `imageShape`（多图解析命中了哪一段）。
+- 状态日志 `qwen-image-status` 和用量日志 `bailian-usage` 带上 `submitTime` / `scheduledTime` / `endTime`（来自任务结果）以及 `imageShape`（多图解析命中了哪一段）。`bailian-usage` 和 `qwen-image-submit` 还带上实际采用的 `enableThinking`。
+- 思考默认关闭。自由画布在选中千问模型时显示「自动扩写」，勾选后当次请求带 `enableThinking: true`。积分与关闭时相同。`prompt_extend` 仍只由环境变量控制，默认 `true`。
 - 浏览器对 `bailian:` 任务大约每 1 秒问一次本服务；GPT Image 2 仍是 2 秒，视频仍是 5 秒。服务端对千问仍按 `QWEN_IMAGE_POLL_INTERVAL_MS`（默认 3 秒，且不低于 3 秒）才去 `GET /tasks`。提交收尾不再把首次查询时间改成稳态间隔。
 - 千问使用自己的 undici 连接，建连超时默认 10 秒（`QWEN_IMAGE_CONNECT_TIMEOUT_MS`）。消除、重绘、扩图继续用 `server/dashscope.ts` 的 4 秒。连接失败日志带 `errorCode` 和 `cause`（例如 `UND_ERR_CONNECT_TIMEOUT`）。只有能确定请求字节还没写出的失败（建连超时、DNS、连接被拒绝）才把明细留在 pending，并在截止时间前的下一轮轮询再提交；同一次提交里这种重试最多一次，避免和 30 秒租约重叠后再发一单。`ECONNRESET`、裸 `fetch failed`、读超时都直接失败，因为上游可能已经收到请求。
 - 两个模型的 `enabled` 在注册表里保持 `false`，积分说明和本地 Mock 模型列表因此不会出现它们。服务端只在开关打开且 Key 可用时把它们放进 `GET /api/image-models`。画布报价读的是这个接口，所以预览里打开开关后，生成面板的预估积分是对的；积分页说明仍只写 GPT Image 2，留给 P1。
@@ -29,8 +30,22 @@ P0 把阿里云百炼 `qwen-image-3.0` 和 `qwen-image-3.0-pro` 接进现有图�
 | `QWEN_IMAGE_API_KEY` | `DASHSCOPE_API_KEY` | 必须和地域、业务空间一致 |
 | `QWEN_IMAGE_BASE_URL` | `DASHSCOPE_BASE_URL`，再回退 `https://dashscope.aliyuncs.com` | 只认 https origin。生产建议 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com` |
 | `QWEN_IMAGE_MODELS` | 两个都允许 | 逗号分隔。未知 id 忽略。只填 `qwen-image-3.0` 可以不开放 Pro |
-| `QWEN_IMAGE_PROMPT_EXTEND` | `true` | `false` 关闭智能扩写。关闭时请求里的 `enable_thinking` 也会是 `false` |
-| `QWEN_IMAGE_THINKING` | `true` | 官方默认会提高质量并增加耗时。设 `false` 可缩短等待 |
+| `QWEN_IMAGE_PROMPT_EXTEND` | `true` | `false` 关闭智能扩写。关闭时请求里的 `enable_thinking` 固定为 `false`，画布开关不能绕过 |
+| `QWEN_IMAGE_THINKING` | 未设置 | 见下面的优先级。不要把它设成 `false` 还指望画布开关生效 |
+
+### 自动扩写 / `enable_thinking`
+
+Preview 实测（`qwen-image-3.0`，1K，1:1，1 张）：思考打开时端到端 75–120 秒（供应商生成 61–72 秒），关闭时 22–36 秒（供应商生成 17.6 秒）。文字都准确。打开后模型会补上提示词没要求的内容（信息图多出一列参数和一排编造的小字）；关闭时更贴提示词。因此默认关闭。勾选与否不改变积分。
+
+发给 DashScope 的 `enable_thinking` 按这个顺序决定：
+
+1. `QWEN_IMAGE_PROMPT_EXTEND=false`：恒为 `false`。官方接口里思考只在 `prompt_extend=true` 时生效，所以扩写开关保持原样，不改成跟着画布走。
+2. `QWEN_IMAGE_THINKING` 为 `true` / `false` / `1` / `0`：运维强制覆盖，忽略当次请求。
+3. 变量未设置（空值或其他写法也算未设置）：用请求里的 `enableThinking`。不传或 `false` 都是关闭。
+
+任务创建时把解析后的布尔值写入 `provider_params.enableThinking`，原始请求留在 `params.enableThinking`。提交时用同一套规则再算一次；`qwen-image-submit` 记的是实际发出的值。GPT Image 2 接受这个可选字段，但不写入自己的供应商参数，也不传给 DragonCode。
+
+自由画布只在选中千问模型时显示开关，默认不勾选。选择记在项目草稿里，和「生成声音」一样随项目保存。切回 GPT Image 2 时不发送该字段，草稿里的选择还在。
 | `QWEN_IMAGE_TASK_TIMEOUT_MS` | `300000` | 任务截止。超时退款。远小于 task_id 的 24 小时查询窗口 |
 | `QWEN_IMAGE_POLL_INTERVAL_MS` | `3000` | 首次之后查询上游的间隔，最小 3000。浏览器问得更勤也不会更频繁打到 DashScope |
 | `QWEN_IMAGE_INITIAL_POLL_DELAY_MS` | `3000` | 提交后第一次查询上游前的等待 |
@@ -46,7 +61,7 @@ P0 把阿里云百炼 `qwen-image-3.0` 和 `qwen-image-3.0-pro` 接进现有图�
 ## 在 Vercel Preview 打开
 
 1. 确认 Preview 环境已有可用的北京地域 `DASHSCOPE_API_KEY`（消除/重绘/扩图那把），或者另设 `QWEN_IMAGE_API_KEY`。Key、模型和 `DASHSCOPE_BASE_URL` 必须属于同一地域、同一业务空间。
-2. 给 Preview 增加 `QWEN_IMAGE_ENABLED=true`。不要在 Production 打开。
+2. 给 Preview 增加 `QWEN_IMAGE_ENABLED=true`。不要在 Production 打开。如果分支上已经有 `QWEN_IMAGE_THINKING=false`，删掉它。未设置时的默认已经是关闭，留下 `false` 会盖住画布「自动扩写」。
 3. 如果已经改用业务空间域名，把 `DASHSCOPE_BASE_URL` 或 `QWEN_IMAGE_BASE_URL` 设成 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com`，不要带 `/api/v1`。
 4. 重新部署该 Preview。
 5. 登录后看 `GET /api/image-models?operation=text_to_image`。应返回 GPT Image 2 和两个千问模型，响应里没有 `vendorCost`。不传 `modelProfileId` 的文生图仍走 GPT Image 2。

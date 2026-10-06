@@ -32,7 +32,7 @@ const settings: QwenImageSettings = {
   baseUrl: 'https://dashscope.aliyuncs.com',
   models: ['qwen-image-3.0', 'qwen-image-3.0-pro'],
   promptExtend: true,
-  enableThinking: true,
+  thinkingOverride: undefined,
   requestTimeoutMs: 30_000,
   connectTimeoutMs: 10_000,
   retryCount: 0,
@@ -73,15 +73,33 @@ describe('qwen image 客户端', () => {
     expect(JSON.parse(request.body)).toEqual({
       model: 'qwen-image-3.0',
       input: { messages: [{ role: 'user', content: [{ text: '橙色香水瓶' }] }] },
-      parameters: { size: '1328*1328', n: 4, prompt_extend: true, enable_thinking: true, watermark: false },
+      parameters: { size: '1328*1328', n: 4, prompt_extend: true, enable_thinking: false, watermark: false },
     })
     expect(JSON.stringify(ctx.log.mock.calls)).not.toContain('sk-test')
+    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'qwen-image-submit', enableThinking: false, promptExtend: true }))
+  })
+
+  it('请求可以打开思考，运维覆盖和关闭扩写优先', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(submitPending))
+    const asking = { ...input, providerParams: { ...input.providerParams, enableThinking: true } }
+    await provider.submit!(asking, context(fetchImpl))
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).parameters.enable_thinking).toBe(true)
+
+    const forcedOff = createQwenImageProvider(() => ({ ...settings, thinkingOverride: false }))
+    const offFetch = vi.fn().mockResolvedValue(jsonResponse(submitPending))
+    await forcedOff.submit!(asking, context(offFetch))
+    expect(JSON.parse(offFetch.mock.calls[0][1].body).parameters.enable_thinking).toBe(false)
+
+    const forcedOn = createQwenImageProvider(() => ({ ...settings, thinkingOverride: true }))
+    const onFetch = vi.fn().mockResolvedValue(jsonResponse(submitPending))
+    await forcedOn.submit!(input, context(onFetch))
+    expect(JSON.parse(onFetch.mock.calls[0][1].body).parameters.enable_thinking).toBe(true)
   })
 
   it('关闭扩写时不打开思考', async () => {
-    const quiet = createQwenImageProvider(() => ({ ...settings, promptExtend: false, enableThinking: true }))
+    const quiet = createQwenImageProvider(() => ({ ...settings, promptExtend: false, thinkingOverride: true }))
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(submitPending))
-    await quiet.submit!(input, context(fetchImpl))
+    await quiet.submit!({ ...input, providerParams: { ...input.providerParams, enableThinking: true } }, context(fetchImpl))
     expect(JSON.parse(fetchImpl.mock.calls[0][1].body).parameters).toMatchObject({
       prompt_extend: false, enable_thinking: false,
     })

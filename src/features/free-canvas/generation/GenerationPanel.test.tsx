@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultImageModel, publicImageModel } from '@shared/image-models'
+import { defaultImageModel, IMAGE_MODEL_PROFILES, publicImageModel } from '@shared/image-models'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import { createImageAsset } from '@/editor/services/assetService'
 import { Capability, type GenerationTask, type TextToImageTaskParams } from '@/types'
@@ -11,6 +11,7 @@ import { buildTextToVideoRequest } from './requestBuilder'
 import { IMAGE_SIZE_PRESETS } from './config'
 
 const model = publicImageModel(defaultImageModel('text_to_image')!)
+const qwen = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0')!)
 const failedTask: GenerationTask<TextToImageTaskParams> = {
   id: 'task', capability: Capability.TextToImage, modelProfileId: model.id,
   params: { prompt: '森林', size: { width: 2048, height: 1152 }, count: 2, resolution: '2k' },
@@ -66,6 +67,22 @@ describe('自由画布文生图侧栏', () => {
   it('恢复的超长提示词被模型长度限制阻止提交', () => {
     renderPanel({ prompt: '图'.repeat(11), models: [{ ...model, ui: { ...model.ui, promptMaxLength: 10 } }] })
     expect((screen.getByRole('button', { name: /^生成到画布 ·/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('只有千问模型显示自动扩写，默认关闭', () => {
+    renderPanel()
+    expect(screen.queryByRole('switch', { name: '自动扩写' })).toBeNull()
+    cleanup()
+    const onChange = vi.fn()
+    renderPanel({ models: [qwen], modelProfileId: qwen.id, estimatedCredits: 3, onThinkingChange: onChange })
+    expect(screen.getByText('开启后模型会自动丰富画面描述，生成约慢 3 倍，可能加入未要求的内容')).toBeTruthy()
+    const toggle = screen.getByRole('switch', { name: '自动扩写' })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(toggle)
+    expect(onChange.mock.calls[0]?.[0]).toBe(true)
+    cleanup()
+    renderPanel({ models: [qwen], modelProfileId: qwen.id, enableThinking: true })
+    expect(screen.getByRole('switch', { name: '自动扩写' }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('手动重试展示原请求参数的数量和积分，而不套用当前草稿', () => {

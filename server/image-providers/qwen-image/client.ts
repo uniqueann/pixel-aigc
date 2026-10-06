@@ -21,6 +21,7 @@ import {
   DEFAULT_QWEN_TASK_TIMEOUT_MS,
   qwenImageEnabled,
   qwenImageSettings,
+  resolveQwenEnableThinking,
   type QwenImageSettings,
 } from './config.js'
 import { asFiniteNumber, asString, connectErrorLogFields, isPreSendConnectError, isRecord, mapQwenFailure, readRequestCode } from './errors.js'
@@ -251,7 +252,7 @@ function generationBody(input: ProviderSubmitInput, settings: QwenImageSettings)
       size,
       n,
       prompt_extend: settings.promptExtend,
-      enable_thinking: settings.promptExtend && settings.enableThinking,
+      enable_thinking: resolveQwenEnableThinking(settings, input.providerParams.enableThinking === true),
       watermark: false,
     },
   }
@@ -356,7 +357,15 @@ export function createQwenImageProvider(
       }
       const id = taskId(payload)
       if (!id) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回任务编号', false, 502)
-      ctx.log({ stage: 'qwen-image-submit', host: dashScopeHost(settings.baseUrl), taskId: id, n: body.parameters.n, status })
+      ctx.log({
+        stage: 'qwen-image-submit',
+        host: dashScopeHost(settings.baseUrl),
+        taskId: id,
+        n: body.parameters.n,
+        status,
+        enableThinking: body.parameters.enable_thinking,
+        promptExtend: body.parameters.prompt_extend,
+      })
       return { providerTaskId: id }
     },
     async getStatus(providerTaskId: string, ctx: ProviderContext): Promise<ProviderTaskState> {

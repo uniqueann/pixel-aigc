@@ -75,4 +75,35 @@ describe('qwen image 尺寸映射', () => {
     expect(high.providerParams).toMatchObject({ size: '2048*2048', resolution: '2k', n: 4 })
     expect(high.warnings).toEqual([RESOLUTION_DOWNGRADED_4K])
   })
+
+  it('自动扩写默认关闭，并受环境变量覆盖', () => {
+    const previousThinking = process.env.QWEN_IMAGE_THINKING
+    const previousExtend = process.env.QWEN_IMAGE_PROMPT_EXTEND
+    const previousKey = process.env.DASHSCOPE_API_KEY
+    const base = {
+      operation: 'text_to_image' as const, prompt: 'x', images: [],
+      target: { size: { width: 1024, height: 1024 }, resolution: '1k' as const }, count: 1,
+    }
+    try {
+      delete process.env.QWEN_IMAGE_THINKING
+      delete process.env.QWEN_IMAGE_PROMPT_EXTEND
+      delete process.env.DASHSCOPE_API_KEY
+      expect(mapQwenImageRequest(base, 'qwen-image-3.0').providerParams.enableThinking).toBe(false)
+      expect(mapQwenImageRequest({ ...base, extra: { enableThinking: true } }, 'qwen-image-3.0').providerParams.enableThinking).toBe(true)
+      process.env.DASHSCOPE_API_KEY = 'sk-dash'
+      process.env.QWEN_IMAGE_THINKING = 'false'
+      expect(mapQwenImageRequest({ ...base, extra: { enableThinking: true } }, 'qwen-image-3.0').providerParams.enableThinking).toBe(false)
+      process.env.QWEN_IMAGE_THINKING = '1'
+      expect(mapQwenImageRequest({ ...base, extra: { enableThinking: false } }, 'qwen-image-3.0').providerParams.enableThinking).toBe(true)
+      process.env.QWEN_IMAGE_PROMPT_EXTEND = '0'
+      expect(mapQwenImageRequest({ ...base, extra: { enableThinking: true } }, 'qwen-image-3.0').providerParams.enableThinking).toBe(false)
+    } finally {
+      if (previousThinking === undefined) delete process.env.QWEN_IMAGE_THINKING
+      else process.env.QWEN_IMAGE_THINKING = previousThinking
+      if (previousExtend === undefined) delete process.env.QWEN_IMAGE_PROMPT_EXTEND
+      else process.env.QWEN_IMAGE_PROMPT_EXTEND = previousExtend
+      if (previousKey === undefined) delete process.env.DASHSCOPE_API_KEY
+      else process.env.DASHSCOPE_API_KEY = previousKey
+    }
+  })
 })

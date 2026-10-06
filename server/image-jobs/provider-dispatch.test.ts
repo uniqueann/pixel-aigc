@@ -27,7 +27,7 @@ const user = { id: '00000000-0000-4000-8000-000000000001', email: 'alice@example
 const KEYS = [
   'DRAGONCODE_API_KEY', 'DRAGONCODE_TASK_TIMEOUT_MS', 'DRAGONCODE_INITIAL_POLL_DELAY_MS',
   'DASHSCOPE_API_KEY', 'QWEN_IMAGE_ENABLED', 'QWEN_IMAGE_TASK_TIMEOUT_MS', 'QWEN_IMAGE_INITIAL_POLL_DELAY_MS',
-  'QWEN_IMAGE_REQUEST_RETRY_COUNT',
+  'QWEN_IMAGE_REQUEST_RETRY_COUNT', 'QWEN_IMAGE_THINKING', 'QWEN_IMAGE_PROMPT_EXTEND',
 ] as const
 const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
 
@@ -169,7 +169,7 @@ describe('图片任务按模型供应商分发', () => {
     expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'bailian-usage', outputImageCount: 3, outputImageType: 'qima_output_2k',
       imageShape: 'choices-content-image', submitTime: QWEN_SUBMIT_TIME, scheduledTime: QWEN_SCHEDULED_TIME,
-      endTime: QWEN_END_TIME, cost: 0.54, currency: 'CNY',
+      endTime: QWEN_END_TIME, cost: 0.54, currency: 'CNY', enableThinking: false,
     }))
     expect(advanced.job.provider_params.vendor).toMatchObject({
       cost: 0.54,
@@ -240,7 +240,48 @@ describe('图片任务按模型供应商分发', () => {
     })
     const created = await createImageJobInStore(store, user, pro, rt)
     expect(created.bundle.job.credits_reserved).toBe(4)
-    expect(created.bundle.job.provider_params).toMatchObject({ size: '1328*1328', resolution: '1k', n: 1, batch: true })
+    expect(created.bundle.job.provider_params).toMatchObject({ size: '1328*1328', resolution: '1k', n: 1, batch: true, enableThinking: false })
+  })
+
+  it('千问把自动扩写写入供应商参数和上游请求，积分不因开关变化', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    delete process.env.DRAGONCODE_API_KEY
+    delete process.env.QWEN_IMAGE_THINKING
+    delete process.env.QWEN_IMAGE_PROMPT_EXTEND
+    const bodies: string[] = []
+    const fetchImpl = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async (input, init) => {
+      const url = String(input)
+      if (url.includes('/image-generation/generation')) {
+        bodies.push(String(init?.body ?? ''))
+        return jsonResponse(submitPending)
+      }
+      return jsonResponse(pollRunning)
+    })
+    const rt = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const on = createImageTaskSchema.parse({
+      capability: 'text_to_image',
+      requestId: '00000000-0000-4000-8000-000000000309',
+      modelProfileId: 'bailian:qwen-image-3.0',
+      params: { prompt: '海报', size: { width: 1024, height: 1024 }, count: 1, resolution: '1k', enableThinking: true },
+    })
+    const created = await createImageJobInStore(store, user, on, rt)
+    expect(created.bundle.job.credits_reserved).toBe(3)
+    expect(created.bundle.job.provider_params.enableThinking).toBe(true)
+    await applySubmits(store, created, rt)
+    expect(JSON.parse(bodies[0]).parameters).toMatchObject({ prompt_extend: true, enable_thinking: true })
+    expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'qwen-image-submit', enableThinking: true }))
+
+    process.env.QWEN_IMAGE_THINKING = 'false'
+    const forced = createImageTaskSchema.parse({
+      ...on,
+      requestId: '00000000-0000-4000-8000-000000000310',
+    })
+    const overridden = await createImageJobInStore(store, user, forced, rt)
+    expect(overridden.bundle.job.credits_reserved).toBe(3)
+    expect(overridden.bundle.job.provider_params.enableThinking).toBe(false)
+    expect(overridden.bundle.job.params).toMatchObject({ enableThinking: true })
   })
 
   it('开关关闭时不能选千问模型', async () => {

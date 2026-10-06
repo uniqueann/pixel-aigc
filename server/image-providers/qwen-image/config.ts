@@ -16,7 +16,11 @@ export interface QwenImageSettings {
   baseUrl: string
   models: string[]
   promptExtend: boolean
-  enableThinking: boolean
+  /**
+   * 运维覆盖。未设置环境变量时为 undefined，由当次请求决定，默认关闭。
+   * true / false 会盖过画布「自动扩写」。
+   */
+  thinkingOverride?: boolean
   requestTimeoutMs: number
   connectTimeoutMs: number
   retryCount: number
@@ -39,6 +43,29 @@ function readOptionalBoolean(env: NodeJS.ProcessEnv, name: string, fallback: boo
   if (raw === 'true' || raw === '1') return true
   if (raw === 'false' || raw === '0') return false
   return fallback
+}
+
+/** 只有 true/false/1/0 算显式覆盖。空值和其它写法都当作未设置。 */
+function readTriStateBoolean(env: NodeJS.ProcessEnv, name: string): boolean | undefined {
+  const raw = env[name]?.trim().toLowerCase()
+  if (raw === 'true' || raw === '1') return true
+  if (raw === 'false' || raw === '0') return false
+  return undefined
+}
+
+/**
+ * 实际写入 DashScope `enable_thinking` 的值。
+ * 优先级：prompt_extend 关闭（接口规定思考只在扩写打开时生效）>
+ * `QWEN_IMAGE_THINKING` 显式 true/false >
+ * 当次请求。请求缺省为 false。
+ */
+export function resolveQwenEnableThinking(
+  settings: Pick<QwenImageSettings, 'promptExtend' | 'thinkingOverride'> | null | undefined,
+  requested: boolean,
+) {
+  if (settings?.promptExtend === false) return false
+  if (settings?.thinkingOverride !== undefined) return settings.thinkingOverride
+  return requested
 }
 
 function httpsOrigin(raw: string | undefined) {
@@ -84,7 +111,7 @@ export function qwenImageSettings(env: NodeJS.ProcessEnv = process.env): QwenIma
     baseUrl,
     models: parseQwenImageModels(env.QWEN_IMAGE_MODELS),
     promptExtend: readOptionalBoolean(env, 'QWEN_IMAGE_PROMPT_EXTEND', true),
-    enableThinking: readOptionalBoolean(env, 'QWEN_IMAGE_THINKING', true),
+    thinkingOverride: readTriStateBoolean(env, 'QWEN_IMAGE_THINKING'),
     requestTimeoutMs: readNumber(env, 'QWEN_IMAGE_REQUEST_TIMEOUT_MS', DEFAULT_QWEN_REQUEST_TIMEOUT_MS, 5_000, 120_000),
     connectTimeoutMs: readNumber(env, 'QWEN_IMAGE_CONNECT_TIMEOUT_MS', DEFAULT_QWEN_CONNECT_TIMEOUT_MS, 1_000, 30_000),
     retryCount: readNumber(env, 'QWEN_IMAGE_REQUEST_RETRY_COUNT', 2, 0, 5),

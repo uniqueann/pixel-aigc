@@ -167,6 +167,8 @@ const textToImageParams = z.object({
   size: imageSize.strict(),
   count: z.number().int().min(1).max(4),
   resolution: z.enum(['1k', '2k', '4k']),
+  /** 千问「自动扩写」。GPT Image 2 接受该字段但忽略，不写入供应商参数。 */
+  enableThinking: z.boolean().optional(),
 }).strict()
 
 export const createImageTaskSchema = z.discriminatedUnion('capability', [
@@ -550,7 +552,9 @@ export async function createImageJobInStore(
     ] : [],
     target: { size: parsed.params.size, resolution: parsed.params.resolution },
     count: parsed.params.count,
-    extra: parsed.capability === 'text_to_image' ? undefined : parsed.params.extra,
+    extra: parsed.capability === 'text_to_image'
+      ? (parsed.params.enableThinking === undefined ? undefined : { enableThinking: parsed.params.enableThinking })
+      : parsed.params.extra,
   }
   const mapped = provider.mapRequest(normalized, profile.model)
   if (parsed.capability === 'variation' || isRetouch || isFusion || isRelight) {
@@ -828,7 +832,14 @@ function logProviderUsage(
   vendor: ProviderVendorUsage | undefined,
 ) {
   if (!vendor) return
-  runtime.log({ stage: `${provider.id}-usage`, jobId: job.id, ordinal, ...vendor })
+  const enableThinking = job.provider_params.enableThinking
+  runtime.log({
+    stage: `${provider.id}-usage`,
+    jobId: job.id,
+    ordinal,
+    ...(typeof enableThinking === 'boolean' ? { enableThinking } : {}),
+    ...vendor,
+  })
 }
 
 function recordPollError(
