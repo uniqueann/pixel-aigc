@@ -210,6 +210,15 @@ describe('DragonCode 客户端', () => {
     })
   })
 
+  it('jobPolicy 跟随 DragonCode 配置，而不是别的供应商', () => {
+    expect(provider.jobPolicy?.()).toEqual({
+      taskTimeoutMs: 300_000,
+      pollIntervalMs: 5_000,
+      initialPollDelayMs: 5_000,
+      maxParallel: 4,
+    })
+  })
+
   it('下载非 image/* 时报错，且日志不含 token', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('not-image', {
       status: 200, headers: { 'Content-Type': 'application/json' },

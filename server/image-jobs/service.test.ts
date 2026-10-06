@@ -287,8 +287,28 @@ describe('图片任务存储状态机', () => {
       items: { '0': { cost: 0.0085, credits_cost: 1, expires_at: 1_759_116_436 } },
     })
     expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({
-      stage: 'dragoncode-usage', cost: 0.0085, creditsCost: 1,
+      stage: 'mock-usage', cost: 0.0085, creditsCost: 1,
     }))
+  })
+
+  it('DragonCode 适配器的用量日志仍使用 dragoncode-usage', async () => {
+    const store = createMemoryStore(user.id)
+    const provider = {
+      ...createMockImageProvider({
+        async getStatus() {
+          return { state: 'succeeded' as const, resultUrls: ['https://mock.local/a.png'], vendor: { cost: 0.0085, creditsCost: 1 } }
+        },
+      }),
+      id: 'dragoncode',
+    }
+    const rt = runtime(provider)
+    const created = await createImageJobInStore(store, user, params(), rt)
+    await store.updateItem(created.bundle.job.id, 0, { status: 'submitted', provider_task_id: 't-dragon' })
+    await advanceJobInStore(store, {
+      job: { ...created.bundle.job, next_poll_at: new Date(0) },
+      items: await store.listItems(created.bundle.job.id),
+    }, rt, { alreadyLeased: true })
+    expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'dragoncode-usage', cost: 0.0085 }))
   })
 
   it('客户端任务带上 resultImages.objectKey，供同域下载', async () => {
