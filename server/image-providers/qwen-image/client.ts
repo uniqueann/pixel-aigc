@@ -21,6 +21,7 @@ import {
   DEFAULT_QWEN_TASK_TIMEOUT_MS,
   qwenImageEnabled,
   qwenImageSettings,
+  qwenForcedThrottle,
   resolveQwenEnableThinking,
   type QwenImageSettings,
 } from './config.js'
@@ -173,11 +174,13 @@ async function qwenCall(
         signal: ctx.signal ?? AbortSignal.timeout(settings.requestTimeoutMs),
       })
       const payload = await readPayload(response)
+      const requestCode = readRequestCode(payload)
       const requestError = !response.ok || requestLevelError(payload)
       const mapped = requestError
-        ? mapQwenFailure(response.status, readRequestCode(payload).code, readRequestCode(payload).message)
+        ? mapQwenFailure(response.status, requestCode.code, requestCode.message)
         : undefined
-      const retry = !!mapped?.retryable && attempt < settings.retryCount
+      // 瞬时限流不在这次请求里睡。浏览器大约 55 秒就放弃 POST，Pro 也经不起 1 秒、2 秒连打。
+      const retry = !!mapped?.retryable && !mapped.holdPending && attempt < settings.retryCount
       ctx.log({
         stage: label,
         attempt,
@@ -186,6 +189,8 @@ async function qwenCall(
         host: requestHost(url) ?? dashScopeHost(url),
         ms: ctx.now() - started,
         requestId: ctx.requestId,
+        ...(requestCode.code ? { upstreamCode: requestCode.code } : {}),
+        ...(requestCode.message ? { upstreamMessage: requestCode.message.slice(0, 300) } : {}),
       })
       if (retry) {
         await ctx.sleep(retryBackoffMs(attempt))
@@ -196,7 +201,7 @@ async function qwenCall(
     } catch (error) {
       lastError = error
       if (error instanceof ProviderError) {
-        if (error.retryable && attempt < settings.retryCount) {
+        if (error.retryable && !error.holdPending && attempt < settings.retryCount) {
           await ctx.sleep(retryBackoffMs(attempt))
           continue
         }
@@ -334,6 +339,24 @@ export function createQwenImageProvider(
     async submit(input: ProviderSubmitInput, ctx: ProviderContext) {
       if (input.images.length) throw new ProviderError('INVALID_PARAMS', '当前模型暂不支持参考图', false, 400)
       const settings = settingsOf()
+      const forced = qwenForcedThrottle()
+      if (forced) {
+        const upstreamCode = forced === 'quota' ? 'Throttling.AllocationQuota' : 'Throttling.RateQuota'
+        const upstreamMessage = forced === 'quota'
+          ? 'Allocated quota exceeded, please increase your quota limit.'
+          : 'Requests rate limit exceeded.'
+        ctx.log({
+          stage: 'qwen-image-submit',
+          status: 429,
+          retry: false,
+          forcedThrottle: forced,
+          upstreamCode,
+          upstreamMessage,
+          host: dashScopeHost(settings.baseUrl),
+          requestId: ctx.requestId,
+        })
+        throw mapQwenFailure(429, upstreamCode, upstreamMessage)
+      }
       const body = generationBody(input, settings)
       const payload = await qwenCall(
         `${settings.baseUrl}${QWEN_GENERATION_PATH}`,

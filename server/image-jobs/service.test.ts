@@ -188,6 +188,23 @@ describe('图片任务存储状态机', () => {
     expect(billing.release).not.toHaveBeenCalled()
   })
 
+  it('可重试限流若没有 holdPending 仍立即失败', async () => {
+    const store = createMemoryStore(user.id)
+    const billing = billingSpy()
+    const { ProviderError } = await import('../image-providers/types.js')
+    const rt = runtime(createMockImageProvider({
+      async submit() { throw new ProviderError('RATE_LIMIT', '图片服务请求过于频繁，请稍后重试', true, 429) },
+    }), billing)
+    const created = await createImageJobInStore(store, user, params(), rt)
+    const outcomes = await runProviderSubmits(created.bundle, rt.providerFor('mock')!, user.id, rt)
+    const items = []
+    for (const outcome of outcomes) items.push(await store.updateItem(created.bundle.job.id, outcome.ordinal, outcome.patch))
+    const finalized = await finalizeJob(store, created.bundle.job, items, rt, false)
+    expect(finalized.items[0].status).toBe('failed')
+    expect(finalized.job.status).toBe('failed')
+    expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+  })
+
   it('全部失败则 failed 并全额退回', async () => {
     const store = createMemoryStore(user.id)
     const billing = billingSpy()

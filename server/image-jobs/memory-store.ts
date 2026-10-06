@@ -112,6 +112,12 @@ export function createMemoryStore(userId: string, scope = 'local'): ImageJobStor
       return [...jobs.values()].filter(job => job.status === 'queued' || job.status === 'processing').length
     },
     async globalActiveCount() { return this.userActiveCount() },
+    async providerActiveCount(provider) {
+      return [...jobs.values()].filter(job => job.provider === provider && (job.status === 'queued' || job.status === 'processing') && new Date(job.deadline_at) > new Date()).length
+    },
+    async modelActiveCount(modelProfileId) {
+      return [...jobs.values()].filter(job => job.model_profile_id === modelProfileId && (job.status === 'queued' || job.status === 'processing') && new Date(job.deadline_at) > new Date()).length
+    },
     async expireUserOverdue(at) {
       for (const job of jobs.values()) {
         if ((job.status === 'queued' || job.status === 'processing') && new Date(job.deadline_at) <= at) {

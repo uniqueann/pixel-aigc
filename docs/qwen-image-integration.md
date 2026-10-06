@@ -20,6 +20,10 @@ P0 把阿里云百炼 `qwen-image-3.0` 和 `qwen-image-3.0-pro` 接进现有图�
 - 思考默认关闭。自由画布在选中千问模型时显示「自动扩写」，勾选后当次请求带 `enableThinking: true`。积分与关闭时相同。`prompt_extend` 仍只由环境变量控制，默认 `true`。
 - 浏览器对 `bailian:` 任务大约每 1 秒问一次本服务；GPT Image 2 仍是 2 秒，视频仍是 5 秒。服务端对千问仍按 `QWEN_IMAGE_POLL_INTERVAL_MS`（默认 3 秒，且不低于 3 秒）才去 `GET /tasks`。提交收尾不再把首次查询时间改成稳态间隔。
 - 千问使用自己的 undici 连接，建连超时默认 10 秒（`QWEN_IMAGE_CONNECT_TIMEOUT_MS`）。消除、重绘、扩图继续用 `server/dashscope.ts` 的 4 秒。连接失败日志带 `errorCode` 和 `cause`（例如 `UND_ERR_CONNECT_TIMEOUT`）。只有能确定请求字节还没写出的失败（建连超时、DNS、连接被拒绝）才把明细留在 pending，并在截止时间前的下一轮轮询再提交；同一次提交里这种重试最多一次，避免和 30 秒租约重叠后再发一单。`ECONNRESET`、裸 `fetch failed`、读超时都直接失败，因为上游可能已经收到请求。
+- 提交遇到瞬时限流（HTTP 429，`Throttling` / `Throttling.RateQuota` / `Throttling.BurstRate`）不再在这次请求里重试，也不把任务判失败。明细保持 pending，任务状态保持 `queued`，界面显示「排队中」。下次提交按退避时间排队：3.0 从 8 秒起，Pro 从 15 秒起，每次翻倍，封顶 60 秒，再加 0–50% 抖动。截止前由用户轮询触发重提；已经有 `task_id` 的明细不会再提交。`qwen-image-submit` 日志带上游 `upstreamCode`（例如 `Throttling.RateQuota`）。
+- 一直限流到截止时间：全额退回预扣，错误文案是「当前排队人数较多，请稍后重试（积分已退回）」。已经向上游提交成功、只是生成超时的任务仍用「任务处理超时，请重试」。
+- `Throttling.AllocationQuota`（以及 “allocated quota exceeded” / “please increase your quota”）视为额度用尽，立即失败并退款，不进入排队。百炼文档里这个码也用于每分钟 Token 配额，通常比 RPM 更慢恢复；300 秒截止内不把它当瞬时限流重试。
+- 创建千问任务时，在预扣积分之前检查并发：全部百炼文生图进行中不超过 `QWEN_IMAGE_ACTIVE_LIMIT`（默认 8），其中 Pro 不超过 `QWEN_IMAGE_PRO_ACTIVE_LIMIT`（默认 4）。超出返回 429，文案「当前排队人数较多，请稍后重试」，此时没有预扣。计数按环境、跨用户，和现有全局 20 个进行中任务一起生效。GPT Image 2 不读这两项。
 - 两个模型的 `enabled` 在注册表里保持 `false`，积分说明和本地 Mock 模型列表因此不会出现它们。服务端只在开关打开且 Key 可用时把它们放进 `GET /api/image-models`。画布报价读的是这个接口，所以预览里打开开关后，生成面板的预估积分是对的；积分页说明仍只写 GPT Image 2，留给 P1。
 
 ## 环境变量
@@ -52,7 +56,10 @@ Preview 实测（`qwen-image-3.0`，1K，1:1，1 张）：思考打开时端到�
 | `QWEN_IMAGE_MAX_PARALLEL` | `1` | 千问走批量 `n`，这个值只在意外扇出时限制并发 |
 | `QWEN_IMAGE_REQUEST_TIMEOUT_MS` | `30000` | 单次提交或查询的 HTTP 超时 |
 | `QWEN_IMAGE_CONNECT_TIMEOUT_MS` | `10000` | 千问建连超时。不改变消除/重绘/扩图 |
-| `QWEN_IMAGE_REQUEST_RETRY_COUNT` | `2` | 限流、5xx 和查询连接失败的请求内重试次数。提交时的建连失败最多再试 1 次 |
+| `QWEN_IMAGE_REQUEST_RETRY_COUNT` | `2` | 5xx 和查询连接失败的请求内重试次数。提交时的建连失败最多再试 1 次。瞬时限流不在请求内重试 |
+| `QWEN_IMAGE_ACTIVE_LIMIT` | `8` | 同一环境里进行中的百炼文生图任务。预扣前检查 |
+| `QWEN_IMAGE_PRO_ACTIVE_LIMIT` | `4` | 其中 `qwen-image-3.0-pro` 的进行中任务 |
+| `QWEN_IMAGE_FORCE_THROTTLE` | 关闭 | 仅预览或本地。`true` / `rate` 让提交假装 `Throttling.RateQuota`；`quota` 假装 `AllocationQuota`。`VERCEL_ENV` 或 `AIGC_RUNTIME_SCOPE` 为 `production` 时忽略；两者都未设置时也不生效 |
 
 模型目录里的建议积分（开关打开后才会真正预扣）：3.0 为 1K/2K 各 3 分；Pro 为 1K 4 分、2K 8 分。`vendorCost` 按北京地域人民币记录，公开接口不返回该字段。
 
@@ -66,6 +73,7 @@ Preview 实测（`qwen-image-3.0`，1K，1:1，1 张）：思考打开时端到�
 4. 重新部署该 Preview。
 5. 登录后看 `GET /api/image-models?operation=text_to_image`。应返回 GPT Image 2 和两个千问模型，响应里没有 `vendorCost`。不传 `modelProfileId` 的文生图仍走 GPT Image 2。
 6. 用一张 1K、数量 1 的描述做冒烟，确认结果进了画布和 R2，而不是停在供应商 URL 上。Pro 建议数量大于 1 时看网络日志，确认只有一次上游提交。
+7. 要模拟限流：只在 Preview 设置 `QWEN_IMAGE_FORCE_THROTTLE=true`（或 `quota`），重新部署后再提交一张千问图。`true` 应停在「排队中」且不调用百炼；到截止后失败文案带「积分已退回」。`quota` 应马上失败并退款。测完删掉该变量。Production 即使误设也会被忽略。
 
 ## Preview 冒烟（2026-10-06）
 
@@ -83,7 +91,7 @@ Preview 实测（`qwen-image-3.0`，1K，1:1，1 张）：思考打开时端到�
 2. **尺寸对齐是不是普遍规则。** 上面两个 1K 尺寸已被接受。3.0 文档仍只写面积和宽高比，没有写必须是 16 的倍数。2K 的 16:9（2688×1536）和 4:3（2368×1728）还没实测；和画布预设差超过 1% 时，现有裁切会按请求比例裁掉一圈。
 3. **`negative_prompt` 长度。** 3.0 只说支持反向提示词，没写上限；旧版 qwen-image 写的是 500 字。P0 不发送这个字段。
 4. **失败是否向阿里云收费。** “调用失败不收费”写在旧版 qwen-image 文生图页，3.0 模型页没有重复这句话。无论供应商是否收费，任务失败、审核拒绝或超时都会把预扣积分退回。建连阶段的重试不会产生 task id。
-5. **RPM 怎么计。** 模型页写 3.0 是 20 RPM、Pro 是 5 RPM。按主账号、业务空间还是 API Key 合并，以及 `GET /tasks` 算不算进 RPM，仍然没有文档。冒烟的 Pro 任务在大约 5–6 秒查一次时没有被限流。这次不把上游查询间隔降到 3 秒以下。查询遇到 429 会保持进行中，直到任务截止再退款。
+5. **RPM 怎么计。** 模型页写 3.0 是 20 RPM、Pro 是 5 RPM。按主账号、业务空间还是 API Key 合并，以及 `GET /tasks` 算不算进 RPM，仍然没有文档。提交遇到瞬时 429 会排队再试，不再在请求里连打。查询遇到 429 仍保持进行中，直到任务截止再退款。并发上限是应用层的保护，不是百炼账号的令牌桶；多个排队任务仍可能在同一秒重试。
 6. **3500 字中文是否超过 4500 Token。** 提示词上限沿用现有 3500 字符。官方建议不超过 4500 Token，没有给出汉字换算。
 7. **`UNKNOWN`。** 文档说这是任务不存在或状态未知。300 秒截止远小于 24 小时查询窗口，所以 `UNKNOWN` 先当作进行中，截止后再按超时退款。`FAILED` 和 `CANCELED` 立即失败。
 8. **`submit_time` 的真实格式。** 日志按响应里的字符串原样记录，还没用真实任务核对过字段名和时区。

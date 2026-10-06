@@ -123,21 +123,74 @@ describe('qwen image 客户端', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
-  it('429 在请求内重试，耗尽后仍是可重试的限流', async () => {
-    const retrying = createQwenImageProvider(() => ({ ...settings, retryCount: 1 }))
+  it('提交限流不在请求内重试，并记下上游错误码', async () => {
+    const retrying = createQwenImageProvider(() => ({ ...settings, retryCount: 2 }))
     const sleep = vi.fn(async () => undefined)
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(submitThrottled, 429))
-      .mockResolvedValueOnce(jsonResponse(submitPending))
-    await expect(retrying.submit!(input, context(fetchImpl, sleep))).resolves.toEqual({ providerTaskId: QWEN_TASK_ID })
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
-    expect(sleep).toHaveBeenCalledWith(1000)
-
-    const exhausted = vi.fn().mockResolvedValue(jsonResponse(submitThrottled, 429))
-    await expect(retrying.submit!(input, context(exhausted, sleep))).rejects.toMatchObject({
-      code: 'RATE_LIMIT', retryable: true,
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(submitThrottled, 429))
+    const ctx = context(fetchImpl, sleep)
+    await expect(retrying.submit!(input, ctx)).rejects.toMatchObject({
+      code: 'RATE_LIMIT', retryable: true, holdPending: true,
     })
-    expect(exhausted).toHaveBeenCalledTimes(2)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
+    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'qwen-image-submit',
+      status: 429,
+      retry: false,
+      upstreamCode: 'Throttling.RateQuota',
+      upstreamMessage: 'Requests rate limit exceeded.',
+    }))
+  })
+
+  it('AllocationQuota 不排队，也不在请求内重试', async () => {
+    const retrying = createQwenImageProvider(() => ({ ...settings, retryCount: 2 }))
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
+      code: 'Throttling.AllocationQuota',
+      message: 'Allocated quota exceeded, please increase your quota limit.',
+      request_id: 'req-quota',
+    }, 429))
+    await expect(retrying.submit!(input, context(fetchImpl))).rejects.toMatchObject({
+      code: 'RATE_LIMIT', retryable: false, holdPending: undefined,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('预览可以强制限流且不打上游，生产环境忽略该开关', async () => {
+    const previous = {
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      AIGC_RUNTIME_SCOPE: process.env.AIGC_RUNTIME_SCOPE,
+      QWEN_IMAGE_FORCE_THROTTLE: process.env.QWEN_IMAGE_FORCE_THROTTLE,
+    }
+    try {
+      process.env.VERCEL_ENV = 'preview'
+      process.env.AIGC_RUNTIME_SCOPE = 'preview'
+      process.env.QWEN_IMAGE_FORCE_THROTTLE = 'true'
+      const blocked = vi.fn()
+      const ctx = context(blocked)
+      await expect(provider.submit!(input, ctx)).rejects.toMatchObject({ holdPending: true, code: 'RATE_LIMIT' })
+      expect(blocked).not.toHaveBeenCalled()
+      expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
+        stage: 'qwen-image-submit', upstreamCode: 'Throttling.RateQuota', forcedThrottle: 'rate',
+      }))
+
+      process.env.QWEN_IMAGE_FORCE_THROTTLE = 'quota'
+      const quota = vi.fn()
+      await expect(provider.submit!(input, context(quota))).rejects.toMatchObject({
+        retryable: false, holdPending: undefined,
+      })
+      expect(quota).not.toHaveBeenCalled()
+
+      process.env.VERCEL_ENV = 'production'
+      process.env.QWEN_IMAGE_FORCE_THROTTLE = 'true'
+      const live = vi.fn().mockResolvedValue(jsonResponse(submitPending))
+      await expect(provider.submit!(input, context(live))).resolves.toEqual({ providerTaskId: QWEN_TASK_ID })
+      expect(live).toHaveBeenCalledTimes(1)
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+    }
   })
 
   it('轮询把 PENDING/RUNNING 视为进行中，SUCCEEDED 读出图片和 usage', async () => {

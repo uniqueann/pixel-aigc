@@ -11,7 +11,9 @@ import {
   pollSucceededContentImages,
   qwenImageUrl,
   submitPending,
+  submitThrottled,
 } from '../image-providers/qwen-image/fixtures.js'
+import { QWEN_QUOTA_EXHAUSTED_MESSAGE, QWEN_QUEUE_FULL_MESSAGE, QWEN_THROTTLE_REFUND_MESSAGE } from '../image-providers/qwen-image/errors.js'
 import { createMemoryStore } from './memory-store.js'
 import {
   advanceJobInStore,
@@ -19,6 +21,7 @@ import {
   createImageTaskSchema,
   finalizeJob,
   runProviderSubmits,
+  toClientImageTask,
   type ImageJobRuntime,
 } from './service.js'
 import type { ImageJobStore } from './types.js'
@@ -28,6 +31,7 @@ const KEYS = [
   'DRAGONCODE_API_KEY', 'DRAGONCODE_TASK_TIMEOUT_MS', 'DRAGONCODE_INITIAL_POLL_DELAY_MS',
   'DASHSCOPE_API_KEY', 'QWEN_IMAGE_ENABLED', 'QWEN_IMAGE_TASK_TIMEOUT_MS', 'QWEN_IMAGE_INITIAL_POLL_DELAY_MS',
   'QWEN_IMAGE_REQUEST_RETRY_COUNT', 'QWEN_IMAGE_THINKING', 'QWEN_IMAGE_PROMPT_EXTEND',
+  'QWEN_IMAGE_ACTIVE_LIMIT', 'QWEN_IMAGE_PRO_ACTIVE_LIMIT',
 ] as const
 const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
 
@@ -35,8 +39,8 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
-function runtime(fetchImpl: typeof fetch) {
-  let now = Date.parse('2026-10-06T00:00:00.000Z')
+function runtime(fetchImpl: typeof fetch, start = Date.parse('2026-10-06T00:00:00.000Z')) {
+  let now = start
   const billing = {
     reserve: vi.fn(async () => ({ ok: true as const })),
     settle: vi.fn(async () => undefined),
@@ -54,6 +58,7 @@ function runtime(fetchImpl: typeof fetch) {
     billing,
     crop: async (bytes) => ({ bytes: new Uint8Array(bytes), width: 1, height: 1, mimeType: 'image/png', cropped: false }),
     providerFor: imageProviderById,
+    random: () => 0,
   } satisfies ImageJobRuntime & { setNow: (value: number) => void; billing: typeof billing }
   return rt
 }
@@ -369,5 +374,161 @@ describe('图片任务按模型供应商分发', () => {
     ])
     expect(imageStarts).toBe(2)
     expect(advanced.items.map(item => item.status)).toEqual(['succeeded', 'succeeded'])
+  })
+
+  it('千问瞬时限流保持排队，退避后重新提交且不重复建单', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    process.env.QWEN_IMAGE_REQUEST_RETRY_COUNT = '2'
+    delete process.env.DRAGONCODE_API_KEY
+    let submits = 0
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/image-generation/generation')) {
+        submits += 1
+        if (submits === 1) return jsonResponse(submitThrottled, 429)
+        return jsonResponse(submitPending)
+      }
+      return jsonResponse(pollRunning)
+    })
+    const rt = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000401', 2, 'bailian:qwen-image-3.0-pro'), rt)
+    const pendingItems = await applySubmits(store, created, rt)
+    expect(pendingItems.map(item => item.status)).toEqual(['pending', 'pending'])
+    expect(pendingItems.every(item => item.provider_task_id == null && item.error_code === 'RATE_LIMIT')).toBe(true)
+    expect(submits).toBe(1)
+    expect(rt.log).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'qwen-image-submit', upstreamCode: 'Throttling.RateQuota',
+    }))
+    const held = await finalizeJob(store, created.bundle.job, pendingItems, rt, false, [], { keepScheduledPoll: true })
+    expect(held.job.status).toBe('queued')
+    expect(held.job.billing_state).toBe('reserved')
+    expect(rt.billing.release).not.toHaveBeenCalled()
+    expect(new Date(held.job.next_poll_at).getTime() - rt.now()).toBe(15_000)
+    await expect(toClientImageTask(held, rt)).resolves.toMatchObject({ status: 'queued', errorMessage: undefined })
+    const early = await advanceJobInStore(store, held, rt)
+    expect(early.job.status).toBe('queued')
+    expect(submits).toBe(1)
+    rt.setNow(new Date(held.job.next_poll_at).getTime())
+    const retried = await advanceJobInStore(store, {
+      job: { ...held.job, next_poll_at: new Date(rt.now()) },
+      items: held.items,
+    }, rt)
+    expect(retried.items.map(item => item.provider_task_id)).toEqual(['qwen-task-fixture-001', 'qwen-task-fixture-001'])
+    expect(retried.items.every(item => item.error_code == null)).toBe(true)
+    expect(submits).toBe(2)
+  })
+
+  it('千问限流直到截止则全额退款，并说明积分已退回', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    process.env.QWEN_IMAGE_REQUEST_RETRY_COUNT = '2'
+    delete process.env.DRAGONCODE_API_KEY
+    let submits = 0
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/image-generation/generation')) submits += 1
+      return jsonResponse(submitThrottled, 429)
+    })
+    const rt = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000402', 1, 'bailian:qwen-image-3.0'), rt)
+    const pendingItems = await applySubmits(store, created, rt)
+    const held = await finalizeJob(store, created.bundle.job, pendingItems, rt, false, [], { keepScheduledPoll: true })
+    expect(held.job.billing_state).toBe('reserved')
+    expect(new Date(held.job.next_poll_at).getTime() - rt.now()).toBe(8_000)
+    rt.setNow(new Date(held.job.deadline_at).getTime() + 1)
+    const expired = await advanceJobInStore(store, {
+      job: { ...held.job, next_poll_at: new Date(0) },
+      items: held.items,
+    }, rt, { alreadyLeased: true })
+    expect(submits).toBe(1)
+    expect(expired.job).toMatchObject({
+      status: 'expired',
+      error_code: 'RATE_LIMIT',
+      error_message: QWEN_THROTTLE_REFUND_MESSAGE,
+      billing_state: 'released',
+      credits_charged: 0,
+    })
+    expect(rt.billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+    expect(rt.billing.settle).not.toHaveBeenCalled()
+    await expect(toClientImageTask(expired, rt)).resolves.toMatchObject({
+      status: 'failed',
+      errorMessage: QWEN_THROTTLE_REFUND_MESSAGE,
+    })
+  })
+
+  it('AllocationQuota 立即失败并退款，不再提交', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    delete process.env.DRAGONCODE_API_KEY
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      code: 'Throttling.AllocationQuota',
+      message: 'Free allocated quota exceeded.',
+    }, 429))
+    const rt = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000403', 1, 'bailian:qwen-image-3.0-pro'), rt)
+    expect(rt.billing.reserve).toHaveBeenCalledTimes(1)
+    const items = await applySubmits(store, created, rt)
+    const failed = await finalizeJob(store, created.bundle.job, items, rt, false)
+    expect(failed.job.status).toBe('failed')
+    expect(failed.items[0]).toMatchObject({ status: 'failed', error_message: QWEN_QUOTA_EXHAUSTED_MESSAGE })
+    expect(rt.billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await advanceJobInStore(store, { job: { ...failed.job, next_poll_at: new Date(0) }, items: failed.items }, rt, { alreadyLeased: true })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('查询 429 不把已提交的千问任务判失败', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    delete process.env.DRAGONCODE_API_KEY
+    let polls = 0
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/image-generation/generation')) return jsonResponse(submitPending)
+      polls += 1
+      return jsonResponse(submitThrottled, 429)
+    })
+    const rt = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000404', 1, 'bailian:qwen-image-3.0'), rt)
+    const items = await applySubmits(store, created, rt)
+    const advanced = await advanceJobInStore(store, {
+      job: { ...created.bundle.job, next_poll_at: new Date(0) },
+      items,
+    }, rt, { alreadyLeased: true })
+    expect(polls).toBe(1)
+    expect(advanced.job.status).toBe('processing')
+    expect(advanced.items[0].status).toBe('submitted')
+    expect(rt.billing.release).not.toHaveBeenCalled()
+  })
+
+  it('Pro 和百炼并发上限在预扣前返回 429，GPT Image 2 不受影响', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    process.env.DRAGONCODE_API_KEY = 'sk-dragon'
+    process.env.QWEN_IMAGE_PRO_ACTIVE_LIMIT = '1'
+    process.env.QWEN_IMAGE_ACTIVE_LIMIT = '8'
+    const rt = runtime(vi.fn(async () => jsonResponse({})), Date.now())
+    const store = createMemoryStore(user.id)
+    await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000405', 1, 'bailian:qwen-image-3.0-pro'), rt)
+    await expect(createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000406', 1, 'bailian:qwen-image-3.0-pro'), rt))
+      .rejects.toMatchObject({ status: 429, code: 'MODEL_CONCURRENCY', message: QWEN_QUEUE_FULL_MESSAGE })
+    expect(rt.billing.reserve).toHaveBeenCalledTimes(1)
+    const standard = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000407', 1, 'bailian:qwen-image-3.0'), rt)
+    expect(standard.bundle.job.provider).toBe('bailian')
+    expect(rt.billing.reserve).toHaveBeenCalledTimes(2)
+
+    process.env.QWEN_IMAGE_ACTIVE_LIMIT = '1'
+    const capped = createMemoryStore(user.id)
+    const cappedRt = runtime(vi.fn(async () => jsonResponse({})), Date.now())
+    await createImageJobInStore(capped, user, text('00000000-0000-4000-8000-000000000408', 1, 'bailian:qwen-image-3.0'), cappedRt)
+    await expect(createImageJobInStore(capped, user, text('00000000-0000-4000-8000-000000000409', 1, 'bailian:qwen-image-3.0'), cappedRt))
+      .rejects.toMatchObject({ status: 429, code: 'PROVIDER_CONCURRENCY', message: QWEN_QUEUE_FULL_MESSAGE })
+    expect(cappedRt.billing.reserve).toHaveBeenCalledTimes(1)
+    const gpt = await createImageJobInStore(capped, user, text('00000000-0000-4000-8000-000000000410', 1), cappedRt)
+    expect(gpt.bundle.job).toMatchObject({ provider: 'dragoncode', model_profile_id: 'dragoncode:gpt-image-2' })
+    expect(cappedRt.billing.reserve).toHaveBeenCalledTimes(2)
   })
 })

@@ -50,6 +50,7 @@ export function taskStatusLabel(status: string) {
   if (status === 'succeeded') return '已完成'
   if (status === 'failed') return '失败'
   if (status === 'cancelled') return '已取消'
-  if (status === 'processing' || status === 'queued' || status === 'pending') return '进行中'
+  if (status === 'queued' || status === 'pending') return '排队中'
+  if (status === 'processing') return '进行中'
   return status
 }

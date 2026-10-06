@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { connectErrorLogFields, isPreSendConnectError, mapQwenFailure } from './errors.js'
+import {
+  QWEN_QUOTA_EXHAUSTED_MESSAGE,
+  QWEN_THROTTLE_PENDING_MESSAGE,
+  connectErrorLogFields,
+  isPreSendConnectError,
+  mapQwenFailure,
+} from './errors.js'
 
 describe('qwen image 错误映射', () => {
   it('内容审核和侵权不可重试', () => {
@@ -20,7 +26,19 @@ describe('qwen image 错误映射', () => {
       code: 'INSUFFICIENT_BALANCE', retryable: false,
     })
     expect(mapQwenFailure(429, 'Throttling.RateQuota', 'Requests rate limit exceeded.')).toMatchObject({
-      code: 'RATE_LIMIT', message: '图片服务请求过于频繁，请稍后重试', retryable: true,
+      code: 'RATE_LIMIT', message: QWEN_THROTTLE_PENDING_MESSAGE, retryable: true, holdPending: true,
+    })
+    expect(mapQwenFailure(429, 'Throttling', 'Requests throttling triggered.')).toMatchObject({
+      holdPending: true, retryable: true,
+    })
+    expect(mapQwenFailure(429, 'Throttling.BurstRate', 'Request rate increased too quickly.')).toMatchObject({
+      holdPending: true, retryable: true,
+    })
+    expect(mapQwenFailure(429, 'Throttling.AllocationQuota', 'Allocated quota exceeded, please increase your quota limit.')).toMatchObject({
+      code: 'RATE_LIMIT', message: QWEN_QUOTA_EXHAUSTED_MESSAGE, retryable: false, holdPending: undefined,
+    })
+    expect(mapQwenFailure(429, 'Throttling.AllocationQuota', 'Free allocated quota exceeded.')).toMatchObject({
+      retryable: false, holdPending: undefined,
     })
     expect(mapQwenFailure(400, 'InvalidParameter', 'size is invalid').retryable).toBe(false)
     expect(mapQwenFailure(500, 'InternalError', 'An internal error has occurred.').retryable).toBe(true)

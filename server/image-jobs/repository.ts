@@ -131,6 +131,14 @@ export function createSqlStore(sql: Transaction, userId: string, media: 'image' 
         : await sql`select aigc.image_processing_count(${scope}) as used`
       return Number(row.used)
     },
+    async providerActiveCount(provider) {
+      const [row] = await sql`select aigc.image_provider_active_count(${scope},${provider}) as used`
+      return Number(row.used)
+    },
+    async modelActiveCount(modelProfileId) {
+      const [row] = await sql`select aigc.image_model_active_count(${scope},${modelProfileId}) as used`
+      return Number(row.used)
+    },
     async expireUserOverdue(now) {
       void now
       await sql`select aigc.expire_overdue_image_jobs(${userId})`

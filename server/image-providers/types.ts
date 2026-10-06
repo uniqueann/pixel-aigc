@@ -106,6 +106,11 @@ export interface ImageProvider {
 export class ProviderError extends Error {
   /** false 表示请求字节还没写到连接上，可以安全地再提交一次。未设置表示不确定。 */
   requestSent?: boolean
+  /**
+   * 上游拒绝了提交且没有创建任务（例如瞬时限流）。
+   * 任务层保持 pending，在截止时间前重新提交，避免当成已送出的请求再发一单。
+   */
+  holdPending?: boolean
   constructor(
     public code: ProviderErrorCode,
     message: string,
