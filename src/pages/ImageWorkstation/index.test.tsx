@@ -82,29 +82,41 @@ describe('图片工作站配置提示', () => {
     render(<App><ImageWorkstation /></App>)
     expect(screen.getByText('裂变 · 即将上线')).toBeTruthy()
     expect(screen.getByText('基于原图再生成一版变体。')).toBeTruthy()
-    expect(screen.getByText('示例')).toBeTruthy()
+    expect(screen.queryByText('示例')).toBeNull()
     expect(screen.getByAltText('裂变前的白底马克杯')).toBeTruthy()
     expect(screen.getByText('该能力即将上线，目前还不能提交生成任务。')).toBeTruthy()
     expect(screen.queryByText('补充要求（可选）')).toBeNull()
   })
 
-  it('未上传时展示裂变和融合示例，上传后收起', () => {
+  it('未上传时示例在上传控件上方，上传后收起', () => {
     mocks.tool = 'variation'
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     const view = render(<App><ImageWorkstation /></App>)
     expect(screen.getAllByText('基于原图再生成一版变体。').length).toBeGreaterThan(1)
+    expect(screen.queryByText('示例')).toBeNull()
+    const variationShell = view.container.querySelector('.workstation-canvas-shell')!
+    const variationPreview = variationShell.querySelector('.upload-example')!
+    const variationUpload = variationShell.querySelector('.workstation-upload')!
+    expect(variationPreview.compareDocumentPosition(variationUpload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(variationShell.querySelector('summary')).toBeNull()
     expect(screen.getByAltText('裂变后的马克杯变体')).toBeTruthy()
     view.unmount()
 
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
-    render(<App><ImageWorkstation /></App>)
-    expect(screen.queryByText('示例')).toBeNull()
+    const uploaded = render(<App><ImageWorkstation /></App>)
+    expect(uploaded.container.querySelector('.upload-example')).toBeNull()
+    expect(screen.queryByAltText('裂变前的白底马克杯')).toBeNull()
     cleanup()
 
     mocks.tool = 'fusion'
     mocks.controller.inputAsset = undefined
-    render(<App><ImageWorkstation /></App>)
+    const fusion = render(<App><ImageWorkstation /></App>)
     expect(screen.getAllByText('把多张图合成一个场景。').length).toBeGreaterThan(1)
+    const fusionShell = fusion.container.querySelector('.workstation-canvas-shell')!
+    const fusionPreview = fusionShell.querySelector('.upload-example')!
+    const fusionUploads = [...fusionShell.querySelectorAll('.workstation-upload')]
+    expect(fusionUploads).toHaveLength(2)
+    expect(fusionUploads.every((node) => fusionPreview.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
     expect(screen.getByAltText('待融合的木桌场景')).toBeTruthy()
     expect(screen.getByAltText('滴管瓶放入木桌场景后的效果')).toBeTruthy()
   })

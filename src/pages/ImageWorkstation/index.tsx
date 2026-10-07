@@ -36,7 +36,6 @@ import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
-import ToolExampleStrip from './components/ToolExampleStrip'
 import { workstationGenerateBlockReason } from './utils/generateGate'
 import { freeOutpaintGeometry, presetOutpaintGeometry } from './utils/outpaintGeometry'
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
@@ -416,7 +415,6 @@ export default function ImageWorkstation() {
         value={activeTool.slug}
         onChange={(slug) => navigate(`/image-workstation/${slug}`)}
       />
-      {showExample && example ? <ToolExampleStrip example={example} /> : null}
       <div className="image-workstation-main">
         <div className="image-workstation-canvas-column">
           <CanvasArea
@@ -438,6 +436,7 @@ export default function ImageWorkstation() {
             onImageUpload={fusionTool ? (file) => { void handleFusionUpload('product', file) } : handleImageUpload}
             onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
             onReady={handleCanvasReady}
+            example={showExample ? example : undefined}
             onMaskChange={setHasMaskPaint}
             onPreview={(view) => {
               const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
