@@ -23,6 +23,7 @@ import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
 import { modelProfileIdForRetry } from './retryModel'
 import type { CapabilityAvailability } from '@/components/capabilityAvailability'
 import VideoAvailabilityNotice from './VideoAvailabilityNotice'
+import { taskFailureText } from '@/features/generation/providerErrorCopy'
 
 export type DerivedGenerationMode = 'variation' | 'image-to-video'
 
@@ -113,7 +114,7 @@ export default function DerivedGenerationPanel({
         ? '视频已生成并加入画布'
         : `成功 ${task.resultImages?.length ?? task.resultUrls?.length ?? 0} / ${task.params.count} 张裂变图片${mockGateway ? '' : `，实际消耗 ${task.creditsCost} 积分`}`
       : task?.status === 'failed' || task?.status === 'cancelled'
-        ? task.errorMessage || '任务没有完成，请重试'
+        ? taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
         : imageToVideo
           ? `本次生成 1 段 ${durationSeconds} 秒视频`
           : `本次生成 ${count} 张裂变图片`
