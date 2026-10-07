@@ -69,6 +69,8 @@ export const preferencesPatchSchema = z.object({
   image: z.object({
     counts: counts.partial().optional(), resolution: resolution.optional(), rememberParameters: z.boolean().optional(),
     lastUsed: imageMemorySchema.nullable().optional(),
+    /** 只丢掉这些工具记住的张数，保留分辨率和其它参数。 */
+    forgetCounts: z.array(z.enum(COUNT_TOOLS)).max(COUNT_TOOLS.length).optional(),
   }).strict().optional(),
 }).strict()
 export type PreferencesPatch = z.infer<typeof preferencesPatchSchema>
@@ -103,8 +105,24 @@ function mergeObjects(base: unknown, patch: unknown): unknown {
 
 /** 补丁按顺序合并；清除记忆的空值不能被后续新增参数吞掉。 */
 export function applyPreferencesPatch(base: PersonalizationPreferences, patch: PreferencesPatch): PersonalizationPreferences {
-  const merged = mergeObjects(base, patch) as PersonalizationPreferences
+  const merged = mergeObjects(base, patch) as PersonalizationPreferences & {
+    image: PersonalizationPreferences['image'] & { forgetCounts?: CountTool[] }
+  }
   if (patch.image?.lastUsed === null) merged.image.lastUsed = {}
+  const forget = patch.image?.forgetCounts ?? []
+  if (forget.length) {
+    const lastUsed = { ...merged.image.lastUsed }
+    for (const tool of forget) {
+      const entry = lastUsed[tool]
+      if (!entry || entry.count === undefined) continue
+      const rest = { ...entry }
+      delete rest.count
+      if (Object.keys(rest).length === 0) delete lastUsed[tool]
+      else lastUsed[tool] = rest
+    }
+    merged.image.lastUsed = lastUsed
+  }
+  delete merged.image.forgetCounts
   return preferencesSchema.parse(merged)
 }
 

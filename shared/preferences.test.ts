@@ -22,6 +22,7 @@ describe('个性化配置边界', () => {
     { image: { lastUsed: { watermark: { readability: 'yes' } } } },
     { image: { lastUsed: { 'smart-edit': { prompt: '不保存的提示词' } } } },
     { image: { lastUsed: { 'aspect-ratio': { fx: 0.5 } } } }, { userId: 'other' },
+    { image: { forgetCounts: ['prompt'] } },
   ])('拒绝越界及非偏好字段：%j', patch => {
     expect(preferencesPatchSchema.safeParse(patch).success).toBe(false)
   })
@@ -33,6 +34,19 @@ describe('个性化配置边界', () => {
     expect(preferencesPatchSchema.safeParse({ image: { lastUsed: { watermark: { colorMode: 'auto', readability: true, text: 'PIXEL TEST' } } } }).success).toBe(true)
     const stored = applyPreferencesPatch(defaultPreferences(), { image: { lastUsed: { watermark: { color: '#ffffff', opacity: 70 } } } })
     expect(stored.image.lastUsed.watermark).toEqual({ color: '#ffffff', opacity: 70 })
+  })
+  it('可以只清掉一个工具记住的张数，并保留分辨率和其它工具', () => {
+    const base = applyPreferencesPatch(defaultPreferences(), {
+      image: { lastUsed: { 'smart-edit': { count: 3, resolution: '4k' }, variation: { count: 4 } } },
+    })
+    const before = structuredClone(base)
+    const next = applyPreferencesPatch(base, { image: { counts: { 'smart-edit': 1 }, forgetCounts: ['smart-edit'] } })
+    expect(base).toEqual(before)
+    expect(next.image.counts['smart-edit']).toBe(1)
+    expect(next.image.lastUsed['smart-edit']).toEqual({ resolution: '4k' })
+    expect(next.image.lastUsed.variation).toEqual({ count: 4 })
+    expect(next.image).not.toHaveProperty('forgetCounts')
+    expect(applyPreferencesPatch(next, { image: { forgetCounts: ['variation'] } }).image.lastUsed.variation).toBeUndefined()
   })
   it('上次访问只恢复有效工作台页面', () => {
     const value = defaultPreferences(); value.workbench.startPage = 'last'; value.recent.page = '/toolbox/aspect-ratio'

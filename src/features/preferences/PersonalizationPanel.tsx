@@ -65,7 +65,7 @@ export default function PersonalizationPanel() {
 
     <h3 className="preferences-group-title">图片处理</h3>
     <div className="settings-rows">
-      <PreferenceRow label="默认生成数量" detail="各工具独立设置，模型能力或图片比例受限时自动调整">
+      <PreferenceRow label="默认生成数量" detail="各工具独立设置。修改后会清掉该工具记住的张数并立即生效；模型能力或图片比例受限时仍会自动调整">
         <div className="preferences-counts">
           {COUNT_TOOLS.map(tool => {
             const max = defaultImageModel(tool === 'variation' ? 'variation' : 'image_edit')?.ui.maxCount ?? 4
@@ -108,7 +108,7 @@ export default function PersonalizationPanel() {
       </PreferenceRow>
     </div>
     <div className="preferences-footer">
-      <span>自动保存。默认参数在下次进入工具或新建任务时生效。</span>
+      <span>自动保存。默认生成数量会覆盖该工具记住的张数；其它默认参数在下次进入工具或新建任务时生效。</span>
       <Space><Popconfirm title="恢复全部个性化默认设置？" description="同时清除图片参数记忆，并同步到当前账号。" okText="恢复默认" cancelText="取消" onConfirm={() => {
         clearSidebarState(usePreferencesStore.getState().owner)
         usePreferencesStore.getState().reset()

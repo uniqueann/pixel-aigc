@@ -15,6 +15,20 @@ export interface WorkstationParameters {
   outpaintOutputMode: 'original' | 'platform'
   presetPlatform: string
 }
+/** 已打开的工具用它判断默认张数或记住的张数是否变了。 */
+export function workstationCountSource(preferences: PersonalizationPreferences, tool: string) {
+  if (!COUNT_TOOLS.includes(tool as CountTool)) return 'fixed'
+  const counted = tool as CountTool
+  const remembered = preferences.image.rememberParameters ? preferences.image.lastUsed[counted]?.count : undefined
+  return `${preferences.image.counts[counted]}:${remembered ?? 'default'}:${preferences.image.rememberParameters ? 'remember' : 'fixed'}`
+}
+
+export function countUsesLastUsed(preferences: PersonalizationPreferences, tool: CountTool) {
+  if (!preferences.image.rememberParameters) return false
+  const remembered = preferences.image.lastUsed[tool]?.count
+  return remembered !== undefined && remembered !== preferences.image.counts[tool]
+}
+
 export function initialWorkstationParameters(preferences: PersonalizationPreferences, tool: string): WorkstationParameters {
   const remembered = preferences.image.rememberParameters ? preferences.image.lastUsed : {}
   const counted = COUNT_TOOLS.includes(tool as CountTool) ? tool as CountTool : undefined

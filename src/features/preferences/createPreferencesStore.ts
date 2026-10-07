@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import {
-  applyPreferencesPatch, defaultPreferences, normalizePreferences, preferencesPatchSchema,
-  type ImageMemory, type ImageMemoryTool, type PersonalizationPreferences, type PreferencesPatch, type PreferencesResponse,
+  applyPreferencesPatch, COUNT_TOOLS, defaultPreferences, normalizePreferences, preferencesPatchSchema,
+  type CountTool, type ImageMemory, type ImageMemoryTool, type PersonalizationPreferences, type PreferencesPatch, type PreferencesResponse,
 } from '@shared/preferences'
 import type { PreferencesCache } from './storage'
 import { clearImageMemoryFailureMessage, preferenceUserMessage } from './errors'
@@ -119,9 +119,23 @@ export function createPreferencesStore(dependencies: Dependencies) {
         return initializing
       },
       update(value) {
-        const patch = preferencesPatchSchema.parse(value)
-        const next = applyPreferencesPatch(get().preferences, patch)
-        if (JSON.stringify(next) === JSON.stringify(get().preferences)) return
+        const requested = preferencesPatchSchema.parse(value)
+        const previous = get().preferences
+        const overridden = COUNT_TOOLS.filter((tool: CountTool) => {
+          const nextCount = requested.image?.counts?.[tool]
+          return nextCount !== undefined && nextCount !== previous.image.counts[tool] && previous.image.lastUsed[tool]?.count !== undefined
+        })
+        const patch = overridden.length
+          ? preferencesPatchSchema.parse({
+            ...requested,
+            image: {
+              ...requested.image,
+              forgetCounts: [...new Set([...(requested.image?.forgetCounts ?? []), ...overridden])],
+            },
+          })
+          : requested
+        const next = applyPreferencesPatch(previous, patch)
+        if (JSON.stringify(next) === JSON.stringify(previous)) return
         revision++
         pending.push(patch)
         set({ preferences: next, status: remote ? 'saving' : 'local', error: null })

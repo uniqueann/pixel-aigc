@@ -35,6 +35,7 @@ interface Props {
   onReady: (handle: CanvasHandle | null) => void
   onMaskChange?: (hasPaint: boolean) => void
   onPreview?: (view: 'original' | 'effect') => void
+  uploadHint?: string
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -107,6 +108,7 @@ export default function CanvasArea({
   onReady,
   onMaskChange,
   onPreview,
+  uploadHint,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -177,6 +179,7 @@ export default function CanvasArea({
         >
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
           <p className="ant-upload-text">上传需要处理的商品图片</p>
+          {uploadHint ? <p className="ant-upload-hint">{uploadHint}</p> : null}
           <p className="ant-upload-hint">支持 PNG、JPEG、WebP，单张不超过 20 MB</p>
         </Upload.Dragger>
       </div>

@@ -63,7 +63,7 @@ describe('裂变侧栏能力状态', () => {
     expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
     expect(screen.getByText('mug.jpg')).toBeTruthy()
     expect(screen.queryByRole('textbox')).toBeNull()
-    expect(screen.queryByRole('button', { name: /^生成视频/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^生成/ })).toBeNull()
     expect(screen.queryByText(/积分预估|预计消耗|服务配置/)).toBeNull()
   })
 
@@ -102,6 +102,17 @@ describe('裂变侧栏能力状态', () => {
   it('缺失裂变报价时不显示零积分，并禁止提交', () => {
     renderPanel({ estimatedCredits: undefined })
     expect(screen.queryByText(/预扣 0 积分/)).toBeNull()
-    expect((screen.getByRole('button', { name: /开始裂变.*报价暂不可用/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /生成 \d+ 张.*报价暂不可用/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('只有一个裂变模型时显示名称，多个模型才使用下拉框', () => {
+    const only = publicImageModel(defaultImageModel('variation')!)
+    const other = { ...only, id: 'other-model', label: '另一个裂变模型' }
+    renderPanel({ models: [only], modelProfileId: only.id, estimatedCredits: 2 })
+    expect(screen.getByText(only.label)).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: '裂变模型' })).toBeNull()
+    cleanup()
+    renderPanel({ models: [only, other], modelProfileId: only.id, estimatedCredits: 2 })
+    expect(screen.getByRole('combobox', { name: '裂变模型' })).toBeTruthy()
   })
 })

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { defaultPreferences } from '@shared/preferences'
 import { defaultImageModel } from '@shared/image-models'
 import { DEFAULT_WATERMARK_SETTINGS } from '@/pages/Toolbox/watermark/types'
-import { initialWorkstationParameters, initialAspectRatioSettings, initialBgRemoveSettings, initialWatermarkSettings, effectiveImageParameters, watermarkMemory, aspectRatioMemory } from './toolParameters'
+import { initialWorkstationParameters, initialAspectRatioSettings, initialBgRemoveSettings, initialWatermarkSettings, effectiveImageParameters, watermarkMemory, aspectRatioMemory, countUsesLastUsed, workstationCountSource } from './toolParameters'
 
 describe('工具默认参数与记忆', () => {
   it('记忆优先且各工具独立，关闭后采用个人默认值', () => {
@@ -12,6 +12,13 @@ describe('工具默认参数与记忆', () => {
     expect(initialWorkstationParameters(p, 'smart-edit')).toMatchObject({ count: 1, resolution: '1k' })
     p.image.rememberParameters = false
     expect(initialWorkstationParameters(p, 'variation')).toMatchObject({ count: 3, resolution: '1k' })
+    expect(countUsesLastUsed(p, 'variation')).toBe(false)
+    const remembered = defaultPreferences()
+    remembered.image.lastUsed.variation = { count: 4 }
+    expect(countUsesLastUsed(remembered, 'variation')).toBe(true)
+    expect(workstationCountSource(remembered, 'variation')).toContain('4')
+    remembered.image.counts.variation = 4
+    expect(countUsesLastUsed(remembered, 'variation')).toBe(false)
   })
   it('模型和比例限制调整本次有效值', () => {
     const ui = { ...defaultImageModel('image_edit')!.ui, maxCount: 2 }
