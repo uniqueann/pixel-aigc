@@ -122,11 +122,11 @@ describe('OpenRouter Nano Banana 任务', () => {
     expect(billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 4 })
     expect(billing.release).not.toHaveBeenCalled()
     expect(finished.job.provider_params.vendor).toMatchObject({
-      cost: 0.0336,
+      cost: 0.039359,
       currency: 'USD',
       items: {
         '0': {
-          cost: 0.0336,
+          cost: 0.039359,
           currency: 'USD',
           prompt_tokens: 8,
           completion_tokens: 1120,
@@ -140,7 +140,7 @@ describe('OpenRouter Nano Banana 任务', () => {
       promptTokens: 8,
       completionTokens: 1120,
       totalTokens: 1128,
-      cost: 0.0336,
+      cost: 0.039359,
       currency: 'USD',
     }))
     const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))

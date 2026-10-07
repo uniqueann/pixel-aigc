@@ -90,7 +90,7 @@ describe('nearestRatio / mapDragonCodeSize', () => {
       pricing: {
         unit: 'image',
         creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 },
-        vendorCost: { '1k': '0.0336', '2k': '0.0504', '4k': '0.1134' },
+        vendorCost: { '1k': '0.039359', '2k': '0.059038', '4k': '0.137755' },
         vendorCurrency: 'USD',
       },
     })
@@ -100,7 +100,7 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     const published = publicImageModel(profile!)
     expect(published.pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 } })
     expect(JSON.stringify(published)).not.toContain('vendorCost')
-    expect(JSON.stringify(published)).not.toContain('0.0336')
+    expect(JSON.stringify(published)).not.toContain('0.039359')
     expect(defaultImageModel('text_to_image')?.id).toBe('dragoncode:gpt-image-2')
   })
 })

@@ -4,6 +4,7 @@ import { configuredImageModels, imageModelsAvailable, publicConfiguredImageModel
 const KEYS = [
   'DRAGONCODE_API_KEY', 'DASHSCOPE_API_KEY', 'QWEN_IMAGE_ENABLED', 'QWEN_IMAGE_API_KEY', 'QWEN_IMAGE_MODELS',
   'OPENROUTER_API_KEY', 'OPENROUTER_IMAGE_ENABLED', 'OPENROUTER_BASE_URL',
+  'AI_GATEWAY_API_KEY', 'AI_GATEWAY_IMAGE_ENABLED', 'VERCEL', 'VERCEL_OIDC_TOKEN',
 ] as const
 const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
 
@@ -11,6 +12,10 @@ beforeEach(() => {
   delete process.env.OPENROUTER_API_KEY
   delete process.env.OPENROUTER_IMAGE_ENABLED
   delete process.env.OPENROUTER_BASE_URL
+  delete process.env.AI_GATEWAY_API_KEY
+  delete process.env.AI_GATEWAY_IMAGE_ENABLED
+  delete process.env.VERCEL_OIDC_TOKEN
+  delete process.env.VERCEL
 })
 
 afterEach(() => {
@@ -89,9 +94,26 @@ describe('图片模型目录', () => {
     expect(models[0].pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
     expect(models[0].label).toBe('Google Nano Banana 2.1')
     expect(JSON.stringify(models)).not.toContain('vendorCost')
-    expect(JSON.stringify(models)).not.toContain('0.0336')
+    expect(JSON.stringify(models)).not.toContain('0.039359')
     expect(publicConfiguredImageModels('image_edit').map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
     expect(publicConfiguredImageModels('variation').map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
+    expect(configuredImageModels('text_to_image')[0].provider).toBe('openrouter')
+  })
+
+  it('AI Gateway 开关打开后 Nano Banana 改走 Gateway，同时开着 OpenRouter 也不再打它', () => {
+    delete process.env.DRAGONCODE_API_KEY
+    process.env.AI_GATEWAY_API_KEY = 'gw-test-key'
+    process.env.AI_GATEWAY_IMAGE_ENABLED = 'true'
+    process.env.OPENROUTER_API_KEY = 'sk-openrouter'
+    process.env.OPENROUTER_IMAGE_ENABLED = 'true'
+    const models = publicConfiguredImageModels('text_to_image')
+    expect(models.map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
+    expect(models[0].pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
+    expect(configuredImageModels('text_to_image')[0].provider).toBe('ai-gateway')
+    expect(JSON.stringify(models)).not.toContain('vendorCost')
+    delete process.env.AI_GATEWAY_API_KEY
+    delete process.env.VERCEL
+    delete process.env.VERCEL_OIDC_TOKEN
     expect(configuredImageModels('text_to_image')[0].provider).toBe('openrouter')
   })
 })

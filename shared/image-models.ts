@@ -34,7 +34,11 @@ export const OPENROUTER_NANO_BANANA_MODEL = 'google/gemini-nano-banana-2.1'
 
 export interface ImageModelProfile {
   id: string
-  provider: 'dragoncode' | 'bailian' | 'openrouter' | 'mock'
+  /**
+   * `ai-gateway` 只在运行时由模型目录替换出来，静态条目仍写 `openrouter`。
+   * `aigc.image_jobs.provider` 是没有检查约束的 text，不需要迁移。
+   */
+  provider: 'dragoncode' | 'bailian' | 'openrouter' | 'ai-gateway' | 'mock'
   model: string
   label: string
   operations: ImageOperation[]
@@ -124,8 +128,11 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
     enabled: false,
   },
   // 开关关闭时不要把 enabled 改成 true：积分说明和本地 Mock 只看这个字段。
-  // 服务端在 OPENROUTER_IMAGE_ENABLED=true 且已配置 OPENROUTER_API_KEY 时才列入 /api/image-models。
+  // AI_GATEWAY_IMAGE_ENABLED 且有 Gateway 凭证时，服务端把 provider 改成 ai-gateway。
+  // 否则仍要 OPENROUTER_IMAGE_ENABLED=true 且已配置 OPENROUTER_API_KEY。
   // 参考图不另加积分，也不开启 web search。
+  // vendorCost：1K 来自 AI Gateway 实测 usage.cost 0.0393585（1:1、1K、1024x1024，含推理 token），
+  // 按 6 位小数四舍五入。2K、4K 还没有实测，按积分比 6/4、14/4 从该实测值估算。
   {
     id: OPENROUTER_NANO_BANANA_PROFILE_ID,
     provider: 'openrouter',
@@ -147,7 +154,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
     pricing: {
       unit: 'image',
       creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 },
-      vendorCost: { '1k': '0.0336', '2k': '0.0504', '4k': '0.1134' },
+      vendorCost: { '1k': '0.039359', '2k': '0.059038', '4k': '0.137755' },
       vendorCurrency: 'USD',
     },
     enabled: false,
