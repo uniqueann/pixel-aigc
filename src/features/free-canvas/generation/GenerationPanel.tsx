@@ -1,4 +1,5 @@
-import { Input, Radio, Segmented, Select, Switch } from 'antd'
+import { Input, Radio, Segmented, Switch } from 'antd'
+import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { PROMPT_MAX_LENGTH, VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
@@ -191,7 +192,7 @@ export default function GenerationPanel({
       )}
 
       {!textToVideo && <>
-        <label className="free-canvas-field"><span>生成模型</span><Select aria-label="文生图模型" value={modelProfileId} options={models.map(item => ({ label: item.label, value: item.id }))} disabled={formLocked || modelsLoading} onChange={onModelChange} /></label>
+        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="文生图模型" models={models} value={modelProfileId} disabled={formLocked || modelsLoading} onChange={onModelChange} />
         <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="文生图分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
           {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
         </Radio.Group></label>
@@ -225,7 +226,7 @@ export default function GenerationPanel({
         disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || prompt.trim().length > imagePromptMax)) || !prompt.trim()}
         onClick={onGenerate}
       >
-        {active ? '正在生成' : textToVideo ? '生成视频到画布' : '生成到画布'}
+        {active ? '正在生成' : textToVideo ? '生成' : `生成 ${count} 张`}
       </CreditActionButton>
       <CreditSettlementHint quote={quote} />
       {!textToVideo && <CreditBalanceNotice quote={quote} />}

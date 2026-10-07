@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { App, Button, Card, Col, Input, Popconfirm, Radio, Row, Select, Space } from 'antd'
+import ModelChoice from '@/components/ModelChoice'
 import { CopyOutlined, RedoOutlined } from '@ant-design/icons'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import { buildEmailAssistRequest } from '@/features/email-assistant/requestBuilder'
@@ -217,10 +218,16 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
               {authEnabled ? <div>
                 <div className="field-label">本次使用的模型</div>
                 <Space>
-                  <Select style={{ width: 220 }} value={profilesQuery.data ? selectedModelProfileId : undefined}
-                    placeholder="正在加载模型设置…" loading={modelSettingsLoading}
+                  <ModelChoice
+                    ariaLabel="本次使用的模型"
+                    models={profilesQuery.data ? profiles : []}
+                    value={profilesQuery.data ? selectedModelProfileId : undefined}
+                    placeholder="正在加载模型设置…"
+                    loading={modelSettingsLoading}
                     disabled={controller.formLocked || modelSettingsLoading || Boolean(modelSettingsError)}
-                    onChange={setModelProfileId} options={profiles.map(profile => ({ value: profile.id, label: profile.label }))} />
+                    onChange={setModelProfileId}
+                    selectStyle={{ width: 220 }}
+                  />
                   <Button size="small" onClick={openModelSettings}>设置</Button>
                 </Space>
               </div> : null}

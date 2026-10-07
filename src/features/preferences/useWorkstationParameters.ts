@@ -1,18 +1,32 @@
 import { useCallback, useState } from 'react'
 import { COUNT_TOOLS, type CountTool, type ImageMemory } from '@shared/preferences'
-import { initialWorkstationParameters, type WorkstationParameters } from './toolParameters'
+import { initialWorkstationParameters, workstationCountSource, type WorkstationParameters } from './toolParameters'
 import { usePreferencesStore } from './store'
 
 export function useWorkstationParameters(tool: string) {
   const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
-  const [draft, setDraft] = useState(() => ({ tool, memoryEpoch, parameters: initialWorkstationParameters(usePreferencesStore.getState().preferences, tool) }))
+  const countSource = usePreferencesStore(state => workstationCountSource(state.preferences, tool))
+  const [draft, setDraft] = useState(() => ({
+    tool,
+    memoryEpoch,
+    countSource,
+    parameters: initialWorkstationParameters(usePreferencesStore.getState().preferences, tool),
+  }))
   let parameters = draft.parameters
   if (draft.tool !== tool || draft.memoryEpoch !== memoryEpoch) {
     parameters = initialWorkstationParameters(usePreferencesStore.getState().preferences, tool)
-    setDraft({ tool, memoryEpoch, parameters })
+    setDraft({ tool, memoryEpoch, countSource, parameters })
+  } else if (draft.countSource !== countSource) {
+    parameters = { ...draft.parameters, count: initialWorkstationParameters(usePreferencesStore.getState().preferences, tool).count }
+    setDraft({ tool, memoryEpoch, countSource, parameters })
   }
   const update = useCallback((patch: Partial<WorkstationParameters>, remember = true) => {
-    setDraft(previous => ({ tool, memoryEpoch: previous.memoryEpoch, parameters: { ...previous.parameters, ...patch } }))
+    setDraft(previous => ({
+      tool,
+      memoryEpoch: previous.memoryEpoch,
+      countSource: previous.countSource,
+      parameters: { ...previous.parameters, ...patch },
+    }))
     if (!remember) return
     const state = usePreferencesStore.getState()
     if (COUNT_TOOLS.includes(tool as CountTool)) {

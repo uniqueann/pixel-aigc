@@ -56,7 +56,7 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByRole('status', { hidden: true }).textContent).toBe('正在加载功能配置…')
     expect(container.textContent).not.toContain('即将上线')
     expect(container.textContent).not.toContain('还不能用')
-    expect(buttonByText(/^生成 ·/).disabled).toBe(true)
+    expect(buttonByText(/生成(?: \d+ 张)? ·/).disabled).toBe(true)
 
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     rerender(<App><ImageWorkstation /></App>)
@@ -117,11 +117,11 @@ describe('图片工作站配置提示', () => {
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     const cases = [
-      ['smart-edit', '生成 · 2 积分'],
-      ['relight', '生成 · 2 积分'],
-      ['variation', '生成 · 4 积分'],
-      ['fusion', '生成 · 2 积分'],
-      ['retouch', '生成 · 2 积分'],
+      ['smart-edit', '生成 1 张 · 2 积分'],
+      ['relight', '生成 1 张 · 2 积分'],
+      ['variation', '生成 2 张 · 4 积分'],
+      ['fusion', '生成 1 张 · 2 积分'],
+      ['retouch', '生成 1 张 · 2 积分'],
       ['remove', '生成 · 5 积分'],
       ['repaint', '生成 · 5 积分'],
       ['outpaint', '生成 · 最多 10 积分'],
@@ -146,9 +146,9 @@ describe('图片工作站配置提示', () => {
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     const view = render(<App><ImageWorkstation /></App>)
-    expect(buttonByText(/生成 · 2 积分/).disabled).toBe(true)
+    expect(buttonByText(/生成 1 张 · 2 积分/).disabled).toBe(true)
     fireEvent.click(screen.getByRole('radio', { name: '2' }))
-    expect(buttonByText(/生成 · 4 积分/).disabled).toBe(true)
+    expect(buttonByText(/生成 2 张 · 4 积分/).disabled).toBe(true)
 
     view.unmount()
     preferences.image.resolution = '2k'
@@ -156,14 +156,14 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 3 })
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     render(<App><ImageWorkstation /></App>)
-    expect(buttonByText(/生成 · 3 积分/).disabled).toBe(false)
+    expect(buttonByText(/生成 1 张 · 3 积分/).disabled).toBe(false)
 
     cleanup()
     preferences.image.resolution = '4k'
     usePreferencesStore.setState({ preferences, memoryEpoch: 4 })
     render(<App><ImageWorkstation /></App>)
-    expect(buttonByText(/生成 · 3 积分/)).toBeTruthy()
-    expect(screen.queryByText(/生成 · 5 积分/)).toBeNull()
+    expect(buttonByText(/生成 1 张 · 3 积分/)).toBeTruthy()
+    expect(screen.queryByText(/生成 1 张 · 5 积分/)).toBeNull()
   })
 
   it('确认重绘未配置后才显示不能用的提示', () => {
@@ -172,5 +172,21 @@ describe('图片工作站配置提示', () => {
     render(<App><ImageWorkstation /></App>)
     expect(screen.getByText('重绘还不能用。请确认已开通万相 wanx2.1-imageedit，并配置 DASHSCOPE_API_KEY。')).toBeTruthy()
     expect(screen.getByText('重绘描述')).toBeTruthy()
+    expect(screen.queryByText(/智能选区免费/)).toBeNull()
+    expect(screen.queryByText('上传后用画笔或智能选区涂抹要消除的区域')).toBeNull()
+  })
+
+  it('消除在上传前说明画笔和免费的智能选区，扩图不再展示无效选择', () => {
+    mocks.tool = 'remove'
+    const remove = render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('上传后用画笔或智能选区涂抹要消除的区域')).toBeTruthy()
+    expect(screen.getByText('上传后用画笔或智能选区涂抹要消除的区域。智能选区免费。')).toBeTruthy()
+    remove.unmount()
+    mocks.tool = 'outpaint'
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.queryByText('默认模型')).toBeNull()
+    expect(screen.queryByText('生成数量')).toBeNull()
+    expect(screen.queryByText('生成尺寸')).toBeNull()
+    expect(screen.getByText('输出模式')).toBeTruthy()
   })
 })

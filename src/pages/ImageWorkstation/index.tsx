@@ -47,6 +47,7 @@ import { useImageModels } from '@/features/credits/useImageModels'
 import { workstationRequestQuote } from '@/features/image-workstation/creditQuote'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 import { syncCreditPrice } from '@shared/billing'
+import { COUNT_TOOLS, type CountTool } from '@shared/preferences'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
@@ -439,6 +440,7 @@ export default function ImageWorkstation() {
             onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
             onReady={handleCanvasReady}
             onMaskChange={setHasMaskPaint}
+            uploadHint={activeTool.slug === 'remove' ? '上传后用画笔或智能选区涂抹要消除的区域' : undefined}
             onPreview={(view) => {
               const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
               if (id) openAt(id)
@@ -566,7 +568,7 @@ export default function ImageWorkstation() {
                   disabled={Boolean(generateBlockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                   onClick={handleGenerate}
                 >
-                  生成
+                  {COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}
                 </CreditActionButton>
               </span>
             </Tooltip>
