@@ -6,7 +6,6 @@ import { scrollEdges, scrollSelectedIntoView } from './toolSwitcherScroll'
 export interface ToolSwitcherOption {
   value: string
   label: string
-  description?: string
   ready?: boolean
   icon?: ReactNode
 }
@@ -56,8 +55,6 @@ export default function ToolSwitcher({ options, value, onChange, className }: Pr
     updateEdges()
   }, [value, options, updateEdges])
 
-  const selected = options.find((option) => option.value === value)
-
   return (
     <div className={['tool-switcher-block', className].filter(Boolean).join(' ')}>
       <div className="tool-switcher-frame">
@@ -78,7 +75,6 @@ export default function ToolSwitcher({ options, value, onChange, className }: Pr
         </div>
         <span className={edges.right ? 'tool-switcher-fade is-right is-visible' : 'tool-switcher-fade is-right'} aria-hidden="true" />
       </div>
-      {selected?.description ? <p className="tool-switcher-description">{selected.description}</p> : null}
     </div>
   )
 }

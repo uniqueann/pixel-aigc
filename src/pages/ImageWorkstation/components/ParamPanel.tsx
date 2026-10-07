@@ -21,7 +21,6 @@ import CountMemoryHint from '@/features/preferences/CountMemoryHint'
 
 interface Props {
   title?: string
-  description?: string
   capability: Capability
   mode?: 'remove' | 'repaint'
   smartEditPrompt: string
@@ -58,7 +57,6 @@ const tallPromptSize = { minRows: 6, maxRows: 10 }
 /** 右侧参数面板：按能力和子工具模式渲染对应表单 */
 export default function ParamPanel({
   title,
-  description,
   capability,
   mode,
   smartEditPrompt,
@@ -88,10 +86,9 @@ export default function ParamPanel({
   relight = RELIGHT_DEFAULT,
   onRelightChange,
 }: Props) {
-  const intro = title || description ? (
+  const intro = title ? (
     <header className="param-panel-intro">
-      {title ? <h2>{title}</h2> : null}
-      {description ? <p>{description}</p> : null}
+      <h2>{title}</h2>
     </header>
   ) : null
   const countTool: CountTool | undefined = capability === Capability.ImageEdit ? 'smart-edit'

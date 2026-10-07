@@ -43,7 +43,6 @@ export interface WorkstationGenerationRequest {
 export interface WorkstationToolDefinition {
   slug: string
   label: string
-  description: string
   capability: Capability
   interactionMode: InteractionMode
   validate?: (ctx: WorkstationContext) => ValidationResult

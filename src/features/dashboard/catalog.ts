@@ -5,36 +5,30 @@ import { EMAIL_OPERATIONS } from '@/features/email-assistant/options'
 import type { CapabilityFlags } from '@/services/api/capabilities'
 import { normalizeToolHref } from './recentWork'
 
-export interface QuickStartEntry { href: string; label: string; description?: string; capability?: keyof CapabilityFlags }
+export interface QuickStartEntry { href: string; label: string; capability?: keyof CapabilityFlags }
 export interface QuickStartGroup { id: string; title: string; description: string; entries: QuickStartEntry[] }
 
 const workstationCapabilities: Record<string, keyof CapabilityFlags> = {
   'smart-edit': 'imageEdit', relight: 'imageEdit', remove: 'erase', repaint: 'repaint',
   variation: 'variation', fusion: 'imageEdit', outpaint: 'outpaint', retouch: 'imageEdit',
 }
-const workstation = (slugs: string[]): QuickStartEntry[] => slugs.map(slug => {
-  const tool = WORKSTATION_TOOLS.find(item => item.slug === slug)!
-  return {
-    href: `/image-workstation/${slug}`, label: tool.label, description: tool.description,
-    capability: workstationCapabilities[slug],
-  }
-})
-const toolbox = TOOLBOX_TOOLS.filter(tool => tool.slug !== 'pipeline').map(tool => ({
-  href: `/toolbox/${tool.slug}`, label: tool.label, description: tool.description,
-  ...(tool.slug === 'bg-remove' ? { capability: 'bgRemove' as const } : {}),
+const workstation = (slugs: string[]): QuickStartEntry[] => slugs.map(slug => ({
+  href: `/image-workstation/${slug}`, label: WORKSTATION_TOOLS.find(tool => tool.slug === slug)!.label,
+  capability: workstationCapabilities[slug],
 }))
-const pipeline = TOOLBOX_TOOLS.find(tool => tool.slug === 'pipeline')!
+const toolbox = TOOLBOX_TOOLS.filter(tool => tool.slug !== 'pipeline').map(tool => ({
+  href: `/toolbox/${tool.slug}`, label: tool.label, ...(tool.slug === 'bg-remove' ? { capability: 'bgRemove' as const } : {}),
+}))
 
 export const QUICK_START_GROUPS: QuickStartGroup[] = [
   { id: 'image', title: '图片处理', description: '编辑与整理商品图片', entries: [
     ...workstation(['smart-edit', 'relight', 'remove', 'repaint', 'outpaint', 'retouch']), ...toolbox,
   ] },
   { id: 'batch', title: '批量出图', description: '生成变体、融合场景与批量处理', entries: [
-    ...workstation(['variation', 'fusion']), { href: '/toolbox/pipeline', label: pipeline.label, description: pipeline.description },
+    ...workstation(['variation', 'fusion']), { href: '/toolbox/pipeline', label: '流水线' },
   ] },
   { id: 'generate', title: '从零生成', description: '在画布中生成图片或视频', entries: CANVAS_MODES.map(mode => ({
-    href: `/canvas/${mode.slug}`, label: mode.label, description: mode.description,
-    capability: mode.slug === 'text-to-image' ? 'textToImage' : 'textToVideo',
+    href: `/canvas/${mode.slug}`, label: mode.label, capability: mode.slug === 'text-to-image' ? 'textToImage' : 'textToVideo',
   })) },
   { id: 'email', title: '邮件处理', description: '处理单封邮件或批量邮件', entries: [
     ...['reply', 'summarize', 'polish', 'grammar'].map(operation => ({

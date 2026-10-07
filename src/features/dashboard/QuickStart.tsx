@@ -8,13 +8,8 @@ import { capabilityAvailability, capabilityAvailabilityLabel } from '@/component
 const icons = { image: <PictureOutlined />, batch: <AppstoreOutlined />, generate: <BgColorsOutlined />, email: <MailOutlined /> }
 
 export function ToolEntry({ entry, ready, error, recent = false }: { entry: QuickStartEntry; ready: boolean | undefined; error?: boolean; recent?: boolean }) {
-  const contents = <>
-    <span className="dashboard-tool-copy">
-      <span>{entry.label}</span>
-      {entry.description ? <small className="dashboard-tool-desc">{entry.description}</small> : null}
-    </span>
-    {ready === true ? <RightOutlined aria-hidden /> : <small>{capabilityAvailabilityLabel(capabilityAvailability(ready, error))}</small>}
-  </>
+  const contents = <><span>{entry.label}</span>{ready === true ? <RightOutlined aria-hidden />
+    : <small>{capabilityAvailabilityLabel(capabilityAvailability(ready, error))}</small>}</>
   return ready === true
     ? <Link className="dashboard-tool-link" to={entry.href} aria-label={`${recent ? '继续使用' : '打开'}${entry.label}`}>{contents}</Link>
     : <span className="dashboard-tool-link is-unavailable" aria-disabled="true">{contents}</span>

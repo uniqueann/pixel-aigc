@@ -74,7 +74,6 @@ export default function FreeCanvas() {
   const fileInput = useRef<HTMLInputElement>(null)
   const importAbort = useRef(new AbortController())
   const activeSlug = CANVAS_MODES.find((m) => m.slug === mode)?.slug === 'text-to-video' ? 'text-to-video' : 'text-to-image'
-  const activeMode = CANVAS_MODES.find((item) => item.slug === activeSlug)
   const drafts = usePersistenceStore((state) => state.drafts)
   const { prompt, presetKey, count, durationSeconds } = drafts[activeSlug]
   const updateDraft = (changes: Partial<GenerationDraft>) => {
@@ -366,7 +365,6 @@ export default function FreeCanvas() {
           value={activeSlug}
           onChange={(value) => navigate(`/canvas/${value}`)}
         />
-        {activeMode?.description ? <p className="tool-switcher-description">{activeMode.description}</p> : null}
       </div>
       <div className="free-canvas-workspace">
         <FreeCanvasStage
