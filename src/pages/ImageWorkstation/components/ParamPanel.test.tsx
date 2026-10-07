@@ -74,7 +74,6 @@ describe('智能编辑参数面板', () => {
     render(
       <ParamPanel
         title="裂变"
-        description="基于原图再生成一版变体。"
         capability={Capability.Variation}
         smartEditPrompt=""
         onSmartEditPromptChange={() => undefined}
@@ -97,7 +96,7 @@ describe('智能编辑参数面板', () => {
     )
     expect(screen.getByText('补充要求（可选）')).toBeTruthy()
     expect(screen.getByRole('heading', { name: '裂变' })).toBeTruthy()
-    expect(screen.getByText('基于原图再生成一版变体。')).toBeTruthy()
+    expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByPlaceholderText('例如：户外露营场景，俯拍')).toHaveProperty('maxLength', VARIATION_USER_PROMPT_MAX)
     expect(screen.queryByText('生成尺寸')).toBeNull()
     expect(screen.getByText(/预计输出比例 3:2/)).toBeTruthy()

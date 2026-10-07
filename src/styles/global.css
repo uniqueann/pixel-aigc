@@ -1660,14 +1660,6 @@ body.sidebar-resizing * {
   max-width: 100%;
 }
 
-.tool-switcher-description {
-  flex-basis: 100%;
-  margin: 8px 0 0;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .tool-example {
   flex: 0 0 auto;
   margin: 0 0 12px;
@@ -1735,13 +1727,6 @@ body.sidebar-resizing * {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-}
-
-.param-panel-intro p {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .image-workstation-tool-switcher {

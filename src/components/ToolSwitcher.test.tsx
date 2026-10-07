@@ -49,27 +49,6 @@ describe('工具切换器', () => {
     expect(host.querySelector('.tool-switcher')).not.toBeNull()
     expect(host.querySelector('.ant-segmented')).not.toBeNull()
     expect(host.querySelectorAll('.tool-switcher-fade')).toHaveLength(2)
-    expect(host.querySelector('.tool-switcher-description')).toBeNull()
-  })
-
-  it('在页签下方显示当前工具的一句说明', async () => {
-    host = document.createElement('div')
-    document.body.appendChild(host)
-    const onChange = vi.fn()
-    await act(async () => {
-      root = createRoot(host!)
-      root.render(
-        <ToolSwitcher
-          options={[
-            { value: 'variation', label: '裂变', description: '基于原图再生成一版变体。' },
-            { value: 'fusion', label: '融合', description: '把多张图合成一个场景。' },
-          ]}
-          value="fusion"
-          onChange={onChange}
-        />,
-      )
-    })
-    expect(host.querySelector('.tool-switcher-description')?.textContent).toBe('把多张图合成一个场景。')
   })
 
   it('溢出一侧才显示渐隐，选中项滚入可视区', async () => {

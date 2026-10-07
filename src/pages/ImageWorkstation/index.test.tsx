@@ -81,7 +81,7 @@ describe('图片工作站配置提示', () => {
     mocks.status.capabilities.variation = false
     render(<App><ImageWorkstation /></App>)
     expect(screen.getByText('裂变 · 即将上线')).toBeTruthy()
-    expect(screen.getByText('基于原图再生成一版变体。')).toBeTruthy()
+    expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByText('示例')).toBeTruthy()
     expect(screen.getByAltText('裂变前的白底马克杯')).toBeTruthy()
     expect(screen.getByText('该能力即将上线，目前还不能提交生成任务。')).toBeTruthy()
@@ -92,7 +92,8 @@ describe('图片工作站配置提示', () => {
     mocks.tool = 'variation'
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     const view = render(<App><ImageWorkstation /></App>)
-    expect(screen.getAllByText('基于原图再生成一版变体。').length).toBeGreaterThan(1)
+    expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
+    expect(screen.getByRole('heading', { name: '裂变' })).toBeTruthy()
     expect(screen.getByAltText('裂变后的马克杯变体')).toBeTruthy()
     view.unmount()
 
@@ -104,7 +105,8 @@ describe('图片工作站配置提示', () => {
     mocks.tool = 'fusion'
     mocks.controller.inputAsset = undefined
     render(<App><ImageWorkstation /></App>)
-    expect(screen.getAllByText('把多张图合成一个场景。').length).toBeGreaterThan(1)
+    expect(screen.queryByText('把多张图合成一个场景。')).toBeNull()
+    expect(screen.getByRole('heading', { name: '融合' })).toBeTruthy()
     expect(screen.getByAltText('待融合的木桌场景')).toBeTruthy()
     expect(screen.getByAltText('滴管瓶放入木桌场景后的效果')).toBeTruthy()
   })

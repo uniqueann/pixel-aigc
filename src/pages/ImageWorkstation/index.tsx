@@ -411,7 +411,6 @@ export default function ImageWorkstation() {
         options={WORKSTATION_TOOLS.map((item) => ({
           value: item.slug,
           label: item.label,
-          description: item.description,
           ready: isWorkstationToolReady(item, capability => capabilityState(capability) !== false),
         }))}
         value={activeTool.slug}
@@ -474,7 +473,6 @@ export default function ImageWorkstation() {
           {toolState !== false ? (
             <ParamPanel
               title={activeTool.label}
-              description={activeTool.description}
               capability={activeTool.capability}
               mode={inpaintMode}
               smartEditPrompt={relightTool ? relightNote : fusionTool ? fusionNote : retouchTool ? retouchNote : variationTool ? variationPrompt : smartEditPrompt}

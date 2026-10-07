@@ -23,7 +23,6 @@ export default function Toolbox() {
         options={TOOLBOX_TOOLS.map((t) => ({
           value: t.slug,
           label: t.label,
-          description: t.description,
           ready: t.slug === 'bg-remove' ? bgRemoveReady : true,
         }))}
         value={activeSlug}
