@@ -15,6 +15,9 @@ describe('供应商 HTTP', () => {
     expect(retryBackoffMs(2)).toBe(4000)
     expect(retryBackoffMs(8)).toBe(5000)
     expect(mapHttpStatus(401, 'Invalid API key')).toMatchObject({ code: 'INVALID_KEY', retryable: false })
+    expect(mapHttpStatus(402, 'Insufficient credits')).toMatchObject({
+      code: 'INSUFFICIENT_BALANCE', message: '图片服务余额不足', retryable: false, status: 402,
+    })
     expect(mapHttpStatus(400, 'only supports n=1')).toMatchObject({ code: 'INVALID_PARAMS', retryable: false })
     expect(mapHttpStatus(429, 'busy')).toMatchObject({ code: 'RATE_LIMIT', retryable: true })
     expect(mapHttpStatus(503, 'down')).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', retryable: true })

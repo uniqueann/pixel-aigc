@@ -205,6 +205,60 @@ describe('图片任务存储状态机', () => {
     expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
   })
 
+  it('提交时的非供应商异常记成结构化日志并标为 UNKNOWN', async () => {
+    const store = createMemoryStore(user.id)
+    const billing = billingSpy()
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const secret = 'sk-live-should-not-be-logged'
+    const rt = runtime(createMockImageProvider({
+      async submit() {
+        throw Object.assign(new Error(`The specified key does not exist. Authorization: Bearer ${secret}`), { name: 'NoSuchKey' })
+      },
+    }), billing)
+    try {
+      const created = await createImageJobInStore(store, user, params({ count: 1 }), rt)
+      const outcomes = await runProviderSubmits(created.bundle, rt.providerFor('mock')!, user.id, rt)
+      expect(outcomes[0]?.patch).toMatchObject({
+        status: 'failed', error_code: 'UNKNOWN', error_message: '图片任务提交失败',
+      })
+      expect(spy).toHaveBeenCalledTimes(1)
+      const logged = JSON.parse(String(spy.mock.calls[0]?.[0]))
+      expect(logged).toMatchObject({
+        evt: 'image-job',
+        stage: 'submit-failure',
+        ordinal: 0,
+        name: 'NoSuchKey',
+      })
+      expect(logged.message).toContain('The specified key does not exist.')
+      expect(JSON.stringify(logged)).not.toContain(secret)
+      expect(Object.keys(logged).sort()).toEqual(['evt', 'message', 'name', 'ordinal', 'stage'])
+      const items = []
+      for (const outcome of outcomes) items.push(await store.updateItem(created.bundle.job.id, outcome.ordinal, outcome.patch))
+      const finalized = await finalizeJob(store, created.bundle.job, items, rt, false)
+      expect(finalized.job.status).toBe('failed')
+      expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('供应商错误不额外打提交失败日志', async () => {
+    const store = createMemoryStore(user.id)
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { ProviderError } = await import('../image-providers/types.js')
+    const rt = runtime(createMockImageProvider({
+      async submit() { throw new ProviderError('INVALID_PARAMS', '图片尺寸不被支持', false, 400) },
+    }))
+    try {
+      const created = await createImageJobInStore(store, user, params(), rt)
+      const outcomes = await runProviderSubmits(created.bundle, rt.providerFor('mock')!, user.id, rt)
+      expect(outcomes[0]?.patch).toMatchObject({ status: 'failed', error_code: 'INVALID_PARAMS' })
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('全部失败则 failed 并全额退回', async () => {
     const store = createMemoryStore(user.id)
     const billing = billingSpy()

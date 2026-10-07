@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { authenticate } from '../auth.js'
 import { runtimeScope, withIdentity } from '../db.js'
-import { HttpError } from '../errors.js'
+import { describeError, HttpError } from '../errors.js'
 import { requireActive } from '../model-settings.js'
 import { getObject, putObject, signRead } from '../storage.js'
 import type { NormalizedImageRequest } from '../../shared/image-generation.js'
@@ -688,7 +688,25 @@ function submittedPatch(item: ImageJobItemRow, providerTaskId: string): ItemPatc
   }
 }
 
+function submitFailureMessage(message: string) {
+  return message
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\b(?:sk|rk)-[A-Za-z0-9_-]{8,}\b/g, '[redacted]')
+    .slice(0, 300)
+}
+
 function submitFailurePatch(item: ImageJobItemRow, error: unknown): ItemPatch {
+  if (!(error instanceof ProviderError)) {
+    const described = describeError(error)
+    // 只记异常名和消息。原始错误对象可能带上签名请求头。
+    console.error(JSON.stringify({
+      evt: 'image-job',
+      stage: 'submit-failure',
+      ordinal: item.ordinal,
+      name: described.name,
+      message: submitFailureMessage(described.message),
+    }))
+  }
   const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN', '图片任务提交失败')
   // 瞬时限流：上游没有 task id，保持 pending，截止前按退避再提交。
   if (failure.holdPending) {

@@ -38,6 +38,7 @@ export function mapHttpStatus(status: number, message: string): ProviderError {
   if (status === 401 || status === 403) {
     return new ProviderError('INVALID_KEY', message || '图片服务密钥无效', false, status)
   }
+  if (status === 402) return new ProviderError('INSUFFICIENT_BALANCE', '图片服务余额不足', false, 402)
   if (status === 429) return new ProviderError('RATE_LIMIT', message || '图片服务请求过于频繁，请稍后重试', true, 429)
   if (status === 408 || status === 504) {
     return new ProviderError('TIMEOUT', message || '图片服务请求超时，请稍后重试', true, 504)
