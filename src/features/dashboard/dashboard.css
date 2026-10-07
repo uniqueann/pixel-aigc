@@ -23,9 +23,11 @@
 .dashboard-group-heading p { margin: 5px 0 0; font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); }
 .dashboard-tool-list { display: grid; gap: 3px; }
 .dashboard-quick-panel:first-child .dashboard-tool-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.dashboard-tool-link { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; min-height: 34px; padding: 7px 8px; border-radius: 6px; font-size: 13px; line-height: 1.5; color: var(--color-text-primary); }
-.dashboard-tool-link > span { min-width: 0; }
-.dashboard-tool-link > .anticon { flex-shrink: 0; color: var(--color-text-muted); font-size: 10px; }
+.dashboard-tool-link { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; min-width: 0; min-height: 34px; padding: 7px 8px; border-radius: 6px; font-size: 13px; line-height: 1.5; color: var(--color-text-primary); }
+.dashboard-tool-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.dashboard-tool-link .dashboard-tool-desc { display: block; font-size: 11px; line-height: 1.45; font-weight: 400; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.dashboard-tool-link.is-unavailable .dashboard-tool-desc { color: var(--color-text-muted); }
+.dashboard-tool-link > .anticon { flex-shrink: 0; margin-top: 4px; color: var(--color-text-muted); font-size: 10px; }
 .dashboard-tool-link:hover { color: var(--color-accent); background: var(--color-accent-soft); }
 .dashboard-tool-link.is-unavailable { color: var(--color-text-muted); cursor: default; }
 .dashboard-tool-link.is-unavailable:hover { background: transparent; }

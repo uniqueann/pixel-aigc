@@ -18,6 +18,8 @@ import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import type { OutpaintOutputMode } from '@shared/outpaint'
 
 interface Props {
+  title?: string
+  description?: string
   capability: Capability
   mode?: 'remove' | 'repaint'
   smartEditPrompt: string
@@ -53,6 +55,8 @@ const tallPromptSize = { minRows: 6, maxRows: 10 }
 
 /** 右侧参数面板：按能力和子工具模式渲染对应表单 */
 export default function ParamPanel({
+  title,
+  description,
   capability,
   mode,
   smartEditPrompt,
@@ -82,6 +86,12 @@ export default function ParamPanel({
   relight = RELIGHT_DEFAULT,
   onRelightChange,
 }: Props) {
+  const intro = title || description ? (
+    <header className="param-panel-intro">
+      {title ? <h2>{title}</h2> : null}
+      {description ? <p>{description}</p> : null}
+    </header>
+  ) : null
   if (capability === Capability.ImageEdit || capability === Capability.Variation || capability === Capability.Retouch || capability === Capability.Fusion) {
     const variation = capability === Capability.Variation
     const retouch = capability === Capability.Retouch
@@ -96,6 +106,7 @@ export default function ParamPanel({
       || model.ui.resolutionRatioConstraints['4k'].includes(mapped?.size ?? '')
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        {intro}
         {models.length > 1 ? (
           <div>
             <div style={labelStyle}>模型</div>
@@ -172,6 +183,7 @@ export default function ParamPanel({
     const update = (patch: Partial<RelightOptions>) => onRelightChange?.({ ...relight, ...patch })
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        {intro}
         <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>效果为 AI 重绘，光线是近似效果。</p>
         <div>
           <div style={labelStyle}>光线方向</div>
@@ -251,6 +263,7 @@ export default function ParamPanel({
   if (mode === 'repaint') {
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        {intro}
         <div>
           <div style={labelStyle}>重绘描述</div>
           <Input.TextArea
@@ -269,6 +282,7 @@ export default function ParamPanel({
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {intro}
       {mode === 'remove' ? (
         <div>
           <div style={labelStyle}>背景描述（可选）</div>
