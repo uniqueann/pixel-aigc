@@ -24,6 +24,8 @@ React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc
 
 Google 提供商的客户端标识与密钥只配置到 Supabase 控制台；前端只配置 publishable key。服务端通过 `getUser` 验证身份和邮箱确认状态，随后幂等初始化 AIGC 成员与个人空间。可编辑的 user_metadata 仅用作初始展示名称，不参与授权。AIGC 停用不封禁共享 Auth 账号。
 
+Google 授权页的品牌名称、Logo 与自定义 Auth 域名配置见 [Auth 域名与 Google 品牌配置](auth-domain-branding.md)。这是共享项目的配置，激活域名前须为现有 Google OAuth 客户端追加新回调地址，并回归 ContentUp、AIGC 和 EDM；不能只修改 AIGC 的环境变量就宣称授权页域名已切换。
+
 `aigc_server` 受限运行角色已在共享项目创建，具有 `NOINHERIT`、`NOBYPASSRLS`，仅被授予 `aigc_api` 成员资格；不要重复运行 `aigc:bootstrap` 或重置其密码。运行凭据保存在本机权限为 0600 的 `.env.local`。迁移管理员连接 `AIGC_ADMIN_DATABASE_URL` 只供管理命令使用，不部署到 Vercel。
 
 管理员命令：
