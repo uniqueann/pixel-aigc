@@ -166,6 +166,27 @@ describe('OpenRouter Nano Banana 任务', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
+  it('余额不足失败并退还预扣', async () => {
+    process.env.OPENROUTER_API_KEY = 'sk-test-openrouter'
+    process.env.OPENROUTER_IMAGE_ENABLED = 'true'
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({ error: { message: 'Insufficient credits' } }, 402))
+    const { rt, billing, provider } = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000915', 1, '2k'), rt)
+    const outcomes = await (await import('./service.js')).runProviderSubmits(created.bundle, provider, user.id, rt)
+    const finished = await finishSubmittedImageJob(store, created.bundle, outcomes, rt, provider)
+    expect(finished.job).toMatchObject({
+      status: 'failed', billing_state: 'released', credits_charged: 0, error_code: 'INSUFFICIENT_BALANCE',
+      error_message: '图片服务余额不足',
+    })
+    expect(finished.items[0]).toMatchObject({
+      status: 'failed', error_code: 'INSUFFICIENT_BALANCE', error_message: '图片服务余额不足',
+    })
+    expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+    expect(billing.settle).not.toHaveBeenCalled()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
   it('参考图不额外加价，2K 两张只预扣 12', async () => {
     process.env.OPENROUTER_API_KEY = 'sk-test-openrouter'
     process.env.OPENROUTER_IMAGE_ENABLED = 'true'

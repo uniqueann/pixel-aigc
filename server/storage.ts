@@ -7,6 +7,13 @@ let client: S3Client | undefined
 const s3 = () => client ??= new S3Client({ region: 'auto', requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED', endpoint: `https://${env('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
   credentials: { accessKeyId: env('R2_ACCESS_KEY_ID'), secretAccessKey: env('R2_SECRET_ACCESS_KEY') } })
 const bucket = () => env('R2_BUCKET')
+
+/** R2 GetObject 对不存在的键抛 NoSuchKey / NotFound，而不是先变成 HttpError。 */
+function isMissingObject(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+  const record = error as { name?: string; $metadata?: { httpStatusCode?: number } }
+  return record.name === 'NoSuchKey' || record.name === 'NotFound' || record.$metadata?.httpStatusCode === 404
+}
 export async function signUpload(key: string, mimeType: string, size: number) {
   // 浏览器直传只允许带 Content-Type。x-amz-* 全部放进签名 query，避免触发
   // aigc.contentup.cc 那条只放行 Content-Type 的 CORS 规则。
@@ -27,7 +34,10 @@ export async function putObject(key: string, bytes: Uint8Array, contentType: str
 }
 
 export async function getObject(key: string) {
-  const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }))
+  const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key })).catch(error => {
+    if (isMissingObject(error)) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
+    throw error
+  })
   if (!result.Body) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
   return { bytes: await result.Body.transformToByteArray(), contentType: result.ContentType }
 }
@@ -35,7 +45,7 @@ export async function getObject(key: string) {
 export async function getObjectLimited(key: string, maxBytes: number, signal?: AbortSignal) {
   const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }),
     signal ? { abortSignal: signal } : undefined).catch(error => {
-    if (error?.name === 'NoSuchKey' || error?.$metadata?.httpStatusCode === 404) {
+    if (isMissingObject(error)) {
       throw new HttpError(404, '图片对象已过期或不存在，请重新上传', 'OBJECT_NOT_FOUND')
     }
     throw error

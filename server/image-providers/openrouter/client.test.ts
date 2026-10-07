@@ -1,10 +1,18 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OPENROUTER_NANO_BANANA_MODEL } from '../../../shared/image-models.js'
 import { MOCK_PNG_1X1 } from '../mock.js'
 import type { OpenRouterResultStore } from './client.js'
 import { createOpenRouterImageProvider } from './client.js'
 import type { OpenRouterImageSettings } from './config.js'
-import { decodeOpenRouterTask } from './response.js'
+import { decodeOpenRouterTask, encodeOpenRouterTask } from './response.js'
+
+const { send } = vi.hoisted(() => ({ send: vi.fn() }))
+vi.mock('@aws-sdk/client-s3', () => ({
+  S3Client: class { send = send },
+  GetObjectCommand: class { constructor(public input: unknown) {} },
+  PutObjectCommand: class { constructor(public input: unknown) {} },
+  DeleteObjectCommand: class { constructor(public input: unknown) {} },
+}))
 
 const settings: OpenRouterImageSettings = {
   apiKey: 'sk-test-openrouter',
@@ -139,5 +147,72 @@ describe('OpenRouter 图片客户端', () => {
   it('没有 Key 时不能提交', async () => {
     const provider = createOpenRouterImageProvider(() => null, memoryStore())
     await expect(provider.submit!(input, context(vi.fn()))).rejects.toMatchObject({ code: 'INVALID_KEY' })
+  })
+
+  it('402 余额不足映射为明确错误且不重试', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({ error: { message: 'Insufficient credits' } }, 402))
+    const provider = createOpenRouterImageProvider(() => settings, memoryStore())
+    await expect(provider.submit!(input, context(fetchImpl))).rejects.toMatchObject({
+      code: 'INSUFFICIENT_BALANCE', message: '图片服务余额不足', retryable: false, status: 402,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('OpenRouter 结果对象不存在', () => {
+  const requestId = '00000000-0000-4000-8000-000000000901'
+  const resultKey = `temporary/openrouter-results/${requestId}/0.img`
+
+  beforeEach(() => {
+    send.mockReset()
+    process.env.R2_ACCOUNT_ID = 'test'
+    process.env.R2_ACCESS_KEY_ID = 'test'
+    process.env.R2_SECRET_ACCESS_KEY = 'test'
+    process.env.R2_BUCKET = 'test'
+  })
+
+  it('S3 抛 NoSuchKey 时仍提交 OpenRouter', async () => {
+    send.mockRejectedValueOnce(Object.assign(new Error('The specified key does not exist.'), {
+      name: 'NoSuchKey',
+      $metadata: { httpStatusCode: 404 },
+    }))
+    send.mockResolvedValue({})
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse(imagePayload()))
+    const provider = createOpenRouterImageProvider(() => settings)
+    const ctx = context(fetchImpl)
+    const submitted = await provider.submit!(input, ctx)
+    expect(send.mock.calls[0][0].input).toMatchObject({ Key: resultKey })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'openrouter-image-submit', status: 200 }))
+    expect(decodeOpenRouterTask(submitted.providerTaskId)?.key).toBe(resultKey)
+  })
+
+  it('已有图片但用量对象不存在时直接复用', async () => {
+    send.mockResolvedValueOnce({
+      Body: { transformToByteArray: async () => MOCK_PNG_1X1 },
+      ContentType: 'image/png',
+    })
+    send.mockRejectedValueOnce(Object.assign(new Error('The specified key does not exist.'), { name: 'NotFound' }))
+    const fetchImpl = vi.fn()
+    const provider = createOpenRouterImageProvider(() => settings)
+    const ctx = context(fetchImpl)
+    const submitted = await provider.submit!(input, ctx)
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(decodeOpenRouterTask(submitted.providerTaskId)?.usage).toBeUndefined()
+    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'openrouter-image-replay' }))
+    expect(send.mock.calls[1][0].input.Key).toBe(resultKey.replace(/\.img$/, '.usage.json'))
+  })
+
+  it('查询和下载遇到 NoSuchKey 时返回明确失败', async () => {
+    send.mockRejectedValue(Object.assign(new Error('The specified key does not exist.'), { name: 'NoSuchKey' }))
+    const provider = createOpenRouterImageProvider(() => settings)
+    const ctx = context(vi.fn())
+    const taskId = encodeOpenRouterTask({ key: resultKey, mimeType: 'image/png' })
+    await expect(provider.getStatus!(taskId, ctx)).resolves.toMatchObject({
+      state: 'failed', code: 'BAD_RESPONSE', message: '图片服务没有返回图片',
+    })
+    await expect(provider.fetchResult(`openrouter-object:${resultKey}`, ctx)).rejects.toMatchObject({
+      name: 'ProviderError', code: 'BAD_RESPONSE',
+    })
   })
 })
