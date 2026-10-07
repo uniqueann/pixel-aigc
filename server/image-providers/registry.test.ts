@@ -1,8 +1,17 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { configuredImageModels, imageModelsAvailable, publicConfiguredImageModels } from './registry.js'
 
-const KEYS = ['DRAGONCODE_API_KEY', 'DASHSCOPE_API_KEY', 'QWEN_IMAGE_ENABLED', 'QWEN_IMAGE_API_KEY', 'QWEN_IMAGE_MODELS'] as const
+const KEYS = [
+  'DRAGONCODE_API_KEY', 'DASHSCOPE_API_KEY', 'QWEN_IMAGE_ENABLED', 'QWEN_IMAGE_API_KEY', 'QWEN_IMAGE_MODELS',
+  'OPENROUTER_API_KEY', 'OPENROUTER_IMAGE_ENABLED', 'OPENROUTER_BASE_URL',
+] as const
 const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
+
+beforeEach(() => {
+  delete process.env.OPENROUTER_API_KEY
+  delete process.env.OPENROUTER_IMAGE_ENABLED
+  delete process.env.OPENROUTER_BASE_URL
+})
 
 afterEach(() => {
   for (const key of KEYS) {
@@ -57,5 +66,32 @@ describe('图片模型目录', () => {
     const models = publicConfiguredImageModels('text_to_image')
     expect(models.map(model => model.id)).toEqual(['dragoncode:gpt-image-2', 'bailian:qwen-image-3.0'])
     expect(models[0].defaultFor).toEqual(['image_edit', 'variation'])
+  })
+
+  it('没有 OpenRouter Key 或开关关闭时不列出 Nano Banana，其他模型不受影响', () => {
+    process.env.DRAGONCODE_API_KEY = 'sk-dragon'
+    process.env.OPENROUTER_IMAGE_ENABLED = 'true'
+    delete process.env.OPENROUTER_API_KEY
+    expect(publicConfiguredImageModels('text_to_image').map(model => model.id)).toEqual(['dragoncode:gpt-image-2'])
+    process.env.OPENROUTER_API_KEY = 'sk-openrouter'
+    process.env.OPENROUTER_IMAGE_ENABLED = 'false'
+    expect(publicConfiguredImageModels('text_to_image').map(model => model.id)).toEqual(['dragoncode:gpt-image-2'])
+    expect(publicConfiguredImageModels('image_edit').map(model => model.id)).toEqual(['dragoncode:gpt-image-2'])
+    expect(imageModelsAvailable('variation')).toBe(true)
+  })
+
+  it('开关和 Key 都就绪后列出 Nano Banana，报价为 4/6/14 且不含供应商成本', () => {
+    delete process.env.DRAGONCODE_API_KEY
+    process.env.OPENROUTER_API_KEY = 'sk-openrouter'
+    process.env.OPENROUTER_IMAGE_ENABLED = 'true'
+    const models = publicConfiguredImageModels('text_to_image')
+    expect(models.map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
+    expect(models[0].pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
+    expect(models[0].label).toBe('Google Nano Banana 2.1')
+    expect(JSON.stringify(models)).not.toContain('vendorCost')
+    expect(JSON.stringify(models)).not.toContain('0.0336')
+    expect(publicConfiguredImageModels('image_edit').map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
+    expect(publicConfiguredImageModels('variation').map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
+    expect(configuredImageModels('text_to_image')[0].provider).toBe('openrouter')
   })
 })

@@ -283,6 +283,9 @@ function vendorItemRecord(vendor: ProviderVendorUsage) {
     credits_cost: vendor.creditsCost,
     expires_at: vendor.expiresAt,
     ...(vendor.currency ? { currency: vendor.currency } : {}),
+    ...(vendor.promptTokens !== undefined ? { prompt_tokens: vendor.promptTokens } : {}),
+    ...(vendor.completionTokens !== undefined ? { completion_tokens: vendor.completionTokens } : {}),
+    ...(vendor.totalTokens !== undefined ? { total_tokens: vendor.totalTokens } : {}),
     ...(vendor.outputWidth !== undefined ? { output_width: vendor.outputWidth } : {}),
     ...(vendor.outputHeight !== undefined ? { output_height: vendor.outputHeight } : {}),
     ...(vendor.outputImageCount !== undefined ? { output_image_count: vendor.outputImageCount } : {}),
@@ -663,6 +666,7 @@ async function submitBatch(
       prompt,
       images,
       providerParams: bundle.job.provider_params,
+      ordinal: bundle.items.find(item => item.status === 'pending')?.ordinal,
     }, ctx)
     return bundle.items.map(item => item.status === 'pending'
       ? { ordinal: item.ordinal, patch: submittedPatch(item, submitted.providerTaskId) }
@@ -741,6 +745,7 @@ export async function runProviderSubmits(
         prompt,
         images,
         providerParams: bundle.job.provider_params,
+        ordinal: item.ordinal,
       }, ctx)
       return {
         ordinal: item.ordinal,
@@ -1082,6 +1087,23 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
   }
 }
 
+/**
+ * 提交结果写回后结束这一轮。OpenRouter 的图片在提交时已经生成并放入临时对象，
+ * 这里接着下载到正式结果，避免等到初始轮询延迟。其他供应商仍只登记 task id。
+ */
+export async function finishSubmittedImageJob(
+  store: ImageJobStore,
+  bundle: ImageJobBundle,
+  outcomes: SubmitOutcome[],
+  runtime: ImageJobRuntime,
+  provider: ImageProvider,
+) {
+  const items = await applyItemPatches(store, bundle.job.id, bundle.items, outcomes)
+  const finalized = await finalizeJob(store, bundle.job, items, runtime, false, outcomes, { keepScheduledPoll: true })
+  if (provider.id !== 'openrouter' || !ACTIVE_JOB_STATUSES.has(finalized.job.status)) return finalized
+  return advanceJobInStore(store, finalized, runtime, { alreadyLeased: true })
+}
+
 export async function submitImageTask(user: User, body: unknown, runtime = defaultImageJobRuntime()) {
   assertVariationSteerLimit(body)
   assertFusionRequest(body)
@@ -1113,9 +1135,8 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
   return withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     const store = createSqlStore(sql, user.id)
-    const items = await applyItemPatches(store, created.bundle.job.id, created.bundle.items, outcomes)
     const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
-    const finalized = await finalizeJob(store, created.bundle.job, items, billingRuntime, false, outcomes, { keepScheduledPoll: true })
+    const finalized = await finishSubmittedImageJob(store, created.bundle, outcomes, billingRuntime, created.provider)
     return toClientImageTask(finalized, runtime)
   })
 }

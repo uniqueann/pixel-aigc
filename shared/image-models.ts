@@ -29,9 +29,12 @@ export interface ImageModelUi {
   promptMaxLength?: number
 }
 
+export const OPENROUTER_NANO_BANANA_PROFILE_ID = 'openrouter:gemini-nano-banana-2.1'
+export const OPENROUTER_NANO_BANANA_MODEL = 'google/gemini-nano-banana-2.1'
+
 export interface ImageModelProfile {
   id: string
-  provider: 'dragoncode' | 'bailian' | 'mock'
+  provider: 'dragoncode' | 'bailian' | 'openrouter' | 'mock'
   model: string
   label: string
   operations: ImageOperation[]
@@ -117,6 +120,35 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       creditsPerImage: { '1k': 4, '2k': 8 },
       vendorCost: { '1k': '0.25', '2k': '0.50' },
       vendorCurrency: 'CNY',
+    },
+    enabled: false,
+  },
+  // 开关关闭时不要把 enabled 改成 true：积分说明和本地 Mock 只看这个字段。
+  // 服务端在 OPENROUTER_IMAGE_ENABLED=true 且已配置 OPENROUTER_API_KEY 时才列入 /api/image-models。
+  // 参考图不另加积分，也不开启 web search。
+  {
+    id: OPENROUTER_NANO_BANANA_PROFILE_ID,
+    provider: 'openrouter',
+    model: OPENROUTER_NANO_BANANA_MODEL,
+    label: 'Google Nano Banana 2.1',
+    operations: ['text_to_image', 'image_edit', 'variation'],
+    ui: {
+      supportsMask: false,
+      maxCount: 4,
+      resolutions: ['1k', '2k', '4k'],
+      sizeMode: 'ratio',
+      ratios: [
+        '1:1', '3:2', '2:3', '3:4', '4:3', '4:5', '5:4',
+        '1:4', '4:1', '1:8', '8:1', '9:16', '16:9', '21:9', '9:21',
+      ],
+      maxRefImages: 14,
+      promptMaxLength: PROMPT_MAX_LENGTH,
+    },
+    pricing: {
+      unit: 'image',
+      creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 },
+      vendorCost: { '1k': '0.0336', '2k': '0.0504', '4k': '0.1134' },
+      vendorCurrency: 'USD',
     },
     enabled: false,
   },

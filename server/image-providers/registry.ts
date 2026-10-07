@@ -2,10 +2,11 @@ import { IMAGE_MODEL_PROFILES, publicImageModel } from '../../shared/image-model
 import type { ImageOperation } from '../../shared/image-generation.js'
 import { dragonCodeProvider } from './dragoncode/index.js'
 import { createMockImageProvider } from './mock.js'
+import { openRouterImageProvider } from './openrouter/index.js'
 import { qwenImageProvider } from './qwen-image/index.js'
 import type { ImageProvider } from './types.js'
 
-const providers: ImageProvider[] = [dragonCodeProvider, qwenImageProvider, createMockImageProvider()]
+const providers: ImageProvider[] = [dragonCodeProvider, qwenImageProvider, openRouterImageProvider, createMockImageProvider()]
 
 export function imageProviderById(id: string) {
   return providers.find(provider => provider.id === id)
@@ -19,9 +20,9 @@ export function configuredImageModels(
     if (operation && !profile.operations.includes(operation)) return false
     const provider = imageProviderById(profile.provider)
     if (!provider) return false
-    // 千问文生图的 profile.enabled 保持 false，避免积分说明和本地 Mock 在开关关闭时露出模型。
-    // 实际是否列出由 QWEN_IMAGE_ENABLED 与百炼 Key 决定。
-    if (profile.provider === 'bailian') {
+    // 千问和 Nano Banana 的 profile.enabled 保持 false，避免积分说明和本地 Mock 在开关关闭时露出模型。
+    // 千问由 QWEN_IMAGE_ENABLED 与百炼 Key 决定；Nano Banana 由 OPENROUTER_IMAGE_ENABLED 与 OPENROUTER_API_KEY 决定。
+    if (profile.provider === 'bailian' || profile.provider === 'openrouter') {
       return provider.configured(env) && provider.acceptsModel?.(profile.model, env) === true
     }
     if (!profile.enabled) return false

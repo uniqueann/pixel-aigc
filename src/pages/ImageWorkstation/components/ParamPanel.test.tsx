@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
-import { publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
+import { publicImageModel, IMAGE_MODEL_PROFILES, OPENROUTER_NANO_BANANA_PROFILE_ID } from '@shared/image-models'
 import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
@@ -249,5 +249,22 @@ describe('智能编辑参数面板', () => {
     expect(screen.queryByText('上次使用')).toBeNull()
     expect(usePreferencesStore.getState().preferences.image.lastUsed['smart-edit']).toEqual({ resolution: '4k' })
     expect(usePreferencesStore.getState().preferences.image.counts['smart-edit']).toBe(1)
+  })
+
+  it('工作站可选 Nano Banana 2.1，4K 正方形仍显示 4K', () => {
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    render(
+      <ParamPanel
+        capability={Capability.ImageEdit}
+        {...panelProps}
+        resolution="4k"
+        models={[model, nano]}
+        modelProfileId={nano.id}
+        sourceSize={{ width: 1000, height: 1000 }}
+      />,
+    )
+    expect(screen.getByText('Google Nano Banana 2.1')).toBeTruthy()
+    expect(screen.getByText(/预计输出比例 1:1 · 4K/)).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K/)).toBeNull()
   })
 })

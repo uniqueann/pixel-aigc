@@ -3,7 +3,7 @@ import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
-import { mapDragonCodeSize } from '@shared/image-models'
+import { mapDragonCodeSize, nearestRatio } from '@shared/image-models'
 import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
@@ -53,6 +53,25 @@ interface Props {
 
 const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
 const tallPromptSize = { minRows: 6, maxRows: 10 }
+
+function outputPreview(
+  model: PublicImageModel | undefined,
+  sourceSize: { width: number; height: number } | undefined,
+  resolution: '1k' | '2k' | '4k',
+) {
+  if (!sourceSize) return undefined
+  const ratios = model?.ui.ratios?.filter(ratio => ratio.includes(':'))
+  if (model && model.provider !== 'dragoncode' && ratios?.length) {
+    const size = nearestRatio(sourceSize.width, sourceSize.height, ratios)
+    const allowed = model.ui.resolutionRatioConstraints?.[resolution]
+    const downgraded = resolution === '4k' && !!allowed && !allowed.includes(size)
+    const effective = downgraded
+      ? (model.ui.resolutions.includes('2k') ? '2k' as const : resolution)
+      : (model.ui.resolutions.includes(resolution) ? resolution : model.ui.resolutions[0])
+    return { size, resolution: effective }
+  }
+  return mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution)
+}
 
 /** 右侧参数面板：按能力和子工具模式渲染对应表单 */
 export default function ParamPanel({
@@ -110,11 +129,10 @@ export default function ParamPanel({
     const model = models.find(item => item.id === modelProfileId) ?? models[0]
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
-    const mapped = sourceSize
-      ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution)
-      : undefined
+    const mapped = outputPreview(model, sourceSize, resolution)
+    const constraintSize = sourceSize ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution).size : ''
     const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
-      || model.ui.resolutionRatioConstraints['4k'].includes(mapped?.size ?? '')
+      || model.ui.resolutionRatioConstraints['4k'].includes(constraintSize)
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {intro}
@@ -186,11 +204,10 @@ export default function ParamPanel({
     const model = models.find(item => item.id === modelProfileId) ?? models[0]
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
-    const mapped = sourceSize
-      ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution)
-      : undefined
+    const mapped = outputPreview(model, sourceSize, resolution)
+    const constraintSize = sourceSize ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution).size : ''
     const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
-      || model.ui.resolutionRatioConstraints['4k'].includes(mapped?.size ?? '')
+      || model.ui.resolutionRatioConstraints['4k'].includes(constraintSize)
     const update = (patch: Partial<RelightOptions>) => onRelightChange?.({ ...relight, ...patch })
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -266,6 +283,12 @@ export default function ParamPanel({
               disabled: value === '4k' && !fourKAllowed,
             }))}
           />
+          {mapped ? (
+            <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
+              预计输出比例 {mapped.size} · {mapped.resolution.toUpperCase()}
+              {!fourKAllowed ? '。当前比例不支持 4K，将以 2K 生成' : ''}
+            </p>
+          ) : null}
         </div>
       </Space>
     )
