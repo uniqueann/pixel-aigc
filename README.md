@@ -98,3 +98,5 @@ GitHub Actions 在拉取请求和 `main` 推送时用 Node 24 执行同一套检
 ## 后端与云同步
 
 认证、`aigc` schema、R2 和 Vercel 配置见 [后端基础设施说明](docs/backend-foundation.md)。默认保留本地模式；外部配置完成后启用 `VITE_CLOUD_MODE=enabled`。
+
+Google 授权页的应用名称、Logo、公开政策与后续自定义 Auth 域名方案见 [Auth 域名与 Google 品牌配置](docs/auth-domain-branding.md)。

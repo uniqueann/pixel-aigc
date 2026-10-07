@@ -102,5 +102,10 @@ export default function AuthPages() {
       {path === '/login' && <><a href={`/register?next=${encodeURIComponent(next)}`}>注册账号</a><a href="/forgot-password">忘记密码</a></>}
       {path === '/auth/callback' || path === '/reset-password' ? <a href="/forgot-password">重新申请恢复邮件</a> : null}
     </Space>
+    <Space wrap>
+      <a href="/about" target="_blank" rel="noopener noreferrer">产品介绍</a>
+      <a href="/privacy" target="_blank" rel="noopener noreferrer">隐私政策</a>
+      <a href="https://contentup.cc/terms" target="_blank" rel="noopener noreferrer">服务条款</a>
+    </Space>
   </div>
 }
