@@ -15,6 +15,7 @@ import type { ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
 import { useFusionImageSelection } from '@/features/image-workstation/hooks/useFusionImageSelection'
 import { isPreparationCancelled } from '@/features/image-workstation/fusionInputs'
+import { toolExample } from '@/features/image-workstation/tools/examples'
 import {
   COMING_SOON_SUBMIT_MESSAGE,
   WORKSTATION_TOOLS,
@@ -35,6 +36,7 @@ import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
+import ToolExampleStrip from './components/ToolExampleStrip'
 import { workstationGenerateBlockReason } from './utils/generateGate'
 import { freeOutpaintGeometry, presetOutpaintGeometry } from './utils/outpaintGeometry'
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
@@ -399,6 +401,8 @@ export default function ImageWorkstation() {
     mock: mockGateway, loading: controller.activeTask?.capability === Capability.Variation ? variationConfiguration.loading : imageConfiguration.loading,
   })
   const inputRetryQuote = workstationRequestQuote(controller.inputRetryRequest, imageModels, { mock: mockGateway, loading: imageConfiguration.loading })
+  const example = toolExample(activeTool.slug)
+  const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
 
   return (
     <div className="image-workstation-page">
@@ -407,11 +411,13 @@ export default function ImageWorkstation() {
         options={WORKSTATION_TOOLS.map((item) => ({
           value: item.slug,
           label: item.label,
+          description: item.description,
           ready: isWorkstationToolReady(item, capability => capabilityState(capability) !== false),
         }))}
         value={activeTool.slug}
         onChange={(slug) => navigate(`/image-workstation/${slug}`)}
       />
+      {showExample && example ? <ToolExampleStrip example={example} /> : null}
       <div className="image-workstation-main">
         <div className="image-workstation-canvas-column">
           <CanvasArea
@@ -467,6 +473,8 @@ export default function ImageWorkstation() {
           />
           {toolState !== false ? (
             <ParamPanel
+              title={activeTool.label}
+              description={activeTool.description}
               capability={activeTool.capability}
               mode={inpaintMode}
               smartEditPrompt={relightTool ? relightNote : fusionTool ? fusionNote : retouchTool ? retouchNote : variationTool ? variationPrompt : smartEditPrompt}

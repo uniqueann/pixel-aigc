@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
+import { CANVAS_MODES } from '@/pages/FreeCanvas/modes'
+import { TOOLBOX_TOOLS } from '@/pages/Toolbox/tools'
+import { toolExample } from './examples'
 import {
+  WORKSTATION_TOOLS,
   getWorkstationTool,
   isWorkstationToolReady,
   workstationDisplaysSourcePreview,
@@ -21,6 +26,26 @@ describe('图片工作站工具开关', () => {
     expect(isWorkstationToolReady(getWorkstationTool('variation'), (capability) => capability === Capability.Variation)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('retouch'), (capability) => capability === Capability.Retouch)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('fusion'), (capability) => capability === Capability.Fusion)).toBe(true)
+  })
+
+  it('每个工具都有一句说明，裂变和融合带上传前示例图', () => {
+    for (const tool of [...WORKSTATION_TOOLS, ...TOOLBOX_TOOLS, ...CANVAS_MODES]) {
+      expect(tool.description.endsWith('。')).toBe(true)
+      expect(tool.description.length).toBeGreaterThan(8)
+    }
+    expect(getWorkstationTool('variation').description).toBe('基于原图再生成一版变体。')
+    expect(getWorkstationTool('fusion').description).toBe('把多张图合成一个场景。')
+    for (const slug of ['variation', 'fusion'] as const) {
+      const example = toolExample(slug)
+      expect(example?.before.length).toBeGreaterThan(0)
+      for (const frame of [...example!.before, example!.after]) {
+        const bytes = readFileSync(`public${frame.src}`).byteLength
+        expect(bytes).toBeGreaterThan(500)
+        expect(bytes).toBeLessThan(80_000)
+        expect(frame.src.endsWith('.webp')).toBe(true)
+      }
+    }
+    expect(toolExample('remove')).toBeUndefined()
   })
 
   it('融合不展示上一工具的单图预览', () => {

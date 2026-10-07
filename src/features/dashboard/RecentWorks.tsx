@@ -5,6 +5,9 @@ import { Link } from 'react-router-dom'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import { usePreviewGallery } from '@/components/usePreviewGallery'
 import { useBlobUrls } from '@/components/useBlobUrls'
+import { authEnabled } from '@/cloud/client'
+import { hydrateWorkstationHistoryFromImageJobs } from '@/features/assets/hydrateImageJobs'
+import { hydrateVideoJobs } from '@/features/assets/hydrateVideoJobs'
 import { HISTORY_CHANGED, listHistoryPreviews, type WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
 import { isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { dashboardTime, QUICK_START_GROUPS } from './catalog'
@@ -20,12 +23,15 @@ function workLabel(record: WorkstationHistoryListItem) {
 export default function RecentWorks({ ownerId }: { ownerId: string }) {
   const [items, setItems] = useState<WorkstationHistoryListItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [hydrating, setHydrating] = useState(authEnabled)
   const [error, setError] = useState<string>()
+  const [hydrateError, setHydrateError] = useState<string>()
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let active = true, version = 0
     let timer: ReturnType<typeof setTimeout> | undefined
     let expiryTimer: ReturnType<typeof setTimeout> | undefined
+    const abort = new AbortController()
     const refresh = async () => {
       const requestVersion = ++version
       try {
@@ -36,18 +42,35 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
         const expiry = Math.min(...result.flatMap(item => item.video ? [Date.parse(item.video.retentionExpiresAt)] : []))
         if (Number.isFinite(expiry)) expiryTimer = setTimeout(() => void refresh(), Math.min(2147483647, Math.max(1, expiry - Date.now() + 20)))
       } catch (reason) {
-        if (active && version === requestVersion) setError(reason instanceof Error ? reason.message : '本地作品读取失败')
+        if (active && version === requestVersion) setError(reason instanceof Error ? reason.message : '作品读取失败')
       } finally { if (active && version === requestVersion) setLoading(false) }
+    }
+    const hydrate = async () => {
+      if (!authEnabled) { if (active) setHydrating(false); return }
+      if (active) setHydrating(true)
+      try {
+        const [imageResult] = await Promise.all([
+          hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: abort.signal }),
+          hydrateVideoJobs(ownerId, abort.signal),
+        ])
+        if (!active || !isCurrentWorkstationHistoryOwner(ownerId)) return
+        setHydrateError(imageResult.failed ? `有 ${imageResult.failed} 项作品没有同步` : undefined)
+        await refresh()
+      } catch (reason) {
+        if (!active || !isCurrentWorkstationHistoryOwner(ownerId)) return
+        if (reason instanceof DOMException && reason.name === 'AbortError') return
+        setHydrateError('云端作品暂时没有同步')
+      } finally { if (active) setHydrating(false) }
     }
     const schedule = () => { clearTimeout(timer); timer = setTimeout(() => void refresh(), 100) }
     const changed = (event: Event) => { if ((event as CustomEvent<string>).detail === ownerId) schedule() }
-    queueMicrotask(() => { if (active) void refresh() })
+    queueMicrotask(() => { if (active) void refresh().finally(() => { if (active) void hydrate() }) })
     window.addEventListener(HISTORY_CHANGED, changed)
     window.addEventListener('focus', schedule)
     const channel = typeof BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel(HISTORY_CHANGED)
     if (channel) channel.onmessage = event => { if (event.data === ownerId) schedule() }
     return () => {
-      active = false; clearTimeout(timer); clearTimeout(expiryTimer); channel?.close()
+      active = false; abort.abort(); clearTimeout(timer); clearTimeout(expiryTimer); channel?.close()
       window.removeEventListener(HISTORY_CHANGED, changed); window.removeEventListener('focus', schedule)
     }
   }, [ownerId, attempt])
@@ -95,9 +118,9 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
   }, [items.length, loading])
   return <section className="dashboard-section" aria-labelledby="dashboard-works-title">
     <div className="dashboard-section-heading"><h2 id="dashboard-works-title">最近作品</h2><Link to="/assets">查看全部</Link></div>
-    <p className="dashboard-section-note">仅显示此浏览器已保存的最近作品</p>
-    {error ? <div className="dashboard-inline-error" role="alert">{error}<Button size="small" onClick={() => setAttempt(value => value + 1)}>重试读取</Button></div> : null}
-    {loading ? <Skeleton active title={false} paragraph={{ rows: 2 }} /> : items.length ? <div className={`dashboard-works-scroller${fades.left ? ' has-left-fade' : ''}${fades.right ? ' has-right-fade' : ''}`}>
+    <p className="dashboard-section-note">{hydrating ? '正在同步最近作品…' : '最近的图片和视频作品'}</p>
+    {error || hydrateError ? <div className="dashboard-inline-error" role="alert">{error ?? hydrateError}<Button size="small" onClick={() => setAttempt(value => value + 1)}>重试读取</Button></div> : null}
+    {loading || (hydrating && !items.length) ? <Skeleton active title={false} paragraph={{ rows: 2 }} /> : items.length ? <div className={`dashboard-works-scroller${fades.left ? ' has-left-fade' : ''}${fades.right ? ' has-right-fade' : ''}`}>
       <div className="dashboard-works-strip" ref={stripRef} aria-label="最近作品列表">
       {items.map(item => <button className="dashboard-work-tile" type="button" key={item.id} onClick={() => openAt(item.id)}
         aria-label={`${item.video ? '播放' : '预览'}${workLabel(item)} ${dashboardTime(item.createdAt)}`}>
@@ -107,7 +130,7 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
         </span><strong>{workLabel(item)}</strong><time dateTime={item.createdAt}>{dashboardTime(item.createdAt)}</time>
       </button>)}
       </div>
-    </div> : !error ? <div className="dashboard-empty dashboard-works-empty"><PictureOutlined aria-hidden /><span>此浏览器暂无最近作品</span></div> : null}
+    </div> : !error && !hydrateError ? <div className="dashboard-empty dashboard-works-empty"><PictureOutlined aria-hidden /><span>还没有最近作品</span></div> : null}
     <PreviewGallery {...galleryProps} />
   </section>
 }

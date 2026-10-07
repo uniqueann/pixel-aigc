@@ -81,8 +81,32 @@ describe('图片工作站配置提示', () => {
     mocks.status.capabilities.variation = false
     render(<App><ImageWorkstation /></App>)
     expect(screen.getByText('裂变 · 即将上线')).toBeTruthy()
+    expect(screen.getByText('基于原图再生成一版变体。')).toBeTruthy()
+    expect(screen.getByText('示例')).toBeTruthy()
+    expect(screen.getByAltText('裂变前的白底马克杯')).toBeTruthy()
     expect(screen.getByText('该能力即将上线，目前还不能提交生成任务。')).toBeTruthy()
     expect(screen.queryByText('补充要求（可选）')).toBeNull()
+  })
+
+  it('未上传时展示裂变和融合示例，上传后收起', () => {
+    mocks.tool = 'variation'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    const view = render(<App><ImageWorkstation /></App>)
+    expect(screen.getAllByText('基于原图再生成一版变体。').length).toBeGreaterThan(1)
+    expect(screen.getByAltText('裂变后的马克杯变体')).toBeTruthy()
+    view.unmount()
+
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.queryByText('示例')).toBeNull()
+    cleanup()
+
+    mocks.tool = 'fusion'
+    mocks.controller.inputAsset = undefined
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getAllByText('把多张图合成一个场景。').length).toBeGreaterThan(1)
+    expect(screen.getByAltText('待融合的木桌场景')).toBeTruthy()
+    expect(screen.getByAltText('滴管瓶放入木桌场景后的效果')).toBeTruthy()
   })
 
   it('未上传时按所选张数和分辨率显示报价，按钮保持禁用', () => {

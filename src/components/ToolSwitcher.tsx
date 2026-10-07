@@ -6,6 +6,7 @@ import { scrollEdges, scrollSelectedIntoView } from './toolSwitcherScroll'
 export interface ToolSwitcherOption {
   value: string
   label: string
+  description?: string
   ready?: boolean
   icon?: ReactNode
 }
@@ -55,24 +56,29 @@ export default function ToolSwitcher({ options, value, onChange, className }: Pr
     updateEdges()
   }, [value, options, updateEdges])
 
+  const selected = options.find((option) => option.value === value)
+
   return (
-    <div className={['tool-switcher-frame', className].filter(Boolean).join(' ')}>
-      <span className={edges.left ? 'tool-switcher-fade is-left is-visible' : 'tool-switcher-fade is-left'} aria-hidden="true" />
-      <div ref={scrollerRef} className="tool-switcher">
-        <Segmented
-          options={options.map((option) => {
-            const text = formatToolSwitcherLabel(option.label, option.ready !== false)
-            return {
-              value: option.value,
-              icon: option.icon,
-              label: text,
-            }
-          })}
-          value={value}
-          onChange={(next) => onChange(String(next))}
-        />
+    <div className={['tool-switcher-block', className].filter(Boolean).join(' ')}>
+      <div className="tool-switcher-frame">
+        <span className={edges.left ? 'tool-switcher-fade is-left is-visible' : 'tool-switcher-fade is-left'} aria-hidden="true" />
+        <div ref={scrollerRef} className="tool-switcher">
+          <Segmented
+            options={options.map((option) => {
+              const text = formatToolSwitcherLabel(option.label, option.ready !== false)
+              return {
+                value: option.value,
+                icon: option.icon,
+                label: text,
+              }
+            })}
+            value={value}
+            onChange={(next) => onChange(String(next))}
+          />
+        </div>
+        <span className={edges.right ? 'tool-switcher-fade is-right is-visible' : 'tool-switcher-fade is-right'} aria-hidden="true" />
       </div>
-      <span className={edges.right ? 'tool-switcher-fade is-right is-visible' : 'tool-switcher-fade is-right'} aria-hidden="true" />
+      {selected?.description ? <p className="tool-switcher-description">{selected.description}</p> : null}
     </div>
   )
 }

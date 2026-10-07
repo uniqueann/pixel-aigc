@@ -17,11 +17,14 @@ import type { CapabilityFlags } from '@/services/api/capabilities'
 import { rememberTool } from './recentWork'
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), history: vi.fn(), retry: vi.fn(), createUrl: vi.fn(), revokeUrl: vi.fn(),
+  hydrateImages: vi.fn(), hydrateVideos: vi.fn(),
   capabilities: {} as CapabilityFlags, error: null as Error | null,
 }))
 vi.mock('@/cloud/client', () => ({ authEnabled: true, cloudEnabled: true, cloudRequest: mocks.request }))
 vi.mock('@/hooks/useCapabilities', () => ({ useCapabilities: () => ({ capabilities: mocks.capabilities, error: mocks.error, refetch: mocks.retry }) }))
 vi.mock('@/features/assets/workstationHistory', () => ({ HISTORY_CHANGED: 'pixel-history-changed', listHistoryPreviews: mocks.history }))
+vi.mock('@/features/assets/hydrateImageJobs', () => ({ hydrateWorkstationHistoryFromImageJobs: mocks.hydrateImages }))
+vi.mock('@/features/assets/hydrateVideoJobs', () => ({ hydrateVideoJobs: mocks.hydrateVideos }))
 vi.mock('@/components/PreviewGallery', () => ({ default: ({ open, items, current, onClose }: PreviewGalleryProps) => open
   ? <div role="dialog">{items[current]?.id}<button onClick={onClose}>关闭预览</button></div> : null }))
 
@@ -38,6 +41,7 @@ function mount() {
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear()
   mocks.request.mockResolvedValue({ items: [] }); mocks.history.mockResolvedValue([])
+  mocks.hydrateImages.mockResolvedValue({ failed: 0 }); mocks.hydrateVideos.mockResolvedValue(undefined)
   mocks.capabilities = {}; mocks.error = null
   mocks.createUrl.mockImplementation(() => `blob:首页-${mocks.createUrl.mock.calls.length}`)
   vi.stubGlobal('URL', class extends URL { static createObjectURL = mocks.createUrl; static revokeObjectURL = mocks.revokeUrl })
@@ -146,7 +150,11 @@ describe('首页工作台', () => {
     expect(within(section).queryByText('即将上线')).toBeNull()
     expect(within(section).getAllByText('加载中…').length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: '打开批量邮件' }).getAttribute('href')).toBe('/email?mode=batch')
-    expect(screen.getByText('此浏览器暂无最近作品')).toBeTruthy()
+    expect(screen.getByText('基于原图再生成一版变体。')).toBeTruthy()
+    expect(screen.getByText('把多张图合成一个场景。')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('还没有最近作品')).toBeTruthy())
+    expect(screen.queryByText(/此浏览器/)).toBeNull()
+    expect(screen.getByText('最近的图片和视频作品')).toBeTruthy()
     mocks.capabilities = { textToVideo: false, textToImage: true, imageEdit: true }
     view.rerender(<MemoryRouter><QueryClientProvider client={client}><App><Dashboard /></App></QueryClientProvider></MemoryRouter>)
     expect(screen.queryByRole('link', { name: '打开文生视频' })).toBeNull()
@@ -196,14 +204,38 @@ describe('首页工作台', () => {
 
   it('同账号历史事件合并刷新，其他账号事件不触发读取，卸载后停止监听', async () => {
     const view = mount()
-    await waitFor(() => expect(mocks.history).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByText('还没有最近作品')).toBeTruthy())
+    const baseline = mocks.history.mock.calls.length
+    expect(baseline).toBeGreaterThanOrEqual(2)
     act(() => {
       window.dispatchEvent(new CustomEvent('pixel-history-changed', { detail: OWNER_B }))
       for (let index = 0; index < 5; index++) window.dispatchEvent(new CustomEvent('pixel-history-changed', { detail: OWNER_A }))
     })
-    await waitFor(() => expect(mocks.history).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mocks.history).toHaveBeenCalledTimes(baseline + 1))
     view.unmount()
     window.dispatchEvent(new CustomEvent('pixel-history-changed', { detail: OWNER_A }))
-    expect(mocks.history).toHaveBeenCalledTimes(2)
+    expect(mocks.history).toHaveBeenCalledTimes(baseline + 1)
+  })
+
+  it('先读本地，再从云端图片和视频任务补齐最近作品', async () => {
+    mocks.history.mockResolvedValueOnce([]).mockResolvedValue([image('云端图片')])
+    mount()
+    await waitFor(() => expect(screen.getByRole('button', { name: /预览重绘/ })).toBeTruthy())
+    expect(mocks.hydrateImages).toHaveBeenCalledWith(OWNER_A, expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(mocks.hydrateVideos).toHaveBeenCalledWith(OWNER_A, expect.any(AbortSignal))
+    expect(mocks.history).toHaveBeenLastCalledWith(OWNER_A, true, { limit: 8, readOnly: true })
+    expect(screen.queryByText(/此浏览器/)).toBeNull()
+    expect(screen.queryByText('还没有最近作品')).toBeNull()
+  })
+
+  it('云端没有作品时显示空状态，失败时可重试同步', async () => {
+    mocks.hydrateImages.mockRejectedValueOnce(new Error('网络中断'))
+    mount()
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('云端作品暂时没有同步'))
+    expect(screen.queryByText('还没有最近作品')).toBeNull()
+    mocks.hydrateImages.mockResolvedValue({ failed: 0 })
+    fireEvent.click(screen.getByText('重试读取'))
+    await waitFor(() => expect(screen.getByText('还没有最近作品')).toBeTruthy())
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

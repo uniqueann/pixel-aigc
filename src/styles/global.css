@@ -1655,6 +1655,95 @@ body.sidebar-resizing * {
   gap: 6px;
 }
 
+.tool-switcher-block {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tool-switcher-description {
+  flex-basis: 100%;
+  margin: 8px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tool-example {
+  flex: 0 0 auto;
+  margin: 0 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.tool-example summary {
+  padding: 8px 12px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tool-example-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 12px;
+  overflow-x: auto;
+}
+
+.tool-example-group {
+  display: flex;
+  gap: 8px;
+}
+
+.tool-example figure {
+  display: flex;
+  width: 112px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.tool-example img {
+  width: 112px;
+  height: 112px;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.tool-example figcaption {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  text-align: center;
+}
+
+.tool-example-arrow {
+  color: var(--color-text-muted);
+  font-size: 16px;
+}
+
+.param-panel-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.param-panel-intro h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.param-panel-intro p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .image-workstation-tool-switcher {
   flex: 0 0 auto;
 }
