@@ -57,22 +57,89 @@ export function r2OpenRouterResultStore(): OpenRouterResultStore {
   }
 }
 
+const CONTENT_REJECTION = /safety|content.?policy|moderat|违规|审核|unsafe/i
+const PROVIDER_TERMS = /terms of service|\bToS\b/i
+const USER_CONTENT_REJECTED = '内容未通过审核'
+const USER_PROVIDER_FORBIDDEN = '图片服务暂不可用（上游权限限制）'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
 function readErrorMessage(payload: unknown) {
-  if (!payload || typeof payload !== 'object') return ''
-  const record = payload as Record<string, unknown>
-  if (typeof record.message === 'string' && record.message.trim()) return record.message.trim()
-  const error = record.error
-  if (error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string') {
-    return String((error as { message: string }).message).trim()
-  }
+  if (!isRecord(payload)) return ''
+  if (typeof payload.message === 'string' && payload.message.trim()) return payload.message.trim()
+  const error = payload.error
+  if (isRecord(error) && typeof error.message === 'string' && error.message.trim()) return error.message.trim()
   return ''
 }
 
-function rejectContent(error: ProviderError) {
-  if (/safety|content.?policy|moderat|prohibited|违规|审核|unsafe/i.test(error.message)) {
-    return new ProviderError('CONTENT_REJECTED', '内容未通过审核', false, 400)
+function readMetadata(payload: unknown) {
+  if (!isRecord(payload)) return undefined
+  const error = isRecord(payload.error) ? payload.error : undefined
+  if (error && isRecord(error.metadata)) return error.metadata
+  if (isRecord(payload.metadata)) return payload.metadata
+  return undefined
+}
+
+function redactSecrets(value: string, apiKey?: string) {
+  let text = value
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\b(?:sk|rk)-[A-Za-z0-9_-]{8,}\b/g, '[redacted]')
+  if (apiKey && apiKey.length >= 8 && text.includes(apiKey)) text = text.split(apiKey).join('[redacted]')
+  return text
+}
+
+function clipLogged(value: string, apiKey?: string) {
+  return redactSecrets(value, apiKey).slice(0, 200)
+}
+
+function reasonText(item: unknown) {
+  if (typeof item === 'string') return item
+  if (item == null) return ''
+  try {
+    const text = JSON.stringify(item)
+    return typeof text === 'string' ? text : ''
+  } catch {
+    return ''
   }
-  return error
+}
+
+function hasFlaggedInput(metadata: Record<string, unknown>) {
+  if (!('flagged_input' in metadata)) return false
+  const flagged = metadata.flagged_input
+  if (typeof flagged === 'string') return flagged.trim().length > 0
+  if (Array.isArray(flagged)) return flagged.length > 0
+  return flagged != null && flagged !== false
+}
+
+function hasReasons(metadata: Record<string, unknown>) {
+  const reasons = metadata.reasons
+  if (typeof reasons === 'string') return reasons.trim().length > 0
+  if (!Array.isArray(reasons)) return false
+  return reasons.some(item => reasonText(item).trim().length > 0)
+}
+
+function classifyOpenRouterFailure(status: number, message: string, metadata: Record<string, unknown> | undefined) {
+  // 403 + Terms of Service 是上游权限，不是内容审核。必须先于审核判断。
+  if (status === 403 && PROVIDER_TERMS.test(message)) {
+    return new ProviderError('PROVIDER_FORBIDDEN', USER_PROVIDER_FORBIDDEN, false, 403)
+  }
+  if (CONTENT_REJECTION.test(message) || (metadata && (hasFlaggedInput(metadata) || hasReasons(metadata)))) {
+    return new ProviderError('CONTENT_REJECTED', USER_CONTENT_REJECTED, false, 400)
+  }
+  return mapHttpStatus(status, message)
+}
+
+function loggedProviderName(metadata: Record<string, unknown> | undefined) {
+  if (!metadata || typeof metadata.provider_name !== 'string') return null
+  return clipLogged(metadata.provider_name)
+}
+
+function loggedReasons(metadata: Record<string, unknown> | undefined, apiKey: string) {
+  if (!metadata || !('reasons' in metadata) || metadata.reasons == null) return null
+  const reasons = Array.isArray(metadata.reasons) ? metadata.reasons : [metadata.reasons]
+  return reasons.slice(0, 8).map(item => clipLogged(reasonText(item), apiKey))
 }
 
 function vendorOf(usage: ParsedOpenRouterUsage | undefined): ProviderVendorUsage {
@@ -177,7 +244,9 @@ export function createOpenRouterImageProvider(
     }
     const payload: unknown = await response.json().catch(() => null)
     if (!response.ok) {
-      const failure = rejectContent(mapHttpStatus(response.status, readErrorMessage(payload)))
+      const upstreamMessage = readErrorMessage(payload)
+      const metadata = readMetadata(payload)
+      const failure = classifyOpenRouterFailure(response.status, upstreamMessage, metadata)
       ctx.log({
         stage: 'openrouter-image-submit',
         status: response.status,
@@ -185,6 +254,9 @@ export function createOpenRouterImageProvider(
         ms: ctx.now() - started,
         requestId: ctx.requestId,
         code: failure.code,
+        upstreamMessage: clipLogged(upstreamMessage, settings.apiKey),
+        provider_name: loggedProviderName(metadata),
+        reasons: loggedReasons(metadata, settings.apiKey),
       })
       throw failure
     }

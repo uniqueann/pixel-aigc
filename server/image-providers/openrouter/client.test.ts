@@ -149,6 +149,88 @@ describe('OpenRouter 图片客户端', () => {
     await expect(provider.submit!(input, context(vi.fn()))).rejects.toMatchObject({ code: 'INVALID_KEY' })
   })
 
+  it('403 的服务条款限制不是内容审核，且不可重试', async () => {
+    const message = `The request is prohibited due to a violation of provider Terms Of Service. key=${settings.apiKey} ${'x'.repeat(240)}`
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({
+      error: { message, code: 403, metadata: { provider_name: null, reasons: ['provider_tos'] } },
+    }, 403))
+    const provider = createOpenRouterImageProvider(() => settings, memoryStore())
+    const ctx = context(fetchImpl)
+    await expect(provider.submit!(input, ctx)).rejects.toMatchObject({
+      code: 'PROVIDER_FORBIDDEN',
+      message: '图片服务暂不可用（上游权限限制）',
+      retryable: false,
+      status: 403,
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    const logged = ctx.log.mock.calls.find(call => call[0]?.code === 'PROVIDER_FORBIDDEN')?.[0]
+    expect(logged).toMatchObject({
+      stage: 'openrouter-image-submit',
+      status: 403,
+      provider_name: null,
+      reasons: ['provider_tos'],
+    })
+    expect(String(logged?.upstreamMessage)).toContain('Terms Of Service')
+    expect(String(logged?.upstreamMessage).length).toBeLessThanOrEqual(200)
+    expect(JSON.stringify(ctx.log.mock.calls)).not.toContain(settings.apiKey)
+  })
+
+  it('ToS 缩写同样映射为上游权限限制', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({
+      error: { message: 'provider ToS violation', metadata: { provider_name: 'Google' } },
+    }, 403))
+    const provider = createOpenRouterImageProvider(() => settings, memoryStore())
+    await expect(provider.submit!(input, context(fetchImpl))).rejects.toMatchObject({
+      code: 'PROVIDER_FORBIDDEN', message: '图片服务暂不可用（上游权限限制）', retryable: false,
+    })
+  })
+
+  it.each<[number, string, { reasons: string[]; provider_name?: string; flagged_input?: string }]>([
+    [403, 'blocked by moderation', { reasons: ['sexual'], provider_name: 'Google', flagged_input: 'prompt' }],
+    [400, 'safety filter triggered', { reasons: ['violence'] }],
+  ])('HTTP %s 的审核消息仍是内容未通过', async (status, message, metadata) => {
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({
+      error: { message, metadata },
+    }, status))
+    const provider = createOpenRouterImageProvider(() => settings, memoryStore())
+    const ctx = context(fetchImpl)
+    await expect(provider.submit!(input, ctx)).rejects.toMatchObject({
+      code: 'CONTENT_REJECTED', message: '内容未通过审核', retryable: false,
+    })
+    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
+      status,
+      code: 'CONTENT_REJECTED',
+      upstreamMessage: message,
+      provider_name: metadata.provider_name ?? null,
+      reasons: metadata.reasons,
+    }))
+  })
+
+  it('只有 reasons 或 flagged_input 时也算内容审核', async () => {
+    const flagged = vi.fn().mockImplementation(async () => jsonResponse({
+      error: { message: 'Provider returned error', metadata: { flagged_input: '用户提示', provider_name: null } },
+    }, 400))
+    const provider = createOpenRouterImageProvider(() => settings, memoryStore())
+    await expect(provider.submit!(input, context(flagged))).rejects.toMatchObject({
+      code: 'CONTENT_REJECTED', retryable: false,
+    })
+    const reasonsOnly = vi.fn().mockImplementation(async () => jsonResponse({
+      error: { message: 'Provider returned error', metadata: { reasons: ['harassment'] } },
+    }, 403))
+    await expect(createOpenRouterImageProvider(() => settings, memoryStore()).submit!(input, context(reasonsOnly)))
+      .rejects.toMatchObject({ code: 'CONTENT_REJECTED', retryable: false })
+  })
+
+  it('单独的 prohibited 不再当成内容审核', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({
+      error: { message: 'Request prohibited', metadata: { provider_name: null } },
+    }, 403))
+    const provider = createOpenRouterImageProvider(() => settings, memoryStore())
+    await expect(provider.submit!(input, context(fetchImpl))).rejects.toMatchObject({
+      code: 'INVALID_KEY', retryable: false, status: 403,
+    })
+  })
+
   it('402 余额不足映射为明确错误且不重试', async () => {
     const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({ error: { message: 'Insufficient credits' } }, 402))
     const provider = createOpenRouterImageProvider(() => settings, memoryStore())

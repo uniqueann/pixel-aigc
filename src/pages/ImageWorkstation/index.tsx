@@ -38,6 +38,7 @@ import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
 import ToolExampleStrip from './components/ToolExampleStrip'
 import { workstationGenerateBlockReason } from './utils/generateGate'
+import { taskFailureText } from '@/features/generation/providerErrorCopy'
 import { freeOutpaintGeometry, presetOutpaintGeometry } from './utils/outpaintGeometry'
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
@@ -148,7 +149,7 @@ export default function ImageWorkstation() {
       if (controller.outputAssets.length === 0) return undefined
       return `已生成 ${controller.outputAssets.length} 个图片结果`
     }
-    if (task.status === 'failed' || task.status === 'cancelled') return task.errorMessage || '任务没有完成，请重试'
+    if (task.status === 'failed' || task.status === 'cancelled') return taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
     return '图片正在处理中，可以留在当前页面等待结果'
   }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
   const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)

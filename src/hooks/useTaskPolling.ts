@@ -5,6 +5,7 @@ import { getTask } from '@/services/api/task'
 import { useTaskStore } from '@/store/useTaskStore'
 import { type GenerationTask, type TaskStatus } from '@/types'
 import { taskRefetchIntervalMs } from '@/hooks/taskPollInterval'
+import { taskFailureText } from '@/features/generation/providerErrorCopy'
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
 
@@ -34,7 +35,7 @@ export function useTaskPolling(taskId: string | undefined, onTask?: (task: Gener
         if (task.status === 'succeeded') {
           notification.success({ message: '任务已完成', description: '生成结果已就绪，可在结果区查看' })
         } else if (task.status === 'failed') {
-          notification.error({ message: '任务失败', description: task.errorMessage || '请重试或更换参数' })
+          notification.error({ message: '任务失败', description: taskFailureText(task.errorCode, task.errorMessage, '请重试或更换参数') })
         }
       }
       prevStatusRef.current = task.status
