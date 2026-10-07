@@ -1105,8 +1105,11 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
   }
 }
 
+/** 提交阶段就已经把图片写入临时对象，需要在同一次请求里收进正式结果。 */
+const SYNC_RESULT_PROVIDERS = new Set(['openrouter', 'ai-gateway'])
+
 /**
- * 提交结果写回后结束这一轮。OpenRouter 的图片在提交时已经生成并放入临时对象，
+ * 提交结果写回后结束这一轮。OpenRouter 与 AI Gateway 的图片在提交时已经生成并放入临时对象，
  * 这里接着下载到正式结果，避免等到初始轮询延迟。其他供应商仍只登记 task id。
  */
 export async function finishSubmittedImageJob(
@@ -1118,7 +1121,7 @@ export async function finishSubmittedImageJob(
 ) {
   const items = await applyItemPatches(store, bundle.job.id, bundle.items, outcomes)
   const finalized = await finalizeJob(store, bundle.job, items, runtime, false, outcomes, { keepScheduledPoll: true })
-  if (provider.id !== 'openrouter' || !ACTIVE_JOB_STATUSES.has(finalized.job.status)) return finalized
+  if (!SYNC_RESULT_PROVIDERS.has(provider.id) || !ACTIVE_JOB_STATUSES.has(finalized.job.status)) return finalized
   return advanceJobInStore(store, finalized, runtime, { alreadyLeased: true })
 }
 

@@ -2,6 +2,8 @@
 
 更新时间：2026-10-07。
 
+`AI_GATEWAY_IMAGE_ENABLED=true` 且已配置 AI Gateway 凭证时，这个模型改走 Vercel AI Gateway，见 `docs/ai-gateway-nano-banana.md`。下面的 OpenRouter 路径仍然保留：Gateway 开关关闭、且 `OPENROUTER_IMAGE_ENABLED=true` 并配置了 `OPENROUTER_API_KEY` 时才会用到。
+
 把 OpenRouter 上的 `google/gemini-nano-banana-2.1` 接进现有图片任务层。默认关闭。关闭时模型列表、能力开关和其他模型的提交方式都不变。
 
 官方说明：
@@ -21,7 +23,7 @@
 - 目录里 `enabled` 保持 `false`，积分说明和本地 Mock 模型列表因此不会出现它。服务端只在 `OPENROUTER_IMAGE_ENABLED=true` 且已配置 `OPENROUTER_API_KEY` 时列入 `GET /api/image-models`。报价来自 `creditsPerImage`：1K 4、2K 6、4K 14。公开接口不返回 `vendorCost`。
 - 生成发生在提交阶段。图片字节写入 R2 `temporary/openrouter-results/{requestId}/{ordinal}.img`，用量写在同前缀的 `.usage.json`。任务号编码对象键、MIME 和用量。同一请求、同一序号在同一次进程里去重；对象已存在则直接复用，不再打上游。付费请求不自动重试。
 - 首次轮询延迟默认 130 秒，长于 Vercel 函数 120 秒上限，避免另一次轮询在生成尚未落库时再提交一单。提交成功后会在同一次请求里把临时图收进正式结果，用户不用等这段延迟。单次 HTTP 超时默认 70 秒（限制在 5–110 秒），任务截止默认 300 秒。
-- 用量：`openrouter-image-submit` 和任务层 `openrouter-usage` 记录 `prompt_tokens`、`completion_tokens`、`total_tokens`。上游若返回 `usage.cost`，原样写入 `provider_params.vendor`（货币 USD）；没有成本字段时按目录单价乘以返回张数（1K `0.0336`、2K `0.0504`、4K `0.1134`）。日志不记 API Key、提示词或图片 base64。
+- 用量：`openrouter-image-submit` 和任务层 `openrouter-usage` 记录 `prompt_tokens`、`completion_tokens`、`total_tokens`。上游若返回 `usage.cost`，原样写入 `provider_params.vendor`（货币 USD）；没有成本字段时按目录单价乘以返回张数（1K `0.039359`、2K `0.059038`、4K `0.137755`，与 AI Gateway 目录价相同）。日志不记 API Key、提示词或图片 base64。
 
 ## 环境变量
 
