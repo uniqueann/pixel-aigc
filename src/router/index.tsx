@@ -1,4 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
+import CloudRuntime from '@/cloud/CloudRuntime'
+import PersistenceGate from '@/editor/persistence/PersistenceGate'
 import MainLayout from '@/layouts/MainLayout'
 import Dashboard from '@/pages/Dashboard'
 import EmailAssistant from '@/pages/EmailAssistant'
@@ -10,7 +12,7 @@ import Assets from '@/pages/Assets'
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <MainLayout />,
+    element: <PersistenceGate><CloudRuntime /><MainLayout /></PersistenceGate>,
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'email', element: <EmailAssistant /> },

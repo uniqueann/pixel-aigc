@@ -9,16 +9,17 @@ import { Capability } from '@/types'
 import * as database from './database'
 import { defaultDrafts, type ProjectSnapshot } from './types'
 import { usePersistenceStore } from './persistenceStore'
-import { copyProjectLocally, currentSnapshot, flushProject, initializePersistence, newProject, replaceSnapshot, updateRuntimeAssetAccess } from './projectPersistence'
+import { acquireEditLock, copyProjectLocally, currentSnapshot, flushProject, initializePersistence, newProject, replaceSnapshot, updateRuntimeAssetAccess } from './projectPersistence'
 
 Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: (_name: string, _options: unknown, callback: (lock: object) => Promise<void>) => callback({}) } })
 
 beforeEach(async () => {
   vi.restoreAllMocks()
   await database.databaseOperation('projects', 'readwrite', (store) => store.clear())
-  usePersistenceStore.setState({ phase: 'idle', writable: true, drafts: defaultDrafts(), recoveries: {} })
+  usePersistenceStore.setState({ phase: 'idle', writable: true, lockPhase: 'idle', drafts: defaultDrafts(), recoveries: {} })
   useEditorStore.setState({ project: null })
   await initializePersistence()
+  await acquireEditLock()
   useEditorStore.getState().createProject('持久化测试')
 })
 
