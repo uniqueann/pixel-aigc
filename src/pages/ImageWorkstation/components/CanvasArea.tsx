@@ -8,8 +8,6 @@ import BrushToolbar, { type PaintTool } from './canvas/BrushToolbar'
 import type { MaskPaintCanvasHandle } from './canvas/MaskPaintCanvas'
 import type { OutpaintCanvasHandle } from './canvas/OutpaintCanvas'
 import type { OutpaintOutputMode } from '@shared/outpaint'
-import type { ToolExample } from '@/features/image-workstation/tools/examples'
-import ToolExampleStrip from './ToolExampleStrip'
 
 const MaskPaintCanvas = lazyWithRetry(() => import('./canvas/MaskPaintCanvas'))
 const OutpaintCanvas = lazyWithRetry(() => import('./canvas/OutpaintCanvas'))
@@ -37,7 +35,6 @@ interface Props {
   onReady: (handle: CanvasHandle | null) => void
   onMaskChange?: (hasPaint: boolean) => void
   onPreview?: (view: 'original' | 'effect') => void
-  example?: ToolExample
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -110,7 +107,6 @@ export default function CanvasArea({
   onReady,
   onMaskChange,
   onPreview,
-  example,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -144,13 +140,9 @@ export default function CanvasArea({
     return Upload.LIST_IGNORE
   }
 
-  const showUploadExample = Boolean(example) && !imageUrl && !referenceImageUrl
-  const shellClass = showUploadExample ? `${canvasShellClass} has-upload-example` : canvasShellClass
-
   if (interactionMode === 'multi-source') {
     return (
-      <div className={shellClass}>
-        {showUploadExample && example ? <ToolExampleStrip example={example} /> : null}
+      <div className={canvasShellClass}>
         <div className="workstation-fusion-sources">
           <FusionSlot
             label="商品"
@@ -175,8 +167,7 @@ export default function CanvasArea({
 
   if (!imageUrl) {
     return (
-      <div className={shellClass}>
-        {example ? <ToolExampleStrip example={example} /> : null}
+      <div className={canvasShellClass}>
         <Upload.Dragger
           className="workstation-upload"
           accept="image/png,image/jpeg,image/webp"

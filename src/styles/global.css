@@ -1609,22 +1609,35 @@ body.sidebar-resizing * {
   line-height: 1.5;
 }
 
-.upload-example {
-  display: flex;
-  width: 100%;
-  max-width: 560px;
+.tool-example {
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+  margin: 0 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
-.upload-example-before {
+.tool-example summary {
+  padding: 8px 12px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tool-example-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 12px;
+  overflow-x: auto;
+}
+
+.tool-example-group {
   display: flex;
   gap: 8px;
 }
 
-.upload-example figure {
+.tool-example figure {
   display: flex;
   width: 112px;
   flex: 0 0 auto;
@@ -1633,7 +1646,7 @@ body.sidebar-resizing * {
   margin: 0;
 }
 
-.upload-example img {
+.tool-example img {
   width: 112px;
   height: 112px;
   object-fit: cover;
@@ -1642,40 +1655,15 @@ body.sidebar-resizing * {
   background: #fff;
 }
 
-.upload-example figcaption {
+.tool-example figcaption {
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   text-align: center;
 }
 
-.upload-example-arrow {
+.tool-example-arrow {
   color: var(--color-text-muted);
   font-size: 16px;
-}
-
-.workstation-canvas-shell.has-upload-example {
-  justify-content: flex-start;
-}
-
-.workstation-canvas-shell.has-upload-example > .workstation-upload,
-.workstation-canvas-shell.has-upload-example .workstation-fusion-slot .workstation-upload {
-  display: flex;
-  width: min(520px, 100%);
-  min-height: 180px;
-  flex: 1;
-  flex-direction: column;
-}
-
-.workstation-canvas-shell.has-upload-example .workstation-fusion-slot {
-  justify-content: flex-start;
-}
-
-.workstation-canvas-shell.has-upload-example .ant-upload-drag {
-  display: flex;
-  flex: 1;
-  height: auto;
-  align-items: center;
-  justify-content: center;
 }
 
 .param-panel-intro {
@@ -2108,19 +2096,6 @@ body.sidebar-resizing * {
 }
 
 @media (max-width: 720px) {
-  .upload-example {
-    gap: 8px;
-  }
-
-  .upload-example figure {
-    width: 84px;
-  }
-
-  .upload-example img {
-    width: 84px;
-    height: 84px;
-  }
-
   .settings-layout,
   .settings-layout.is-narrow {
     flex: none;
