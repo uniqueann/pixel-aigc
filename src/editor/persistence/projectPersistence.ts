@@ -10,15 +10,24 @@ import { parseSnapshot, serializeSnapshot, persistableSnapshot, restoreHistoryCo
 import { recoveryForTask, usePersistenceStore } from './persistenceStore'
 import { defaultDrafts, type ProjectSnapshot } from './types'
 
+export const EDIT_LOCK_CHANNEL = 'pixel-aigc-edit-lock'
+export const YIELD_TIMEOUT_MS = 3000
+
+type EditLockMessage = { type: 'yield' | 'yielded'; scope: string; requestId: string }
+
 let initialization: Promise<void> | undefined
 let subscribed = false
 let revision = 0
 let savedRevision = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 let queue: Promise<unknown> = Promise.resolve()
-let releaseLock: (() => void) | undefined
+let sessionRelease: (() => void) | undefined
+let sessionFinished: Promise<void> | undefined
 let hasLock = false
+let wantsLock = false
 let suppressChanges = false
+let chain: Promise<unknown> = Promise.resolve()
+let editLockBus: BroadcastChannel | undefined
 
 export function currentSnapshot(): ProjectSnapshot {
   const editor = useEditorStore.getState()
@@ -49,7 +58,7 @@ export async function copyProjectLocally() {
 }
 
 function changed() {
-  if (suppressChanges || usePersistenceStore.getState().phase !== 'ready') return
+  if (suppressChanges || usePersistenceStore.getState().phase !== 'ready' || !usePersistenceStore.getState().writable) return
   revision += 1
   const cloud = usePersistenceStore.getState().cloud
   if (cloud && !cloud.pending) usePersistenceStore.setState({ cloud: { ...cloud, pending: true } })
@@ -63,7 +72,10 @@ export function flushProject(): Promise<void> {
   clearTimeout(timer)
   const operation = queue.catch(() => undefined).then(async () => {
     const state = usePersistenceStore.getState()
-    if (!state.writable || state.phase !== 'ready') throw new Error('当前页面没有项目编辑权')
+    if (!state.writable || state.phase !== 'ready') {
+      if (!state.writable && state.phase === 'ready' && revision === savedRevision) return
+      throw new Error('当前页面没有项目编辑权')
+    }
     if (!useEditorStore.getState().project) return
     const savingRevision = revision
     const snapshot = parseSnapshot(currentSnapshot())
@@ -94,7 +106,14 @@ function installSubscriptions() {
   window.addEventListener('beforeunload', (event) => {
     if (revision !== savedRevision) { event.preventDefault(); event.returnValue = '' }
   })
-  window.addEventListener('pagehide', () => { releaseLock?.(); hasLock = false })
+  window.addEventListener('pagehide', () => {
+    const release = sessionRelease
+    hasLock = false
+    sessionRelease = undefined
+    sessionFinished = undefined
+    release?.()
+  })
+  editLockChannel()
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) window.location.reload()
   })
@@ -136,46 +155,222 @@ async function relinkOwnedKeys() {
   }
 }
 
-async function acquireLock() {
-  if (hasLock) return true
-  if (!navigator.locks) throw new Error('此浏览器不支持安全的本地项目编辑锁，请使用新版浏览器')
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = chain.catch(() => undefined).then(task)
+  chain = run
+  return run
+}
+
+function lockName() {
+  return `pixel-aigc-current-project:${persistenceScope()}`
+}
+
+function isEditLockMessage(value: unknown): value is EditLockMessage {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Partial<EditLockMessage>
+  return (data.type === 'yield' || data.type === 'yielded') && typeof data.scope === 'string' && typeof data.requestId === 'string'
+}
+
+/** 同一来源的标签页用来交接编辑锁。消息不会回声给发送方。 */
+function editLockChannel() {
+  if (typeof BroadcastChannel === 'undefined') return undefined
+  if (!editLockBus) {
+    editLockBus = new BroadcastChannel(EDIT_LOCK_CHANNEL)
+    editLockBus.onmessage = (event: MessageEvent) => {
+      if (!isEditLockMessage(event.data) || event.data.scope !== persistenceScope() || event.data.type !== 'yield') return
+      const requestId = event.data.requestId
+      void enqueue(async () => {
+        if (!hasLock) return
+        await releaseHeldLock('blocked')
+        editLockBus?.postMessage({ type: 'yielded', scope: persistenceScope(), requestId })
+      })
+    }
+  }
+  return editLockBus
+}
+
+function notifyPeerToFlush() {
+  const bus = editLockChannel()
+  if (!bus) return Promise.resolve()
+  const channel = bus
+  const requestId = crypto.randomUUID()
+  const scope = persistenceScope()
+  return new Promise<void>((resolve) => {
+    const timeout = setTimeout(finish, YIELD_TIMEOUT_MS)
+    const onMessage = (event: MessageEvent) => {
+      if (!isEditLockMessage(event.data)) return
+      if (event.data.type === 'yielded' && event.data.scope === scope && event.data.requestId === requestId) finish()
+    }
+    function finish() {
+      clearTimeout(timeout)
+      channel.removeEventListener('message', onMessage)
+      resolve()
+    }
+    bus.addEventListener('message', onMessage)
+    bus.postMessage({ type: 'yield', scope, requestId })
+  })
+}
+
+async function releaseHeldLock(next: 'idle' | 'blocked') {
+  const release = sessionRelease
+  const finished = sessionFinished
+  if (!hasLock || !release) {
+    hasLock = false
+    usePersistenceStore.setState({ writable: false, lockPhase: next })
+    return
+  }
+  try {
+    if (usePersistenceStore.getState().phase === 'ready' && useEditorStore.getState().project) await flushProject()
+  } catch {
+    // 让出编辑权时保留已经写入的存档，不能继续占着锁。
+  }
+  if (sessionRelease !== release) return
+  hasLock = false
+  sessionRelease = undefined
+  sessionFinished = undefined
+  usePersistenceStore.setState({ writable: false, lockPhase: next })
+  release()
+  await finished
+}
+
+function requestBrowserLock(steal: boolean) {
+  const locks = navigator.locks
+  if (!locks) return Promise.reject(new Error('此浏览器不支持安全的本地项目编辑锁，请使用新版浏览器'))
   return new Promise<boolean>((resolve, reject) => {
-    void navigator.locks.request(`pixel-aigc-current-project:${persistenceScope()}`, { ifAvailable: true }, async (lock) => {
+    void locks.request(lockName(), steal ? { steal: true } : { ifAvailable: true }, async (lock) => {
       if (!lock) { resolve(false); return }
       hasLock = true
+      let release!: () => void
+      let markFinished!: () => void
+      const held = new Promise<void>((done) => { release = done })
+      sessionFinished = new Promise<void>((done) => { markFinished = done })
+      sessionRelease = release
+      usePersistenceStore.setState({ writable: true, lockPhase: 'held' })
       resolve(true)
-      await new Promise<void>((release) => { releaseLock = release })
+      await held
+      if (sessionRelease === release) {
+        sessionRelease = undefined
+        hasLock = false
+      }
+      markFinished()
     }).catch(reject)
   })
 }
 
+async function requestEditLock(steal: boolean) {
+  if (!wantsLock) return false
+  if (hasLock) {
+    usePersistenceStore.setState({ writable: true, lockPhase: 'held' })
+    return true
+  }
+  usePersistenceStore.setState({ lockPhase: 'acquiring' })
+  if (steal) await notifyPeerToFlush()
+  if (!wantsLock) {
+    usePersistenceStore.setState({ writable: false, lockPhase: 'idle' })
+    return false
+  }
+  if (hasLock) return true
+  const granted = await requestBrowserLock(steal)
+  if (!wantsLock) {
+    if (hasLock) await releaseHeldLock('idle')
+    return false
+  }
+  if (!granted) {
+    usePersistenceStore.setState({ writable: false, lockPhase: 'blocked' })
+    return false
+  }
+  return true
+}
+
+/** 画布路由进入时调用。已有持有者时只返回 false，不会抢锁。 */
+export function acquireEditLock() {
+  wantsLock = true
+  editLockChannel()
+  return enqueue(() => requestEditLock(false))
+}
+
+/** 离开画布路由时调用：先保存，再放开浏览器锁。 */
+export function releaseEditLock() {
+  wantsLock = false
+  return enqueue(() => releaseHeldLock('idle'))
+}
+
+async function readAndApply(compactAllowed: boolean) {
+  const raw = await readCurrentSnapshot()
+  usePersistenceStore.setState({ raw, writable: hasLock })
+  if (raw === undefined) return
+  const parsed = parseSnapshot(raw)
+  const linked = await linkOwnedAssetKeys(parsed)
+  const compact = persistableSnapshot(linked)
+  if (compactAllowed && hasLock && JSON.stringify(compact).length < JSON.stringify(raw).length) await writeCurrentSnapshot(compact)
+  applySnapshot(await hydrateAssets(withDisplayableCloudBytes(compact, linked)))
+  savedRevision = revision
+}
+
+function finishLoad(error?: unknown) {
+  if (error === undefined) {
+    usePersistenceStore.setState({
+      phase: 'ready',
+      writable: hasLock,
+      lockPhase: hasLock ? 'held' : 'idle',
+      error: undefined,
+    })
+    installSubscriptions()
+    return
+  }
+  usePersistenceStore.setState({
+    phase: 'error',
+    writable: hasLock,
+    lockPhase: hasLock ? 'held' : 'idle',
+    error: error instanceof Error ? error.message : '读取项目失败',
+  })
+}
+
+/** 只读取本地存档，不申请编辑锁。编辑锁由画布路由单独持有。 */
 export function initializePersistence(): Promise<void> {
   if (initialization) return initialization
-  initialization = (async () => {
+  initialization = enqueue(async () => {
     usePersistenceStore.setState({ phase: 'loading', ownerId: persistenceScope(), error: undefined })
     try {
-      const writable = await acquireLock()
-      usePersistenceStore.setState({ writable })
-      const raw = await readCurrentSnapshot()
-      usePersistenceStore.setState({ raw, writable })
-      if (raw !== undefined) {
-        const parsed = parseSnapshot(raw)
-        const linked = await linkOwnedAssetKeys(parsed)
-        const compact = persistableSnapshot(linked)
-        if (JSON.stringify(compact).length < JSON.stringify(raw).length) await writeCurrentSnapshot(compact)
-        applySnapshot(await hydrateAssets(withDisplayableCloudBytes(compact, linked)))
-        savedRevision = revision
+      editLockChannel()
+      await readAndApply(hasLock)
+      finishLoad()
+    } catch (error) {
+      finishLoad(error)
+    }
+  }).finally(() => { initialization = undefined })
+  return initialization
+}
+
+/** 通知原标签页先保存并变为只读，再用 steal 取得编辑权，然后重新读取存档。 */
+export function reclaimEditAccess(): Promise<void> {
+  wantsLock = true
+  editLockChannel()
+  if (initialization) return initialization
+  initialization = enqueue(async () => {
+    usePersistenceStore.setState({ phase: 'loading', ownerId: persistenceScope(), error: undefined })
+    try {
+      if (!hasLock) {
+        const granted = await requestEditLock(true)
+        if (!granted) throw new Error('无法取得项目编辑权')
       }
-      usePersistenceStore.setState({ phase: 'ready' })
+      await readAndApply(hasLock)
+      usePersistenceStore.setState({
+        phase: 'ready',
+        writable: hasLock,
+        lockPhase: hasLock ? 'held' : 'blocked',
+        error: undefined,
+      })
       installSubscriptions()
     } catch (error) {
       usePersistenceStore.setState({
         phase: 'error',
         writable: hasLock,
+        lockPhase: hasLock ? 'held' : 'blocked',
         error: error instanceof Error ? error.message : '读取项目失败',
       })
     }
-  })().finally(() => { initialization = undefined })
+  }).finally(() => { initialization = undefined })
   return initialization
 }
 
