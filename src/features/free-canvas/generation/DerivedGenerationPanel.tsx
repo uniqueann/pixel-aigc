@@ -1,5 +1,6 @@
 import { ArrowLeftOutlined } from '@ant-design/icons'
-import { Button, Input, Radio, Select, Spin } from 'antd'
+import { Button, Input, Radio, Spin } from 'antd'
+import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
@@ -200,7 +201,7 @@ export default function DerivedGenerationPanel({
       )}
 
       {!imageToVideo && <>
-        <label className="free-canvas-field"><span>生成模型</span><Select aria-label="裂变模型" value={modelProfileId} options={models.map(item => ({ label: item.label, value: item.id }))} disabled={formLocked} onChange={onModelChange} /></label>
+        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="裂变模型" models={models} value={modelProfileId} disabled={formLocked} onChange={onModelChange} />
         <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="裂变分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
           {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
         </Radio.Group></label>
@@ -227,7 +228,7 @@ export default function DerivedGenerationPanel({
         disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > VIDEO_PROMPT_MAX))}
         onClick={onGenerate}
       >
-        {active ? '正在生成' : imageToVideo ? '生成视频' : `开始裂变 ${count} 张`}
+        {active ? '正在生成' : imageToVideo ? '生成' : `生成 ${count} 张`}
       </CreditActionButton>
       <CreditSettlementHint quote={quote} />
       {!imageToVideo && <CreditBalanceNotice quote={quote} />}

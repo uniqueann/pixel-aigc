@@ -110,7 +110,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
             onClick={controller.pause}>{controller.runState === 'pausing' ? '正在暂停…' : '暂停'}</Button>
             : <Button type="primary" icon={<PlayCircleOutlined />} disabled={cannotGenerate || !counts.pending}
               onClick={() => handleAction(controller.start(configuration.defaultModelProfileId))}>
-              {controller.runState === 'paused' ? '继续生成' : '开始生成'}{counts.pending ? `（${counts.pending} 条）` : ''}
+              {controller.runState === 'paused' ? '继续生成' : '生成'}{counts.pending ? ` ${counts.pending} 条` : ''}
             </Button>}
           <Button icon={<RedoOutlined />} disabled={cannotGenerate || !counts.failed}
             onClick={() => handleAction(controller.retry(configuration.defaultModelProfileId))}>重试失败项</Button>
@@ -138,7 +138,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
       <Table<EmailBatchRow> className="email-batch-table" rowKey="id" size="small" tableLayout="fixed"
         dataSource={controller.rows}
         pagination={{ pageSize: 10, showSizeChanger: false, hideOnSinglePage: true }}
-        locale={{ emptyText: '上传 CSV 后，可在这里预览邮件并开始生成' }} columns={[
+        locale={{ emptyText: '上传 CSV 后，可在这里预览邮件并生成' }} columns={[
           { title: '序号', width: '7%', onCell: () => batchCellLabel('序号'), render: (_, row) => sequenceOf(row) },
           { title: '原始邮件内容', width: '15%', onCell: () => batchCellLabel('原始邮件内容'), render: (_, row) => <span className="email-batch-cell">{row.original['原始邮件内容'] || '—'}</span> },
           { title: '编写指导', width: '12%', onCell: () => batchCellLabel('编写指导'), render: (_, row) => <span className="email-batch-cell">{row.original['编写指导'] || '—'}</span> },

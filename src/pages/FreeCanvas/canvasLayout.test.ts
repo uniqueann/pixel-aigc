@@ -21,8 +21,8 @@ describe('自由画布面板布局', () => {
     expect(pageSource).not.toContain('{scene.width} × {scene.height}')
     expect(textPanel).toContain('className="free-canvas-generation-panel"')
     expect(derivedPanel).toContain('className="free-canvas-generation-panel free-canvas-derived-panel"')
-    expect(textPanel.indexOf('<VideoCreditEstimate')).toBeLessThan(textPanel.indexOf('生成视频到画布'))
-    expect(derivedPanel.indexOf('<VideoCreditEstimate')).toBeLessThan(derivedPanel.lastIndexOf('生成视频'))
+    expect(textPanel.indexOf('<VideoCreditEstimate')).toBeLessThan(textPanel.indexOf('className="free-canvas-generate"'))
+    expect(derivedPanel.indexOf('<VideoCreditEstimate')).toBeLessThan(derivedPanel.indexOf('className="free-canvas-generate"'))
   })
 
   it('宽屏下提示、积分和生成按钮留在卡片内并在面板里滚动', () => {

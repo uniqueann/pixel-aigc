@@ -532,6 +532,27 @@ body.sidebar-resizing * {
   }
 }
 
+.header-account-trigger {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.header-account-trigger:hover,
+.header-account-trigger:focus-visible {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
 .credits-trigger {
   padding: 0;
   border: 0;
@@ -539,6 +560,44 @@ body.sidebar-resizing * {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.count-memory-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.count-memory-hint button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.count-memory-hint button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.workstation-count-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.model-choice-static {
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 32px;
 }
 
 .credits-trigger:hover {

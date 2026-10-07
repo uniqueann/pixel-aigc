@@ -108,8 +108,8 @@ describe('视频面板积分预估', () => {
   })
 
   it.each([
-    ['文生视频', TextVideoPanel, '生成视频到画布'],
-    ['图生视频', ImageVideoPanel, '生成视频'],
+    ['文生视频', TextVideoPanel, '生成'],
+    ['图生视频', ImageVideoPanel, '生成'],
   ] as const)('%s 显示模型报价，切换时长后更新，声音不改变价格', (_label, Panel, buttonName) => {
     useUserStore.setState({ credits: 68 })
     render(<Panel model={customModel} />)
@@ -128,8 +128,8 @@ describe('视频面板积分预估', () => {
   })
 
   it.each([
-    ['文生视频', TextVideoPanel, '生成视频到画布'],
-    ['图生视频', ImageVideoPanel, '生成视频'],
+    ['文生视频', TextVideoPanel, '生成'],
+    ['图生视频', ImageVideoPanel, '生成'],
   ] as const)('%s 在价格缺失时降级，不显示错误数字', (_label, Panel, buttonName) => {
     useUserStore.setState({ credits: 68 })
     const missing: VideoModelProfile = {
@@ -145,8 +145,8 @@ describe('视频面板积分预估', () => {
   })
 
   it.each([
-    ['文生视频', TextVideoPanel, '生成视频到画布'],
-    ['图生视频', ImageVideoPanel, '生成视频'],
+    ['文生视频', TextVideoPanel, '生成'],
+    ['图生视频', ImageVideoPanel, '生成'],
   ] as const)('%s 余额不足时提示并禁用提交，余额足够时不提示', (_label, Panel, buttonName) => {
     useUserStore.setState({ credits: 68 })
     render(<Panel model={SEEDANCE_VIDEO_MODEL} />)
@@ -160,8 +160,8 @@ describe('视频面板积分预估', () => {
   })
 
   it.each([
-    ['文生视频', TextVideoPanel, '生成视频到画布'],
-    ['图生视频', ImageVideoPanel, '生成视频'],
+    ['文生视频', TextVideoPanel, '生成'],
+    ['图生视频', ImageVideoPanel, '生成'],
   ] as const)('%s 在生成开关关闭时隐藏报价和表单', (_label, Panel, buttonName) => {
     useUserStore.setState({ credits: 68 })
     render(<Panel model={SEEDANCE_VIDEO_MODEL} configured={false} generateDisabled />)
@@ -177,7 +177,7 @@ describe('视频面板积分预估', () => {
     expect(screen.getByText('模拟生成，不消耗积分')).toBeTruthy()
     expect(screen.queryByText(/预计消耗/)).toBeNull()
     expect(screen.queryByText(/积分不足/)).toBeNull()
-    expect((screen.getByRole('button', { name: /^生成视频到画布 ·/ }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: /^生成 ·/ }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it.each([390, 320])('%ipx 下面板报价换行且样式不允许横向撑出', (width) => {

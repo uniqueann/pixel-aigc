@@ -16,6 +16,8 @@ import {
 import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import type { OutpaintOutputMode } from '@shared/outpaint'
+import type { CountTool } from '@shared/preferences'
+import CountMemoryHint from '@/features/preferences/CountMemoryHint'
 
 interface Props {
   capability: Capability
@@ -82,6 +84,18 @@ export default function ParamPanel({
   relight = RELIGHT_DEFAULT,
   onRelightChange,
 }: Props) {
+  const countTool: CountTool | undefined = capability === Capability.ImageEdit ? 'smart-edit'
+    : capability === Capability.Relight ? 'relight'
+    : capability === Capability.Variation ? 'variation'
+    : capability === Capability.Fusion ? 'fusion'
+    : capability === Capability.Retouch ? 'retouch'
+    : undefined
+  const countHeading = (
+    <div className="workstation-count-heading">
+      <div style={{ ...labelStyle, marginBottom: 0 }}>生成数量</div>
+      {countTool ? <CountMemoryHint tool={countTool} disabled={disabled} /> : null}
+    </div>
+  )
   if (capability === Capability.ImageEdit || capability === Capability.Variation || capability === Capability.Retouch || capability === Capability.Fusion) {
     const variation = capability === Capability.Variation
     const retouch = capability === Capability.Retouch
@@ -133,7 +147,7 @@ export default function ParamPanel({
           />
         </div>
         <div>
-          <div style={labelStyle}>生成数量</div>
+          {countHeading}
           <GenerationCountPicker value={count} max={maxCount} disabled={disabled} onChange={onCountChange} />
         </div>
         <div>
@@ -227,7 +241,7 @@ export default function ParamPanel({
           />
         </div>
         <div>
-          <div style={labelStyle}>生成数量</div>
+          {countHeading}
           <GenerationCountPicker value={count} max={maxCount} disabled={disabled} onChange={onCountChange} />
         </div>
         <div>
@@ -271,6 +285,7 @@ export default function ParamPanel({
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       {mode === 'remove' ? (
         <div>
+          <p className="toolbox-hint" style={{ margin: '0 0 8px', fontSize: 12 }}>上传后用画笔或智能选区涂抹要消除的区域。智能选区免费。</p>
           <div style={labelStyle}>背景描述（可选）</div>
           <Input.TextArea
             value={erasePrompt}
@@ -332,37 +347,6 @@ export default function ParamPanel({
             </div>
           ) : null}
         </>
-      ) : mode === 'remove' ? null : (
-        <div>
-          <div style={labelStyle}>生成尺寸</div>
-          <Select style={{ width: '100%' }} placeholder="选择平台预设" options={[]} />
-        </div>
-      )}
-
-      {mode === 'remove' ? null : (
-        <>
-      <div>
-        <div style={labelStyle}>模型</div>
-        <Select style={{ width: '100%' }} defaultValue="default" options={[{ value: 'default', label: '默认模型' }]} />
-      </div>
-      <div>
-        <div style={labelStyle}>生成数量</div>
-        <GenerationCountPicker value={count} max={4} disabled={disabled} onChange={onCountChange} />
-      </div>
-        </>
-      )}
-      {capability !== Capability.Outpaint && mode !== 'remove' ? (
-        <div>
-          <div style={labelStyle}>渲染分辨率</div>
-          <Select
-            style={{ width: '100%' }}
-            defaultValue="2k"
-            options={[
-              { value: '2k', label: '2K' },
-              { value: '4k', label: '4K' },
-            ]}
-          />
-        </div>
       ) : null}
     </Space>
   )

@@ -47,6 +47,16 @@ const NAV_ITEMS = [
 
 const SIDEBAR_FOLD_MIN = 112
 
+function accountMenuItems() {
+  return [
+    { key: 'personalization', icon: <UserOutlined />, label: '个性化' },
+    { key: 'settings', icon: <SettingOutlined />, label: '设置' },
+    { key: 'help', icon: <QuestionCircleOutlined />, label: '帮助与支持' },
+    { type: 'divider' as const },
+    { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
+  ]
+}
+
 function SidebarResizeHandle({ width, onChange }: { width: number; onChange: (width: number, commit: boolean) => void }) {
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
@@ -226,13 +236,7 @@ function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: 
           overlayClassName="account-dropdown"
           menu={{
             onClick: ({ key }) => onAccountMenu(key),
-            items: [
-              { key: 'personalization', icon: <UserOutlined />, label: '个性化' },
-              { key: 'settings', icon: <SettingOutlined />, label: '设置' },
-              { key: 'help', icon: <QuestionCircleOutlined />, label: '帮助与支持' },
-              { type: 'divider' },
-              { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
-            ],
+            items: accountMenuItems(),
           }}
         >
           <button className="account-trigger" type="button" aria-label={iconOnly ? accountName : undefined} title={iconOnly ? accountName : undefined}>
@@ -361,6 +365,19 @@ function MainLayoutContent() {
               : <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />}
           </div>
           <div className="app-header-trailing">
+            <Dropdown
+              trigger={['click']}
+              placement="bottomRight"
+              overlayClassName="account-dropdown"
+              menu={{
+                onClick: ({ key }) => handleAccountMenu({ key }),
+                items: accountMenuItems(),
+              }}
+            >
+              <button type="button" className="header-account-trigger" aria-label="账号与设置" title="账号与设置">
+                <SettingOutlined />
+              </button>
+            </Dropdown>
             {account && (
               <button
                 type="button"

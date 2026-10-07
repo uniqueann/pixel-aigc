@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
 import { publicImageModel, IMAGE_MODEL_PROFILES } from '@shared/image-models'
@@ -10,11 +10,33 @@ import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import { RELIGHT_NOTE_MAX } from '@shared/relight'
 import { RETOUCH_NOTE_MAX } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
+import { applyPreferencesPatch, defaultPreferences } from '@shared/preferences'
+import { usePreferencesStore } from '@/features/preferences/store'
 import ParamPanel from './ParamPanel'
 
 const model = publicImageModel(IMAGE_MODEL_PROFILES[0])
 
-afterEach(() => cleanup())
+const panelProps = {
+  smartEditPrompt: '',
+  onSmartEditPromptChange: () => undefined,
+  count: 1,
+  onCountChange: () => undefined,
+  resolution: '2k' as const,
+  onResolutionChange: () => undefined,
+  erasePrompt: '',
+  onErasePromptChange: () => undefined,
+  repaintPrompt: '',
+  onRepaintPromptChange: () => undefined,
+  outpaintMode: 'free' as const,
+  onOutpaintModeChange: () => undefined,
+  presetPlatform: 'amazon',
+  onPresetPlatformChange: () => undefined,
+}
+
+afterEach(() => {
+  cleanup()
+  usePreferencesStore.setState({ preferences: defaultPreferences(), status: 'local', error: null })
+})
 
 describe('智能编辑参数面板', () => {
   it('按模型能力限制数量，并在当前比例禁用 4K', () => {
@@ -194,10 +216,35 @@ describe('智能编辑参数面板', () => {
     const erase = screen.getByPlaceholderText(/小物体可留空/)
     expect(erase).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
     expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
+    expect(screen.getByText('上传后用画笔或智能选区涂抹要消除的区域。智能选区免费。')).toBeTruthy()
 
     rerender(<ParamPanel capability={Capability.Inpaint} mode="repaint" {...shared} />)
     const repaint = screen.getByPlaceholderText(/透明玻璃花瓶/)
     expect(repaint).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
     expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
+    expect(screen.queryByText(/智能选区免费/)).toBeNull()
+  })
+
+  it('扩图不展示无效的模型、数量和尺寸选择', () => {
+    render(<ParamPanel capability={Capability.Outpaint} {...panelProps} />)
+    expect(screen.queryByText('默认模型')).toBeNull()
+    expect(screen.queryByText('生成数量')).toBeNull()
+    expect(screen.queryByText('生成尺寸')).toBeNull()
+    expect(screen.getByText('输出模式')).toBeTruthy()
+    expect(screen.getByText('扩图方式')).toBeTruthy()
+  })
+
+  it('记住的张数和默认不同时提示上次使用，恢复后清掉该张数', () => {
+    usePreferencesStore.setState({
+      preferences: applyPreferencesPatch(defaultPreferences(), { image: { lastUsed: { 'smart-edit': { count: 3, resolution: '4k' } } } }),
+      status: 'local',
+      error: null,
+    })
+    render(<ParamPanel capability={Capability.ImageEdit} {...panelProps} count={3} models={[model]} modelProfileId={model.id} />)
+    expect(screen.getByText('上次使用')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '恢复默认生成数量' }))
+    expect(screen.queryByText('上次使用')).toBeNull()
+    expect(usePreferencesStore.getState().preferences.image.lastUsed['smart-edit']).toEqual({ resolution: '4k' })
+    expect(usePreferencesStore.getState().preferences.image.counts['smart-edit']).toBe(1)
   })
 })

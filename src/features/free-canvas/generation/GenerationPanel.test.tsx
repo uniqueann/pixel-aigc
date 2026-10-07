@@ -55,7 +55,7 @@ describe('自由画布文生图侧栏', () => {
   it('配置加载期间阻止生成，完成后按有效分辨率展示积分', () => {
     const { rerender } = renderPanel({ modelsLoading: true, generateDisabled: true })
     expect(screen.getByText('正在加载文生图模型配置…')).toBeTruthy()
-    expect((screen.getByRole('button', { name: /^生成到画布 ·/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^生成 \d+ 张 ·/ }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByText('文生图模型尚未就绪，请检查登录与模型配置。')).toBeNull()
     rerender(<GenerationPanel mode="text-to-image" prompt="森林" presetKey="1:1" count={2} durationSeconds={5}
       submitting={false} active={false} formLocked={false} polling={false}
@@ -70,7 +70,7 @@ describe('自由画布文生图侧栏', () => {
   it('缺少报价时显示重读提示，不伪装成免费生成', () => {
     renderPanel({ estimatedCredits: undefined, generateDisabled: true })
     expect(screen.getByText('模型积分报价尚未就绪，请重新读取文生图配置。')).toBeTruthy()
-    expect((screen.getByRole('button', { name: /^生成到画布 ·/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^生成 \d+ 张 ·/ }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByText(/预计预扣 0 积分/)).toBeNull()
   })
 
@@ -87,7 +87,7 @@ describe('自由画布文生图侧栏', () => {
 
   it('恢复的超长提示词被模型长度限制阻止提交', () => {
     renderPanel({ prompt: '图'.repeat(11), models: [{ ...model, ui: { ...model.ui, promptMaxLength: 10 } }] })
-    expect((screen.getByRole('button', { name: /^生成到画布 ·/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^生成 \d+ 张 ·/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('只有千问模型显示自动扩写，默认关闭', () => {
@@ -132,7 +132,7 @@ describe('自由画布文生图侧栏', () => {
     expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
     expect(screen.queryByRole('textbox')).toBeNull()
     expect(screen.queryByRole('switch', { name: '生成声音' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /^生成视频到画布/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^生成/ })).toBeNull()
     expect(screen.queryByText(/积分预估|预计消耗|检查登录与服务/)).toBeNull()
   })
 
@@ -185,8 +185,17 @@ describe('自由画布文生图侧栏', () => {
     renderPanel({ mode: 'text-to-video', task, active: true, formLocked: true, videoAvailability: 'soon', pollError: new Error('暂时断网'), onRefetch: refetch })
     expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
     expect(screen.getByText('任务仍然保留，可以重新查询同一任务。')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /^生成视频到画布|按原参数重试/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^生成|按原参数重试/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '重新查询' }))
     expect(refetch).toHaveBeenCalledOnce()
+  })
+
+  it('只有一个文生图模型时显示名称，多个模型才使用下拉框', () => {
+    renderPanel()
+    expect(screen.getByText(model.label)).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: '文生图模型' })).toBeNull()
+    cleanup()
+    renderPanel({ models: [model, qwen], modelProfileId: model.id })
+    expect(screen.getByRole('combobox', { name: '文生图模型' })).toBeTruthy()
   })
 })
