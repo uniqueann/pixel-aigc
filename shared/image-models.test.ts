@@ -4,6 +4,8 @@ import {
   DRAGONCODE_RATIOS,
   DRAGONCODE_SIZES,
   IMAGE_MODEL_PROFILES,
+  OPENROUTER_NANO_BANANA_MODEL,
+  OPENROUTER_NANO_BANANA_PROFILE_ID,
   RESOLUTION_DOWNGRADED_4K,
   defaultImageModel,
   mapDragonCodeSize,
@@ -75,5 +77,30 @@ describe('nearestRatio / mapDragonCodeSize', () => {
       'auto', '1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5',
       '16:9', '9:16', '2:1', '1:2', '21:9', '9:21',
     ])
+  })
+
+  it('Nano Banana 2.1 按 1K/2K/4K 报价，公开接口不含供应商成本', () => {
+    const profile = IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)
+    expect(profile).toMatchObject({
+      provider: 'openrouter',
+      model: OPENROUTER_NANO_BANANA_MODEL,
+      label: 'Google Nano Banana 2.1',
+      enabled: false,
+      operations: ['text_to_image', 'image_edit', 'variation'],
+      pricing: {
+        unit: 'image',
+        creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 },
+        vendorCost: { '1k': '0.0336', '2k': '0.0504', '4k': '0.1134' },
+        vendorCurrency: 'USD',
+      },
+    })
+    expect(profile?.ui.resolutions).toEqual(['1k', '2k', '4k'])
+    expect(profile?.ui.maxRefImages).toBe(14)
+    expect(profile?.ui.resolutionRatioConstraints).toBeUndefined()
+    const published = publicImageModel(profile!)
+    expect(published.pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 } })
+    expect(JSON.stringify(published)).not.toContain('vendorCost')
+    expect(JSON.stringify(published)).not.toContain('0.0336')
+    expect(defaultImageModel('text_to_image')?.id).toBe('dragoncode:gpt-image-2')
   })
 })

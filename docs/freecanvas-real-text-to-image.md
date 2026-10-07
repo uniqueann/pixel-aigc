@@ -35,3 +35,5 @@
 尚未取得真实测试账号登录状态，供应商真实调用与实际积分扣款未执行。后续使用一张 1K 的小额生成核对结果对象、画布、资产与积分流水；供应商真实验收不能用 Mock 或自动化模拟替代。构建保留现有大包体提示，未扩展大规模画布性能专项。
 
 千问图像 3.0 / 3.0 Pro 的后端适配在 `docs/qwen-image-integration.md`。`QWEN_IMAGE_ENABLED` 默认关闭，关闭时模型列表和能力开关与只接 GPT Image 2 时相同。
+
+Google Nano Banana 2.1 经 OpenRouter 接入，说明在 `docs/openrouter-nano-banana-integration.md`。`OPENROUTER_IMAGE_ENABLED` 默认关闭；开关与 `OPENROUTER_API_KEY` 都就绪后，文生图和裂变模型列表才会出现它，报价为 1K 4 / 2K 6 / 4K 14 积分。

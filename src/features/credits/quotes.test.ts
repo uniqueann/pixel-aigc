@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultImageModel, publicImageModel } from '@shared/image-models'
+import { IMAGE_MODEL_PROFILES, OPENROUTER_NANO_BANANA_PROFILE_ID, defaultImageModel, publicImageModel } from '@shared/image-models'
 import type { BillingCatalog } from '@shared/billing'
 import { Capability } from '@/types'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
@@ -20,6 +20,17 @@ describe('操作报价与实际提交参数', () => {
     expect(effective.resolution).toBe('2k')
     expect(imageCreditAmount(model, effective.count, effective.resolution)).toBe(6)
     expect(imageCreditAmount(model, 3, '1k')).toBe(6)
+  })
+
+  it('Nano Banana 2.1 按 1K/2K/4K 显示 4/6/14，正方形 4K 不降级', () => {
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    expect(imageCreditAmount(nano, 1, '1k')).toBe(4)
+    expect(imageCreditAmount(nano, 1, '2k')).toBe(6)
+    expect(imageCreditAmount(nano, 1, '4k')).toBe(14)
+    expect(imageCreditAmount(nano, 2, '2k')).toBe(12)
+    const effective = effectiveImageParameters(1, '4k', { width: 1000, height: 1000 }, nano.ui)
+    expect(effective.resolution).toBe('4k')
+    expect(imageCreditAmount(nano, effective.count, effective.resolution)).toBe(14)
   })
 
   it('未上传导致有效张数为 0 时，报价改用当前选择的张数', () => {

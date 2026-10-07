@@ -37,6 +37,8 @@ export interface ProviderSubmitInput {
   images: Array<{ url: string }>
   mask?: { url: string }
   providerParams: Record<string, unknown>
+  /** 同一任务里的序号。同步供应商用它做结果去重，避免同一次提交写两张一样的图。 */
+  ordinal?: number
 }
 
 export type ProviderErrorCode =
@@ -54,6 +56,9 @@ export interface ProviderVendorUsage {
   cost?: number
   /** 成本币种。上游没给时，由模型目录的 vendorCurrency 补上。 */
   currency?: string
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
   creditsCost?: number
   expiresAt?: string | number
   outputWidth?: number
