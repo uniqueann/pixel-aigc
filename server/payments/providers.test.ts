@@ -14,7 +14,7 @@ const order:PaymentOrderSnapshot={id:'00000000-0000-4000-8000-000000000111',user
   product_id:'prod_aigc_starter',amount:199,currency:'USD',credits:100,checkout_id:'ch_aigc'}
 const metadata={productScope:'aigc',orderId:order.id,userId:order.user_id,runtimeScope:order.scope,paymentMode:'test'}
 beforeEach(()=>{
-  vi.clearAllMocks();vi.stubEnv('AIGC_RUNTIME_SCOPE','preview');vi.stubEnv('AIGC_CREDIT_CURRENCY','USD');vi.stubEnv('AIGC_PAYMENTS_ENABLED','true')
+  vi.clearAllMocks();vi.stubEnv('AIGC_RUNTIME_SCOPE','preview');vi.stubEnv('AIGC_CREDIT_CURRENCY','USD');vi.stubEnv('AIGC_PAYMENTS_ENABLED','true');vi.stubEnv('AIGC_CREEM_ENABLED','true')
   for(const p of ['CREEM','DODO']) {
     vi.stubEnv(`AIGC_${p}_TEST_API_KEY`,'test_key');vi.stubEnv(`AIGC_${p}_TEST_WEBHOOK_SECRET`,'test_secret')
     vi.stubEnv(`AIGC_${p}_TEST_STARTER_PRODUCT_ID`,order.product_id)
@@ -27,7 +27,7 @@ beforeEach(()=>{
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals()})
 describe('支付通道验证',()=>{
   it('测试/正式模式按运行环境隔离，人民币目录不会提供Creem',()=>{
-    expect(paymentMode()).toBe('test');expect(configuredProviders('starter')).toEqual(['creem','dodo'])
+    expect(paymentMode()).toBe('test');expect(configuredProviders('starter')).toEqual(['dodo','creem'])
     vi.stubEnv('AIGC_CREDIT_CURRENCY','CNY');expect(configuredProviders('starter')).toEqual(['dodo'])
     vi.stubEnv('AIGC_RUNTIME_SCOPE','production');expect(paymentMode()).toBe('live');expect(configuredProviders('starter')).toEqual([])
   })
