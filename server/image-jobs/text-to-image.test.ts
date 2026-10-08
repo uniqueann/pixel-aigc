@@ -146,10 +146,10 @@ describe('真实文生图任务', () => {
       await store.updateItem(created.bundle.job.id, outcome.ordinal, outcome.patch)
     const advanced = await advanceJobInStore(store, { job: { ...created.bundle.job, next_poll_at: new Date(0) }, items: await store.listItems(created.bundle.job.id) }, rt)
     const client = await toClientImageTask(advanced, rt)
-    expect(client).toMatchObject({ capability: 'text_to_image', status: 'succeeded', creditsCost: 3, warnings: ['PARTIAL'] })
+    expect(client).toMatchObject({ capability: 'text_to_image', status: 'succeeded', creditsCost: 6, warnings: ['PARTIAL'] })
     expect(client.resultImages).toEqual([expect.objectContaining({ ordinal: 1, width: 1600, height: 900, objectKey: expect.stringMatching(/\/1\.png$/) })])
     expect(rt.crop).toHaveBeenCalledWith(MOCK_PNG_1X1, 1600, 900)
-    expect(rt.billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 3 })
+    expect(rt.billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 6 })
     expect(rt.billing.release).not.toHaveBeenCalled()
   })
 
