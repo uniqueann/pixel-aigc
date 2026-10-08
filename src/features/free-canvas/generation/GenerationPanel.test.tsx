@@ -27,7 +27,7 @@ function renderPanel(props: Partial<Parameters<typeof GenerationPanel>[0]> = {})
     onPromptChange={() => undefined} onPresetChange={() => undefined} onCountChange={() => undefined}
     onDurationChange={() => undefined} onGenerate={() => undefined} onRetry={() => undefined}
     onModifyParameters={() => undefined} onRefetch={() => undefined}
-    models={[model]} modelProfileId={model.id} resolution="2k" estimatedCredits={3} mockGateway={false} {...props} />)
+    models={[model]} modelProfileId={model.id} resolution="2k" estimatedCredits={6} mockGateway={false} {...props} />)
 }
 
 function rememberRetry(task: GenerationTask<TextToImageTaskParams>, modelProfileId: string): GenerationRecovery {
@@ -62,9 +62,9 @@ describe('自由画布文生图侧栏', () => {
       onPromptChange={() => undefined} onPresetChange={() => undefined} onCountChange={() => undefined}
       onDurationChange={() => undefined} onGenerate={() => undefined} onRetry={() => undefined}
       onModifyParameters={() => undefined} onRefetch={() => undefined} models={[model]} modelProfileId={model.id}
-      resolution="2k" estimatedCredits={6} resolutionAdjusted mockGateway={false} />)
+      resolution="2k" estimatedCredits={12} resolutionAdjusted mockGateway={false} />)
     expect(screen.getByText('当前模型或画面比例不支持所选分辨率，已按 2K 计算本次参数与积分。')).toBeTruthy()
-    expect(screen.getByText('本次预计预扣 6 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
+    expect(screen.getByText('本次预计预扣 12 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
   })
 
   it('缺少报价时显示重读提示，不伪装成免费生成', () => {
@@ -108,20 +108,20 @@ describe('自由画布文生图侧栏', () => {
 
   it('手动重试展示原请求参数的数量和积分，而不套用当前草稿', () => {
     const retry = vi.fn()
-    renderPanel({ task: failedTask, count: 1, resolution: '1k', estimatedCredits: 2, onRetry: retry })
-    expect(screen.getByText('手动重试将按原参数创建新任务，生成 2 张，预计预扣 6 积分。')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '按原参数重试 2 张 · 6 积分' }))
+    renderPanel({ task: failedTask, count: 1, resolution: '1k', estimatedCredits: 4, onRetry: retry })
+    expect(screen.getByText('手动重试将按原参数创建新任务，生成 2 张，预计预扣 12 积分。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '按原参数重试 2 张 · 12 积分' }))
     expect(retry).toHaveBeenCalledTimes(1)
   })
 
   it('部分成功按真实序号预览运行时图片，云端更换对象键后仍可独立补存历史', () => {
     const retrySave = vi.fn()
-    const task = { ...failedTask, status: 'succeeded' as const, creditsCost: 3,
+    const task = { ...failedTask, status: 'succeeded' as const, creditsCost: 6,
       resultImages: [{ url: 'https://expired.example/image.png', width: 2048, height: 1152, mimeType: 'image/png', objectKey: 'users/owner/image.png', ordinal: 1 }],
     }
     const asset = createImageAsset({ id: 'asset:task:o1', name: '结果', url: 'blob:runtime-result', width: 2048, height: 1152, objectKey: 'media/cloud-copy.png' })
     renderPanel({ task, resultAssets: { [asset.id]: asset }, historyError: '写入失败', onRetrySave: retrySave })
-    expect(screen.getByText('成功 1 / 2 张图片，实际消耗 3 积分')).toBeTruthy()
+    expect(screen.getByText('成功 1 / 2 张图片，实际消耗 6 积分')).toBeTruthy()
     expect(screen.getByAltText('生成结果 2').getAttribute('src')).toBe('blob:runtime-result')
     fireEvent.click(screen.getByRole('button', { name: '重试保存' }))
     expect(retrySave).toHaveBeenCalledTimes(1)
@@ -142,10 +142,10 @@ describe('自由画布文生图侧栏', () => {
     const retry = vi.fn()
     usePersistenceStore.setState({ recoveries: { 'retry-request': rememberRetry(reloaded, qwenPro.id) } })
     renderPanel({
-      task: reloaded, count: 4, resolution: '1k', estimatedCredits: 2, onRetry: retry,
+      task: reloaded, count: 4, resolution: '1k', estimatedCredits: 4, onRetry: retry,
       models: [model, qwenPro], modelProfileId: model.id,
     })
-    expect(screen.getByText('本次预计预扣 2 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
+    expect(screen.getByText('本次预计预扣 4 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
     expect(screen.getByText('手动重试将按原参数创建新任务，生成 1 张，预计预扣 8 积分。')).toBeTruthy()
     expect(screen.queryByText('原模型报价暂不可用，请修改参数后重新生成。')).toBeNull()
     expect(screen.queryByText('报价暂不可用，请重新加载。')).toBeNull()
@@ -166,7 +166,7 @@ describe('自由画布文生图侧栏', () => {
     expect(button.disabled).toBe(true)
     fireEvent.click(button)
     expect(retry).not.toHaveBeenCalled()
-    expect(screen.queryByText(/预计预扣 6 积分/)).toBeNull()
+    expect(screen.queryByText(/预计预扣 12 积分/)).toBeNull()
   })
 
   it('原模型不在报价列表中时禁止收费重试', () => {

@@ -103,4 +103,15 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(JSON.stringify(published)).not.toContain('0.039359')
     expect(defaultImageModel('text_to_image')?.id).toBe('dragoncode:gpt-image-2')
   })
+
+  it('GPT Image 2 积分与 Nano Banana 2.1 相同，供应商成本保持原值', () => {
+    const gpt = IMAGE_MODEL_PROFILES.find(item => item.id === 'dragoncode:gpt-image-2')
+    const nano = IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)
+    expect(gpt?.pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
+    expect(gpt?.pricing.creditsPerImage).toEqual(nano?.pricing.creditsPerImage)
+    expect(gpt?.pricing.vendorCost).toEqual({ '1k': '0.0085', '2k': '0.014', '4k': '0.021' })
+    expect(gpt?.pricing.vendorCurrency).toBeUndefined()
+    expect(publicImageModel(gpt!).pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 } })
+    expect(JSON.stringify(publicImageModel(gpt!))).not.toContain('vendorCost')
+  })
 })
