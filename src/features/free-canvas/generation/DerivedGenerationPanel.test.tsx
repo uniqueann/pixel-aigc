@@ -90,10 +90,10 @@ describe('裂变侧栏能力状态', () => {
     renderPanel({
       task, models: [original, current], modelProfileId: current.id, resolution: '1k', count: 4, estimatedCredits: 9, onRetry: retry,
     })
-    expect(screen.getByText('手动重试将按原参数创建新任务，生成 2 张，预计预扣 6 积分。')).toBeTruthy()
+    expect(screen.getByText('手动重试将按原参数创建新任务，生成 2 张，预计预扣 12 积分。')).toBeTruthy()
     expect(screen.queryByText('原模型报价暂不可用，请修改参数后重新生成。')).toBeNull()
     expect(screen.queryByText('报价暂不可用，请重新加载。')).toBeNull()
-    const button = screen.getByRole('button', { name: '按原参数重试 2 张 · 6 积分' }) as HTMLButtonElement
+    const button = screen.getByRole('button', { name: '按原参数重试 2 张 · 12 积分' }) as HTMLButtonElement
     expect(button.disabled).toBe(false)
     fireEvent.click(button)
     expect(retry).toHaveBeenCalledTimes(1)
@@ -108,11 +108,11 @@ describe('裂变侧栏能力状态', () => {
   it('只有一个裂变模型时显示名称，多个模型才使用下拉框', () => {
     const only = publicImageModel(defaultImageModel('variation')!)
     const other = { ...only, id: 'other-model', label: '另一个裂变模型' }
-    renderPanel({ models: [only], modelProfileId: only.id, estimatedCredits: 2 })
+    renderPanel({ models: [only], modelProfileId: only.id, estimatedCredits: 4 })
     expect(screen.getByText(only.label)).toBeTruthy()
     expect(screen.queryByRole('combobox', { name: '裂变模型' })).toBeNull()
     cleanup()
-    renderPanel({ models: [only, other], modelProfileId: only.id, estimatedCredits: 2 })
+    renderPanel({ models: [only, other], modelProfileId: only.id, estimatedCredits: 4 })
     expect(screen.getByRole('combobox', { name: '裂变模型' })).toBeTruthy()
   })
 })

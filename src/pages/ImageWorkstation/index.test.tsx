@@ -119,11 +119,11 @@ describe('图片工作站配置提示', () => {
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     const cases = [
-      ['smart-edit', '生成 1 张 · 2 积分'],
-      ['relight', '生成 1 张 · 2 积分'],
-      ['variation', '生成 2 张 · 4 积分'],
-      ['fusion', '生成 1 张 · 2 积分'],
-      ['retouch', '生成 1 张 · 2 积分'],
+      ['smart-edit', '生成 1 张 · 4 积分'],
+      ['relight', '生成 1 张 · 4 积分'],
+      ['variation', '生成 2 张 · 8 积分'],
+      ['fusion', '生成 1 张 · 4 积分'],
+      ['retouch', '生成 1 张 · 4 积分'],
       ['remove', '生成 · 5 积分'],
       ['repaint', '生成 · 5 积分'],
       ['outpaint', '生成 · 最多 10 积分'],
@@ -148,9 +148,9 @@ describe('图片工作站配置提示', () => {
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
     const view = render(<App><ImageWorkstation /></App>)
-    expect(buttonByText(/生成 1 张 · 2 积分/).disabled).toBe(true)
+    expect(buttonByText(/生成 1 张 · 4 积分/).disabled).toBe(true)
     fireEvent.click(screen.getByRole('radio', { name: '2' }))
-    expect(buttonByText(/生成 2 张 · 4 积分/).disabled).toBe(true)
+    expect(buttonByText(/生成 2 张 · 8 积分/).disabled).toBe(true)
 
     view.unmount()
     preferences.image.resolution = '2k'
@@ -158,14 +158,14 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 3 })
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     render(<App><ImageWorkstation /></App>)
-    expect(buttonByText(/生成 1 张 · 3 积分/).disabled).toBe(false)
+    expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(false)
 
     cleanup()
     preferences.image.resolution = '4k'
     usePreferencesStore.setState({ preferences, memoryEpoch: 4 })
     render(<App><ImageWorkstation /></App>)
-    expect(buttonByText(/生成 1 张 · 3 积分/)).toBeTruthy()
-    expect(screen.queryByText(/生成 1 张 · 5 积分/)).toBeNull()
+    expect(buttonByText(/生成 1 张 · 6 积分/)).toBeTruthy()
+    expect(screen.queryByText(/生成 1 张 · 14 积分/)).toBeNull()
   })
 
   it('确认重绘未配置后才显示不能用的提示', () => {

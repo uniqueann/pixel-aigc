@@ -18,8 +18,8 @@ describe('操作报价与实际提交参数', () => {
   it('按有效张数和分辨率报价，4K降级时不收4K价格', () => {
     const effective = effectiveImageParameters(2, '4k', { width: 1000, height: 1000 }, model.ui)
     expect(effective.resolution).toBe('2k')
-    expect(imageCreditAmount(model, effective.count, effective.resolution)).toBe(6)
-    expect(imageCreditAmount(model, 3, '1k')).toBe(6)
+    expect(imageCreditAmount(model, effective.count, effective.resolution)).toBe(12)
+    expect(imageCreditAmount(model, 3, '1k')).toBe(12)
   })
 
   it('Nano Banana 2.1 按 1K/2K/4K 显示 4/6/14，正方形 4K 不降级', () => {
@@ -38,9 +38,9 @@ describe('操作报价与实际提交参数', () => {
     expect(positiveQuoteCount(Number.NaN, 3)).toBe(3)
     expect(positiveQuoteCount(4, 1)).toBe(4)
     expect(positiveQuoteCount(0, 0)).toBeUndefined()
-    expect(imageCreditAmount(model, positiveQuoteCount(0, 1) ?? 0, '1k')).toBe(2)
-    expect(imageCreditAmount(model, positiveQuoteCount(0, 2) ?? 0, '1k')).toBe(4)
-    expect(imageCreditAmount(model, positiveQuoteCount(1, 2) ?? 0, '2k')).toBe(3)
+    expect(imageCreditAmount(model, positiveQuoteCount(0, 1) ?? 0, '1k')).toBe(4)
+    expect(imageCreditAmount(model, positiveQuoteCount(0, 2) ?? 0, '1k')).toBe(8)
+    expect(imageCreditAmount(model, positiveQuoteCount(1, 2) ?? 0, '2k')).toBe(6)
   })
 
   it('缺失、非法报价和未知模型不能成为零积分', () => {
@@ -51,7 +51,7 @@ describe('操作报价与实际提交参数', () => {
   })
 
   it('工作站重试按原请求报价，不借用当前草稿参数', () => {
-    expect(workstationRequestQuote({ capability: Capability.ImageEdit, modelProfileId: model.id, params: { count: 3, resolution: '1k' } }, [model])).toMatchObject({ status: 'ready', credits: 6 })
+    expect(workstationRequestQuote({ capability: Capability.ImageEdit, modelProfileId: model.id, params: { count: 3, resolution: '1k' } }, [model])).toMatchObject({ status: 'ready', credits: 12 })
     expect(workstationRequestQuote({ capability: Capability.Inpaint, params: {} }, [])).toMatchObject({ credits: 5 })
   })
 

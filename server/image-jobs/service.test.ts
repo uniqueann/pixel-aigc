@@ -114,8 +114,23 @@ describe('图片积分价格', () => {
     const rt = runtime(dragonCodeProvider, billing)
     const store = createMemoryStore(user.id)
     const created = await createImageJobInStore(store, user, params({ resolution: '4k', count: 2 }), rt)
-    expect(created.bundle.job.credits_reserved).toBe(6)
-    expect(billing.reserve).toHaveBeenCalledWith(expect.objectContaining({ amount: 6 }))
+    expect(created.bundle.job.credits_reserved).toBe(12)
+    expect(billing.reserve).toHaveBeenCalledWith(expect.objectContaining({ amount: 12 }))
+  })
+
+  it('已预扣的任务按当时单价结算，不改用当前目录价', async () => {
+    const store = createMemoryStore(user.id)
+    const billing = billingSpy()
+    const rt = runtime(createMockImageProvider(), billing)
+    const created = await createImageJobInStore(store, user, params({ count: 2, resolution: '2k' }), rt)
+    const reservedAtOldPrice = { ...created.bundle.job, credits_reserved: 6 }
+    const items = created.bundle.items.map((item, index) => ({
+      ...item,
+      status: index === 0 ? 'succeeded' as const : 'failed' as const,
+    }))
+    await finalizeJob(store, reservedAtOldPrice, items, rt, false)
+    expect(billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 3 })
+    expect(billing.release).not.toHaveBeenCalled()
   })
 
   it('积分不足返回 402，且不创建任务', async () => {
@@ -184,7 +199,7 @@ describe('图片任务存储状态机', () => {
     expect(advanced.job.status).toBe('succeeded')
     expect(advanced.job.warnings).toContain(PARTIAL_WARNING)
     expect(advanced.items.filter(item => item.status === 'succeeded')).toHaveLength(3)
-    expect(billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 9 })
+    expect(billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 18 })
     expect(billing.release).not.toHaveBeenCalled()
   })
 

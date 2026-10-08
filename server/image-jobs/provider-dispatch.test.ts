@@ -113,7 +113,7 @@ describe('图片任务按模型供应商分发', () => {
       provider: 'dragoncode',
       model_profile_id: 'dragoncode:gpt-image-2',
       requested_count: 2,
-      credits_reserved: 6,
+      credits_reserved: 12,
     })
     expect(created.bundle.job.provider_params).toMatchObject({ n: 1, size: '16:9', resolution: '2k' })
     expect(created.bundle.job.provider_params.batch).toBeUndefined()

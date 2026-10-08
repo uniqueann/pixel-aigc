@@ -56,7 +56,7 @@ describe('真实文生图任务', () => {
     const provider = mappedProvider({ submit })
     const rt = runtime(provider)
     const created = await createImageJobInStore(createMemoryStore(user.id), user, createImageTaskSchema.parse(payload()), rt)
-    expect(created.bundle.job).toMatchObject({ capability: 'text_to_image', credits_reserved: 6, requested_count: 2 })
+    expect(created.bundle.job).toMatchObject({ capability: 'text_to_image', credits_reserved: 12, requested_count: 2 })
     expect(created.bundle.job.provider_params).toMatchObject({ size: '16:9', resolution: '2k', n: 1 })
     expect(created.bundle.job.params).not.toHaveProperty('sourceImageKey')
     await runProviderSubmits(created.bundle, provider, user.id, rt)
@@ -64,7 +64,7 @@ describe('真实文生图任务', () => {
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ prompt: payload().params.prompt, images: [] }), expect.anything())
     expect(rt.signRead).not.toHaveBeenCalled()
     expect(rt.getObject).not.toHaveBeenCalled()
-    expect(rt.billing.reserve).toHaveBeenCalledWith(expect.objectContaining({ amount: 6, meta: expect.objectContaining({ capability: 'text_to_image' }) }))
+    expect(rt.billing.reserve).toHaveBeenCalledWith(expect.objectContaining({ amount: 12, meta: expect.objectContaining({ capability: 'text_to_image' }) }))
   })
 
   it('GPT Image 2 接受思考开关但不写入供应商参数，积分与关闭时相同', async () => {
@@ -72,7 +72,7 @@ describe('真实文生图任务', () => {
     const created = await createImageJobInStore(createMemoryStore(user.id), user, createImageTaskSchema.parse(payload({ enableThinking: true })), rt)
     expect(created.bundle.job.params).toMatchObject({ enableThinking: true })
     expect(created.bundle.job.provider_params).not.toHaveProperty('enableThinking')
-    expect(created.bundle.job.credits_reserved).toBe(6)
+    expect(created.bundle.job.credits_reserved).toBe(12)
     const off = await createImageJobInStore(createMemoryStore(user.id), user, createImageTaskSchema.parse({
       ...payload({ enableThinking: false }),
       requestId: '00000000-0000-4000-8000-000000000204',
@@ -87,7 +87,7 @@ describe('真实文生图任务', () => {
     })), rt)
     expect(created.bundle.job.provider_params).toMatchObject({ size: '1:1', resolution: '2k' })
     expect(created.bundle.job.warnings).toContain('RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO')
-    expect(created.bundle.job.credits_reserved).toBe(12)
+    expect(created.bundle.job.credits_reserved).toBe(24)
   })
 
   it('拒绝模型未开放的分辨率，且不预扣或创建任务', async () => {
