@@ -1,4 +1,7 @@
-export const QWEN_IMAGE_MODEL_IDS = ['qwen-image-3.0', 'qwen-image-3.0-pro'] as const
+export const QWEN_IMAGE_MODEL_IDS = ['qwen-image-3.0', 'qwen-image-3.0-pro', 'qwen-image-2.1-pro'] as const
+
+/** 约 5 RPM。编辑和文生图共用这一档。2.1 Pro 是 20 RPM，不在这里。 */
+const QWEN_TIGHT_RPM_MODELS = ['qwen-image-3.0-pro'] as const
 
 export const DEFAULT_QWEN_IMAGE_BASE_URL = 'https://dashscope.aliyuncs.com'
 export const DEFAULT_QWEN_POLL_INTERVAL_MS = 3_000
@@ -143,9 +146,13 @@ export function qwenImageConcurrencyLimits(env: NodeJS.ProcessEnv = process.env)
  * 限流后的重新提交间隔。Pro 从 15 秒起，3.0 从 8 秒起，翻倍后封顶 60 秒，再加 0–50% 抖动。
  * 这样单任务不会按轮询间隔（3 秒）去撞 Pro 的 5 RPM。attempts 为已经失败的次数，从 1 起算。
  */
+export function qwenUsesTightRpm(model?: string) {
+  if (!model) return false
+  return QWEN_TIGHT_RPM_MODELS.some(id => model === id || model.endsWith(`:${id}`))
+}
+
 export function qwenThrottleBackoffMs(attempts: number, model?: string, random = Math.random) {
-  const pro = model === 'qwen-image-3.0-pro' || model?.endsWith(':qwen-image-3.0-pro') === true
-  const start = pro ? 15_000 : 8_000
+  const start = qwenUsesTightRpm(model) ? 15_000 : 8_000
   const exponent = Math.min(3, Math.max(0, Math.floor(attempts) - 1))
   const base = Math.min(THROTTLE_BACKOFF_CAP_MS, start * 2 ** exponent)
   const drawn = random()

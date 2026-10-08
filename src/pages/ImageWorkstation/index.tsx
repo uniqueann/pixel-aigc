@@ -179,6 +179,9 @@ export default function ImageWorkstation() {
   const previewItems = sourcePreviewItem ? [sourcePreviewItem, ...resultPreviewItems] : resultPreviewItems
   const { openAt, galleryProps } = usePreviewGallery(previewItems)
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
+  const referenceCount = fusionTool
+    ? Number(Boolean(fusionProduct)) + Number(Boolean(fusionReference))
+    : controller.inputAsset ? 1 : 0
   const generateBlockReason = fusionTool && fusionLoading ? '请等待图片载入完成' : workstationGenerateBlockReason({
     toolReady,
     configurationPending: configurationReady === undefined && !capabilityError,
@@ -191,6 +194,8 @@ export default function ImageWorkstation() {
     repaintBlocked: activeTool.slug === 'repaint' && repaintReady === false,
     retouchBlocked: retouchTool && normalizeRetouchDirections(retouchDirections).length === 0,
     fusionBlocked: fusionTool && (!fusionProduct || !fusionReference),
+    referenceCount: variationTool || fusionTool || activeTool.capability === Capability.ImageEdit || retouchTool || relightTool ? referenceCount : undefined,
+    maxRefImages: activeModel?.ui.maxRefImages,
     mode: inpaintMode,
   })
 

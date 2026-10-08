@@ -519,6 +519,10 @@ describe('图片任务按模型供应商分发', () => {
     const standard = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000407', 1, 'bailian:qwen-image-3.0'), rt)
     expect(standard.bundle.job.provider).toBe('bailian')
     expect(rt.billing.reserve).toHaveBeenCalledTimes(2)
+    const wideStore = createMemoryStore(user.id)
+    await createImageJobInStore(wideStore, user, text('00000000-0000-4000-8000-000000000412', 1, 'bailian:qwen-image-3.0-pro'), rt)
+    const wide = await createImageJobInStore(wideStore, user, text('00000000-0000-4000-8000-000000000413', 1, 'bailian:qwen-image-2.1-pro'), rt)
+    expect(wide.bundle.job.model_profile_id).toBe('bailian:qwen-image-2.1-pro')
 
     process.env.QWEN_IMAGE_ACTIVE_LIMIT = '1'
     const capped = createMemoryStore(user.id)
@@ -530,5 +534,39 @@ describe('图片任务按模型供应商分发', () => {
     const gpt = await createImageJobInStore(capped, user, text('00000000-0000-4000-8000-000000000410', 1), cappedRt)
     expect(gpt.bundle.job).toMatchObject({ provider: 'dragoncode', model_profile_id: 'dragoncode:gpt-image-2' })
     expect(cappedRt.billing.reserve).toHaveBeenCalledTimes(2)
+  })
+
+  it('千问编辑和融合把参考图放在文字前，不按输入图加积分', async () => {
+    process.env.QWEN_IMAGE_ENABLED = 'true'
+    process.env.DASHSCOPE_API_KEY = 'sk-dash'
+    delete process.env.DRAGONCODE_API_KEY
+    const fetchImpl = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => jsonResponse(submitPending),
+    )
+    const rt = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, createImageTaskSchema.parse({
+      capability: 'image_edit',
+      requestId: '00000000-0000-4000-8000-000000000411',
+      modelProfileId: 'bailian:qwen-image-3.0',
+      params: {
+        prompt: '换成白底',
+        sourceImageKey: `temporary/task-inputs/${user.id}/product.png`,
+        referenceImageKey: `temporary/task-inputs/${user.id}/scene.png`,
+        count: 1,
+        resolution: '1k',
+        size: { width: 1024, height: 1024 },
+      },
+    }), rt)
+    expect(created.bundle.job.credits_reserved).toBe(3)
+    await applySubmits(store, created, rt)
+    const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))
+    expect(body.model).toBe('qwen-image-3.0')
+    expect(body.input.messages[0].content).toEqual([
+      { image: `https://r2.test/temporary/task-inputs/${user.id}/product.png` },
+      { image: `https://r2.test/temporary/task-inputs/${user.id}/scene.png` },
+      { text: expect.stringContaining('换成白底') },
+    ])
+    expect(body.parameters).not.toHaveProperty('prompt_extend_mode')
   })
 })

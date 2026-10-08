@@ -96,6 +96,40 @@ describe('qwen image 客户端', () => {
     expect(JSON.parse(onFetch.mock.calls[0][1].body).parameters.enable_thinking).toBe(true)
   })
 
+  it('参考图放在文字前面，带图时不发送 prompt_extend_mode', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(submitPending))
+    const images = [
+      { url: 'https://r2.test/product.png' },
+      { url: 'data:image/png;base64,aaaa' },
+    ]
+    await provider.submit!({ ...input, images }, context(fetchImpl))
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body)
+    expect(body.input.messages[0].content).toEqual([
+      { image: images[0].url },
+      { image: images[1].url },
+      { text: input.prompt },
+    ])
+    expect(body.parameters).not.toHaveProperty('prompt_extend_mode')
+    expect(body.parameters.prompt_extend).toBe(true)
+
+    const tooMany = Array.from({ length: 4 }, (_, index) => ({ url: `https://r2.test/${index}.png` }))
+    await expect(provider.submit!({ ...input, images: tooMany }, context(vi.fn())))
+      .rejects.toMatchObject({ code: 'INVALID_PARAMS', message: '当前模型最多 3 张参考图' })
+    const pro = createQwenImageProvider(() => settings)
+    const wide = vi.fn().mockResolvedValue(jsonResponse(submitPending))
+    await pro.submit!({
+      ...input,
+      model: 'qwen-image-2.1-pro',
+      images: Array.from({ length: 10 }, (_, index) => ({ url: `https://r2.test/${index}.png` })),
+    }, context(wide))
+    expect(JSON.parse(wide.mock.calls[0][1].body).input.messages[0].content).toHaveLength(11)
+    await expect(pro.submit!({
+      ...input,
+      model: 'qwen-image-2.1-pro',
+      images: Array.from({ length: 11 }, (_, index) => ({ url: `https://r2.test/${index}.png` })),
+    }, context(vi.fn()))).rejects.toMatchObject({ message: '当前模型最多 10 张参考图' })
+  })
+
   it('关闭扩写时不打开思考', async () => {
     const quiet = createQwenImageProvider(() => ({ ...settings, promptExtend: false, thinkingOverride: true }))
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(submitPending))
@@ -108,8 +142,6 @@ describe('qwen image 客户端', () => {
   it('缺少 task_id、参考图和密钥错误会失败', async () => {
     await expect(provider.submit!(input, context(vi.fn().mockResolvedValue(jsonResponse({ output: { task_status: 'PENDING' } })))))
       .rejects.toMatchObject({ code: 'BAD_RESPONSE' })
-    await expect(provider.submit!({ ...input, images: [{ url: 'https://example.com/a.png' }] }, context(vi.fn())))
-      .rejects.toMatchObject({ code: 'INVALID_PARAMS', message: '当前模型暂不支持参考图' })
     const auth = vi.fn().mockResolvedValue(jsonResponse(submitInvalidKey, 401))
     await expect(provider.submit!(input, context(auth))).rejects.toMatchObject({ code: 'INVALID_KEY', retryable: false })
     expect(auth).toHaveBeenCalledTimes(1)
@@ -208,6 +240,8 @@ describe('qwen image 客户端', () => {
         outputHeight: 1328,
         outputImageCount: 1,
         outputImageType: 'qima_output_1k',
+        inputImageCount: 0,
+        inputImageType: 'qima_input_1k',
         submitTime: QWEN_SUBMIT_TIME,
         scheduledTime: QWEN_SCHEDULED_TIME,
         endTime: QWEN_END_TIME,

@@ -7,6 +7,7 @@ import {
   qwenImageEnabled,
   qwenImageSettings,
   qwenThrottleBackoffMs,
+  qwenUsesTightRpm,
   resolveQwenEnableThinking,
 } from './config.js'
 
@@ -56,7 +57,7 @@ describe('qwen image 配置', () => {
     expect(qwenImageSettings()).toMatchObject({
       apiKey: 'sk-qwen',
       baseUrl: 'https://other.cn-beijing.maas.aliyuncs.com',
-      models: ['qwen-image-3.0', 'qwen-image-3.0-pro'],
+      models: ['qwen-image-3.0', 'qwen-image-3.0-pro', 'qwen-image-2.1-pro'],
       promptExtend: true,
       thinkingOverride: undefined,
       pollIntervalMs: 3_000,
@@ -74,7 +75,7 @@ describe('qwen image 配置', () => {
     expect(qwenImageSettings()?.baseUrl).toBe('https://workspace.cn-beijing.maas.aliyuncs.com')
   })
 
-  it('模型白名单只保留两个官方 id，思考和扩写可关', () => {
+  it('模型白名单只保留官方 id，思考和扩写可关', () => {
     process.env.QWEN_IMAGE_ENABLED = 'true'
     process.env.DASHSCOPE_API_KEY = 'sk-dash'
     process.env.QWEN_IMAGE_MODELS = 'qwen-image-3.0, qwen-image-2.0, qwen-image-3.0'
@@ -85,6 +86,8 @@ describe('qwen image 配置', () => {
     const settings = qwenImageSettings()
     expect(settings?.models).toEqual(['qwen-image-3.0'])
     expect(settings).toMatchObject({ promptExtend: false, thinkingOverride: false, taskTimeoutMs: 120_000, maxParallel: 4 })
+    process.env.QWEN_IMAGE_MODELS = 'qwen-image-2.1-pro'
+    expect(qwenImageSettings()?.models).toEqual(['qwen-image-2.1-pro'])
     process.env.QWEN_IMAGE_MODELS = 'not-a-model'
     expect(qwenImageAvailable()).toBe(false)
   })
@@ -125,6 +128,10 @@ describe('qwen image 配置', () => {
     expect(qwenThrottleBackoffMs(1, 'qwen-image-3.0', () => 0)).toBe(8_000)
     expect(qwenThrottleBackoffMs(2, 'qwen-image-3.0', () => 0)).toBe(16_000)
     expect(qwenThrottleBackoffMs(3, 'qwen-image-3.0', () => 1)).toBe(48_000)
+    expect(qwenUsesTightRpm('qwen-image-3.0-pro')).toBe(true)
+    expect(qwenUsesTightRpm('qwen-image-2.1-pro')).toBe(false)
+    expect(qwenUsesTightRpm('qwen-image-3.0')).toBe(false)
+    expect(qwenThrottleBackoffMs(1, 'qwen-image-2.1-pro', () => 0)).toBe(8_000)
   })
 
   it('强制限流只在非生产环境打开', () => {

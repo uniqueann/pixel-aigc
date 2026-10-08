@@ -1,3 +1,4 @@
+import { referenceImageLimitMessage } from '@shared/image-models'
 import { COMING_SOON_SUBMIT_MESSAGE } from '@/features/image-workstation/tools/registry'
 import { emptyMaskMessage } from './maskExport'
 
@@ -13,6 +14,8 @@ export function workstationGenerateBlockReason(input: {
   repaintBlocked: boolean
   retouchBlocked?: boolean
   fusionBlocked?: boolean
+  referenceCount?: number
+  maxRefImages?: number
   mode?: 'remove' | 'repaint'
 }): string | undefined {
   if (input.submitting) return undefined
@@ -21,6 +24,11 @@ export function workstationGenerateBlockReason(input: {
   if (!input.toolReady) return COMING_SOON_SUBMIT_MESSAGE
   if (input.fusionBlocked) return '请先上传商品图和场景图'
   if (!input.hasInput) return '请先上传需要处理的图片'
+  if (
+    typeof input.maxRefImages === 'number'
+    && typeof input.referenceCount === 'number'
+    && input.referenceCount > input.maxRefImages
+  ) return referenceImageLimitMessage(input.maxRefImages)
   if (input.formLocked) return '请等待当前任务完成'
   if (input.retouchBlocked) return '请先选择精修方向'
   if (input.repaintBlocked) return '重绘尚未配置'

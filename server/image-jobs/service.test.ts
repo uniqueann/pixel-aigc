@@ -356,6 +356,19 @@ describe('图片任务存储状态机', () => {
     expect(applyCatalogVendorCost(qwen, { outputImageCount: 2 }, 2)).toEqual({
       outputImageCount: 2, cost: 0.5, currency: 'CNY',
     })
+    expect(applyCatalogVendorCost(qwen, { outputImageCount: 2, inputImageCount: 2 }, 2)).toEqual({
+      outputImageCount: 2, inputImageCount: 2, cost: 0.54, currency: 'CNY',
+    })
+    expect(applyCatalogVendorCost(
+      { model_profile_id: 'bailian:qwen-image-3.0', provider_params: { resolution: '2k' } },
+      { inputImageCount: 1 },
+      1,
+    )).toEqual({ inputImageCount: 1, cost: 0.2, currency: 'CNY' })
+    expect(applyCatalogVendorCost(
+      { model_profile_id: 'bailian:qwen-image-2.1-pro', provider_params: { resolution: '2k' } },
+      { inputImageCount: 3 },
+      2,
+    )).toEqual({ inputImageCount: 3, cost: 0.5, currency: 'CNY' })
     expect(applyCatalogVendorCost(qwen, { cost: 0.01 }, 2)).toEqual({ cost: 0.01 })
     const gpt = { model_profile_id: 'dragoncode:gpt-image-2', provider_params: { resolution: '1k' } }
     expect(applyCatalogVendorCost(gpt, undefined, 1)).toBeUndefined()

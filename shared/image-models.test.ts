@@ -62,17 +62,23 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(DRAGONCODE_RATIOS).toHaveLength(13)
     expect(defaultImageModel('text_to_image')?.id).toBe('dragoncode:gpt-image-2')
     const qwen = IMAGE_MODEL_PROFILES.filter(profile => profile.provider === 'bailian')
-    expect(qwen.map(profile => profile.id)).toEqual(['bailian:qwen-image-3.0', 'bailian:qwen-image-3.0-pro'])
+    expect(qwen.map(profile => profile.id)).toEqual([
+      'bailian:qwen-image-3.0', 'bailian:qwen-image-3.0-pro', 'bailian:qwen-image-2.1-pro',
+    ])
     expect(qwen.map(profile => profile.pricing.creditsPerImage)).toEqual([
       { '1k': 3, '2k': 3 },
       { '1k': 4, '2k': 8 },
+      { '1k': 4, '2k': 4 },
     ])
+    expect(qwen.map(profile => profile.ui.maxRefImages)).toEqual([3, 3, 10])
+    expect(qwen.every(profile => profile.operations.includes('image_edit') && profile.operations.includes('variation'))).toBe(true)
     for (const profile of qwen) {
       expect(profile.enabled).toBe(false)
       expect(profile.ui.promptMaxLength).toBe(PROMPT_MAX_LENGTH)
       expect(profile.ui.resolutions).toEqual(['1k', '2k'])
       expect(publicImageModel(profile).pricing).toEqual({ unit: 'image', creditsPerImage: profile.pricing.creditsPerImage })
       expect(JSON.stringify(publicImageModel(profile))).not.toContain('vendorCost')
+      expect(JSON.stringify(publicImageModel(profile))).not.toContain('vendorInputImageCost')
     }
     expect(DRAGONCODE_SIZES).toEqual([
       'auto', '1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5',
@@ -121,6 +127,7 @@ describe('nearestRatio / mapDragonCodeSize', () => {
       ['dragoncode:gpt-image-2', 'openai'],
       ['bailian:qwen-image-3.0', 'qwen'],
       ['bailian:qwen-image-3.0-pro', 'qwen'],
+      ['bailian:qwen-image-2.1-pro', 'qwen'],
       [OPENROUTER_NANO_BANANA_PROFILE_ID, 'google'],
     ])
     for (const profile of IMAGE_MODEL_PROFILES) {

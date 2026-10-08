@@ -47,19 +47,26 @@ describe('图片模型目录', () => {
     expect(publicConfiguredImageModels('text_to_image')).toEqual([])
   })
 
-  it('开关打开后列出两个千问模型，公开字段不含供应商成本', () => {
+  it('开关打开后列出三个千问模型，编辑和裂变也能选，公开字段不含供应商成本', () => {
     delete process.env.DRAGONCODE_API_KEY
     process.env.DASHSCOPE_API_KEY = 'sk-dash'
     process.env.QWEN_IMAGE_ENABLED = 'true'
     const models = publicConfiguredImageModels('text_to_image')
-    expect(models.map(model => model.id)).toEqual(['bailian:qwen-image-3.0', 'bailian:qwen-image-3.0-pro'])
+    expect(models.map(model => model.id)).toEqual([
+      'bailian:qwen-image-3.0', 'bailian:qwen-image-3.0-pro', 'bailian:qwen-image-2.1-pro',
+    ])
     expect(models.map(model => model.pricing.creditsPerImage)).toEqual([
       { '1k': 3, '2k': 3 },
       { '1k': 4, '2k': 8 },
+      { '1k': 4, '2k': 4 },
     ])
+    expect(models.map(model => model.ui.maxRefImages)).toEqual([3, 3, 10])
     expect(JSON.stringify(models)).not.toContain('vendorCost')
     expect(JSON.stringify(models)).not.toContain('vendorCurrency')
-    expect(imageModelsAvailable('image_edit')).toBe(false)
+    expect(JSON.stringify(models)).not.toContain('vendorInputImageCost')
+    expect(publicConfiguredImageModels('image_edit').map(model => model.id)).toEqual(models.map(model => model.id))
+    expect(publicConfiguredImageModels('variation').map(model => model.id)).toEqual(models.map(model => model.id))
+    expect(imageModelsAvailable('image_edit')).toBe(true)
     expect(configuredImageModels('text_to_image').every(model => model.provider === 'bailian')).toBe(true)
   })
 

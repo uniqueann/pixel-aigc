@@ -66,6 +66,8 @@ export interface ProviderVendorUsage {
   outputHeight?: number
   outputImageCount?: number
   outputImageType?: string
+  inputImageCount?: number
+  inputImageType?: string
   submitTime?: string
   scheduledTime?: string
   endTime?: string
