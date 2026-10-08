@@ -32,6 +32,14 @@ export interface ImageModelUi {
 export const OPENROUTER_NANO_BANANA_PROFILE_ID = 'openrouter:gemini-nano-banana-2.1'
 export const OPENROUTER_NANO_BANANA_MODEL = 'google/gemini-nano-banana-2.1'
 
+/** 模型厂商。dragoncode / bailian / openrouter / ai-gateway 是接入渠道，不是厂商。 */
+export const IMAGE_MODEL_VENDORS = ['openai', 'qwen', 'google'] as const
+export type ImageModelVendor = typeof IMAGE_MODEL_VENDORS[number]
+
+export function isImageModelVendor(value: unknown): value is ImageModelVendor {
+  return typeof value === 'string' && (IMAGE_MODEL_VENDORS as readonly string[]).includes(value)
+}
+
 export interface ImageModelProfile {
   id: string
   /**
@@ -39,6 +47,7 @@ export interface ImageModelProfile {
    * `aigc.image_jobs.provider` 是没有检查约束的 text，不需要迁移。
    */
   provider: 'dragoncode' | 'bailian' | 'openrouter' | 'ai-gateway' | 'mock'
+  vendor: ImageModelVendor
   model: string
   label: string
   operations: ImageOperation[]
@@ -58,6 +67,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
   {
     id: 'dragoncode:gpt-image-2',
     provider: 'dragoncode',
+    vendor: 'openai',
     model: 'gpt-image-2',
     label: 'GPT Image 2',
     operations: ['image_edit', 'text_to_image', 'variation'],
@@ -84,6 +94,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
   {
     id: 'bailian:qwen-image-3.0',
     provider: 'bailian',
+    vendor: 'qwen',
     model: 'qwen-image-3.0',
     label: 'Qwen Image 3.0',
     operations: ['text_to_image'],
@@ -107,6 +118,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
   {
     id: 'bailian:qwen-image-3.0-pro',
     provider: 'bailian',
+    vendor: 'qwen',
     model: 'qwen-image-3.0-pro',
     label: 'Qwen Image 3.0 Pro',
     operations: ['text_to_image'],
@@ -136,6 +148,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
   {
     id: OPENROUTER_NANO_BANANA_PROFILE_ID,
     provider: 'openrouter',
+    vendor: 'google',
     model: OPENROUTER_NANO_BANANA_MODEL,
     label: 'Google Nano Banana 2.1',
     operations: ['text_to_image', 'image_edit', 'variation'],
@@ -160,6 +173,20 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
     enabled: false,
   },
 ]
+
+/**
+ * 按目录里的 vendor 识别厂商；目录没有该 id 时再按模型 id 本身判断。
+ * 不看 provider：同一厂商可以换渠道，未知 id 返回 undefined。
+ */
+export function imageModelVendor(id: string | null | undefined): ImageModelVendor | undefined {
+  if (!id) return undefined
+  const listed = IMAGE_MODEL_PROFILES.find(profile => profile.id === id)
+  if (listed) return listed.vendor
+  if (id === 'dragoncode:gpt-image-2' || /(?:^|:)gpt-image-2$/.test(id)) return 'openai'
+  if (id.startsWith('bailian:qwen-image') || id.startsWith('qwen:')) return 'qwen'
+  if (id.includes('gemini-nano-banana')) return 'google'
+  return undefined
+}
 
 export function findImageModel(id: string) {
   return IMAGE_MODEL_PROFILES.find(profile => profile.id === id)
@@ -204,6 +231,7 @@ export function publicImageModel(profile: ImageModelProfile) {
   return {
     id: profile.id,
     provider: profile.provider,
+    vendor: profile.vendor,
     model: profile.model,
     label: profile.label,
     operations: profile.operations,

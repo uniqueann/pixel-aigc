@@ -594,10 +594,27 @@ body.sidebar-resizing * {
   margin-bottom: 6px;
 }
 
-.model-choice-static {
+.model-choice-static,
+.model-choice-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   color: var(--color-text-primary);
   font-size: 14px;
+  line-height: 22px;
+}
+
+.model-choice-static {
   line-height: 32px;
+}
+
+.model-choice-mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: block;
+  color: currentColor;
 }
 
 .credits-trigger:hover {
