@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IMAGE_MODEL_PROFILES, defaultImageModel, publicImageModel } from '@shared/image-models'
 import { defaultPreferences } from '@shared/preferences'
 import { usePreferencesStore } from '@/features/preferences/store'
+import { useUserStore } from '@/store/useUserStore'
 
 const mocks = vi.hoisted(() => ({
   tool: 'variation',
@@ -54,7 +55,11 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences: defaultPreferences(), memoryEpoch: 0 })
   })
 
-  afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+    useUserStore.setState({ userId: null, credits: 0, creditsLoaded: false })
+  })
 
   it.each(['smart-edit', 'relight', 'variation', 'fusion', 'retouch', 'repaint'])('%s 等待配置时不闪现未上线提示', async (tool) => {
     mocks.tool = tool
@@ -230,5 +235,52 @@ describe('图片工作站配置提示', () => {
     view.rerender(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 1 张 · 3 积分/)).toBeTruthy()
     expect(mocks.controllerArgs?.modelProfileId).toBe(qwen.id)
+  })
+
+  it('已知余额低于报价时禁用生成，并保留去充值提示', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '2k'
+    preferences.image.counts['smart-edit'] = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 6 })
+    mocks.tool = 'smart-edit'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 0, creditsLoaded: false })
+    const unknown = render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(false)
+    expect(unknown.container.textContent).not.toContain('积分不足')
+    unknown.unmount()
+
+    useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 5, creditsLoaded: true })
+    const short = render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(true)
+    expect(short.container.textContent).toContain('积分不足，本次需要 6 积分，当前 5')
+    expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
+    short.unmount()
+
+    useUserStore.setState({ credits: 6, creditsLoaded: true })
+    render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(false)
+    expect(screen.queryByText(/积分不足/)).toBeNull()
+  })
+
+  it('消除和扩图在已知余额不足时显示积分不足，未知余额不拦截', () => {
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 1, creditsLoaded: true })
+    mocks.tool = 'remove'
+    const remove = render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 · 5 积分/).disabled).toBe(true)
+    expect(remove.container.textContent).toContain('积分不足，本次需要 5 积分，当前 1')
+    expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
+    remove.unmount()
+
+    mocks.tool = 'outpaint'
+    mocks.controller.inputAsset = undefined
+    const outpaint = render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 · 最多 10 积分/).disabled).toBe(true)
+    expect(outpaint.container.textContent).toContain('积分不足，本次最多需要 10 积分，当前 1')
   })
 })

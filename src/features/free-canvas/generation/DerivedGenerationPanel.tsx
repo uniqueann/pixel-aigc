@@ -1,5 +1,5 @@
 import { ArrowLeftOutlined } from '@ant-design/icons'
-import { Button, Input, Radio, Spin } from 'antd'
+import { Button, Input, Radio, Spin, Tooltip } from 'antd'
 import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
@@ -20,6 +20,8 @@ import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits
 import type { VideoModelProfile } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
+import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { modelProfileIdForRetry } from './retryModel'
 import type { CapabilityAvailability } from '@/components/capabilityAvailability'
 import VideoAvailabilityNotice from './VideoAvailabilityNotice'
@@ -106,6 +108,7 @@ export default function DerivedGenerationPanel({
 }: DerivedGenerationPanelProps) {
   const imageToVideo = mode === 'image-to-video'
   const balance = useUserStore(state => state.credits)
+  const knownBalance = useKnownCreditBalance()
   const title = imageToVideo ? '从图片生成视频' : '图片裂变'
   const summary = autoRetrying
     ? '首次生成失败，正在自动重试（1/1）'
@@ -140,6 +143,8 @@ export default function DerivedGenerationPanel({
   const showForm = !imageToVideo || videoState === 'ready'
   const quote = creditQuote(estimatedCredits, { mock: mockGateway, loading: modelsLoading })
   const retryQuote = creditQuote(imageToVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
+  const imageCreditBlocked = !imageToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote, balance: knownBalance })
+  const imageRetryBlocked = !imageToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
 
   return (
     <aside className="free-canvas-generation-panel free-canvas-derived-panel">
@@ -202,7 +207,7 @@ export default function DerivedGenerationPanel({
       )}
 
       {!imageToVideo && <>
-        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="裂变模型" models={models} value={modelProfileId} disabled={formLocked} onChange={onModelChange} />
+        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="裂变模型" hintScope="single_image" models={models} value={modelProfileId} disabled={formLocked} onChange={onModelChange} />
         <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="裂变分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
           {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
         </Radio.Group></label>
@@ -220,17 +225,21 @@ export default function DerivedGenerationPanel({
         <p>保持原图比例；首期暂不支持含真人人脸的图片。</p>
         <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} /></>}
       <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
-      <CreditActionButton
-        className="free-canvas-generate"
-        type="primary"
-        block
-        loading={submitting || autoRetrying}
-        quote={quote}
-        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > VIDEO_PROMPT_MAX))}
-        onClick={onGenerate}
-      >
-        {active ? '正在生成' : imageToVideo ? '生成' : `生成 ${count} 张`}
-      </CreditActionButton>
+      <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+        <span style={{ display: 'block' }}>
+          <CreditActionButton
+            className="free-canvas-generate"
+            type="primary"
+            block
+            loading={submitting || autoRetrying}
+            quote={quote}
+            disabled={formLocked || generateDisabled || imageCreditBlocked || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > VIDEO_PROMPT_MAX))}
+            onClick={onGenerate}
+          >
+            {active ? '正在生成' : imageToVideo ? '生成' : `生成 ${count} 张`}
+          </CreditActionButton>
+        </span>
+      </Tooltip>
       <CreditSettlementHint quote={quote} />
       {!imageToVideo && <CreditBalanceNotice quote={quote} />}
       {preparationPhase && <p role="status">{preparationPhase}</p>}
@@ -253,7 +262,7 @@ export default function DerivedGenerationPanel({
         historySaved={historySaved}
         onRetrySave={onRetrySave}
         onRetry={imageToVideo && videoState !== 'ready' ? undefined : onRetry}
-        retryDisabled={imageToVideo ? videoState !== 'ready' || generateDisabled || videoRetryBlocked : modelsLoading || generateDisabled}
+        retryDisabled={imageToVideo ? videoState !== 'ready' || generateDisabled || videoRetryBlocked : modelsLoading || generateDisabled || imageRetryBlocked}
         retryQuote={retryQuote}
         retryLabel={!imageToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
         onModifyParameters={onModifyParameters}

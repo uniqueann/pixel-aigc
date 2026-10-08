@@ -44,6 +44,8 @@ import { useWorkstationParameters } from '@/features/preferences/useWorkstationP
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, creditQuoteBlocked, imageCreditAmount, outpaintCreditAmount, positiveQuoteCount } from '@/features/credits/quotes'
+import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { useImageModels } from '@/features/credits/useImageModels'
 import { workstationRequestQuote } from '@/features/image-workstation/creditQuote'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
@@ -54,6 +56,7 @@ export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
   const { message } = App.useApp()
+  const knownBalance = useKnownCreditBalance()
   const project = useEditorStore(state => state.project)
   const canvasHandleRef = useRef<CanvasHandle | null>(null)
   const [sourceAsset, setSourceAsset] = useState<ImageAsset>()
@@ -408,6 +411,9 @@ export default function ImageWorkstation() {
     mock: mockGateway, loading: controller.activeTask?.capability === Capability.Variation ? variationConfiguration.loading : imageConfiguration.loading,
   })
   const inputRetryQuote = workstationRequestQuote(controller.inputRetryRequest, imageModels, { mock: mockGateway, loading: imageConfiguration.loading })
+  const creditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: generateQuote, balance: knownBalance })
+  const retryCreditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
+  const blockReason = generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
   const example = toolExample(activeTool.slug)
   const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
 
@@ -532,6 +538,7 @@ export default function ImageWorkstation() {
             onRetrySave={() => void controller.retrySave()}
             pollError={controller.pollError}
             onRetry={() => void handleRetry()}
+            retryDisabled={retryCreditBlocked}
             retryQuote={controller.activeTask?.status === 'succeeded' ? undefined : retryQuote}
             onModifyParameters={controller.modifyParameters}
             onRefetch={() => void controller.refetch()}
@@ -564,13 +571,13 @@ export default function ImageWorkstation() {
             >
               下载结果
             </Button>
-            <Tooltip title={generateBlockReason}>
+            <Tooltip title={blockReason}>
               <span>
                 <CreditActionButton
                   type="primary"
                   loading={controller.submitting}
                   quote={generateQuote}
-                  disabled={Boolean(generateBlockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
+                  disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                   onClick={handleGenerate}
                 >
                   {COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}

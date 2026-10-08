@@ -45,10 +45,10 @@ function rememberRetry(task: GenerationTask<TextToImageTaskParams>, modelProfile
 }
 
 describe('自由画布文生图侧栏', () => {
-  beforeEach(() => useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111' }))
+  beforeEach(() => useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 0, creditsLoaded: false }))
   afterEach(() => {
     cleanup()
-    useUserStore.setState({ userId: null })
+    useUserStore.setState({ userId: null, credits: 0, creditsLoaded: false })
     usePersistenceStore.setState({ recoveries: {} })
   })
 
@@ -212,5 +212,23 @@ describe('自由画布文生图侧栏', () => {
     renderPanel({ models: [model, nano], modelProfileId: nano.id, resolution: '4k', estimatedCredits: 14 })
     expect(screen.getByText('本次预计预扣 14 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
     expect(screen.queryByText('自动扩写')).toBeNull()
+  })
+
+  it('文生图下拉只在选项里显示短标签', () => {
+    const wide = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-2.1-pro')!)
+    renderPanel({ models: [model, qwen, wide], modelProfileId: model.id })
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '文生图模型' }))
+    expect([...document.querySelectorAll('.ant-select-item-option .model-choice-hint')].map(item => item.textContent))
+      .toEqual(['支持 4K', '最省积分', '2K 同价'])
+    expect(document.querySelector('.ant-select-selection-item .model-choice-hint')).toBeNull()
+  })
+
+  it('已知余额低于文生图报价时禁用生成和重试', () => {
+    useUserStore.setState({ credits: 1, creditsLoaded: true })
+    renderPanel({ task: failedTask })
+    expect((screen.getByRole('button', { name: /生成 1 张 · 6 积分/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/积分不足，本次需要 6 积分，当前 1/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
+    expect((screen.getByRole('button', { name: /按原参数重试 2 张/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

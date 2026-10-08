@@ -28,7 +28,8 @@ export function CreditSettlementHint({ quote }: { quote: CreditQuote }) {
 export function CreditBalanceNotice({ quote }: { quote: CreditQuote }) {
   const owner = useUserStore(state => state.userId)
   const balance = useUserStore(state => state.credits)
-  return owner && quote.status === 'ready' && quote.credits > balance ? <p className="credit-quote-notice" role="status">
+  const loaded = useUserStore(state => state.creditsLoaded)
+  return owner && loaded && quote.status === 'ready' && quote.credits > balance ? <p className="credit-quote-notice" role="status">
     积分不足，本次{quote.maximum ? '最多' : ''}需要 {quote.credits} 积分，当前 {balance}。<Button size="small" type="link" onClick={openCreditRecharge}>去充值</Button>
   </p> : null
 }

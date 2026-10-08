@@ -617,6 +617,23 @@ body.sidebar-resizing * {
   color: currentColor;
 }
 
+.model-choice-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.model-choice-hint {
+  flex: none;
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .credits-trigger:hover {
   color: var(--color-accent);
 }
