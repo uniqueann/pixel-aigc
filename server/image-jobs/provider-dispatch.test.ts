@@ -540,7 +540,9 @@ describe('图片任务按模型供应商分发', () => {
     process.env.QWEN_IMAGE_ENABLED = 'true'
     process.env.DASHSCOPE_API_KEY = 'sk-dash'
     delete process.env.DRAGONCODE_API_KEY
-    const fetchImpl = vi.fn(async () => jsonResponse(submitPending))
+    const fetchImpl = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async () => jsonResponse(submitPending),
+    )
     const rt = runtime(fetchImpl)
     const store = createMemoryStore(user.id)
     const created = await createImageJobInStore(store, user, createImageTaskSchema.parse({
