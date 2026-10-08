@@ -4,6 +4,8 @@ import { useUserStore } from '@/store/useUserStore'
 import { BILLING_REFRESH_EVENT, checkoutCredits, getBillingCatalog, getCreditOrder, listCreditOrders, refreshBillingBalance, requestCashRefund } from '@/services/api/billing'
 import { formatCreditPrice, type BillingCatalog, type CreditOrder, type PaymentProvider } from '@shared/billing'
 import BillingExplanation from './BillingExplanation'
+import CreditPackPurchase from './CreditPackPurchase'
+import type { CreditDiscount } from '@shared/credit-discounts'
 
 const STATUS_LABELS = {pending:'等待支付确认',paid:'已到账',failed:'支付失败',refunded:'已退款',review:'待人工核对'}
 const PROVIDER_LABELS: Record<PaymentProvider, string> = { dodo: 'Dodo Payments', creem: 'Creem' }
@@ -63,16 +65,20 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
     } catch(cause) { if(isCurrentOwner()) setError(cause instanceof Error ? cause.message : '订单查询失败') }
     finally {if(isCurrentOwner()) setBusy(undefined)}
   }
-  const purchase=async(pack:NonNullable<BillingCatalog['packs'][number]>)=>{
+  const purchase=async(pack:NonNullable<BillingCatalog['packs'][number]>,discount?:CreditDiscount)=>{
     if(!isCurrentOwner() || !catalog || !pack.providers.includes(provider) || catalog.paymentBlocked || busy) return
     setBusy(pack.id); setError(undefined)
     try {
-      const order=await checkoutCredits(pack.id,provider,crypto.randomUUID(),owner,pack.amount,catalog.currency)
+      const args = [pack.id,provider,crypto.randomUUID(),owner,pack.amount,catalog.currency] as const
+      const order=await (discount ? checkoutCredits(...args,{discountCode:discount.code,expectedPayableAmount:discount.payableAmount}) : checkoutCredits(...args))
       if(!isCurrentOwner()) return
       setOrders(items=>[order,...items.filter(item=>item.id!==order.id)])
       if(order.checkoutUrl) window.location.assign(order.checkoutUrl)
       else setError('支付链接尚未确认，请在充值订单中查询状态')
-    } catch(cause) { if(isCurrentOwner()) setError(cause instanceof Error ? cause.message : '充值订单创建失败') }
+    } catch(cause) {
+      if(isCurrentOwner() && !discount) setError(cause instanceof Error ? cause.message : '充值订单创建失败')
+      throw cause
+    }
     finally {if(isCurrentOwner()) setBusy(undefined)}
   }
   return <Space direction="vertical" size={12} style={{width:'100%',marginBottom:24}}>
@@ -85,16 +91,14 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
         : catalog.providers.length===1 ? <span>付款方式：{PROVIDER_LABELS[catalog.providers[0]]}</span> : null}
       {!catalog.providers.length ? <Alert type="info" message="充值尚未开放，当前可使用已有积分" /> : null}
       {catalog.paymentBlocked ? <Alert type="warning" message="账户存在待核对的支付记录，请联系支持" /> : null}
-      {catalog.packs.map(pack=><div key={pack.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,border:'1px solid var(--color-border)',borderRadius:8,padding:12}}>
-        <span><strong>{pack.name} · {pack.credits} 积分</strong><br/>{formatCreditPrice(pack.amount,catalog.currency)}
-          {catalog.providers.length>0 && !pack.providers.includes(provider) ? <small style={{display:'block'}}>此套餐暂不支持 {PROVIDER_LABELS[provider]}{catalog.providers.length>1 ? '，可切换付款方式' : ''}</small> : null}</span>
-        <Button type="primary" disabled={!pack.providers.includes(provider) || catalog.paymentBlocked || Boolean(busy)} loading={busy===pack.id} onClick={()=>void purchase(pack)}>购买</Button>
-      </div>)}
+      <CreditPackPurchase key={JSON.stringify([owner,open,provider,catalog.currency,catalog.packs,catalog.providers])}
+        owner={owner} catalog={catalog} provider={provider} providerLabel={PROVIDER_LABELS[provider]} busy={busy} onPurchase={purchase} />
       <BillingExplanation freeBgRemoveRemaining={catalog.freeBgRemoveRemaining} freeBgRemoveMonth={catalog.freeBgRemoveMonth} />
       <small>现金退款需人工审核，仅处理未使用部分，按原支付通道退款；赠送积分不折现。生成失败自动退积分。</small>
     </>}
     {orders.length ? <><strong>充值订单</strong>{orders.map(order=><div key={order.id} style={{padding:'8px 0',borderBottom:'1px solid var(--color-border)'}}>
-      <span>{formatCreditPrice(order.amount,order.currency)} · {order.credits} 分 · {STATUS_LABELS[order.status]}</span>
+      <span>{order.paidAmount == null && order.quotedDiscount ? '预计 ' : ''}{formatCreditPrice(order.paidAmount ?? order.quotedAmount ?? order.amount,order.currency)} · {order.credits} 分 · {STATUS_LABELS[order.status]}</span>
+      {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount) ? <small style={{display:'block'}}>原价 {formatCreditPrice(order.amount,order.currency)} · 折扣码 {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount)?.code}</small> : null}
       <small style={{display:'block'}}>{new Date(order.createdAt).toLocaleString('zh-CN')} · {PROVIDER_LABELS[order.provider]}</small>
       <Space>{order.status === 'pending' ? <><Button size="small" loading={busy===order.id} onClick={()=>void checkOrder(order.id)}>查询到账</Button>{order.checkoutUrl ? <Button size="small" onClick={()=>window.location.assign(order.checkoutUrl!)}>继续支付</Button> : null}</> : null}
         {order.status === 'paid' ? <Button size="small" disabled={order.refundRequested} onClick={()=>{setRefundOrder(order);setRefundReason('')}}>{order.refundRequested ? '退款申请已提交' : '申请退款'}</Button> : null}</Space>

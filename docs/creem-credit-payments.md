@@ -1,6 +1,6 @@
 # Creem 美元积分充值接入与验收
 
-更新日期：2026-10-08。本期两个通道统一美元，Dodo Payments 为默认通道，Creem 为可选通道。沿用 EDM 商户，但商品、回调和签名密钥独立。AIGC 使用一次性积分订单和现有账本，不使用 EDM 的订阅授权或套餐表。
+更新日期：2026-10-09。本期两个通道统一美元，Dodo Payments 为默认通道，Creem 为可选通道。沿用 EDM 商户，但商品、回调和签名密钥独立。AIGC 使用一次性积分订单和现有账本，不使用 EDM 的订阅授权或套餐表。折扣码规则、配置与验收见 [折扣码接入说明](credit-discount-codes.md)。
 
 ## 一、商户商品
 
@@ -12,7 +12,7 @@
 | Pixel AIGC Standard Credits | standard | 320 | $6.99 | 699 |
 | Pixel AIGC Studio Credits | studio | 1150 | $19.99 | 1999 |
 
-商品设为 `billing_type=onetime`、`currency=USD`、`tax_mode=inclusive`。一次购买数量为 1，不设置任意金额或折扣。沿用 EDM 商户时，应核对已有商户优惠码的商品适用范围，避免优惠码覆盖 AIGC 商品；AIGC 不传入 EDM 优惠码，收据出现折扣或实付不匹配时拒绝自动到账。
+商品设为 `billing_type=onetime`、`currency=USD`、`tax_mode=inclusive`。一次购买数量为 1，不设置任意金额或商品默认折扣。沿用 EDM 商户时，优惠码必须明确限定为当前环境的 AIGC 商品；全商品券、混合 EDM 商品的券不支持。合法单码百分比优惠可自动到账，优惠规则、含税应付与交易实付无法核对时进入人工核对。
 
 ## 二、环境配置
 
@@ -34,7 +34,7 @@
 - `AIGC_CREEM_ENABLED=false` 是默认状态；配置完整并完成该环境验收后设置为 `true`。
 - API 与签名密钥仅放服务端，Vercel 使用 Secret 类型，不加 `VITE_` 前缀，也不写入仓库或日志。变更线上变量后重新部署使其生效。
 
-TEST 与 LIVE 密钥、商品和签名密钥不得互相回退。Creem 的商户 API 密钥可以使用同一商户的对应环境密钥，但必须具备 `checkouts:read`、`checkouts:write`、`products:read`、`transactions:read` 四项运行权限；缺少权限时，应创建 AIGC 专用密钥。商品与回调可以通过商户控制台配置，运行密钥不必授予商品写入、订阅、现金退款或 webhook 管理权限。AIGC 回调签名密钥须来自 AIGC 专属 endpoint，不能复制 EDM 的 webhook secret。
+TEST 与 LIVE 密钥、商品和签名密钥不得互相回退。Creem 的商户 API 密钥可以使用同一商户的对应环境密钥，运行权限为 `checkouts:read`、`checkouts:write`、`products:read`、`transactions:read`；使用折扣预验证及付款页新增折扣核验还需要 `discounts:read`。缺少权限时，应创建 AIGC 专用密钥。商品与优惠码通过商户控制台配置，运行密钥不必授予商品写入、折扣写入、订阅、现金退款或 webhook 管理权限。AIGC 回调签名密钥须来自 AIGC 专属 endpoint，不能复制 EDM 的 webhook secret。
 
 ## 三、Webhook 与到账
 
@@ -114,6 +114,14 @@ Checkout 返回商品可能是 ID 或对象。商品后续改价不会改写旧�
 - 本次接入改动需先通过 PR 合并，再继续从 `main` 自动发布。合并前，`main` 旧实现不识别独立的 `AIGC_CREEM_ENABLED` 开关；重新发布旧版本会覆盖当前配置验收版本并重新展示 Creem 通道。
 - TEST 三档实际支付、全额及连续部分退款、重复回调、查询补偿和双账号隔离尚未验收。联调时只在测试部署开启 Creem，Production 保持关闭。
 - LIVE 的 $2.99 实付及原路退款仍需用户明确授权，并按既有人工审核流程执行。完成实际订单、积分流水、余额和退款核对后，再开放正式入口。
+
+## 七、折扣权限与密钥轮换（2026-10-09）
+
+- 经用户即时确认，已创建 `pixel-aigc-test-discount-api-key` 与 `pixel-aigc-live-discount-api-key`。两者保留原四项运行权限，仅增加只读 `discounts:read`，不授予折扣写入或现金退款权限。
+- TEST 替代密钥已作为 Secret 更新至 Preview、Development；LIVE 替代密钥已作为 Secret 更新至 Production。本机私有配置已同步，原密钥暂留供现有部署使用；本轮没有重新部署应用。
+- 两环境的三档商品查询均为 HTTP 200；不存在折扣、Checkout、交易的查询均为 HTTP 404，查询权限通过核验。该检查没有创建付款或退款。
+- 本轮核对时 Production 的 `AIGC_CREEM_ENABLED=true`，Preview 的 `creem-test` 分支也已有开启配置；本轮保留现有开关。第六节中的关闭状态为当时的历史记录，不代表当前配置。
+- 折扣规则、数据库迁移与后续实际付款验收见 [充值折扣码接入与验收](credit-discount-codes.md)。
 
 ## 官方参考
 

@@ -11,12 +11,13 @@ import { runtimeScope, withIdentity, type Transaction } from './db.js'
 import { HttpError } from './errors.js'
 import { requireActive } from './model-settings.js'
 
-type Bucket = 'generation' | 'detection'
+type Bucket = 'generation' | 'detection' | 'payment_discount'
 type User = { id: string; email: string }
 
 const limits: Record<Bucket, { hourly: number; concurrent: number }> = {
   generation: { hourly: 20, concurrent: 2 },
   detection: { hourly: 60, concurrent: 3 },
+  payment_discount: { hourly: 60, concurrent: 2 },
 }
 
 export interface SyncRequestMetrics {
@@ -67,12 +68,13 @@ export async function acquireSyncRequest(sql: Transaction, userId: string, scope
     from aigc.sync_requests where user_id=${userId} and scope=${scope} and bucket=${bucket}`
   if (Number(usage.hourly) >= limit.hourly) {
     const seconds = hourlyRetryAfterSeconds(usage.oldest as Date | string | null)
-    throw new HttpError(429, syncHourlyRateLimitMessage(rateLimitWaitMinutes(seconds)), 'RATE_LIMIT', {
+    const message = bucket === 'payment_discount' ? `折扣验证已达到每小时上限，约 ${rateLimitWaitMinutes(seconds)} 分钟后可再试` : syncHourlyRateLimitMessage(rateLimitWaitMinutes(seconds))
+    throw new HttpError(429, message, 'RATE_LIMIT', {
       extra: rateLimitExtra(seconds),
     })
   }
   if (Number(usage.active) >= limit.concurrent) {
-    throw new HttpError(429, SYNC_USER_CONCURRENCY_MESSAGE, 'USER_CONCURRENCY', {
+    throw new HttpError(429, bucket === 'payment_discount' ? '折扣码正在验证，请等待当前请求完成' : SYNC_USER_CONCURRENCY_MESSAGE, 'USER_CONCURRENCY', {
       extra: rateLimitExtra(USER_CONCURRENCY_RETRY_AFTER),
     })
   }
