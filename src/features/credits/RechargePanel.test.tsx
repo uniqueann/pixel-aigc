@@ -29,6 +29,13 @@ function deferred<T>() {
   const promise = new Promise<T>(done => { resolve = done })
   return { promise, resolve }
 }
+// 保留真实按钮与点击行为；流程测试按按钮文本定位，避免反复计算 Antd 的整棵无障碍名称和样式。
+function buttonByText(text: string | RegExp) {
+  return screen.getByText(text, { selector: 'button span' }).closest('button')!
+}
+function purchaseButtons() {
+  return screen.getAllByText(/^购\s*买$/, { selector: 'button span' }).map(label => label.closest('button')!)
+}
 async function selectCreem() {
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '付款方式' }))
   fireEvent.click(await screen.findByText('Creem', { selector: '.ant-select-item-option-content' }))
@@ -178,33 +185,33 @@ function discountPreview(provider: PaymentProvider = 'dodo'): CreditDiscountPrev
   }) }
 }
 async function enterDiscount(code = ' aigc10 ') {
-  fireEvent.click(screen.getByRole('button', { name: '有折扣码？', hidden: true }))
+  fireEvent.click(buttonByText('有折扣码？'))
   fireEvent.change(screen.getByLabelText('折扣码'), { target: { value: code } })
 }
 async function applyDiscount() {
   await enterDiscount()
-  fireEvent.click(screen.getByRole('button', { name: '应用折扣码', hidden: true }))
+  fireEvent.click(buttonByText('应用折扣码'))
   await screen.findByText('折扣码已应用，到账积分保持不变。最终金额以结账页为准。')
 }
-// 保留真实 Antd 控件。折扣输入由条件渲染挂载，按标签定位并避免反复计算 JSDOM 弹层的可见性。
-describe('应用折扣码', { timeout: 20_000 }, () => {
+// 保留真实 Antd 控件和接口断言，输入按标签定位；使用默认超时约束流程测试。
+describe('应用折扣码', () => {
   it('显示各档预计价格，携带规范化代码和预计应付下单，积分不改变', async () => {
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
     expect(screen.getByText('预计 $2.69')).toBeTruthy(); expect(screen.getByText('预计 $6.29')).toBeTruthy()
     expect(screen.getByText('体验包 · 100 积分')).toBeTruthy()
     expect(api.preview).toHaveBeenCalledWith('dodo', 'AIGC10', 'USD', 'owner-a', expect.any(AbortSignal))
-    fireEvent.click(screen.getAllByRole('button', { name: /购\s*买/, hidden: true })[0])
+    fireEvent.click(purchaseButtons()[0])
     await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-a', 299, 'USD', { discountCode: 'AIGC10', expectedPayableAmount: 269 }))
   })
   it('无效码不会默默按原价下单，移除后恢复原价购买', async () => {
     api.preview.mockResolvedValue({ ...discountPreview(), code: 'NOPE', packs: discountPreview().packs.map(pack => ({ ...pack, available: false, discount: null, message: '折扣码不存在' })) })
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）'); await enterDiscount('NOPE')
-    fireEvent.click(screen.getByRole('button', { name: '应用折扣码', hidden: true })); await screen.findByText('折扣码不存在')
-    fireEvent.click(screen.getAllByRole('button', { name: /购\s*买/, hidden: true })[0])
+    fireEvent.click(buttonByText('应用折扣码')); await screen.findByText('折扣码不存在')
+    fireEvent.click(purchaseButtons()[0])
     await screen.findByText('请先应用或移除折扣码再购买'); expect(api.checkout).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: /移\s*除/, hidden: true })); fireEvent.click(screen.getAllByRole('button', { name: /购\s*买/, hidden: true })[0])
+    fireEvent.click(buttonByText(/移\s*除/)); fireEvent.click(purchaseButtons()[0])
     await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-a', 299, 'USD'))
   })
   it('部分套餐适用，其他套餐明确按原价购买且不传优惠', async () => {
@@ -212,18 +219,18 @@ describe('应用折扣码', { timeout: 20_000 }, () => {
     api.preview.mockResolvedValue(result)
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
-    fireEvent.click(screen.getByRole('button', { name: '按原价购买', hidden: true }))
+    fireEvent.click(buttonByText('按原价购买'))
     await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-a', 299, 'USD'))
   })
   it('改码立即使报价失效，迟到的旧验证不能恢复优惠', async () => {
     const pending = deferred<CreditDiscountPreview>(); api.preview.mockReturnValue(pending.promise)
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）'); await enterDiscount()
-    fireEvent.click(screen.getByRole('button', { name: '应用折扣码', hidden: true }))
+    fireEvent.click(buttonByText('应用折扣码'))
     fireEvent.change(screen.getByLabelText('折扣码'), { target: { value: 'AIGC20' } })
     await act(async () => pending.resolve(discountPreview()))
     expect(screen.queryByText('预计 $2.69')).toBeNull()
-    fireEvent.click(screen.getAllByRole('button', { name: /购\s*买/, hidden: true })[0]); expect(api.checkout).not.toHaveBeenCalled()
+    fireEvent.click(purchaseButtons()[0]); expect(api.checkout).not.toHaveBeenCalled()
   })
   it('切换付款方式清空折扣会话', async () => {
     render(<RechargePanel open onPaid={() => undefined} />)
@@ -235,16 +242,16 @@ describe('应用折扣码', { timeout: 20_000 }, () => {
     await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
     view.rerender(<RechargePanel open={false} onPaid={() => undefined} />)
     view.rerender(<RechargePanel open onPaid={() => undefined} />)
-    await screen.findByRole('button', { name: '有折扣码？', hidden: true }); expect(screen.queryByText('预计 $2.69')).toBeNull()
+    await screen.findByText('有折扣码？', { selector: 'button span' }); expect(screen.queryByText('预计 $2.69')).toBeNull()
     expect(screen.queryByLabelText('折扣码')).toBeNull()
   })
   it('切换账号清空已应用优惠，新账号购买不带旧账号代码', async () => {
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
     await act(async () => useUserStore.setState({ userId: 'owner-b' }))
-    await screen.findByRole('button', { name: '有折扣码？', hidden: true }); expect(screen.queryByLabelText('折扣码')).toBeNull()
+    await screen.findByText('有折扣码？', { selector: 'button span' }); expect(screen.queryByLabelText('折扣码')).toBeNull()
     expect(screen.queryByText('预计 $2.69')).toBeNull()
-    fireEvent.click(screen.getAllByRole('button', { name: /购\s*买/, hidden: true })[0])
+    fireEvent.click(purchaseButtons()[0])
     await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-b', 299, 'USD'))
   })
   it('订单展示最终实付和最终代码，不用预计报价替代付款金额', async () => {
@@ -259,7 +266,7 @@ describe('应用折扣码', { timeout: 20_000 }, () => {
     api.checkout.mockRejectedValue(new Error('优惠金额已更新，请重新应用折扣码后购买'))
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
-    fireEvent.click(screen.getAllByRole('button', { name: /购\s*买/, hidden: true })[0])
+    fireEvent.click(purchaseButtons()[0])
     await screen.findByText('优惠金额已更新，请重新应用折扣码后购买')
     expect(screen.queryByText('预计 $2.69')).toBeNull()
   })
