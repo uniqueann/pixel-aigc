@@ -74,6 +74,7 @@ export default function ModelChoice({
       placeholder={placeholder}
       loading={loading}
       disabled={disabled}
+      popupMatchSelectWidth={false}
       onChange={onChange}
       options={models.map(item => ({
         value: item.id,
