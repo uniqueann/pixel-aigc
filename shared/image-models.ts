@@ -152,7 +152,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       vendorInputImageCost: '0.02',
       vendorCurrency: 'CNY',
     },
-    hints: { text_to_image: '分辨率加价', image_input: '分辨率加价', single_image: '分辨率加价' },
+    hints: { text_to_image: '1K 划算', image_input: '1K 划算', single_image: '1K 划算' },
     enabled: false,
   },
   // 与 3.0 共用开关和百炼 Key。输出不按分辨率分档，输入图不另计供应商成本。

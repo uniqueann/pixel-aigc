@@ -320,13 +320,13 @@ describe('智能编辑参数面板', () => {
 
     render(<ParamPanel capability={Capability.ImageEdit} {...panelProps} models={models} modelProfileId={model.id} />)
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
-    expect(optionHints()).toEqual(['支持 4K', '最省积分', '分辨率加价', '2K 同价', '支持 4K'])
+    expect(optionHints()).toEqual(['支持 4K', '最省积分', '1K 划算', '2K 同价', '支持 4K'])
     expect(document.querySelector('.ant-select-selection-item .model-choice-hint')).toBeNull()
     cleanup()
 
     render(<ParamPanel capability={Capability.Fusion} {...panelProps} models={models} modelProfileId={wide.id} />)
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
-    expect(optionHints()).toEqual(['支持 4K', '最省积分', '分辨率加价', '最多 10 张参考图', '支持 4K'])
+    expect(optionHints()).toEqual(['支持 4K', '最省积分', '1K 划算', '最多 10 张参考图', '支持 4K'])
     expect(document.querySelector('.ant-select-selection-item')?.textContent).toBe('Qwen Image 2.1 Pro')
     cleanup()
 
