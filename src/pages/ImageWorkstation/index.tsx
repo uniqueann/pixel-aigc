@@ -70,6 +70,7 @@ export default function ImageWorkstation() {
   const variationModels = variationConfiguration.models
   const [modelProfileId, setModelProfileId] = useState(() => defaultImageModel('image_edit')?.id)
   const [variationModelId, setVariationModelId] = useState(() => defaultImageModel('variation')?.id)
+  const [relightModelId, setRelightModelId] = useState(() => defaultImageModel('image_edit')?.id)
   const [erasePrompt, setErasePrompt] = useState('')
   const [repaintPrompt, setRepaintPrompt] = useState('')
   const [outpaintTargetSize, setOutpaintTargetSize] = useState<{ width: number; height: number }>()
@@ -114,7 +115,7 @@ export default function ImageWorkstation() {
           : repaintPrompt
   const activeModels = variationTool ? variationModels : imageModels
   const activeConfiguration = variationTool ? variationConfiguration : imageConfiguration
-  const selectedModelId = variationTool ? variationModelId : modelProfileId
+  const selectedModelId = relightTool ? relightModelId : variationTool ? variationModelId : modelProfileId
   const activeModel = activeModels.find(model => model.id === selectedModelId)
     ?? activeModels.find(model => model.defaultFor?.includes(variationTool ? 'variation' : 'image_edit')) ?? activeModels[0]
   const activeModelId = activeModel?.id
@@ -493,7 +494,7 @@ export default function ImageWorkstation() {
               onResolutionChange={resolution => updateParameters({ resolution })}
               models={activeModels}
               modelProfileId={activeModelId}
-              onModelProfileIdChange={variationTool ? setVariationModelId : setModelProfileId}
+              onModelProfileIdChange={relightTool ? setRelightModelId : variationTool ? setVariationModelId : setModelProfileId}
               sourceSize={controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined}
               disabled={controller.formLocked}
               erasePrompt={erasePrompt}

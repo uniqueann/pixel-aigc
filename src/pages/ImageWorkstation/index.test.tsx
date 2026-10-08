@@ -3,7 +3,7 @@
 import { App } from 'antd'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultImageModel, publicImageModel } from '@shared/image-models'
+import { IMAGE_MODEL_PROFILES, defaultImageModel, publicImageModel } from '@shared/image-models'
 import { defaultPreferences } from '@shared/preferences'
 import { usePreferencesStore } from '@/features/preferences/store'
 
@@ -15,12 +15,18 @@ const mocks = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined },
+  controllerArgs: undefined as { modelProfileId?: string } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
 }))
 vi.mock('react-router-dom', () => ({ useParams: () => ({ tool: mocks.tool }), useNavigate: () => vi.fn() }))
 vi.mock('@/hooks/useCapabilities', () => ({ useCapabilities: () => mocks.status }))
-vi.mock('@/features/image-workstation/hooks/useImageWorkstationController', () => ({ useImageWorkstationController: () => mocks.controller }))
+vi.mock('@/features/image-workstation/hooks/useImageWorkstationController', () => ({
+  useImageWorkstationController: (args: { modelProfileId?: string }) => {
+    mocks.controllerArgs = args
+    return mocks.controller
+  },
+}))
 vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ models: mocks.models, loading: mocks.modelsLoading, refetch: vi.fn() }) }))
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false }))
 vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
@@ -190,5 +196,39 @@ describe('图片工作站配置提示', () => {
     expect(screen.queryByText('生成数量')).toBeNull()
     expect(screen.queryByText('生成尺寸')).toBeNull()
     expect(screen.getByText('输出模式')).toBeTruthy()
+  })
+
+  it('重新打光单独选择模型，报价和提交跟着当前下拉', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts = { 'smart-edit': 1, relight: 1, variation: 2, fusion: 1, retouch: 1 }
+    usePreferencesStore.setState({ preferences, memoryEpoch: 5 })
+    const gpt = publicImageModel(defaultImageModel('image_edit')!)
+    const qwen = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0')!)
+    mocks.models = [gpt, qwen]
+    mocks.tool = 'smart-edit'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    const view = render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 1 张 · 4 积分/)).toBeTruthy()
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
+    fireEvent.click(screen.getByTitle('Qwen Image 3.0'))
+    expect(buttonByText(/生成 1 张 · 3 积分/)).toBeTruthy()
+    expect(mocks.controllerArgs?.modelProfileId).toBe(qwen.id)
+
+    mocks.tool = 'relight'
+    view.rerender(<App><ImageWorkstation /></App>)
+    expect(document.querySelector('.ant-select-selection-item')?.textContent).toContain('GPT Image 2')
+    expect(buttonByText(/生成 1 张 · 4 积分/)).toBeTruthy()
+    expect(mocks.controllerArgs?.modelProfileId).toBe(gpt.id)
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
+    fireEvent.click(screen.getByTitle('Qwen Image 3.0'))
+    expect(buttonByText(/生成 1 张 · 3 积分/)).toBeTruthy()
+    expect(mocks.controllerArgs?.modelProfileId).toBe(qwen.id)
+
+    mocks.tool = 'smart-edit'
+    view.rerender(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 1 张 · 3 积分/)).toBeTruthy()
+    expect(mocks.controllerArgs?.modelProfileId).toBe(qwen.id)
   })
 })

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FUSION_FIXED_PROMPT, FUSION_NOTE_MAX, composeFusionPrompt, fusionNoteLimitMessage } from '../../shared/fusion.js'
-import { RELIGHT_FIXED_PROMPT, RELIGHT_NOTE_MAX, composeRelightPrompt, relightNoteLimitMessage } from '../../shared/relight.js'
+import { RELIGHT_FIXED_PROMPT, RELIGHT_NOTE_MAX, composeRelightPrompt, fitRelightNote, relightNoteLimitMessage } from '../../shared/relight.js'
+import { PROMPT_MAX_LENGTH } from '../../shared/prompt-limits.js'
 import { RETOUCH_FIXED_PROMPT, RETOUCH_NOTE_MAX, composeRetouchPrompt, retouchNoteLimitMessage } from '../../shared/retouch.js'
 import { VARIATION_FIXED_PROMPT, VARIATION_USER_PROMPT_MAX, composeVariationPrompt, variationPromptLimitMessage } from '../../shared/variation.js'
 import { mapDragonCodeRequest } from '../image-providers/dragoncode/mapping.js'
@@ -645,7 +646,7 @@ describe('重新打光任务', () => {
     expect(String(plain.bundle.job.provider_params.prompt)).not.toContain('补充说明：')
   })
 
-  it('不能和精修或融合一起提交，超长补充说明会写明上限', () => {
+  it('不能和精修或融合一起提交，超长补充说明会写明上限', async () => {
     expect(() => createImageTaskSchema.parse(params({
       relight,
       retouchDirections: ['blemish'],
@@ -657,6 +658,18 @@ describe('重新打光任务', () => {
     const prompt = '字'.repeat(RELIGHT_NOTE_MAX + 1)
     const body = params({ prompt, relight })
     expect(() => assertRelightRequest(body)).toThrow(relightNoteLimitMessage())
+
+    const note = '字'.repeat(RELIGHT_NOTE_MAX)
+    const fitted = fitRelightNote(note, PROMPT_MAX_LENGTH)
+    const created = await createImageJobInStore(createMemoryStore(user.id), user, params({
+      prompt: note,
+      relight,
+    }), runtime())
+    const submitted = String(created.bundle.job.provider_params.prompt)
+    expect(submitted.length).toBeLessThanOrEqual(PROMPT_MAX_LENGTH)
+    expect(submitted.endsWith(RELIGHT_FIXED_PROMPT)).toBe(true)
+    expect(created.bundle.job.params).toMatchObject({ prompt: fitted })
+    expect(submitted).toBe(composeRelightPrompt(relight, fitted))
     expect(() => createImageTaskSchema.parse(params({ prompt: '  ' }))).toThrow()
     expect(createImageTaskSchema.parse(params({ prompt: undefined, relight })).capability).toBe('image_edit')
   })

@@ -541,6 +541,7 @@ export function useImageWorkstationController({
       count: effective.count,
       resolution: effective.resolution,
       modelProfileId,
+      promptMaxLength: modelUi?.promptMaxLength,
       retouchDirections,
       relight,
     }

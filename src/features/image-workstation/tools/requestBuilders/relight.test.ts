@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createImageAsset } from '@/editor/services/assetService'
 import { Capability } from '@/types'
-import { RELIGHT_DEFAULT } from '@shared/relight'
+import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
+import { RELIGHT_DEFAULT, composeRelightPrompt, fitRelightNote } from '@shared/relight'
 import { buildRelightRequest } from './relight'
 
 describe('buildRelightRequest', () => {
@@ -33,5 +34,19 @@ describe('buildRelightRequest', () => {
       count: 4,
       relight: { direction: 'left', quality: 'hard', temperature: 'cool' },
     })
+  })
+
+  it('补充说明按模型上限截断，拼好的提示词不超过该上限', () => {
+    const sourceAsset = createImageAsset({ name: '商品', url: 'product.png', width: 800, height: 800 })
+    const relight = { direction: 'back' as const, quality: 'hard' as const, temperature: 'cool' as const }
+    const request = buildRelightRequest({
+      sourceAsset,
+      prompt: '字'.repeat(PROMPT_MAX_LENGTH),
+      promptMaxLength: PROMPT_MAX_LENGTH,
+      relight,
+    })
+    const note = fitRelightNote('字'.repeat(PROMPT_MAX_LENGTH), PROMPT_MAX_LENGTH)
+    expect(request.params).toMatchObject({ prompt: note, relight })
+    expect(composeRelightPrompt(relight, note).length).toBeLessThanOrEqual(PROMPT_MAX_LENGTH)
   })
 })

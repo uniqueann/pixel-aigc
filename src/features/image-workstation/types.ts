@@ -28,6 +28,8 @@ export interface WorkstationContext {
   count?: number
   resolution?: '1k' | '2k' | '4k'
   modelProfileId?: string
+  /** 所选模型的提示词上限。重新打光用来截断补充说明。 */
+  promptMaxLength?: number
   maskUrl?: string
   targetSize?: { width: number; height: number }
   originOffset?: { x: number; y: number }
