@@ -8,6 +8,7 @@ import {
   OPENROUTER_NANO_BANANA_PROFILE_ID,
   RESOLUTION_DOWNGRADED_4K,
   defaultImageModel,
+  imageModelVendor,
   mapDragonCodeSize,
   nearestRatio,
   publicImageModel,
@@ -113,5 +114,24 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(gpt?.pricing.vendorCurrency).toBeUndefined()
     expect(publicImageModel(gpt!).pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 } })
     expect(JSON.stringify(publicImageModel(gpt!))).not.toContain('vendorCost')
+  })
+
+  it('按厂商而不是接入渠道给出图标标识', () => {
+    expect(IMAGE_MODEL_PROFILES.map(profile => [profile.id, profile.vendor])).toEqual([
+      ['dragoncode:gpt-image-2', 'openai'],
+      ['bailian:qwen-image-3.0', 'qwen'],
+      ['bailian:qwen-image-3.0-pro', 'qwen'],
+      [OPENROUTER_NANO_BANANA_PROFILE_ID, 'google'],
+    ])
+    for (const profile of IMAGE_MODEL_PROFILES) {
+      expect(publicImageModel(profile).vendor).toBe(profile.vendor)
+      expect(imageModelVendor(profile.id)).toBe(profile.vendor)
+    }
+    expect(imageModelVendor('ai-gateway:google/gemini-nano-banana-2.1')).toBe('google')
+    expect(imageModelVendor('dragoncode:not-a-model')).toBeUndefined()
+    expect(imageModelVendor('ai-gateway:some-other')).toBeUndefined()
+    expect(imageModelVendor('deepseek:用户默认模型')).toBeUndefined()
+    expect(imageModelVendor('')).toBeUndefined()
+    expect(imageModelVendor(undefined)).toBeUndefined()
   })
 })
