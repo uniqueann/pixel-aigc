@@ -55,7 +55,7 @@ async function makeOrder(userId=owner,scope='production') {
   },userId,scope)
   return id
 }
-async function pay(id:string,amount=199,event=randomUUID(),scope='production') {
+async function pay(id:string,amount=199,event:string=randomUUID(),scope='production') {
   return worker(()=>q("select aigc.complete_credit_order($1,$2,$3,'prod_aigc',$4,'USD',199,$5,'checkout.completed') as applied",[id,`ch_${id}`,`pay_${id}`,amount,event]),scope)
 }
 describe('充值与收费操作的数据库闭环',()=>{
@@ -132,6 +132,39 @@ describe('充值与收费操作的数据库闭环',()=>{
     expect((await pay(id))[0].applied).toBe(true);expect((await pay(id))[0].applied).toBe(false)
     expect((await user(()=>q('select balance from aigc.credit_accounts')))[0].balance).toBe(start+100)
     expect((await q("select count(*)::int as count from aigc.credit_ledger where idempotency_key=$1",[`order:${id}`]))[0].count).toBe(1)
+  })
+  it('连续部分退款按累计金额扣回，重复与乱序事件不再扣积分',async()=>{
+    const scope='preview',id=await makeOrder(owner,scope)
+    const before=Number((await user(()=>q('select balance from aigc.credit_accounts'),owner,scope))[0].balance)
+    await pay(id,199,'paid-partial',scope)
+    const reverse=(cash:number,event:string)=>worker(()=>q("select aigc.reverse_credit_order($1,$2,'USD',$3,'refund.created')",[id,cash,event]),scope)
+    await reverse(80,'partial-1');await reverse(120,'partial-2')
+    await reverse(120,'partial-2');await reverse(80,'partial-old')
+    const [row]=await q('select refunded_amount,revoked_credits,status from aigc.credit_orders where id=$1',[id])
+    expect(row).toEqual({refunded_amount:120,revoked_credits:61,status:'paid'})
+    expect((await user(()=>q('select balance from aigc.credit_accounts'),owner,scope))[0].balance).toBe(before+100-61)
+    expect((await q("select count(*)::int as count from aigc.credit_ledger where meta->>'orderId'=$1 and kind='adjust'",[id]))[0].count).toBe(2)
+  })
+  it('先收到退款的未到账订单进入核对，后到付款回调不能再发整包积分',async()=>{
+    const scope='preview',id=await makeOrder(owner,scope)
+    const before=(await user(()=>q('select balance from aigc.credit_accounts'),owner,scope))[0].balance
+    await worker(()=>q("select aigc.reverse_credit_order($1,199,'USD','refund-before-paid','refund.created')",[id]),scope)
+    expect((await pay(id,199,'paid-after-refund',scope))[0].applied).toBe(false)
+    expect((await q('select status,paid_at from aigc.credit_orders where id=$1',[id]))[0]).toEqual({status:'review',paid_at:null})
+    expect((await user(()=>q('select balance from aigc.credit_accounts'),owner,scope))[0].balance).toBe(before)
+    expect((await q("select count(*)::int as count from aigc.credit_ledger where idempotency_key=$1",[`order:${id}`]))[0].count).toBe(0)
+  })
+  it('后台角色能锁定充值订单，已有部分退款的争议保持累计金额并冻结收费',async()=>{
+    const scope='preview',id=await makeOrder(legacy,scope)
+    await pay(id,199,'paid-before-dispute',scope)
+    await worker(()=>q("select aigc.reverse_credit_order($1,80,'USD','partial-before-dispute','refund.created')",[id]),scope)
+    const before=(await user(()=>q('select balance from aigc.credit_accounts'),legacy,scope))[0].balance
+    await worker(async()=>{
+      const [current]=await q('select refunded_amount from aigc.credit_orders where id=$1 and scope=$2 for update',[id,scope])
+      await q("select aigc.reverse_credit_order($1,$2,'USD','dispute-without-total','dispute.created')",[id,Math.max(0,Number(current.refunded_amount))])
+    },scope)
+    expect((await user(()=>q('select balance,payment_blocked from aigc.credit_accounts'),legacy,scope))[0]).toEqual({balance:before,payment_blocked:true})
+    expect((await q('select refunded_amount,status from aigc.credit_orders where id=$1',[id]))[0]).toEqual({refunded_amount:80,status:'review'})
   })
   it('人工审核先冻结未使用积分，现金退款回调不会二次扣分',async()=>{
     const id=await makeOrder(other);await pay(id)
