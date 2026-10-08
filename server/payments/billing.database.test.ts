@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { acquireSyncRequest } from '../sync-limits'
+import type { Transaction } from '../db'
+import type { CreditDiscount } from '../../shared/credit-discounts'
 
 const owner='00000000-0000-4000-8000-000000000081'
 const other='00000000-0000-4000-8000-000000000082'
@@ -31,11 +34,31 @@ beforeAll(async()=>{
     '20260929233436_aigc_credit_adjust.sql']) await db.exec(readFileSync(`supabase/migrations/${file}`,'utf8'))
   for(const id of [owner,other,legacy]) await q('insert into aigc.members(user_id) values($1)',[id])
   await user(()=>q('select aigc.ensure_credit_account($1)',[legacy]),legacy)
+  await db.exec(readFileSync('supabase/migrations/20260930115938_erase_transfer_metrics.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20261004152128_aigc_credit_payments.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20261004222317_aigc_free_sync_credit_ledger.sql','utf8'))
   await db.exec(readFileSync('supabase/migrations/20261005034700_aigc_checkout_account_lock.sql','utf8'))
+  await db.exec(readFileSync('supabase/migrations/20261008161051_credit_discount_codes.sql','utf8'))
 },30000)
 afterAll(()=>db.close())
+
+const discounted = { id: 'dis_aigc', code: 'AIGC10', percentBps: 1000, discountAmount: 30, payableAmount: 269 }
+async function makeDiscountOrder(provider='creem',quoted:CreditDiscount|null=discounted) {
+  const id=randomUUID(),userId=randomUUID()
+  await q('insert into auth.users values($1)',[userId]);await q('insert into aigc.members(user_id) values($1)',[userId])
+  await user(async()=>{
+    await q('select aigc.ensure_credit_account($1)',[userId])
+    await q(`insert into aigc.credit_orders(id,user_id,scope,provider,provider_mode,pack_id,product_id,amount,currency,credits,checkout_id,quoted_discount)
+      values($1,$2,'preview',$3,'test','starter','prod_aigc',299,'USD',100,$4,$5::jsonb)`,[id,userId,provider,`ch_${id}`,quoted ? JSON.stringify(quoted) : null])
+  },userId,'preview')
+  return {id,userId}
+}
+const payDiscount=(id:string,discount:CreditDiscount|null=discounted,payment=`pay_${id}`)=>worker(()=>q(
+  "select aigc.complete_credit_order_with_discount($1,$2,$3,'prod_aigc',299,'USD',$4,$5,'checkout.completed',$6::jsonb) as applied",
+  [id,`ch_${id}`,payment,discount?.payableAmount ?? 299,randomUUID(),discount ? JSON.stringify(discount) : null]),'preview')
+const recordDiscount=(id:string)=>worker(()=>q(
+  "select aigc.record_credit_order_payment($1,$2,$3,'prod_aigc',299,'USD',269,$4::jsonb)",
+  [id,`ch_${id}`,`pay_${id}`,JSON.stringify(discounted)]),'preview')
 
 async function reserve(id:string,operation='erase',amount=5,userId=owner,scope='production') {
   return user(async()=>{
@@ -268,5 +291,90 @@ describe('充值与收费操作的数据库闭环',()=>{
     await q("select aigc.prepare_cash_refund($1,'production',199,$2,'审核员','未使用订单')",[id,key])
     expect((await q("select aigc.cancel_cash_refund($1,'production','审核员','核验平台未退款') as released",[key]))[0].released).toBe(100)
     expect((await q("select aigc.cancel_cash_refund($1,'production','审核员','重复取消') as released",[key]))[0].released).toBe(0)
+  })
+})
+
+describe('折扣订单的实付账本与权限',()=>{
+  it('Creem 最终换码按实际优惠到账，冻结原报价，回放只发原套餐积分一次',async()=>{
+    const {id,userId}=await makeDiscountOrder()
+    const final={...discounted,id:'dis_changed',code:'AIGC20',percentBps:2000,discountAmount:60,payableAmount:239}
+    expect((await payDiscount(id,final))[0].applied).toBe(true)
+    expect((await payDiscount(id,final))[0].applied).toBe(false)
+    expect((await user(()=>q('select balance from aigc.credit_accounts'),userId,'preview'))[0].balance).toBe(130)
+    const [order]=await q('select amount,paid_amount,quoted_discount,paid_discount from aigc.credit_orders where id=$1',[id])
+    expect(order).toEqual({amount:299,paid_amount:239,quoted_discount:discounted,paid_discount:final})
+    expect((await q("select delta,meta from aigc.credit_ledger where idempotency_key=$1",[`order:${id}`]))).toEqual([
+      {delta:100,meta:{orderId:id,provider:'creem',packId:'starter',amount:299,currency:'USD',paidAmount:239,discount:final}},
+    ])
+    await expect(payDiscount(id,discounted)).rejects.toThrow('订单支付编号或金额冲突')
+    await expect(payDiscount(id,final,'pay_other')).rejects.toThrow('订单支付编号或金额冲突')
+  })
+  it('部分退款用269分实付作分母，累计乱序及全额退款只收回原积分',async()=>{
+    const {id,userId}=await makeDiscountOrder();await payDiscount(id)
+    const reverse=(cash:number,event:string=randomUUID())=>worker(()=>q("select aigc.reverse_credit_order($1,$2,'USD',$3,'refund.created')",[id,cash,event]),'preview')
+    await reverse(107,'discount-refund-first');await reverse(169,'discount-refund-later');await reverse(107,'discount-refund-old');await reverse(169,'discount-refund-later')
+    expect((await q('select refunded_amount,revoked_credits from aigc.credit_orders where id=$1',[id]))[0]).toEqual({refunded_amount:169,revoked_credits:63})
+    expect((await user(()=>q('select balance from aigc.credit_accounts'),userId,'preview'))[0].balance).toBe(67)
+    await reverse(269)
+    expect((await q('select status,revoked_credits from aigc.credit_orders where id=$1',[id]))[0]).toEqual({status:'refunded',revoked_credits:100})
+    expect((await user(()=>q('select balance from aigc.credit_accounts'),userId,'preview'))[0].balance).toBe(30)
+    await expect(reverse(299)).rejects.toThrow('退款信息不一致')
+  })
+  it('退款先到时只记录实付，后来的付款事件仍不发积分',async()=>{
+    const {id,userId}=await makeDiscountOrder();await recordDiscount(id)
+    expect((await user(()=>q('select balance from aigc.credit_accounts'),userId,'preview'))[0].balance).toBe(30)
+    await worker(()=>q("select aigc.reverse_credit_order($1,107,'USD','discount-refund-before-paid','refund.created')",[id]),'preview')
+    expect((await payDiscount(id))[0].applied).toBe(false)
+    expect((await q('select paid_amount,refunded_amount,revoked_credits,status,paid_at from aigc.credit_orders where id=$1',[id]))[0])
+      .toEqual({paid_amount:269,refunded_amount:107,revoked_credits:40,status:'review',paid_at:null})
+    expect((await q("select count(*)::int as count from aigc.credit_ledger where idempotency_key=$1",[`order:${id}`]))[0].count).toBe(0)
+  })
+  it('Dodo 只接受冻结的单码；Creem 可移除优惠；非法优惠和零元不能保存',async()=>{
+    const {id}=await makeDiscountOrder('dodo')
+    await expect(payDiscount(id,{...discounted,id:'dis_other'})).rejects.toThrow('充值支付信息不一致')
+    await expect(payDiscount(id,null)).rejects.toThrow('充值支付信息不一致')
+    expect((await payDiscount(id))[0].applied).toBe(true)
+    const creem=await makeDiscountOrder()
+    expect((await payDiscount(creem.id,null))[0].applied).toBe(true)
+    for (const invalid of [{...discounted,code:10},{...discounted,id:123},{...discounted,payableAmount:0},{...discounted,percentBps:10000},{}]) {
+      expect((await q('select aigc.valid_credit_discount($1::jsonb,299,269) as valid',[JSON.stringify(invalid)]))[0].valid).toBe(false)
+    }
+  })
+  it('普通用户不能调用新账务接口或修改最终快照，环境与账户核对保持隔离',async()=>{
+    const {id,userId}=await makeDiscountOrder()
+    await expect(user(()=>q("select aigc.record_credit_order_payment($1,$2,$3,'prod_aigc',299,'USD',269,$4::jsonb)",
+      [id,`ch_${id}`,`pay_${id}`,JSON.stringify(discounted)]),userId,'preview')).rejects.toThrow(/permission denied/)
+    await expect(user(()=>q('select aigc.flag_credit_order_review($1)',[id]),userId,'preview')).rejects.toThrow(/permission denied/)
+    await expect(user(()=>q('update aigc.credit_orders set paid_amount=269 where id=$1',[id]),userId,'preview')).rejects.toThrow(/permission denied/)
+    await expect(user(()=>q('update aigc.credit_orders set quoted_discount=null where id=$1',[id]),userId,'preview')).rejects.toThrow(/permission denied/)
+    await expect(worker(()=>q('select aigc.flag_credit_order_review($1)',[id]),'production')).rejects.toThrow('充值订单不存在')
+    await worker(()=>q('select aigc.flag_credit_order_review($1)',[id]),'preview')
+    expect((await user(()=>q('select balance,payment_blocked from aigc.credit_accounts'),userId,'preview'))[0]).toEqual({balance:30,payment_blocked:true})
+    expect((await payDiscount(id))[0].applied).toBe(false)
+  })
+  it('人工现金退款按实付审核冻结，不用299分原价允许超额退款',async()=>{
+    const {id,userId}=await makeDiscountOrder();await payDiscount(id)
+    await user(()=>q('update aigc.credit_orders set refund_requested=true where id=$1',[id]),userId,'preview')
+    await expect(q("select aigc.prepare_cash_refund($1,'preview',299,$2,'审核员','优惠订单退款')",[id,`discount-refund:${id}`])).rejects.toThrow('退款订单状态或金额无效')
+    expect((await q("select aigc.prepare_cash_refund($1,'preview',107,$2,'审核员','优惠订单退款') as held",[id,`discount-refund:${id}`]))[0].held).toBe(40)
+    await worker(()=>q("select aigc.reverse_credit_order($1,107,'USD',$2,'refund.created')",[id,randomUUID()]),'preview')
+    expect((await user(()=>q('select balance from aigc.credit_accounts'),userId,'preview'))[0].balance).toBe(90)
+  })
+  it('折扣验证独立限制60次和并发2，不消耗图片额度，账号和环境分别计数',async()=>{
+    const {userId}=await makeDiscountOrder()
+    const tag=(async(parts:TemplateStringsArray,...args:unknown[])=>q(parts.map((part,index)=>part+(index<args.length ? `$${index+1}` : '')).join(''),args)) as unknown as Transaction
+    const acquire=(bucket:'payment_discount'|'generation'='payment_discount',scope='preview',id=userId)=>
+      user(()=>acquireSyncRequest(tag,id,scope,bucket,randomUUID()),id,scope)
+    await acquire();await acquire()
+    await expect(acquire()).rejects.toMatchObject({status:429,code:'USER_CONCURRENCY'})
+    await user(()=>q('update aigc.sync_requests set completed_at=now()'),userId,'preview')
+    for(let index=2;index<60;index++) {
+      await acquire();await user(()=>q('update aigc.sync_requests set completed_at=now()'),userId,'preview')
+    }
+    await expect(acquire()).rejects.toMatchObject({status:429,code:'RATE_LIMIT'})
+    await expect(acquire('generation')).resolves.toBeUndefined()
+    await expect(acquire('payment_discount','production')).resolves.toBeUndefined()
+    const other=await makeDiscountOrder()
+    await expect(acquire('payment_discount','preview',other.userId)).resolves.toBeUndefined()
   })
 })

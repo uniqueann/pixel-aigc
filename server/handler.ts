@@ -4,7 +4,7 @@ import { outpaintCreditPrice } from '../shared/billing.js'
 import sharp from 'sharp'
 import { readRequestBody } from './request-body.js'
 import { syncQuoteSchema, withSyncCredits, getSyncCreditResult } from './sync-billing.js'
-import { billingCatalog, createCreditCheckout, getCreditOrder, listCreditOrders, requestCashRefund, handlePaymentWebhook, reconcilePendingCreditOrders } from './payments/service.js'
+import { billingCatalog, createCreditCheckout, previewCreditDiscount, getCreditOrder, listCreditOrders, requestCashRefund, handlePaymentWebhook, reconcilePendingCreditOrders } from './payments/service.js'
 import type { VercelRequest, VercelResponse } from './http.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { waitUntil } from '@vercel/functions'
@@ -201,6 +201,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
     if (Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? null)) > maxBytes) throw new HttpError(413, '请求内容过大')
     if (path.join('/') === 'credits/catalog' && method === 'GET') { res.status(200).json(await billingCatalog(user)); return }
+    if (path.join('/') === 'credits/discount-preview' && method === 'POST') { res.status(200).json(await previewCreditDiscount(user,body)); return }
     if (path.join('/') === 'credits/checkout' && method === 'POST') { res.status(200).json(await createCreditCheckout(user,body)); return }
     if (path.join('/') === 'credits/orders' && method === 'GET') { res.status(200).json(await listCreditOrders(user)); return }
     if (path[0] === 'credits' && path[1] === 'orders' && path.length === 3 && method === 'GET') { res.status(200).json(await getCreditOrder(user,path[2])); return }

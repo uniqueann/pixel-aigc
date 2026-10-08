@@ -1,6 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ sql: vi.fn(), product: vi.fn(), checkout: vi.fn(), create: vi.fn(), payment: vi.fn(), fetch: vi.fn() }))
+const mocks = vi.hoisted(() => ({ sql: Object.assign(vi.fn(), { json: (value: unknown) => value }), product: vi.fn(), checkout: vi.fn(), create: vi.fn(), payment: vi.fn(), fetch: vi.fn() }))
 vi.mock('dodopayments', async importOriginal => {
   const actual = await importOriginal<typeof import('dodopayments')>()
   return { default: class {
@@ -17,6 +17,7 @@ vi.mock('../db.js', () => ({
 }))
 import { handlePaymentWebhook, reconcileCreditOrder } from './service.js'
 import type { StoredCreditOrder } from './service.js'
+import { HttpError } from '../errors.js'
 
 const orderId = '00000000-0000-4000-8000-000000000211'
 const userId = '00000000-0000-4000-8000-000000000212'
@@ -259,6 +260,61 @@ describe('Creem 到账与项目隔离', () => {
     creemTransaction.status = 'chargedBack'; creemTransaction.refunded_amount = null
     await reconcileCreditOrder(current, 'reconcile_after_partial')
     expect(reversalArgs()).toEqual([[orderId, 80, 'USD', 'reconcile_after_partial', 'dispute.created']])
+  })
+})
+
+describe('折扣收据与回调服务', () => {
+  const discount = { id: 'dis_aigc', code: 'AIGC10', percentBps: 1000, discountAmount: 30, payableAmount: 269 }
+  beforeEach(() => {
+    current = storedOrder({ amount: 299, status: 'pending', payment_id: null, quoted_discount: discount })
+    creemTransaction = { ...creemTransaction, amount_paid: 269, discount_amount: 30 }
+    mocks.fetch.mockImplementation(async (input: string) => {
+      if (input.includes('/transactions')) return Response.json(creemTransaction)
+      if (input.includes('/checkouts')) return Response.json({
+        id: creemCheckoutId, request_id: orderId, status: 'completed', units: 1,
+        metadata: { productScope: 'aigc', orderId, userId, runtimeScope: 'preview', paymentMode: 'test' },
+        product: { id: 'prod_aigc_starter', currency: 'USD', price: 299, billing_type: 'onetime', tax_mode: 'inclusive' },
+        discount: { id: discount.id, discountCode: discount.code, type: 'percentage', amount: 10 },
+        order: { id: creemPaymentId, amount: 299, amount_paid: 269, amount_due: 269, discount_amount: 30, discount: discount.id,
+          currency: 'USD', product: 'prod_aigc_starter', type: 'onetime', status: 'paid', transaction: 'tran_aigc' },
+      })
+      throw new Error('测试中出现未知请求')
+    })
+  })
+  it('将最终实付与优惠快照交给同一幂等到账函数', async () => {
+    await reconcileCreditOrder(current, 'discount-checkout-completed', 'checkout.completed')
+    const call = mocks.sql.mock.calls.find(([parts]) => parts.join('').includes('complete_credit_order_with_discount'))!
+    expect(call.slice(1)).toEqual([orderId, creemCheckoutId, creemPaymentId, 'prod_aigc_starter', 299, 'USD', 269,
+      'discount-checkout-completed', 'checkout.completed', discount])
+  })
+  it('折扣退款先保存269分实付再撤销，不调用整包积分发放', async () => {
+    creemTransaction.status = 'partialRefund'; creemTransaction.refunded_amount = 107
+    const event = creemRefund({ id: 'discount-refund-first', amount: 107, cumulative: 107 })
+    event.object.transaction.amount_paid = 269
+    const body = JSON.stringify(event)
+    await handlePaymentWebhook('creem', body, signCreem(body))
+    const calls = mocks.sql.mock.calls.map(([parts]) => parts.join(''))
+    expect(calls.some(query => query.includes('complete_credit_order'))).toBe(false)
+    expect(calls.findIndex(query => query.includes('record_credit_order_payment'))).toBeLessThan(calls.findIndex(query => query.includes('reverse_credit_order')))
+    const record = mocks.sql.mock.calls.find(([parts]) => parts.join('').includes('record_credit_order_payment'))!
+    expect(record.slice(-2)).toEqual([269, discount])
+    expect(reversalArgs()).toEqual([[orderId, 107, 'USD', 'discount-refund-first', 'refund.created']])
+  })
+  it('实付矛盾进入核对且不发分；短暂平台故障保持重试，不误冻结', async () => {
+    creemTransaction.amount_paid = 268
+    await expect(reconcileCreditOrder(current)).rejects.toMatchObject({ code: 'PAYMENT_MISMATCH' })
+    expect(mocks.sql.mock.calls.some(([parts]) => parts.join('').includes('flag_credit_order_review'))).toBe(true)
+    expect(mocks.sql.mock.calls.some(([parts]) => parts.join('').includes('complete_credit_order'))).toBe(false)
+    mocks.sql.mockClear(); mocks.fetch.mockRejectedValueOnce(new Error('测试网络故障'))
+    await expect(reconcileCreditOrder(current)).rejects.toMatchObject({ code: 'PAYMENT_PROVIDER_ERROR' })
+    expect(mocks.sql).not.toHaveBeenCalled()
+  })
+  it('退款回调中的优惠收据矛盾也进入核对，不能执行扣回', async () => {
+    creemTransaction.amount_paid = 268; creemTransaction.status = 'partialRefund'; creemTransaction.refunded_amount = 107
+    const body = JSON.stringify(creemRefund({ id: 'discount-refund-mismatch', amount: 107, cumulative: 107 }))
+    await expect(handlePaymentWebhook('creem', body, signCreem(body))).rejects.toBeInstanceOf(HttpError)
+    expect(mocks.sql.mock.calls.some(([parts]) => parts.join('').includes('flag_credit_order_review'))).toBe(true)
+    expect(reversalArgs()).toEqual([])
   })
 })
 

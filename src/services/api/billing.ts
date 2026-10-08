@@ -2,6 +2,7 @@ import { cloudRequest, CloudError } from '@/cloud/client'
 import { useUserStore } from '@/store/useUserStore'
 import { SYNC_TOOL_LABELS, type BillingCatalog, type CreditCurrency, type CreditOrder, type CreditPackId, type PaymentProvider, type SyncCreditOperation, type SyncCreditQuote } from '@shared/billing'
 import type { SyncImageObjectResult } from '@shared/sync-image'
+import type { CreditDiscountPreview } from '@shared/credit-discounts'
 
 export const RECHARGE_EVENT = 'aigc:recharge'
 export const SPEND_CONFIRM_EVENT = 'aigc:spend-confirm'
@@ -10,8 +11,11 @@ export function openCreditRecharge() { window.dispatchEvent(new Event(RECHARGE_E
 export const getBillingCatalog = (owner: string, signal?: AbortSignal) => cloudRequest<BillingCatalog>('/credits/catalog','GET',undefined,{expectedUserId:owner,signal})
 export const listCreditOrders = (owner: string) => cloudRequest<{items:CreditOrder[]}>('/credits/orders','GET',undefined,{expectedUserId:owner})
 export const getCreditOrder = (id: string,owner: string) => cloudRequest<CreditOrder>(`/credits/orders/${id}`,'GET',undefined,{expectedUserId:owner})
-export const checkoutCredits = (packId: CreditPackId,provider: PaymentProvider,orderId: string,owner: string,expectedAmount:number,expectedCurrency:CreditCurrency) =>
-  cloudRequest<CreditOrder>('/credits/checkout','POST',{packId,provider,orderId,expectedAmount,expectedCurrency},{expectedUserId:owner})
+export const previewCreditDiscount = (provider: PaymentProvider, code: string, expectedCurrency: CreditCurrency, owner: string, signal?: AbortSignal) =>
+  cloudRequest<CreditDiscountPreview>('/credits/discount-preview','POST',{provider,code,expectedCurrency},{expectedUserId:owner,signal})
+export const checkoutCredits = (packId: CreditPackId,provider: PaymentProvider,orderId: string,owner: string,expectedAmount:number,expectedCurrency:CreditCurrency,
+  discount?: {discountCode: string; expectedPayableAmount: number}) =>
+  cloudRequest<CreditOrder>('/credits/checkout','POST',{packId,provider,orderId,expectedAmount,expectedCurrency,...discount},{expectedUserId:owner})
 export const requestCashRefund = (id: string,reason: string,owner: string) =>
   cloudRequest<CreditOrder>(`/credits/orders/${id}/refund-request`,'POST',{reason},{expectedUserId:owner})
 

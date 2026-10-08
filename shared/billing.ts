@@ -1,4 +1,5 @@
 import { planBailianOutpaint, type PixelPadding } from './outpaint.js'
+import type { CreditDiscount } from './credit-discounts.js'
 
 export const INITIAL_CREDITS = 30
 export const SYNC_PRICE_VERSION = 'aigc-sync-v1'
@@ -52,6 +53,10 @@ export interface CreditOrder {
   checkoutUrl: string | null
   refundRequested: boolean
   createdAt: string
+  quotedAmount?: number
+  paidAmount?: number | null
+  quotedDiscount?: CreditDiscount | null
+  paidDiscount?: CreditDiscount | null
 }
 
 export interface SyncCreditQuote {

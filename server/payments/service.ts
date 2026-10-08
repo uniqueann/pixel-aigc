@@ -4,15 +4,19 @@ import { CREDIT_PACKS, BG_REMOVE_MONTHLY_FREE, SYNC_PRICE_VERSION, type CreditOr
 import { database, runtimeScope, withIdentity, type Transaction } from '../db.js'
 import { HttpError } from '../errors.js'
 import { ensureCreditAccount } from '../image-jobs/billing.js'
+import { normalizeCreditDiscountCode, type CreditDiscount, type CreditDiscountPreview } from '../../shared/credit-discounts.js'
+import { withSyncLimit } from '../sync-limits.js'
 import {
   configuredProviders, createPaymentCheckout, creditCurrency, paymentMode, productId, readCreemReversal, readPaymentReceipt,
   record, validateProduct, verifyPaymentEvent, type PaymentOrderSnapshot, type PaymentReceipt,
+  readProviderDiscount, quoteProviderDiscount,
 } from './providers.js'
 
 export interface BillingUser { id: string; email: string }
 export interface StoredCreditOrder extends PaymentOrderSnapshot {
   pack_id: CreditOrder['packId']; status: CreditOrder['status']; checkout_url: string | null;
   refund_requested: boolean; created_at: Date | string; payment_id: string | null; refunded_amount: number;
+  paid_amount?: number | null;
 }
 const orderIdSchema = z.uuid()
 export function withBillingWorker<T>(action: (sql: Transaction) => Promise<T>): Promise<T> {
@@ -25,7 +29,45 @@ export function withBillingWorker<T>(action: (sql: Transaction) => Promise<T>): 
 export function presentOrder(o: StoredCreditOrder): CreditOrder {
   return { id: o.id, packId: o.pack_id, provider: o.provider, amount: Number(o.amount), currency: o.currency,
     credits: Number(o.credits), status: o.status, checkoutUrl: o.checkout_url, refundRequested: o.refund_requested,
-    createdAt: o.created_at instanceof Date ? o.created_at.toISOString() : String(o.created_at) }
+    createdAt: o.created_at instanceof Date ? o.created_at.toISOString() : String(o.created_at),
+    quotedAmount: o.quoted_discount?.payableAmount ?? Number(o.amount), paidAmount: o.paid_amount == null ? null : Number(o.paid_amount),
+    quotedDiscount: o.quoted_discount ?? null, paidDiscount: o.paid_discount ?? null }
+}
+
+function discountCode(value: string) {
+  try { return normalizeCreditDiscountCode(value) }
+  catch { throw new HttpError(400, '折扣码仅支持 1–14 位字母或数字', 'DISCOUNT_INVALID') }
+}
+
+export async function previewCreditDiscount(user: BillingUser, input: unknown): Promise<CreditDiscountPreview> {
+  const parsed = z.object({ provider: z.enum(['creem', 'dodo']), code: z.string().max(100), expectedCurrency: z.enum(['USD', 'CNY']) }).strict().parse(input)
+  const code = discountCode(parsed.code), currency = creditCurrency()
+  if (!code) throw new HttpError(400, '请输入折扣码', 'DISCOUNT_INVALID')
+  if (currency !== parsed.expectedCurrency) throw new HttpError(409, '充值币种已更新，请刷新套餐', 'PRICE_CHANGED')
+  if (!configuredProviders().includes(parsed.provider)) throw new HttpError(503, '充值通道尚未开放', 'PAYMENT_UNCONFIGURED')
+  return withSyncLimit(user, 'payment_discount', async () => {
+    let rule: Awaited<ReturnType<typeof readProviderDiscount>> | undefined, rejection: string | undefined
+    try { rule = await readProviderDiscount(parsed.provider, { code }) }
+    catch (error) {
+      if (!(error instanceof HttpError) || error.status !== 400) throw error
+      rejection = error.message
+    }
+    const packs = await Promise.all(CREDIT_PACKS.map(async pack => {
+      let discount: CreditDiscount | null = null, message = rejection ?? '此套餐暂不支持当前付款方式'
+      const id = productId(parsed.provider, pack.id)
+      if (rule && id && configuredProviders(pack.id).includes(parsed.provider)) {
+        try {
+          await validateProduct(parsed.provider, id, pack[currency], currency)
+          discount = quoteProviderDiscount(rule, id, pack[currency]); message = `优惠 ${rule.percentBps / 100}%`
+        } catch (error) {
+          if (!(error instanceof HttpError) || error.status !== 400) throw error
+          message = error.message
+        }
+      }
+      return { packId: pack.id, available: Boolean(discount), amount: pack[currency], message, discount }
+    }))
+    return { provider: parsed.provider, currency, code, packs }
+  })
 }
 export async function billingCatalog(user: BillingUser) {
   const currency = creditCurrency()
@@ -53,12 +95,28 @@ function publicOrigin() {
 }
 export async function createCreditCheckout(user: BillingUser, input: unknown) {
   const parsed = z.object({ orderId: z.uuid(), packId: z.enum(['starter','standard','studio']), provider: z.enum(['creem','dodo']),
-    expectedAmount:z.number().int().positive(),expectedCurrency:z.enum(['USD','CNY']) }).strict().parse(input)
+    expectedAmount:z.number().int().positive(),expectedCurrency:z.enum(['USD','CNY']), discountCode: z.string().max(100).optional(),
+    expectedPayableAmount: z.number().int().positive().optional() }).strict().parse(input)
   const pack = CREDIT_PACKS.find(item => item.id === parsed.packId)!, currency = creditCurrency()
+  const code = discountCode(parsed.discountCode ?? '')
+  // 重试先读取冻结快照；券过期或商品后来改价不能改写已有订单。
+  const prior = await withIdentity(user.id, user.email, async sql => (await sql`select * from aigc.credit_orders where id=${parsed.orderId}`)[0] as StoredCreditOrder | undefined)
+  const reuse = (o: StoredCreditOrder) => {
+    if (o.pack_id !== parsed.packId || o.provider !== parsed.provider || Number(o.amount) !== parsed.expectedAmount || o.currency !== parsed.expectedCurrency
+      || (o.quoted_discount?.code ?? '') !== code || (parsed.expectedPayableAmount != null && parsed.expectedPayableAmount !== (o.quoted_discount?.payableAmount ?? Number(o.amount))))
+      throw new HttpError(409, '订单编号已用于其他套餐或折扣码', 'ORDER_CONFLICT')
+    if (!o.checkout_url) throw new HttpError(409, '此订单的支付链接尚未确认，请刷新订单或稍后重新创建', 'CHECKOUT_PENDING')
+    return presentOrder(o)
+  }
+  if (prior) return reuse(prior)
   if(parsed.expectedAmount!==pack[currency] || parsed.expectedCurrency!==currency) throw new HttpError(409,'充值价格已更新，请刷新套餐后重新购买','PRICE_CHANGED')
   if (!configuredProviders(pack.id).includes(parsed.provider)) throw new HttpError(503, '充值通道尚未开放', 'PAYMENT_UNCONFIGURED')
   const id = productId(parsed.provider, pack.id)!, returnUrl = `${publicOrigin()}/?creditOrder=${parsed.orderId}`
   await validateProduct(parsed.provider,id,pack[currency],currency)
+  const quoted = code ? await withSyncLimit(user, 'payment_discount', async () =>
+    quoteProviderDiscount(await readProviderDiscount(parsed.provider, { code }), id, pack[currency])) : null
+  if ((code && parsed.expectedPayableAmount == null) || (parsed.expectedPayableAmount != null && parsed.expectedPayableAmount !== (quoted?.payableAmount ?? pack[currency])))
+    throw new HttpError(409, '优惠金额已更新，请重新应用折扣码后购买', 'DISCOUNT_CHANGED')
   const order = await withIdentity(user.id,user.email,async sql => {
     await ensureCreditAccount(sql,user.id)
     // aigc_api 不能对 credit_accounts 执行 FOR UPDATE。行锁在定义者函数内取得，并保持到本事务结束。
@@ -66,14 +124,13 @@ export async function createCreditCheckout(user: BillingUser, input: unknown) {
     if (account.payment_blocked) throw new HttpError(409,'积分账户需要人工核对，请联系支持','CREDIT_ACCOUNT_REVIEW')
     const [prior] = await sql`select * from aigc.credit_orders where id=${parsed.orderId}`
     if (prior) {
-      if (prior.pack_id !== parsed.packId || prior.provider !== parsed.provider || prior.amount !== pack[currency] || prior.currency !== currency)
-        throw new HttpError(409,'订单编号已用于其他套餐','ORDER_CONFLICT')
+      reuse(prior as StoredCreditOrder)
       return { o: prior as StoredCreditOrder, reused: true }
     }
     const [count] = await sql`select count(*)::integer as count from aigc.credit_orders where created_at>now()-interval '1 hour'`
     if (Number(count.count)>=20) throw new HttpError(429,'创建充值订单过于频繁，请稍后重试','RATE_LIMITED')
-    const [created] = await sql`insert into aigc.credit_orders(id,user_id,scope,provider,provider_mode,pack_id,product_id,amount,currency,credits)
-      values(${parsed.orderId},${user.id},${runtimeScope()},${parsed.provider},${paymentMode()},${pack.id},${id},${pack[currency]},${currency},${pack.credits}) returning *`
+    const [created] = await sql`insert into aigc.credit_orders(id,user_id,scope,provider,provider_mode,pack_id,product_id,amount,currency,credits,quoted_discount)
+      values(${parsed.orderId},${user.id},${runtimeScope()},${parsed.provider},${paymentMode()},${pack.id},${id},${pack[currency]},${currency},${pack.credits},${(quoted ? sql.json({ ...quoted }) : null)}) returning *`
     return { o: created as StoredCreditOrder, reused: false }
   })
   if (order.reused) {
@@ -91,7 +148,10 @@ export async function createCreditCheckout(user: BillingUser, input: unknown) {
     return presentOrder(row as StoredCreditOrder)
   })
 }
-async function reverseCreemReceipt(sql: Transaction, order: StoredCreditOrder, receipt: PaymentReceipt, cash: number, eventId: string, eventType: string) {
+async function reversePaymentReceipt(sql: Transaction, order: StoredCreditOrder, receipt: PaymentReceipt, cash: number, eventId: string, eventType: string) {
+  // 先保存已核验实付，不发积分；退款先到时也以折后实付作为计算分母。
+  await sql`select aigc.record_credit_order_payment(${order.id},${receipt.checkoutId},${receipt.paymentId},${receipt.productId},
+    ${receipt.amount},${receipt.currency},${receipt.paidAmount},${(receipt.discount ? sql.json({ ...receipt.discount }) : null)})`
   if (receipt.disputed) {
     // 保持已有累计退款金额，争议查询缺少金额时仍须冻结账户，不能因金额回退被数据库忽略。
     const [current] = await sql`select refunded_amount from aigc.credit_orders where id=${order.id} and scope=${runtimeScope()} for update`
@@ -100,19 +160,26 @@ async function reverseCreemReceipt(sql: Transaction, order: StoredCreditOrder, r
   }
   await sql`select aigc.reverse_credit_order(${order.id},${cash},${receipt.currency},${eventId},${receipt.disputed ? 'dispute.created' : eventType})`
 }
+async function confirmPaymentReceipt<T>(order: StoredCreditOrder, read: () => Promise<T>): Promise<T> {
+  try { return await read() }
+  catch (error) {
+    if (error instanceof HttpError && error.code === 'PAYMENT_MISMATCH')
+      await withBillingWorker(sql => sql`select aigc.flag_credit_order_review(${order.id})`)
+    throw error
+  }
+}
 export async function reconcileCreditOrder(order: StoredCreditOrder, eventId = `reconcile:${randomUUID()}`, eventType = 'reconcile') {
-  const receipt = await readPaymentReceipt(order)
+  const receipt = await confirmPaymentReceipt(order, () => readPaymentReceipt(order))
   if (!receipt) return false
   await withBillingWorker(async sql => {
-    // Creem 查单已出现退款/争议时先处理撤销，未到账订单进入核对，避免先发整包再扣回。
-    if (order.provider === 'creem' && (receipt.refundedAmount > 0 || receipt.disputed)) {
-      await reverseCreemReceipt(sql, order, receipt, receipt.refundedAmount, eventId, 'refund.created')
+    // 查单已出现退款或争议时先处理撤销，未到账订单进入核对，避免先发整包再扣回。
+    if (receipt.refundedAmount > 0 || receipt.disputed) {
+      await reversePaymentReceipt(sql, order, receipt, order.provider === 'dodo' && receipt.disputed ? receipt.paidAmount : receipt.refundedAmount,
+        order.provider === 'dodo' ? `${eventId}:reversal` : eventId, order.provider === 'dodo' ? 'refund.succeeded' : 'refund.created')
       return
     }
-    await sql`select aigc.complete_credit_order(${order.id},${receipt.checkoutId},${receipt.paymentId},${receipt.productId},
-      ${receipt.amount},${receipt.currency},${receipt.paidAmount},${eventId},${eventType})`
-    if (receipt.refundedAmount>0 || receipt.disputed) await sql`select aigc.reverse_credit_order(${order.id},
-      ${receipt.disputed ? receipt.paidAmount : receipt.refundedAmount},${receipt.currency},${`${eventId}:reversal`},${receipt.disputed ? 'dispute.created' : 'refund.succeeded'})`
+    await sql`select aigc.complete_credit_order_with_discount(${order.id},${receipt.checkoutId},${receipt.paymentId},${receipt.productId},
+      ${receipt.amount},${receipt.currency},${receipt.paidAmount},${eventId},${eventType},${(receipt.discount ? sql.json({ ...receipt.discount }) : null)})`
   })
   return true
 }
@@ -204,9 +271,9 @@ export async function handlePaymentWebhook(provider: PaymentProvider, raw: strin
     if ((paymentId && o.payment_id && paymentId !== o.payment_id) || (checkout && o.checkout_id && checkout !== o.checkout_id)
       || (!paymentId && !checkout && meta.orderId !== o.id))
       throw new HttpError(409,'退款订单信息不一致','PAYMENT_MISMATCH')
-    const receipt = await readCreemReversal(o, type, data)
+    const receipt = await confirmPaymentReceipt(o, () => readCreemReversal(o, type, data))
     const cash = receipt.reversalAmount
-    await withBillingWorker(sql => reverseCreemReceipt(sql, o, receipt, cash, eventId, type))
+    await withBillingWorker(sql => reversePaymentReceipt(sql, o, receipt, cash, eventId, type))
   } else {
     if (!o.checkout_id) throw new HttpError(409,'支付链接尚未就绪，请重试回调','ORDER_NOT_READY')
     const confirmed = await reconcileCreditOrder(o,eventId,type)

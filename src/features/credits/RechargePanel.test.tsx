@@ -4,11 +4,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useUserStore } from '@/store/useUserStore'
 import { CREDIT_PACKS, type BillingCatalog, type CreditOrder, type PaymentProvider } from '@shared/billing'
+import type { CreditDiscountPreview } from '@shared/credit-discounts'
 
-const api = vi.hoisted(() => ({ catalog: vi.fn(), orders: vi.fn(), checkout: vi.fn(), order: vi.fn(), refresh: vi.fn(), refund: vi.fn() }))
+const api = vi.hoisted(() => ({ catalog: vi.fn(), orders: vi.fn(), checkout: vi.fn(), order: vi.fn(), refresh: vi.fn(), refund: vi.fn(), preview: vi.fn() }))
 vi.mock('@/services/api/billing', () => ({
   BILLING_REFRESH_EVENT: 'aigc:billing-refresh', getBillingCatalog: api.catalog, listCreditOrders: api.orders,
   checkoutCredits: api.checkout, getCreditOrder: api.order, refreshBillingBalance: api.refresh, requestCashRefund: api.refund,
+  previewCreditDiscount: api.preview,
 }))
 // 计费说明有独立测试；这里保留真实的付款选择、按钮和退款弹窗。
 vi.mock('./BillingExplanation', () => ({ default: () => null }))
@@ -27,6 +29,13 @@ function deferred<T>() {
   const promise = new Promise<T>(done => { resolve = done })
   return { promise, resolve }
 }
+// 保留真实按钮与点击行为；流程测试按按钮文本定位，避免反复计算 Antd 的整棵无障碍名称和样式。
+function buttonByText(text: string | RegExp) {
+  return screen.getByText(text, { selector: 'button span' }).closest('button')!
+}
+function purchaseButtons() {
+  return screen.getAllByText(/^购\s*买$/, { selector: 'button span' }).map(label => label.closest('button')!)
+}
 async function selectCreem() {
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '付款方式' }))
   fireEvent.click(await screen.findByText('Creem', { selector: '.ant-select-item-option-content' }))
@@ -36,6 +45,7 @@ beforeEach(() => {
   useUserStore.setState({ userId: 'owner-a', account: null, credits: 0 })
   api.catalog.mockResolvedValue(catalog()); api.orders.mockResolvedValue({ items: [] })
   api.checkout.mockResolvedValue(order()); api.refresh.mockResolvedValue(undefined)
+  api.preview.mockResolvedValue(discountPreview())
   const computedStyle = window.getComputedStyle.bind(window)
   vi.spyOn(window, 'getComputedStyle').mockImplementation(element => computedStyle(element))
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })) })
@@ -164,5 +174,100 @@ describe('充值账号与异步结果隔离', () => {
     await act(async () => { useUserStore.setState({ userId: null }) })
     expect(screen.getByText('请先登录再购买积分')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /购\s*买/ })).toBeNull()
+  })
+})
+
+function discountPreview(provider: PaymentProvider = 'dodo'): CreditDiscountPreview {
+  return { provider, code: 'AIGC10', currency: 'USD', packs: CREDIT_PACKS.map(pack => {
+    const payableAmount = Math.round(pack.USD * 0.9)
+    return { packId: pack.id, available: true, amount: pack.USD, message: '优惠 10%',
+      discount: { code: 'AIGC10', id: 'dis_aigc', percentBps: 1000, payableAmount, discountAmount: pack.USD - payableAmount } }
+  }) }
+}
+async function enterDiscount(code = ' aigc10 ') {
+  fireEvent.click(buttonByText('有折扣码？'))
+  fireEvent.change(screen.getByLabelText('折扣码'), { target: { value: code } })
+}
+async function applyDiscount() {
+  await enterDiscount()
+  fireEvent.click(buttonByText('应用折扣码'))
+  await screen.findByText('折扣码已应用，到账积分保持不变。最终金额以结账页为准。')
+}
+// 保留真实 Antd 控件和接口断言，输入按标签定位；使用默认超时约束流程测试。
+describe('应用折扣码', () => {
+  it('显示各档预计价格，携带规范化代码和预计应付下单，积分不改变', async () => {
+    render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
+    expect(screen.getByText('预计 $2.69')).toBeTruthy(); expect(screen.getByText('预计 $6.29')).toBeTruthy()
+    expect(screen.getByText('体验包 · 100 积分')).toBeTruthy()
+    expect(api.preview).toHaveBeenCalledWith('dodo', 'AIGC10', 'USD', 'owner-a', expect.any(AbortSignal))
+    fireEvent.click(purchaseButtons()[0])
+    await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-a', 299, 'USD', { discountCode: 'AIGC10', expectedPayableAmount: 269 }))
+  })
+  it('无效码不会默默按原价下单，移除后恢复原价购买', async () => {
+    api.preview.mockResolvedValue({ ...discountPreview(), code: 'NOPE', packs: discountPreview().packs.map(pack => ({ ...pack, available: false, discount: null, message: '折扣码不存在' })) })
+    render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('支付币种：美元（USD）'); await enterDiscount('NOPE')
+    fireEvent.click(buttonByText('应用折扣码')); await screen.findByText('折扣码不存在')
+    fireEvent.click(purchaseButtons()[0])
+    await screen.findByText('请先应用或移除折扣码再购买'); expect(api.checkout).not.toHaveBeenCalled()
+    fireEvent.click(buttonByText(/移\s*除/)); fireEvent.click(purchaseButtons()[0])
+    await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-a', 299, 'USD'))
+  })
+  it('部分套餐适用，其他套餐明确按原价购买且不传优惠', async () => {
+    const result = discountPreview(); result.packs[0] = { ...result.packs[0], available: false, discount: null, message: '此折扣码不适用于当前套餐' }
+    api.preview.mockResolvedValue(result)
+    render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
+    fireEvent.click(buttonByText('按原价购买'))
+    await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-a', 299, 'USD'))
+  })
+  it('改码立即使报价失效，迟到的旧验证不能恢复优惠', async () => {
+    const pending = deferred<CreditDiscountPreview>(); api.preview.mockReturnValue(pending.promise)
+    render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('支付币种：美元（USD）'); await enterDiscount()
+    fireEvent.click(buttonByText('应用折扣码'))
+    fireEvent.change(screen.getByLabelText('折扣码'), { target: { value: 'AIGC20' } })
+    await act(async () => pending.resolve(discountPreview()))
+    expect(screen.queryByText('预计 $2.69')).toBeNull()
+    fireEvent.click(purchaseButtons()[0]); expect(api.checkout).not.toHaveBeenCalled()
+  })
+  it('切换付款方式清空折扣会话', async () => {
+    render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('支付币种：美元（USD）'); await applyDiscount(); await selectCreem()
+    expect(screen.queryByText('预计 $2.69')).toBeNull(); expect(screen.queryByLabelText('折扣码')).toBeNull()
+  })
+  it('关闭后重新打开不保留已应用优惠', async () => {
+    const view = render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
+    view.rerender(<RechargePanel open={false} onPaid={() => undefined} />)
+    view.rerender(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('有折扣码？', { selector: 'button span' }); expect(screen.queryByText('预计 $2.69')).toBeNull()
+    expect(screen.queryByLabelText('折扣码')).toBeNull()
+  })
+  it('切换账号清空已应用优惠，新账号购买不带旧账号代码', async () => {
+    render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
+    await act(async () => useUserStore.setState({ userId: 'owner-b' }))
+    await screen.findByText('有折扣码？', { selector: 'button span' }); expect(screen.queryByLabelText('折扣码')).toBeNull()
+    expect(screen.queryByText('预计 $2.69')).toBeNull()
+    fireEvent.click(purchaseButtons()[0])
+    await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-b', 299, 'USD'))
+  })
+  it('订单展示最终实付和最终代码，不用预计报价替代付款金额', async () => {
+    const quotedDiscount = discountPreview().packs[0].discount!
+    api.orders.mockResolvedValue({ items: [order({ status: 'paid', quotedAmount: 269, paidAmount: 239, quotedDiscount,
+      paidDiscount: { ...quotedDiscount, code: 'AIGC20', percentBps: 2000, discountAmount: 60, payableAmount: 239 } })] })
+    render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('$2.39 · 100 分 · 已到账')
+    expect(screen.getByText('原价 $2.99 · 折扣码 AIGC20')).toBeTruthy()
+  })
+  it('优惠变化导致下单失败后清除报价，并要求重新验证', async () => {
+    api.checkout.mockRejectedValue(new Error('优惠金额已更新，请重新应用折扣码后购买'))
+    render(<RechargePanel open onPaid={() => undefined} />)
+    await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
+    fireEvent.click(purchaseButtons()[0])
+    await screen.findByText('优惠金额已更新，请重新应用折扣码后购买')
+    expect(screen.queryByText('预计 $2.69')).toBeNull()
   })
 })
