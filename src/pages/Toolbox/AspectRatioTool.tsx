@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Button, Input, Progress, Select } from 'antd'
+import { App, Button, Input, Progress, Select, Tooltip } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { useCapabilities } from '@/hooks/useCapabilities'
@@ -29,6 +29,8 @@ import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { aspectRatioBatchQuote } from '@/features/credits/batchQuotes'
 import { creditQuoteBlocked, type CreditQuote } from '@/features/credits/quotes'
+import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 
 
@@ -48,6 +50,7 @@ export default function AspectRatioTool() {
   const { message } = App.useApp()
   const navigate = useNavigate()
   const scope = useUserStore(state => state.userId ?? 'local')
+  const knownBalance = useKnownCreditBalance()
   const [items, setItems] = useState<BatchImage[]>([])
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
   const itemsRef = useRef<BatchImage[]>([])
@@ -100,6 +103,7 @@ export default function AspectRatioTool() {
   const upscale = selected ? fitScale(settings.strategy === 'crop' ? 'crop' : 'letterbox', selected.width, selected.height, preset.width, preset.height) : 1
   const quoteFor = (ids?: string[]) => aspectRatioBatchQuote(items, settings, preset.width, preset.height, { ids, mock: isCanvasMockGateway() })
   const generateQuote = quoteFor()
+  const creditBlocked = imageCreditBlocksSubmit({ mock: isCanvasMockGateway(), quote: generateQuote, balance: knownBalance })
   const needsRemote = (quote: CreditQuote) => settings.strategy === 'outpaint' && (quote.status !== 'ready' || quote.credits > 0)
 
   function commitItems(next: BatchImage[]) {
@@ -498,9 +502,13 @@ export default function AspectRatioTool() {
         <div className="toolbox-footer-actions">
           <CreditQuoteNotice quote={generateQuote} />
           <Button icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
-          {failed.length > 0 && !processing && <CreditActionButton quote={quoteFor(failed.map(item => item.id))} disabled={busy || (needsRemote(quoteFor(failed.map(item => item.id))) && !outpaintReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>}
+          {failed.length > 0 && !processing && <CreditActionButton quote={quoteFor(failed.map(item => item.id))} disabled={busy || creditBlocked || (needsRemote(quoteFor(failed.map(item => item.id))) && !outpaintReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>}
           {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
-            <CreditActionButton quote={generateQuote} type="primary" disabled={(needsRemote(generateQuote) && !outpaintReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
+            <Tooltip title={creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+              <span>
+                <CreditActionButton quote={generateQuote} type="primary" disabled={creditBlocked || (needsRemote(generateQuote) && !outpaintReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
+              </span>
+            </Tooltip>
           )}
         </div>
       </div>

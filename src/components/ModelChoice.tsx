@@ -1,6 +1,6 @@
 import { Select } from 'antd'
 import type { CSSProperties, ReactNode } from 'react'
-import { imageModelVendor, isImageModelVendor, type ImageModelVendor } from '@shared/image-models'
+import { imageModelHint, imageModelVendor, isImageModelVendor, type ImageModelHintScope, type ImageModelVendor } from '@shared/image-models'
 import ModelVendorMark from './ModelVendorMark'
 
 export interface ModelChoiceOption {
@@ -8,6 +8,7 @@ export interface ModelChoiceOption {
   label: string
   /** 目录里的厂商。缺省时按模型 id 识别；未知厂商不显示图标。 */
   vendor?: string
+  hints?: Partial<Record<ImageModelHintScope, string>>
 }
 
 interface Props {
@@ -21,6 +22,8 @@ interface Props {
   onChange?: (id: string) => void
   className?: string
   selectStyle?: CSSProperties
+  /** 下拉选项里的短标签。已选项和单模型名称不显示。 */
+  hintScope?: ImageModelHintScope
 }
 
 function vendorOf(option: ModelChoiceOption): ImageModelVendor | undefined {
@@ -54,6 +57,7 @@ export default function ModelChoice({
   onChange,
   className,
   selectStyle,
+  hintScope = 'text_to_image',
 }: Props) {
   const selected = models.find(item => item.id === value) ?? models[0]
   const named = Boolean(className || label)
@@ -71,7 +75,21 @@ export default function ModelChoice({
       loading={loading}
       disabled={disabled}
       onChange={onChange}
-      options={models.map(item => ({ value: item.id, title: item.label, label: choiceLabel(item) }))}
+      options={models.map(item => ({
+        value: item.id,
+        title: item.label,
+        hint: imageModelHint(item, hintScope),
+        label: choiceLabel(item),
+      }))}
+      optionRender={(option) => {
+        const hint = (option.data as { hint?: string }).hint
+        return (
+          <span className="model-choice-option">
+            {option.label}
+            {hint ? <span className="model-choice-hint">{hint}</span> : null}
+          </span>
+        )
+      }}
     />
   )
   return named ? <label className={className}><span>{label}</span>{select}</label> : select

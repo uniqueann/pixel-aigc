@@ -32,3 +32,29 @@ describe('ModelChoice 厂商图标', () => {
     expect(unknown?.querySelector('[data-vendor]')).toBeNull()
   })
 })
+
+describe('ModelChoice 短标签', () => {
+  const tagged = [
+    { id: 'dragoncode:gpt-image-2', label: 'GPT Image 2', vendor: 'openai', hints: { text_to_image: '支持 4K', single_image: '支持 4K' } },
+    { id: 'bailian:qwen-image-3.0', label: 'Qwen Image 3.0', vendor: 'qwen', hints: { text_to_image: '最省积分', image_input: '最多 3 张参考图', single_image: '最省积分' } },
+  ]
+
+  it('只在展开的选项里显示，已选项和单模型名称不显示', () => {
+    render(<ModelChoice ariaLabel="文生图模型" models={tagged} value={tagged[0].id} hintScope="text_to_image" />)
+    expect(document.querySelector('.ant-select-selection-item .model-choice-hint')).toBeNull()
+    expect(document.querySelector('.ant-select-selection-item')?.textContent).toBe('GPT Image 2')
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '文生图模型' }))
+    expect([...document.querySelectorAll('.ant-select-item-option .model-choice-hint')].map(item => item.textContent)).toEqual(['支持 4K', '最省积分'])
+    expect(document.querySelector('.ant-select-selection-item .model-choice-hint')).toBeNull()
+    cleanup()
+
+    render(<ModelChoice ariaLabel="模型" models={tagged} value={tagged[1].id} hintScope="image_input" />)
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
+    expect([...document.querySelectorAll('.ant-select-item-option .model-choice-hint')].map(item => item.textContent)).toEqual(['支持 4K', '最多 3 张参考图'])
+    cleanup()
+
+    render(<ModelChoice ariaLabel="文生图模型" models={[tagged[0]]} value={tagged[0].id} />)
+    expect(screen.getByText('GPT Image 2')).toBeTruthy()
+    expect(document.querySelector('.model-choice-hint')).toBeNull()
+  })
+})

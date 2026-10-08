@@ -8,6 +8,7 @@ import {
   OPENROUTER_NANO_BANANA_PROFILE_ID,
   RESOLUTION_DOWNGRADED_4K,
   defaultImageModel,
+  imageModelHint,
   imageModelVendor,
   mapDragonCodeSize,
   nearestRatio,
@@ -140,5 +141,35 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(imageModelVendor('deepseek:用户默认模型')).toBeUndefined()
     expect(imageModelVendor('')).toBeUndefined()
     expect(imageModelVendor(undefined)).toBeUndefined()
+  })
+
+  it('下拉短标签只写目录里能核对的事实，并按工具区分', () => {
+    const hint = (id: string, scope: 'text_to_image' | 'image_input' | 'single_image') => {
+      const profile = IMAGE_MODEL_PROFILES.find(item => item.id === id)
+      return imageModelHint(publicImageModel(profile!), scope)
+    }
+    expect(hint('dragoncode:gpt-image-2', 'text_to_image')).toBe('支持 4K')
+    expect(hint('dragoncode:gpt-image-2', 'image_input')).toBe('支持 4K')
+    expect(hint('dragoncode:gpt-image-2', 'single_image')).toBe('支持 4K')
+    expect(hint('bailian:qwen-image-3.0', 'text_to_image')).toBe('最省积分')
+    expect(hint('bailian:qwen-image-3.0', 'image_input')).toBe('最省积分')
+    expect(hint('bailian:qwen-image-3.0', 'single_image')).toBe('最省积分')
+    expect(hint('bailian:qwen-image-3.0-pro', 'text_to_image')).toBe('分辨率加价')
+    expect(hint('bailian:qwen-image-3.0-pro', 'single_image')).toBe('分辨率加价')
+    expect(hint('bailian:qwen-image-2.1-pro', 'text_to_image')).toBe('2K 同价')
+    expect(hint('bailian:qwen-image-2.1-pro', 'single_image')).toBe('2K 同价')
+    expect(hint('bailian:qwen-image-2.1-pro', 'image_input')).toBe('最多 10 张参考图')
+    expect(hint(OPENROUTER_NANO_BANANA_PROFILE_ID, 'text_to_image')).toBe('支持 4K')
+    expect(hint(OPENROUTER_NANO_BANANA_PROFILE_ID, 'image_input')).toBe('支持 4K')
+    for (const profile of IMAGE_MODEL_PROFILES) {
+      for (const text of Object.values(profile.hints ?? {})) {
+        const chinese = [...text].filter(char => /\p{Script=Han}/u.test(char)).length
+        expect(chinese).toBeGreaterThanOrEqual(2)
+        expect(chinese).toBeLessThanOrEqual(8)
+      }
+    }
+    expect(imageModelHint(undefined, 'text_to_image')).toBeUndefined()
+    expect(imageModelHint({ hints: { text_to_image: '支持 4K' } }, 'single_image')).toBe('支持 4K')
+    expect(imageModelHint({ hints: { text_to_image: '支持 4K' } }, 'image_input')).toBe('支持 4K')
   })
 })

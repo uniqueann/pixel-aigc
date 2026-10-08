@@ -145,6 +145,7 @@ export default function ParamPanel({
               models={models}
               value={model?.id}
               disabled={disabled}
+              hintScope={fusion ? 'image_input' : 'single_image'}
               onChange={onModelProfileIdChange}
             />
           </div>
@@ -222,6 +223,7 @@ export default function ParamPanel({
               models={models}
               value={model?.id}
               disabled={disabled}
+              hintScope="single_image"
               onChange={onModelProfileIdChange}
             />
           </div>

@@ -36,6 +36,9 @@ export const OPENROUTER_NANO_BANANA_MODEL = 'google/gemini-nano-banana-2.1'
 export const IMAGE_MODEL_VENDORS = ['openai', 'qwen', 'google'] as const
 export type ImageModelVendor = typeof IMAGE_MODEL_VENDORS[number]
 
+/** 文生图、多图工具、单图工具可以各写一条。单图工具不要用参考图数量。 */
+export type ImageModelHintScope = 'text_to_image' | 'image_input' | 'single_image'
+
 export function isImageModelVendor(value: unknown): value is ImageModelVendor {
   return typeof value === 'string' && (IMAGE_MODEL_VENDORS as readonly string[]).includes(value)
 }
@@ -65,6 +68,8 @@ export interface ImageModelProfile {
     vendorCurrency?: string
   }
   defaultFor?: ImageOperation[]
+  /** 下拉选项旁的短标签。只写目录里能核对的事实，不写效果评价。 */
+  hints?: Partial<Record<ImageModelHintScope, string>>
   enabled: boolean
 }
 
@@ -92,6 +97,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       vendorCost: { '1k': '0.0085', '2k': '0.014', '4k': '0.021' },
     },
     defaultFor: ['image_edit', 'variation'],
+    hints: { text_to_image: '支持 4K', image_input: '支持 4K', single_image: '支持 4K' },
     enabled: true,
   },
   // 开关关闭时不要把 enabled 改成 true：积分说明和本地 Mock 只看这个字段。
@@ -120,6 +126,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       vendorInputImageCost: '0.02',
       vendorCurrency: 'CNY',
     },
+    hints: { text_to_image: '最省积分', image_input: '最省积分', single_image: '最省积分' },
     enabled: false,
   },
   {
@@ -145,6 +152,7 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       vendorInputImageCost: '0.02',
       vendorCurrency: 'CNY',
     },
+    hints: { text_to_image: '分辨率加价', image_input: '分辨率加价', single_image: '分辨率加价' },
     enabled: false,
   },
   // 与 3.0 共用开关和百炼 Key。输出不按分辨率分档，输入图不另计供应商成本。
@@ -171,6 +179,8 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       vendorCost: { '1k': '0.25', '2k': '0.25' },
       vendorCurrency: 'CNY',
     },
+    // 融合才用参考图上限。单图工具改写 2K 同价，避免重新打光出现用不上的张数。
+    hints: { text_to_image: '2K 同价', image_input: '最多 10 张参考图', single_image: '2K 同价' },
     enabled: false,
   },
   // 开关关闭时不要把 enabled 改成 true：积分说明和本地 Mock 只看这个字段。
@@ -204,9 +214,21 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
       vendorCost: { '1k': '0.039359', '2k': '0.059038', '4k': '0.137755' },
       vendorCurrency: 'USD',
     },
+    hints: { text_to_image: '支持 4K', image_input: '支持 4K', single_image: '支持 4K' },
     enabled: false,
   },
 ]
+
+export function imageModelHint(
+  model: { hints?: Partial<Record<ImageModelHintScope, string>> } | undefined,
+  scope: ImageModelHintScope,
+) {
+  const hints = model?.hints
+  if (!hints) return undefined
+  if (scope === 'single_image') return hints.single_image ?? hints.text_to_image
+  if (scope === 'image_input') return hints.image_input ?? hints.text_to_image
+  return hints.text_to_image
+}
 
 /**
  * 按目录里的 vendor 识别厂商；目录没有该 id 时再按模型 id 本身判断。
@@ -276,6 +298,7 @@ export function publicImageModel(profile: ImageModelProfile) {
     ui: profile.ui,
     defaultFor: profile.defaultFor,
     pricing: { unit: profile.pricing.unit, creditsPerImage: profile.pricing.creditsPerImage },
+    hints: profile.hints,
   }
 }
 

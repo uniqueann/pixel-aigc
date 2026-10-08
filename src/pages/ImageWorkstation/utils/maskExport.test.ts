@@ -118,6 +118,25 @@ describe('生成按钮禁用原因', () => {
     })).toBe('当前模型最多 3 张参考图')
   })
 
+  it('积分不足排在上传和涂抹之后', () => {
+    const ready = {
+      toolReady: true,
+      hasInput: true,
+      formLocked: false,
+      maskRequired: false,
+      hasMaskPaint: false,
+      repaintBlocked: false,
+    }
+    expect(workstationGenerateBlockReason({ ...ready, insufficientCredits: true })).toBe('积分不足')
+    expect(workstationGenerateBlockReason({ ...ready, hasInput: false, insufficientCredits: true })).toBe('请先上传需要处理的图片')
+    expect(workstationGenerateBlockReason({
+      ...ready,
+      maskRequired: true,
+      mode: 'remove',
+      insufficientCredits: true,
+    })).toBe(EMPTY_ERASE_MASK_MESSAGE)
+  })
+
   it('融合缺图时不能生成', () => {
     expect(workstationGenerateBlockReason({
       toolReady: true,

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Button, ColorPicker, Progress, Radio } from 'antd'
+import { App, Button, ColorPicker, Progress, Radio, Tooltip } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import CapabilityStatus from '@/components/CapabilityStatus'
@@ -24,6 +24,8 @@ import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettl
 import { bgRemoveBatchQuote } from '@/features/credits/batchQuotes'
 import { useBillingCatalog } from '@/features/credits/useBillingCatalog'
 import { creditQuoteBlocked } from '@/features/credits/quotes'
+import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 import { syncCreditPrice } from '@shared/billing'
 
@@ -45,6 +47,7 @@ export default function BgRemoveTool() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const userId = useUserStore(state => state.userId)
+  const knownBalance = useKnownCreditBalance()
   const scope = userId ?? 'local'
   const historyOwner = bgRemoveHistoryOwner(userId)
   const scopeRef = useRef(scope)
@@ -88,6 +91,7 @@ export default function BgRemoveTool() {
   const controlsLocked = processing || packaging
   const quoteFor = (ids?: string[]) => bgRemoveBatchQuote(items, billing.data, { ids, mock: mockGateway, loading: billing.isPending && billing.fetchStatus === 'fetching' })
   const generateQuote = quoteFor()
+  const creditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: generateQuote, balance: knownBalance })
   const needsRemoval = (ids?: string[]) => imagesNeedingRemoval(items, ids).some(item => !item.matte)
 
   useLayoutEffect(() => {
@@ -453,9 +457,13 @@ export default function BgRemoveTool() {
         </div>
         <div className="toolbox-footer-actions">
           <Button icon={<DownloadOutlined />} disabled={!downloadable.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
-          {failed.length > 0 && !processing && <CreditActionButton quote={quoteFor(failed.map(item => item.id))} disabled={busy || (needsRemoval(failed.map(item => item.id)) && !serviceReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>}
+          {failed.length > 0 && !processing && <CreditActionButton quote={quoteFor(failed.map(item => item.id))} disabled={busy || creditBlocked || (needsRemoval(failed.map(item => item.id)) && !serviceReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>}
           {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
-            <CreditActionButton quote={generateQuote} type="primary" disabled={(needsRemoval() && !serviceReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
+            <Tooltip title={creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+              <span>
+                <CreditActionButton quote={generateQuote} type="primary" disabled={creditBlocked || (needsRemoval() && !serviceReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
+              </span>
+            </Tooltip>
           )}
         </div>
       </div>

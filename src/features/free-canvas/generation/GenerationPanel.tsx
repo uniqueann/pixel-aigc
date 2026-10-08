@@ -1,4 +1,4 @@
-import { Input, Radio, Segmented, Switch } from 'antd'
+import { Input, Radio, Segmented, Switch, Tooltip } from 'antd'
 import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { PROMPT_MAX_LENGTH, VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
@@ -20,6 +20,8 @@ import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits
 import type { VideoModelProfile } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
+import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { modelProfileIdForRetry } from './retryModel'
 import type { CapabilityAvailability } from '@/components/capabilityAvailability'
 import VideoAvailabilityNotice from './VideoAvailabilityNotice'
@@ -105,6 +107,7 @@ export default function GenerationPanel({
 }: GenerationPanelProps) {
   const textToVideo = mode === 'text-to-video'
   const balance = useUserStore(state => state.credits)
+  const knownBalance = useKnownCreditBalance()
   const model = models.find(item => item.id === modelProfileId)
   const supportedPresets = availableTextToImagePresets(model)
   const taskIsVideo = task?.capability === Capability.TextToVideo
@@ -141,6 +144,8 @@ export default function GenerationPanel({
   const showForm = !textToVideo || videoState === 'ready'
   const quote = creditQuote(estimatedCredits, { mock: mockGateway, loading: modelsLoading })
   const retryQuote = creditQuote(taskIsVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
+  const imageCreditBlocked = !textToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote, balance: knownBalance })
+  const imageRetryBlocked = !taskIsVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
 
   return (
     <aside className="free-canvas-generation-panel">
@@ -193,7 +198,7 @@ export default function GenerationPanel({
       )}
 
       {!textToVideo && <>
-        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="文生图模型" models={models} value={modelProfileId} disabled={formLocked || modelsLoading} onChange={onModelChange} />
+        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="文生图模型" hintScope="text_to_image" models={models} value={modelProfileId} disabled={formLocked || modelsLoading} onChange={onModelChange} />
         <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="文生图分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
           {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
         </Radio.Group></label>
@@ -218,17 +223,21 @@ export default function GenerationPanel({
       {textToVideo && <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />}
 
       <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
-      <CreditActionButton
-        className="free-canvas-generate"
-        type="primary"
-        block
-        loading={submitting}
-        quote={quote}
-        disabled={formLocked || generateDisabled || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || prompt.trim().length > imagePromptMax)) || !prompt.trim()}
-        onClick={onGenerate}
-      >
-        {active ? '正在生成' : textToVideo ? '生成' : `生成 ${count} 张`}
-      </CreditActionButton>
+      <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+        <span style={{ display: 'block' }}>
+          <CreditActionButton
+            className="free-canvas-generate"
+            type="primary"
+            block
+            loading={submitting}
+            quote={quote}
+            disabled={formLocked || generateDisabled || imageCreditBlocked || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || prompt.trim().length > imagePromptMax)) || !prompt.trim()}
+            onClick={onGenerate}
+          >
+            {active ? '正在生成' : textToVideo ? '生成' : `生成 ${count} 张`}
+          </CreditActionButton>
+        </span>
+      </Tooltip>
       <CreditSettlementHint quote={quote} />
       {!textToVideo && <CreditBalanceNotice quote={quote} />}
       {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
@@ -250,7 +259,7 @@ export default function GenerationPanel({
         historySaved={historySaved}
         onRetrySave={onRetrySave}
         onRetry={taskIsVideo && videoState !== 'ready' ? undefined : onRetry}
-        retryDisabled={taskIsVideo ? videoState !== 'ready' || generateDisabled || videoRetryBlocked : modelsLoading || generateDisabled}
+        retryDisabled={taskIsVideo ? videoState !== 'ready' || generateDisabled || videoRetryBlocked : modelsLoading || generateDisabled || imageRetryBlocked}
         retryQuote={retryQuote}
         retryLabel={!taskIsVideo && !textToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
         onModifyParameters={onModifyParameters}

@@ -6,6 +6,7 @@ import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { Capability, type GenerationTask, type VariationTaskParams } from '@/types'
+import { useUserStore } from '@/store/useUserStore'
 import DerivedGenerationPanel from './DerivedGenerationPanel'
 
 const source = createImageAsset({ id: 'source', name: 'mug.jpg', url: 'data:image/png;base64,aa', width: 800, height: 600 })
@@ -42,6 +43,7 @@ describe('裂变侧栏能力状态', () => {
   afterEach(() => {
     cleanup()
     usePersistenceStore.setState({ recoveries: {} })
+    useUserStore.setState({ userId: null, credits: 0, creditsLoaded: false })
   })
 
   it('配置加载中显示加载文案，不显示未就绪错误，源卡片跟随传入素材', () => {
@@ -114,5 +116,20 @@ describe('裂变侧栏能力状态', () => {
     cleanup()
     renderPanel({ models: [only, other], modelProfileId: only.id, estimatedCredits: 4 })
     expect(screen.getByRole('combobox', { name: '裂变模型' })).toBeTruthy()
+  })
+
+  it('已知余额低于裂变报价时禁用生成，未知余额不拦截', () => {
+    const only = publicImageModel(defaultImageModel('variation')!)
+    useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 0, creditsLoaded: false })
+    const unknown = renderPanel({ models: [only], modelProfileId: only.id, estimatedCredits: 6 })
+    expect((screen.getByRole('button', { name: /生成 1 张 · 6 积分/ }) as HTMLButtonElement).disabled).toBe(false)
+    expect(unknown.container.textContent).not.toContain('积分不足')
+    unknown.unmount()
+
+    useUserStore.setState({ credits: 1, creditsLoaded: true })
+    renderPanel({ models: [only], modelProfileId: only.id, estimatedCredits: 6 })
+    expect((screen.getByRole('button', { name: /生成 1 张 · 6 积分/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/积分不足，本次需要 6 积分，当前 1/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
   })
 })

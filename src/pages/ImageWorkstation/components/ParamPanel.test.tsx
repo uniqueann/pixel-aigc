@@ -309,4 +309,30 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByText(/预计输出比例 1:1 · 4K/)).toBeTruthy()
     expect(screen.queryByText(/当前比例不支持 4K/)).toBeNull()
   })
+
+  it('单图工具的选项标签不写参考图张数，融合才写', () => {
+    const qwen = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0')!)
+    const pro = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0-pro')!)
+    const wide = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-2.1-pro')!)
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    const models = [model, qwen, pro, wide, nano]
+    const optionHints = () => [...document.querySelectorAll('.ant-select-item-option .model-choice-hint')].map(item => item.textContent)
+
+    render(<ParamPanel capability={Capability.ImageEdit} {...panelProps} models={models} modelProfileId={model.id} />)
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
+    expect(optionHints()).toEqual(['支持 4K', '最省积分', '分辨率加价', '2K 同价', '支持 4K'])
+    expect(document.querySelector('.ant-select-selection-item .model-choice-hint')).toBeNull()
+    cleanup()
+
+    render(<ParamPanel capability={Capability.Fusion} {...panelProps} models={models} modelProfileId={wide.id} />)
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
+    expect(optionHints()).toEqual(['支持 4K', '最省积分', '分辨率加价', '最多 10 张参考图', '支持 4K'])
+    expect(document.querySelector('.ant-select-selection-item')?.textContent).toBe('Qwen Image 2.1 Pro')
+    cleanup()
+
+    render(<ParamPanel capability={Capability.Relight} {...panelProps} relight={undefined} models={models} modelProfileId={wide.id} />)
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
+    expect(optionHints()).toContain('2K 同价')
+    expect(optionHints()).not.toContain('最多 10 张参考图')
+  })
 })
