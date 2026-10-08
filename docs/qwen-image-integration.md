@@ -2,7 +2,7 @@
 
 更新时间：2026-10-06。
 
-P0 把阿里云百炼 `qwen-image-3.0` 和 `qwen-image-3.0-pro` 接进现有图片任务层。默认关闭。关闭时模型列表、能力开关和 GPT Image 2 的提交方式都不变。
+P0 把阿里云百炼 `qwen-image-3.0`、`qwen-image-3.0-pro` 和 `qwen-image-2.1-pro` 接进现有图片任务层。默认关闭。关闭时模型列表、能力开关和 GPT Image 2 的提交方式都不变。三个模型都可以文生图，也可以做智能编辑、裂变和融合。融合仍是带第二张参考图的 `image_edit`，不是单独的 operation。不接蒙版，也不接 2.1 Pro 的 edit-plus。
 
 官方接口说明：
 
@@ -13,6 +13,8 @@ P0 把阿里云百炼 `qwen-image-3.0` 和 `qwen-image-3.0-pro` 接进现有图�
 
 - 使用 DashScope **异步**接口：`POST /api/v1/services/aigc/image-generation/generation`，请求头 `X-DashScope-Async: enable`，再 `GET /api/v1/tasks/{task_id}`。每次提交和查询都是短请求，不在一个函数里等到出图。
 - 一次请求的 `n` 等于用户要的张数（1–4）。`image_jobs.requested_count` 现有检查也是 1–4，所以没有把官方上限 6 暴露出来。成功后仍按实际返回张数结算；少返回的序号记失败并退回对应积分。
+- 智能编辑、裂变和融合把已有的公开 URL 或 `data:` 参考图放在 `content` 里、文字前面。3.0 和 3.0 Pro 最多 3 张，2.1 Pro 最多 10 张。带图时不发送 `prompt_extend_mode`。用户积分仍只按输出张数，不按输入图加价。供应商成本在用量带回 `input_image_count` 时，给 3.0 / 3.0 Pro 每张输入图加上 ¥0.02；2.1 Pro 输入图不加。
+- 3.0 Pro 的 5 RPM 并发上限覆盖编辑和文生图。2.1 Pro 按 20 RPM，走和 3.0 一样的退避（从 8 秒起）和共享进行中上限，不占用 Pro 的更紧上限。
 - GPT Image 2 继续按张扇出，`n` 仍是 1。任务层的超时、轮询间隔和并发改从供应商的 `jobPolicy()` 读取。
 - 成功图片下载后写入 R2。同一任务的多张图并行下载（最多 4 张同时），供应商 URL 24 小时失效，不能拿来长期展示。
 - 上游不回传金额。成功后按模型目录单价乘以实际返回张数写入 `provider_params.vendor.cost`，并带 `currency: CNY`。公开的模型接口和任务接口都不返回 `vendorCost`。DashScope 没有 `credits_cost`，该字段保持 0；用户积分仍在 `credits_charged`。
@@ -33,7 +35,7 @@ P0 把阿里云百炼 `qwen-image-3.0` 和 `qwen-image-3.0-pro` 接进现有图�
 | `QWEN_IMAGE_ENABLED` | 关闭 | 只有精确的 `true` 才列出模型 |
 | `QWEN_IMAGE_API_KEY` | `DASHSCOPE_API_KEY` | 必须和地域、业务空间一致 |
 | `QWEN_IMAGE_BASE_URL` | `DASHSCOPE_BASE_URL`，再回退 `https://dashscope.aliyuncs.com` | 只认 https origin。生产建议 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com` |
-| `QWEN_IMAGE_MODELS` | 两个都允许 | 逗号分隔。未知 id 忽略。只填 `qwen-image-3.0` 可以不开放 Pro |
+| `QWEN_IMAGE_MODELS` | 三个都允许 | 逗号分隔。未知 id 忽略。可只填其中一部分 |
 | `QWEN_IMAGE_PROMPT_EXTEND` | `true` | `false` 关闭智能扩写。关闭时请求里的 `enable_thinking` 固定为 `false`，画布开关不能绕过 |
 | `QWEN_IMAGE_THINKING` | 未设置 | 见下面的优先级。不要把它设成 `false` 还指望画布开关生效 |
 
@@ -58,10 +60,10 @@ Preview 实测（`qwen-image-3.0`，1K，1:1，1 张）：思考打开时端到�
 | `QWEN_IMAGE_CONNECT_TIMEOUT_MS` | `10000` | 千问建连超时。不改变消除/重绘/扩图 |
 | `QWEN_IMAGE_REQUEST_RETRY_COUNT` | `2` | 5xx 和查询连接失败的请求内重试次数。提交时的建连失败最多再试 1 次。瞬时限流不在请求内重试 |
 | `QWEN_IMAGE_ACTIVE_LIMIT` | `8` | 同一环境里进行中的百炼文生图任务。预扣前检查 |
-| `QWEN_IMAGE_PRO_ACTIVE_LIMIT` | `4` | 其中 `qwen-image-3.0-pro` 的进行中任务 |
+| `QWEN_IMAGE_PRO_ACTIVE_LIMIT` | `4` | 只限制 `qwen-image-3.0-pro`。2.1 Pro 不走这项 |
 | `QWEN_IMAGE_FORCE_THROTTLE` | 关闭 | 仅预览或本地。`true` / `rate` 让提交假装 `Throttling.RateQuota`；`quota` 假装 `AllocationQuota`。`VERCEL_ENV` 或 `AIGC_RUNTIME_SCOPE` 为 `production` 时忽略；两者都未设置时也不生效 |
 
-模型目录里的建议积分（开关打开后才会真正预扣）：3.0 为 1K/2K 各 3 分；Pro 为 1K 4 分、2K 8 分。`vendorCost` 按北京地域人民币记录，公开接口不返回该字段。
+模型目录里的建议积分（开关打开后才会真正预扣）：3.0 为 1K/2K 各 3 分；3.0 Pro 为 1K 4 分、2K 8 分；2.1 Pro 为 1K/2K 各 4 分。输入图不加积分。`vendorCost` 按北京地域人民币记录：3.0 每张输出 ¥0.18，另加每张输入图 ¥0.02；3.0 Pro 输出 1K ¥0.25、2K ¥0.50，输入图同样 ¥0.02；2.1 Pro 每张输出 ¥0.25，输入图不加。公开接口不返回这些字段。积分页说明仍只列 `enabled` 的模型，所以开关关闭时页面上只有 GPT Image 2。
 
 比例使用 1:1、4:3、3:4、16:9、9:16。没有 4K。客户端如果草稿里是 4K，现有逻辑会先降到 2K 再提交；直接传 4K 会被服务端拒绝。
 
@@ -71,7 +73,7 @@ Preview 实测（`qwen-image-3.0`，1K，1:1，1 张）：思考打开时端到�
 2. 给 Preview 增加 `QWEN_IMAGE_ENABLED=true`。不要在 Production 打开。如果分支上已经有 `QWEN_IMAGE_THINKING=false`，删掉它。未设置时的默认已经是关闭，留下 `false` 会盖住画布「自动扩写」。
 3. 如果已经改用业务空间域名，把 `DASHSCOPE_BASE_URL` 或 `QWEN_IMAGE_BASE_URL` 设成 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com`，不要带 `/api/v1`。
 4. 重新部署该 Preview。
-5. 登录后看 `GET /api/image-models?operation=text_to_image`。应返回 GPT Image 2 和两个千问模型，响应里没有 `vendorCost`。不传 `modelProfileId` 的文生图仍走 GPT Image 2。
+5. 登录后看 `GET /api/image-models?operation=text_to_image`，以及 `image_edit`、`variation`。应返回 GPT Image 2 和三个千问模型，响应里没有 `vendorCost`。不传 `modelProfileId` 时文生图、智能编辑和裂变仍走 GPT Image 2。
 6. 用一张 1K、数量 1 的描述做冒烟，确认结果进了画布和 R2，而不是停在供应商 URL 上。Pro 建议数量大于 1 时看网络日志，确认只有一次上游提交。
 7. 要模拟限流：只在 Preview 设置 `QWEN_IMAGE_FORCE_THROTTLE=true`（或 `quota`），重新部署后再提交一张千问图。`true` 应停在「排队中」且不调用百炼；到截止后失败文案带「积分已退回」。`quota` 应马上失败并退款。测完删掉该变量。Production 即使误设也会被忽略。
 

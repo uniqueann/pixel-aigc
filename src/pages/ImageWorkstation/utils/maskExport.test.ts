@@ -95,6 +95,29 @@ describe('生成按钮禁用原因', () => {
     })).toBe('请先选择精修方向')
   })
 
+  it('参考图超过所选模型上限时不能生成', () => {
+    expect(workstationGenerateBlockReason({
+      toolReady: true,
+      hasInput: true,
+      formLocked: false,
+      maskRequired: false,
+      hasMaskPaint: false,
+      repaintBlocked: false,
+      referenceCount: 2,
+      maxRefImages: 3,
+    })).toBeUndefined()
+    expect(workstationGenerateBlockReason({
+      toolReady: true,
+      hasInput: true,
+      formLocked: false,
+      maskRequired: false,
+      hasMaskPaint: false,
+      repaintBlocked: false,
+      referenceCount: 4,
+      maxRefImages: 3,
+    })).toBe('当前模型最多 3 张参考图')
+  })
+
   it('融合缺图时不能生成', () => {
     expect(workstationGenerateBlockReason({
       toolReady: true,

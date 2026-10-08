@@ -251,6 +251,16 @@ describe('智能编辑参数面板', () => {
     expect(usePreferencesStore.getState().preferences.image.counts['smart-edit']).toBe(1)
   })
 
+  it('多个模型时下拉显示千问图标', () => {
+    const qwen = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0')!)
+    const wide = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-2.1-pro')!)
+    render(<ParamPanel capability={Capability.ImageEdit} {...panelProps} models={[model, qwen, wide]} modelProfileId={qwen.id} />)
+    expect(document.querySelector('.ant-select-selection-item [data-vendor="qwen"]')).toBeTruthy()
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
+    expect(document.querySelectorAll('.ant-select-item-option-content [data-vendor="qwen"]')).toHaveLength(2)
+    expect(document.querySelector('.ant-select-item-option-content [data-vendor="openai"]')).toBeTruthy()
+  })
+
   it('工作站可选 Nano Banana 2.1，4K 正方形仍显示 4K', () => {
     const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
     render(
@@ -264,6 +274,7 @@ describe('智能编辑参数面板', () => {
       />,
     )
     expect(screen.getByText('Google Nano Banana 2.1')).toBeTruthy()
+    expect(document.querySelector('[data-vendor="google"]')).toBeTruthy()
     expect(screen.getByText(/预计输出比例 1:1 · 4K/)).toBeTruthy()
     expect(screen.queryByText(/当前比例不支持 4K/)).toBeNull()
   })

@@ -26,7 +26,8 @@ import {
   type QwenImageSettings,
 } from './config.js'
 import { asFiniteNumber, asString, connectErrorLogFields, isPreSendConnectError, isRecord, mapQwenFailure, readRequestCode } from './errors.js'
-import { QWEN_IMAGE_CAPABILITIES, mapQwenImageRequest, parseQwenSize } from './mapping.js'
+import { referenceImageLimitMessage } from '../../../shared/image-models.js'
+import { QWEN_IMAGE_CAPABILITIES, mapQwenImageRequest, parseQwenSize, qwenReferenceImageLimit } from './mapping.js'
 
 export const QWEN_GENERATION_PATH = '/api/v1/services/aigc/image-generation/generation'
 
@@ -142,10 +143,15 @@ export function readQwenUsage(payload: unknown): ProviderVendorUsage | undefined
   const outputHeight = asFiniteNumber(usage.output_height)
   const outputImageCount = asFiniteNumber(usage.output_image_count)
   const outputImageType = asString(usage.output_image_type)
-  if (outputWidth === undefined && outputHeight === undefined && outputImageCount === undefined && !outputImageType) {
+  const inputImageCount = asFiniteNumber(usage.input_image_count)
+  const inputImageType = asString(usage.input_image_type)
+  if (
+    outputWidth === undefined && outputHeight === undefined && outputImageCount === undefined && !outputImageType
+    && inputImageCount === undefined && !inputImageType
+  ) {
     return undefined
   }
-  return { outputWidth, outputHeight, outputImageCount, outputImageType }
+  return { outputWidth, outputHeight, outputImageCount, outputImageType, inputImageCount, inputImageType }
 }
 
 function requestLevelError(payload: unknown) {
@@ -248,10 +254,20 @@ function generationBody(input: ProviderSubmitInput, settings: QwenImageSettings)
   const requested = input.providerParams.n
   const n = Math.min(4, Math.max(1, typeof requested === 'number' && Number.isInteger(requested) ? requested : 1))
   if (!input.prompt.trim()) throw new ProviderError('INVALID_PARAMS', '请填写画面描述', false, 400)
+  const limit = qwenReferenceImageLimit(input.model)
+  if (input.images.length > limit) {
+    throw new ProviderError('INVALID_PARAMS', referenceImageLimitMessage(limit), false, 400)
+  }
   return {
     model: input.model,
     input: {
-      messages: [{ role: 'user', content: [{ text: input.prompt }] }],
+      messages: [{
+        role: 'user',
+        content: [
+          ...input.images.map(image => ({ image: image.url })),
+          { text: input.prompt },
+        ],
+      }],
     },
     parameters: {
       size,
@@ -294,6 +310,7 @@ function logTask(ctx: ProviderContext, payload: unknown, status: string, imageSh
     ...(timings.endTime ? { endTime: timings.endTime } : {}),
     ...(usage?.outputImageCount !== undefined ? { outputImageCount: usage.outputImageCount } : {}),
     ...(usage?.outputImageType ? { outputImageType: usage.outputImageType } : {}),
+    ...(usage?.inputImageCount !== undefined ? { inputImageCount: usage.inputImageCount } : {}),
   })
 }
 
@@ -337,7 +354,6 @@ export function createQwenImageProvider(
       }
     },
     async submit(input: ProviderSubmitInput, ctx: ProviderContext) {
-      if (input.images.length) throw new ProviderError('INVALID_PARAMS', '当前模型暂不支持参考图', false, 400)
       const settings = settingsOf()
       const forced = qwenForcedThrottle()
       if (forced) {
@@ -385,6 +401,7 @@ export function createQwenImageProvider(
         host: dashScopeHost(settings.baseUrl),
         taskId: id,
         n: body.parameters.n,
+        referenceCount: input.images.length,
         status,
         enableThinking: body.parameters.enable_thinking,
         promptExtend: body.parameters.prompt_extend,

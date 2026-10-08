@@ -1,5 +1,6 @@
 import { Button, Checkbox, Input, Segmented, Select, Space } from 'antd'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
+import ModelChoice from '@/components/ModelChoice'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
@@ -139,12 +140,12 @@ export default function ParamPanel({
         {models.length > 1 ? (
           <div>
             <div style={labelStyle}>模型</div>
-            <Select
-              style={{ width: '100%' }}
+            <ModelChoice
+              ariaLabel="模型"
+              models={models}
               value={model?.id}
               disabled={disabled}
               onChange={onModelProfileIdChange}
-              options={models.map(item => ({ value: item.id, label: item.label }))}
             />
           </div>
         ) : null}

@@ -33,8 +33,8 @@ import {
   composeVariationPrompt,
   variationPromptLimitMessage,
 } from '../../shared/variation.js'
-import { findImageModel } from '../../shared/image-models.js'
-import { qwenImageConcurrencyLimits, qwenThrottleBackoffMs } from '../image-providers/qwen-image/config.js'
+import { findImageModel, referenceImageLimitMessage } from '../../shared/image-models.js'
+import { qwenImageConcurrencyLimits, qwenThrottleBackoffMs, qwenUsesTightRpm } from '../image-providers/qwen-image/config.js'
 import {
   QWEN_QUEUE_FULL_MESSAGE,
   QWEN_THROTTLE_REFUND_MESSAGE,
@@ -290,6 +290,8 @@ function vendorItemRecord(vendor: ProviderVendorUsage) {
     ...(vendor.outputHeight !== undefined ? { output_height: vendor.outputHeight } : {}),
     ...(vendor.outputImageCount !== undefined ? { output_image_count: vendor.outputImageCount } : {}),
     ...(vendor.outputImageType !== undefined ? { output_image_type: vendor.outputImageType } : {}),
+    ...(vendor.inputImageCount !== undefined ? { input_image_count: vendor.inputImageCount } : {}),
+    ...(vendor.inputImageType !== undefined ? { input_image_type: vendor.inputImageType } : {}),
     ...(vendor.submitTime ? { submit_time: vendor.submitTime } : {}),
     ...(vendor.scheduledTime ? { scheduled_time: vendor.scheduledTime } : {}),
     ...(vendor.endTime ? { end_time: vendor.endTime } : {}),
@@ -322,10 +324,10 @@ export function mergeVendorUsage(
   }
 }
 
-function scaleVendorCost(unitRaw: string, count: number) {
+function scaledVendorCost(unitRaw: string, count: number) {
   const unit = Number(unitRaw)
   if (!Number.isFinite(unit) || unit < 0 || !Number.isInteger(count) || count <= 0) return undefined
-  return Math.round(unit * VENDOR_COST_SCALE) * count / VENDOR_COST_SCALE
+  return Math.round(unit * VENDOR_COST_SCALE) * count
 }
 
 /**
@@ -345,8 +347,13 @@ export function applyCatalogVendorCost(
   const unitRaw = resolution === '1k' || resolution === '2k' || resolution === '4k'
     ? profile.pricing.vendorCost?.[resolution]
     : undefined
-  const cost = unitRaw ? scaleVendorCost(unitRaw, returnedCount) : undefined
-  if (cost === undefined) return vendor
+  const outputScaled = unitRaw ? scaledVendorCost(unitRaw, returnedCount) : undefined
+  const inputCount = vendor?.inputImageCount
+  const inputScaled = profile.pricing.vendorInputImageCost && inputCount
+    ? scaledVendorCost(profile.pricing.vendorInputImageCost, inputCount)
+    : undefined
+  if (outputScaled === undefined && inputScaled === undefined) return vendor
+  const cost = ((outputScaled ?? 0) + (inputScaled ?? 0)) / VENDOR_COST_SCALE
   return { ...vendor, cost, currency: profile.pricing.vendorCurrency }
 }
 
@@ -566,6 +573,9 @@ export async function createImageJobInStore(
       ? (parsed.params.enableThinking === undefined ? undefined : { enableThinking: parsed.params.enableThinking })
       : parsed.params.extra,
   }
+  if (normalized.images.length > profile.ui.maxRefImages) {
+    throw new HttpError(400, referenceImageLimitMessage(profile.ui.maxRefImages), 'INVALID_PARAMS')
+  }
   const mapped = provider.mapRequest(normalized, profile.model)
   if (parsed.capability === 'variation' || isRetouch || isFusion || isRelight) {
     mapped.providerParams = { ...mapped.providerParams, prompt }
@@ -636,7 +646,7 @@ async function assertBailianImageCapacity(
       extra: rateLimitExtra(15),
     })
   }
-  if (profile.model === 'qwen-image-3.0-pro' && await store.modelActiveCount(profile.id) >= limits.proActive) {
+  if (qwenUsesTightRpm(profile.model) && await store.modelActiveCount(profile.id) >= limits.proActive) {
     throw new HttpError(429, QWEN_QUEUE_FULL_MESSAGE, 'MODEL_CONCURRENCY', {
       extra: rateLimitExtra(15),
     })

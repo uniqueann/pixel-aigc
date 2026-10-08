@@ -24,9 +24,10 @@ export const QWEN_IMAGE_SIZES: Record<QwenImageRatio, Record<'1k' | '2k', string
 }
 
 export const QWEN_IMAGE_CAPABILITIES = {
-  operations: ['text_to_image'] as const,
+  operations: ['text_to_image', 'image_edit', 'variation'] as const,
   supportsMask: false,
-  maxRefImages: 0,
+  /** 供应商级上限。3.0 / 3.0 Pro 实际是 3，2.1 Pro 是 10，提交时再按模型收紧。 */
+  maxRefImages: 10,
   maxN: 4,
   sizeMode: 'ratio' as const,
   ratios: [...QWEN_IMAGE_RATIOS],
@@ -43,6 +44,15 @@ export function parseQwenSize(size: string) {
 
 export function qwenOutputTier(width: number, height: number): '1k' | '2k' {
   return width * height > QWEN_OUTPUT_1K_MAX_PIXELS ? '2k' : '1k'
+}
+
+export function qwenReferenceImageLimit(model: string) {
+  if (model === 'qwen-image-2.1-pro' || model.endsWith(':qwen-image-2.1-pro')) return 10
+  if (
+    model === 'qwen-image-3.0' || model.endsWith(':qwen-image-3.0')
+    || model === 'qwen-image-3.0-pro' || model.endsWith(':qwen-image-3.0-pro')
+  ) return 3
+  return 0
 }
 
 function isQwenRatio(value: string): value is QwenImageRatio {

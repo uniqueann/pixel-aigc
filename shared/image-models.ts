@@ -56,6 +56,11 @@ export interface ImageModelProfile {
     unit: 'image'
     creditsPerImage: Partial<Record<ImageResolution, number>>
     vendorCost?: Partial<Record<ImageResolution, string>>
+    /**
+     * 每张输入图的供应商成本，不计入用户积分。
+     * 千问 3.0 / 3.0 Pro 为人民币 0.02；2.1 Pro 输入图不另计。
+     */
+    vendorInputImageCost?: string
     /** 供应商成本的币种。GPT Image 2 的 vendorCost 历史数据未标币种，千问按人民币记录。 */
     vendorCurrency?: string
   }
@@ -97,20 +102,22 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
     vendor: 'qwen',
     model: 'qwen-image-3.0',
     label: 'Qwen Image 3.0',
-    operations: ['text_to_image'],
+    // 融合不是独立 operation，提交时仍是带第二张参考图的 image_edit。
+    operations: ['text_to_image', 'image_edit', 'variation'],
     ui: {
       supportsMask: false,
       maxCount: 4,
       resolutions: ['1k', '2k'],
       sizeMode: 'ratio',
       ratios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
-      maxRefImages: 0,
+      maxRefImages: 3,
       promptMaxLength: PROMPT_MAX_LENGTH,
     },
     pricing: {
       unit: 'image',
       creditsPerImage: { '1k': 3, '2k': 3 },
       vendorCost: { '1k': '0.18', '2k': '0.18' },
+      vendorInputImageCost: '0.02',
       vendorCurrency: 'CNY',
     },
     enabled: false,
@@ -121,20 +128,47 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
     vendor: 'qwen',
     model: 'qwen-image-3.0-pro',
     label: 'Qwen Image 3.0 Pro',
-    operations: ['text_to_image'],
+    operations: ['text_to_image', 'image_edit', 'variation'],
     ui: {
       supportsMask: false,
       maxCount: 4,
       resolutions: ['1k', '2k'],
       sizeMode: 'ratio',
       ratios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
-      maxRefImages: 0,
+      maxRefImages: 3,
       promptMaxLength: PROMPT_MAX_LENGTH,
     },
     pricing: {
       unit: 'image',
       creditsPerImage: { '1k': 4, '2k': 8 },
       vendorCost: { '1k': '0.25', '2k': '0.50' },
+      vendorInputImageCost: '0.02',
+      vendorCurrency: 'CNY',
+    },
+    enabled: false,
+  },
+  // 与 3.0 共用开关和百炼 Key。输出不按分辨率分档，输入图不另计供应商成本。
+  // 不接蒙版，也不接官方的 edit-plus。
+  {
+    id: 'bailian:qwen-image-2.1-pro',
+    provider: 'bailian',
+    vendor: 'qwen',
+    model: 'qwen-image-2.1-pro',
+    label: 'Qwen Image 2.1 Pro',
+    operations: ['text_to_image', 'image_edit', 'variation'],
+    ui: {
+      supportsMask: false,
+      maxCount: 4,
+      resolutions: ['1k', '2k'],
+      sizeMode: 'ratio',
+      ratios: ['1:1', '4:3', '3:4', '16:9', '9:16'],
+      maxRefImages: 10,
+      promptMaxLength: PROMPT_MAX_LENGTH,
+    },
+    pricing: {
+      unit: 'image',
+      creditsPerImage: { '1k': 4, '2k': 4 },
+      vendorCost: { '1k': '0.25', '2k': '0.25' },
       vendorCurrency: 'CNY',
     },
     enabled: false,
@@ -178,6 +212,10 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
  * 按目录里的 vendor 识别厂商；目录没有该 id 时再按模型 id 本身判断。
  * 不看 provider：同一厂商可以换渠道，未知 id 返回 undefined。
  */
+export function referenceImageLimitMessage(max: number) {
+  return `当前模型最多 ${max} 张参考图`
+}
+
 export function imageModelVendor(id: string | null | undefined): ImageModelVendor | undefined {
   if (!id) return undefined
   const listed = IMAGE_MODEL_PROFILES.find(profile => profile.id === id)
