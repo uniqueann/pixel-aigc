@@ -104,11 +104,25 @@ const longestRelightBaseLength = Math.max(
   ),
 )
 
-/** 补充说明上限按最长的一组光效预留。 */
-export const RELIGHT_NOTE_MAX = promptLimit(RELIGHT_MODEL_PROMPT_MAX - longestRelightBaseLength - RELIGHT_NOTE_PREFIX.length)
+/** 补充说明最多能写多少字，任意光效拼上固定句后仍不超过该模型的提示词上限。 */
+export function relightNoteBudget(modelPromptMax: number) {
+  if (!Number.isFinite(modelPromptMax)) return 0
+  return promptLimit(Math.floor(modelPromptMax) - longestRelightBaseLength - RELIGHT_NOTE_PREFIX.length)
+}
+
+/** 补充说明上限按最长的一组光效和整段预算预留。 */
+export const RELIGHT_NOTE_MAX = relightNoteBudget(RELIGHT_MODEL_PROMPT_MAX)
 
 export function relightNoteLimitMessage() {
   return `补充说明最多 ${RELIGHT_NOTE_MAX} 字`
+}
+
+/** 超出所选模型预算时截断补充说明，避免拼好的提示词被供应商拒绝。 */
+export function fitRelightNote(note: string | undefined, modelPromptMax: number) {
+  const extra = note?.trim() ?? ''
+  if (!extra) return ''
+  const budget = relightNoteBudget(modelPromptMax)
+  return extra.length <= budget ? extra : extra.slice(0, budget)
 }
 
 export function composeRelightPrompt(options: RelightOptions, note?: string) {

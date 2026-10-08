@@ -17,6 +17,7 @@ import {
   RELIGHT_QUALITIES,
   RELIGHT_TEMPERATURES,
   composeRelightPrompt,
+  fitRelightNote,
   readRelight,
   relightNoteLimitMessage,
 } from '../../shared/relight.js'
@@ -517,12 +518,14 @@ export async function createImageJobInStore(
   if (isFusion && !isSafeObjectKey(user.id, referenceKey)) {
     throw new HttpError(400, '场景图对象无效或无权访问', 'INVALID_SOURCE')
   }
+  const modelPromptMax = profile.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
+  const relightNote = isRelight ? fitRelightNote(userPrompt, modelPromptMax) : ''
   const prompt = parsed.capability === 'variation'
     ? composeVariationPrompt(userPrompt)
     : isFusion
       ? composeFusionPrompt(userPrompt)
       : isRelight
-        ? composeRelightPrompt(relight, userPrompt)
+        ? composeRelightPrompt(relight, relightNote)
         : isRetouch
           ? composeRetouchPrompt(retouchDirections, userPrompt)
           : parsed.params.prompt ?? ''
@@ -542,10 +545,10 @@ export async function createImageJobInStore(
         ? {
             ...parsed.params,
             relight,
-            ...(userPrompt ? { prompt: userPrompt } : {}),
+            ...(relightNote ? { prompt: relightNote } : {}),
           }
         : parsed.params
-  if ((isRetouch || isFusion || isRelight) && !userPrompt) delete storedParams.prompt
+  if (isRelight ? !relightNote : (isRetouch || isFusion) && !userPrompt) delete storedParams.prompt
   if (parsed.params.count > profile.ui.maxCount) {
     throw new HttpError(400, `最多生成 ${profile.ui.maxCount} 张`, 'INVALID_PARAMS')
   }

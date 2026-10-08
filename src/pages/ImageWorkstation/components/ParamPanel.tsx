@@ -11,7 +11,7 @@ import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import {
   RELIGHT_DEFAULT,
   RELIGHT_DIRECTION_CHOICES,
-  RELIGHT_NOTE_MAX,
+  relightNoteBudget,
   type RelightOptions,
 } from '@shared/relight'
 import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
@@ -209,10 +209,23 @@ export default function ParamPanel({
     const constraintSize = sourceSize ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution).size : ''
     const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
       || model.ui.resolutionRatioConstraints['4k'].includes(constraintSize)
+    const noteMax = relightNoteBudget(model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)
     const update = (patch: Partial<RelightOptions>) => onRelightChange?.({ ...relight, ...patch })
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {intro}
+        {models.length > 1 ? (
+          <div>
+            <div style={labelStyle}>模型</div>
+            <ModelChoice
+              ariaLabel="模型"
+              models={models}
+              value={model?.id}
+              disabled={disabled}
+              onChange={onModelProfileIdChange}
+            />
+          </div>
+        ) : null}
         <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>效果为 AI 重绘，光线是近似效果。</p>
         <div>
           <div style={labelStyle}>光线方向</div>
@@ -263,7 +276,7 @@ export default function ParamPanel({
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
             placeholder="例如：略微提亮背景"
             autoSize={{ minRows: 3, maxRows: 8 }}
-            maxLength={RELIGHT_NOTE_MAX}
+            maxLength={noteMax}
             showCount
           />
         </div>

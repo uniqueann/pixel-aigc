@@ -13,8 +13,10 @@ import {
   RELIGHT_TEMPERATURES,
   RELIGHT_TEMPERATURE_INSTRUCTIONS,
   composeRelightPrompt,
+  fitRelightNote,
   readRelight,
   relightHistoryText,
+  relightNoteBudget,
 } from './relight'
 
 describe('重新打光提示词', () => {
@@ -30,6 +32,14 @@ describe('重新打光提示词', () => {
     )
     expect(longest + RELIGHT_NOTE_PREFIX.length + RELIGHT_NOTE_MAX).toBeLessThanOrEqual(RELIGHT_MODEL_PROMPT_MAX)
     expect(RELIGHT_NOTE_MAX).toBe(PROMPT_MAX_LENGTH)
+    const budget = relightNoteBudget(PROMPT_MAX_LENGTH)
+    const fitted = composeRelightPrompt(
+      { direction: 'back', quality: 'hard', temperature: 'cool' },
+      '字'.repeat(budget),
+    )
+    expect(fitted.length).toBeLessThanOrEqual(PROMPT_MAX_LENGTH)
+    expect(fitRelightNote('字'.repeat(RELIGHT_NOTE_MAX), PROMPT_MAX_LENGTH)).toHaveLength(budget)
+    expect(fitRelightNote('  略提亮  ', PROMPT_MAX_LENGTH)).toBe('略提亮')
   })
 
   it('硬性约束在补充说明后面，且优先级更高', () => {

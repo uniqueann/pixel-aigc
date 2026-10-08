@@ -7,7 +7,7 @@ import { publicImageModel, IMAGE_MODEL_PROFILES, OPENROUTER_NANO_BANANA_PROFILE_
 import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
-import { RELIGHT_NOTE_MAX } from '@shared/relight'
+import { relightNoteBudget } from '@shared/relight'
 import { RETOUCH_NOTE_MAX } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import { applyPreferencesPatch, defaultPreferences } from '@shared/preferences'
@@ -191,11 +191,42 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByRole('group', { name: '光线方向' })).toBeTruthy()
     expect(screen.getByText('光质')).toBeTruthy()
     expect(screen.getByText('色温')).toBeTruthy()
-    expect(screen.getByPlaceholderText('例如：略微提亮背景')).toHaveProperty('maxLength', RELIGHT_NOTE_MAX)
+    const noteMax = relightNoteBudget(model.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)
+    expect(screen.getByPlaceholderText('例如：略微提亮背景')).toHaveProperty('maxLength', noteMax)
+    expect(screen.queryByRole('combobox', { name: '模型' })).toBeNull()
     expect(screen.queryByText('后期增强')).toBeNull()
     expect(screen.queryByText('手动调整')).toBeNull()
-    expect(screen.getByText(`0 / ${RELIGHT_NOTE_MAX}`)).toBeTruthy()
+    expect(screen.getByText(`0 / ${noteMax}`)).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: '生成数量' })).toBeTruthy()
+  })
+
+  it('重新打光多个模型时显示下拉，并按模型限制分辨率', () => {
+    const qwen = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0')!)
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    render(
+      <ParamPanel
+        capability={Capability.Relight}
+        {...panelProps}
+        resolution="2k"
+        models={[model, qwen, nano]}
+        modelProfileId={qwen.id}
+        sourceSize={{ width: 1000, height: 1000 }}
+      />,
+    )
+    expect(document.querySelector('.ant-select-selection-item [data-vendor="qwen"]')).toBeTruthy()
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
+    const optionTitles = [...document.querySelectorAll('.ant-select-item-option')].map(item => item.getAttribute('title'))
+    expect(optionTitles).toEqual(['GPT Image 2', 'Qwen Image 3.0', 'Google Nano Banana 2.1'])
+    expect(document.querySelectorAll('.ant-select-item-option-content [data-vendor="qwen"]')).toHaveLength(1)
+    expect(document.querySelector('.ant-select-item-option-content [data-vendor="openai"]')).toBeTruthy()
+    expect(document.querySelector('.ant-select-item-option-content [data-vendor="google"]')).toBeTruthy()
+    const resolution = screen.getAllByRole('combobox').find(item => item.getAttribute('aria-label') !== '模型')
+    if (!resolution) throw new Error('未找到分辨率选择')
+    fireEvent.mouseDown(resolution)
+    expect(screen.getAllByText('1K').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('2K').length).toBeGreaterThan(0)
+    expect(screen.queryByText('4K')).toBeNull()
+    expect(screen.getByPlaceholderText('例如：略微提亮背景')).toHaveProperty('maxLength', relightNoteBudget(qwen.ui.promptMaxLength ?? PROMPT_MAX_LENGTH))
   })
 
   it('消除和重绘按百炼上限显示字数，并使用加高的描述框', () => {
