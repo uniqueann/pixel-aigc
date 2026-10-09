@@ -594,22 +594,27 @@ body.sidebar-resizing * {
   margin-bottom: 6px;
 }
 
-.model-choice-static,
-.model-choice-name {
+.model-choice-static {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
   color: var(--color-text-primary);
   font-size: 14px;
-  /* 不固定 line-height：继承外层行高（选中框 30px / 下拉项约 22px / 静态 32px），
-     让 inline-flex 盒恰好填满行盒，图标经 align-items 居中。
-     之前写死 22px 时，inline-flex 的基线取自 SVG 图标底边（替换元素基线规则），
-     在 30px 行盒里按基线对齐会整体上偏约 2px。 */
+  line-height: 32px;
 }
 
-.model-choice-static {
-  line-height: 32px;
+.model-choice-name {
+  /* block 级 flex（不能是 inline-flex）：inline-flex 的基线取自第一个 flex item
+     （厂商 SVG 图标底边，替换元素基线规则），在 antd 选中框 30px 行盒里按基线对齐
+     会整体上偏约 2~3px；block 级 flex 没有行盒基线问题，图标靠 align-items 居中。
+     line-height 不固定，继承外层（选中框 30px / 下拉项约 22px）。 */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-size: 14px;
 }
 
 .model-choice-mark {
