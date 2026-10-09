@@ -107,7 +107,10 @@ describe('智能抠图同步传输接口', () => {
     const res = await mattingRequest({ sourceImageKey: 'temporary/task-inputs/owner/image', clientTimingMs: { prepare: 2, upload: 5 } })
     expect(mocks.loadStoredSyncImage).toHaveBeenCalledWith('owner', 'temporary/task-inputs/owner/image', 'source', expect.any(AbortSignal), expect.objectContaining({ maxPixels: 24_000_000 }))
     expect(mocks.removeBackground).toHaveBeenCalledWith(Buffer.from('source'), expect.objectContaining({ sourceImageKey: 'temporary/task-inputs/owner/image', deadlineAt: expect.any(Number) }))
-    expect(mocks.putObject).toHaveBeenCalledWith(expect.stringMatching(/^temporary\/bg-remove-results\/owner\/.+\.png$/), png, 'image/png', expect.any(AbortSignal))
+    const stored = mocks.putObject.mock.calls.find(call => typeof call[0] === 'string' && /^temporary\/bg-remove-results\/owner\/.+\.png$/.test(call[0]))
+    expect(stored?.[1]).toBe(png)
+    expect(stored?.[2]).toBe('image/png')
+    expect(stored?.[3]).toBeInstanceOf(AbortSignal)
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://r2.test/png', mimeType: 'image/png', bytes: png.length }))
     expect(res.end).not.toHaveBeenCalled()
   })
@@ -323,7 +326,9 @@ describe('API 认证、版本和写入边界', () => {
     const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
     res.status.mockReturnValue(res)
     await handler(req, res as unknown as VercelResponse)
-    expect(mocks.putObject).toHaveBeenCalledWith(expect.stringMatching(/^temporary\/erase-results\/owner\//), jpeg, 'image/jpeg')
+    const stored = mocks.putObject.mock.calls.find(call => typeof call[0] === 'string' && /^temporary\/erase-results\/owner\//.test(call[0]))
+    expect(stored?.[1]).toBe(jpeg)
+    expect(stored?.[2]).toBe('image/jpeg')
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ mimeType: 'image/jpeg', bytes: jpeg.length, url: 'https://r2.test/result' }))
     expect(res.end).not.toHaveBeenCalled()
     if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
