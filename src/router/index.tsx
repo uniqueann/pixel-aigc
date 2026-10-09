@@ -8,6 +8,7 @@ import ImageWorkstation from '@/pages/ImageWorkstation'
 import Toolbox from '@/pages/Toolbox'
 import CanvasProjectRoute from '@/features/dashboard/CanvasProjectRoute'
 import Assets from '@/pages/Assets'
+import Help from '@/pages/Help'
 
 export const router = createBrowserRouter([
   {
@@ -38,6 +39,13 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'assets', element: <Assets /> },
+      {
+        path: 'help',
+        children: [
+          { index: true, element: <Navigate to="quickstart" replace /> },
+          { path: ':article', element: <Help /> },
+        ],
+      },
     ],
   },
 ])
