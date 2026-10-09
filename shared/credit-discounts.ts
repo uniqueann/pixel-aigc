@@ -24,7 +24,7 @@ export interface CreditDiscountPreview {
 /** 两个支付平台共用 EDM 已采用的代码格式。 */
 export function normalizeCreditDiscountCode(value: string) {
   const code = value.trim().toUpperCase()
-  if (code && !/^[A-Z0-9]{1,14}$/.test(code)) throw new Error('折扣码仅支持 1–14 位字母或数字')
+  if (code && !/^[A-Z0-9]{1,14}$/.test(code)) throw new Error('折扣代码仅支持 1–14 位字母或数字')
   return code
 }
 

@@ -74,7 +74,7 @@ describe('折扣规则与平台预验证', () => {
     expect(quoteProviderDiscount(rule, 'prod_starter', 299)).toEqual(quoted)
     for (const changed of [{ startsAt: '2999-01-01' }, { expiresAt: '2000-01-01' }, { usageLimit: 1, used: 1 }, { active: false }])
       expect(() => quoteProviderDiscount({ ...rule, ...changed }, 'prod_starter', 299)).toThrow()
-    expect(() => quoteProviderDiscount(rule, 'prod_standard', 699)).toThrow('此折扣码不适用于当前套餐')
+    expect(() => quoteProviderDiscount(rule, 'prod_standard', 699)).toThrow('此折扣代码不适用于当前套餐')
     creemRule.mode = 'prod'
     await expect(readProviderDiscount('creem', { code: 'AIGC10' })).rejects.toMatchObject({ code: 'PAYMENT_MISMATCH' })
   })
@@ -88,11 +88,16 @@ describe('折扣规则与平台预验证', () => {
     await expect(readProviderDiscount('creem', { code: 'AIGC10' })).rejects.toMatchObject({ code: 'DISCOUNT_UNSUPPORTED' })
   })
   it('区别不存在、权限缺失和平台异常，不泄漏响应内容', async () => {
+    const messages = {
+      DISCOUNT_INVALID: '折扣代码不存在',
+      DISCOUNT_UNCONFIGURED: '当前通道尚未配置折扣验证权限',
+      DISCOUNT_UNAVAILABLE: '暂时无法验证折扣代码，请稍后重试',
+    }
     for (const [status, code] of [[404, 'DISCOUNT_INVALID'], [403, 'DISCOUNT_UNCONFIGURED'], [500, 'DISCOUNT_UNAVAILABLE']] as const) {
       fetchMock.mockResolvedValue(new Response('密钥或客户信息', { status }))
-      await expect(readProviderDiscount('creem', { code: 'AIGC10' })).rejects.toMatchObject({ code })
+      await expect(readProviderDiscount('creem', { code: 'AIGC10' })).rejects.toMatchObject({ code, message: messages[code] })
       mocks.discount.mockRejectedValue({ status, message: '密钥或客户信息' })
-      await expect(readProviderDiscount('dodo', { code: 'AIGC10' })).rejects.toMatchObject({ code })
+      await expect(readProviderDiscount('dodo', { code: 'AIGC10' })).rejects.toMatchObject({ code, message: messages[code] })
     }
   })
   it('金额使用美分且只接受明确的百分比取整，不接受任意少付或零元', () => {

@@ -22,16 +22,16 @@ describe('各档套餐的折扣预览', () => {
   it('一次查询平台券，分别验证套餐，返回部分适用的美元报价', async () => {
     const result = await previewCreditDiscount(user, { provider: 'creem', code: ' aigc10 ', expectedCurrency: 'USD' })
     expect(result).toMatchObject({ provider: 'creem', currency: 'USD', code: 'AIGC10' })
-    expect(result.packs[0]).toMatchObject({ amount: 299, available: false, discount: null, message: '此折扣码不适用于当前套餐' })
+    expect(result.packs[0]).toMatchObject({ amount: 299, available: false, discount: null, message: '此折扣代码不适用于当前套餐' })
     expect(result.packs.slice(1).map(pack => pack.discount?.payableAmount)).toEqual([629, 1799])
     expect(mocks.read).toHaveBeenCalledTimes(1)
     expect(mocks.limit).toHaveBeenCalledWith(user, 'payment_discount', expect.any(Function))
     for (const pack of CREDIT_PACKS) expect(mocks.validate).toHaveBeenCalledWith('creem', `prod_${pack.id}`, pack.USD, 'USD')
   })
   it('未知码按套餐展示原因；权限不足、平台不可用不伪装成无效码', async () => {
-    mocks.read.mockRejectedValueOnce(new HttpError(400, '折扣码不存在', 'DISCOUNT_INVALID'))
+    mocks.read.mockRejectedValueOnce(new HttpError(400, '折扣代码不存在', 'DISCOUNT_INVALID'))
     const result = await previewCreditDiscount(user, { provider: 'dodo', code: 'NOPE', expectedCurrency: 'USD' })
-    expect(result.packs.every(pack => !pack.available && pack.message === '折扣码不存在')).toBe(true)
+    expect(result.packs.every(pack => !pack.available && pack.message === '折扣代码不存在')).toBe(true)
     expect(mocks.validate).not.toHaveBeenCalled()
     for (const code of ['DISCOUNT_UNCONFIGURED', 'DISCOUNT_UNAVAILABLE']) {
       mocks.read.mockRejectedValueOnce(new HttpError(503, '折扣验证暂不可用', code))

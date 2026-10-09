@@ -23,7 +23,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
   const [error,setError]=useState<string>()
   const [refundOrder,setRefundOrder]=useState<CreditOrder>()
   const [refundReason,setRefundReason]=useState('')
-  // 展开状态跨通道保留。已输入代码也保留，报价由购买组件在通道变化时清空。
+  // 展开状态和已输入代码跨通道保留。已验证报价由购买组件在通道变化时清空。
   const [discountExpanded,setDiscountExpanded]=useState(false)
   const [trackedOpen,setTrackedOpen]=useState(open)
   if (open!==trackedOpen) {
@@ -93,7 +93,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
     {error ? <Alert type="error" message={error} action={<Button size="small" onClick={()=>void load()}>重试</Button>} /> : null}
     {!catalog ? <span>正在加载充值套餐…</span> : <>
       <span>支付币种：{catalog.currency==='USD' ? '美元（USD）' : '人民币（CNY）'}</span>
-      {catalog.providers.length>1 ? <Select aria-label="付款方式" value={provider} onChange={setProvider} options={catalog.providers.map(value=>({value,label:PROVIDER_LABELS[value]}))} />
+      {catalog.providers.length>1 ? <Select aria-label="付款方式" value={provider} onChange={setProvider} style={{ width: '100%' }} options={catalog.providers.map(value=>({value,label:PROVIDER_LABELS[value]}))} />
         : catalog.providers.length===1 ? <span>付款方式：{PROVIDER_LABELS[catalog.providers[0]]}</span> : null}
       {!catalog.providers.length ? <Alert type="info" message="充值尚未开放，当前可使用已有积分" /> : null}
       {catalog.paymentBlocked ? <Alert type="warning" message="账户存在待核对的支付记录，请联系支持" /> : null}

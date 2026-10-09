@@ -79,9 +79,9 @@ export interface PaymentReceipt {
 }
 
 function discountRequestError(status: unknown) {
-  if (status === 404) return new HttpError(400, '折扣码不存在', 'DISCOUNT_INVALID')
+  if (status === 404) return new HttpError(400, '折扣代码不存在', 'DISCOUNT_INVALID')
   if (status === 401 || status === 403) return new HttpError(503, '当前通道尚未配置折扣验证权限', 'DISCOUNT_UNCONFIGURED')
-  return new HttpError(503, '暂时无法验证折扣码，请稍后重试', 'DISCOUNT_UNAVAILABLE')
+  return new HttpError(503, '暂时无法验证折扣代码，请稍后重试', 'DISCOUNT_UNAVAILABLE')
 }
 
 export interface ProviderDiscount {
@@ -97,7 +97,7 @@ export async function readProviderDiscount(provider: PaymentProvider, lookup: { 
     : record(await dodoCall(client => 'code' in lookup ? client.discounts.retrieveByCode(lookup.code) : client.discounts.retrieve(lookup.id), true))
   const id = provider === 'creem' ? p.id : p.discount_id
   let code: string
-  try { code = normalizeCreditDiscountCode(String(p.code ?? '')) } catch { throw new HttpError(400, '此折扣码不支持在 AIGC 使用', 'DISCOUNT_UNSUPPORTED') }
+  try { code = normalizeCreditDiscountCode(String(p.code ?? '')) } catch { throw new HttpError(400, '此折扣代码不支持在 AIGC 使用', 'DISCOUNT_UNSUPPORTED') }
   const percentage = provider === 'creem' ? p.percentage : p.amount
   const rawBps = Number(percentage) * (provider === 'creem' ? 100 : 1), bps = Math.round(rawBps)
   const productIds = provider === 'creem' ? p.applies_to_products : p.restricted_to
@@ -107,7 +107,7 @@ export async function readProviderDiscount(provider: PaymentProvider, lookup: { 
     || !Array.isArray(productIds) || !productIds.length || productIds.some(id => typeof id !== 'string' || !allowed.includes(id))
     || (provider === 'dodo' && ((p.currency_options != null && (!Array.isArray(p.currency_options) || p.currency_options.length > 0))
       || (p.customer_eligibility != null && p.customer_eligibility !== 'any') || p.per_customer_usage_limit != null)))
-    throw new HttpError(400, '此折扣码不支持在 AIGC 使用，请使用指定 AIGC 商品的普通百分比折扣码', 'DISCOUNT_UNSUPPORTED')
+    throw new HttpError(400, '此折扣代码不支持在 AIGC 使用，请使用指定 AIGC 商品的普通百分比折扣代码', 'DISCOUNT_UNSUPPORTED')
   check('id' in lookup ? lookup.id === id : lookup.code === code)
   if (provider === 'creem') check(paymentMode() === 'live' ? p.mode === 'prod' : ['test', 'sandbox'].includes(String(p.mode)))
   const startsAt = p.starts_at ?? null, expiresAt = (provider === 'creem' ? p.expiry_date : p.expires_at) ?? null
@@ -124,16 +124,16 @@ export async function readProviderDiscount(provider: PaymentProvider, lookup: { 
 }
 
 export function quoteProviderDiscount(discount: ProviderDiscount, id: string, amount: number): CreditDiscount {
-  if (!discount.productIds.includes(id)) throw new HttpError(400, '此折扣码不适用于当前套餐', 'DISCOUNT_PRODUCT')
+  if (!discount.productIds.includes(id)) throw new HttpError(400, '此折扣代码不适用于当前套餐', 'DISCOUNT_PRODUCT')
   const now = Date.now()
-  if (discount.status === 'scheduled') throw new HttpError(400, '折扣码尚未生效', 'DISCOUNT_NOT_STARTED')
-  if (discount.status === 'expired') throw new HttpError(400, '折扣码已过期', 'DISCOUNT_EXPIRED')
-  if (discount.startsAt && Date.parse(discount.startsAt) > now) throw new HttpError(400, '折扣码尚未生效', 'DISCOUNT_NOT_STARTED')
-  if (discount.expiresAt && Date.parse(discount.expiresAt) <= now) throw new HttpError(400, '折扣码已过期', 'DISCOUNT_EXPIRED')
-  if (!discount.active) throw new HttpError(400, '折扣码当前不可用', 'DISCOUNT_INACTIVE')
-  if (discount.usageLimit != null && discount.used >= discount.usageLimit) throw new HttpError(400, '折扣码使用次数已用完', 'DISCOUNT_EXHAUSTED')
+  if (discount.status === 'scheduled') throw new HttpError(400, '折扣代码尚未生效', 'DISCOUNT_NOT_STARTED')
+  if (discount.status === 'expired') throw new HttpError(400, '折扣代码已过期', 'DISCOUNT_EXPIRED')
+  if (discount.startsAt && Date.parse(discount.startsAt) > now) throw new HttpError(400, '折扣代码尚未生效', 'DISCOUNT_NOT_STARTED')
+  if (discount.expiresAt && Date.parse(discount.expiresAt) <= now) throw new HttpError(400, '折扣代码已过期', 'DISCOUNT_EXPIRED')
+  if (!discount.active) throw new HttpError(400, '折扣代码当前不可用', 'DISCOUNT_INACTIVE')
+  if (discount.usageLimit != null && discount.used >= discount.usageLimit) throw new HttpError(400, '折扣代码使用次数已用完', 'DISCOUNT_EXHAUSTED')
   const payableAmount = discountPayableAmount(amount, discount.percentBps)
-  if (payableAmount <= 0) throw new HttpError(400, '此折扣码不能用于零元购买', 'DISCOUNT_UNSUPPORTED')
+  if (payableAmount <= 0) throw new HttpError(400, '此折扣代码不能用于零元购买', 'DISCOUNT_UNSUPPORTED')
   return { id: discount.id, code: discount.code, percentBps: discount.percentBps, payableAmount, discountAmount: amount - payableAmount }
 }
 

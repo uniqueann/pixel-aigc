@@ -157,7 +157,7 @@ describe('折扣下单与冻结报价', () => {
   })
   it('折扣失效或验证限流时，不创建原价付款作为替代', async () => {
     const { HttpError } = await import('../errors.js')
-    mocks.discount.mockRejectedValueOnce(new HttpError(400, '折扣码已过期', 'DISCOUNT_EXPIRED'))
+    mocks.discount.mockRejectedValueOnce(new HttpError(400, '折扣代码已过期', 'DISCOUNT_EXPIRED'))
     await expect(createCreditCheckout(user, input)).rejects.toMatchObject({ code: 'DISCOUNT_EXPIRED' })
     mocks.limit.mockRejectedValueOnce(new HttpError(429, '折扣验证已达到每小时上限', 'RATE_LIMIT'))
     await expect(createCreditCheckout(user, input)).rejects.toMatchObject({ status: 429 })

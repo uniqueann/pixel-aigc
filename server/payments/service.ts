@@ -36,13 +36,13 @@ export function presentOrder(o: StoredCreditOrder): CreditOrder {
 
 function discountCode(value: string) {
   try { return normalizeCreditDiscountCode(value) }
-  catch { throw new HttpError(400, '折扣码仅支持 1–14 位字母或数字', 'DISCOUNT_INVALID') }
+  catch { throw new HttpError(400, '折扣代码仅支持 1–14 位字母或数字', 'DISCOUNT_INVALID') }
 }
 
 export async function previewCreditDiscount(user: BillingUser, input: unknown): Promise<CreditDiscountPreview> {
   const parsed = z.object({ provider: z.enum(['creem', 'dodo']), code: z.string().max(100), expectedCurrency: z.enum(['USD', 'CNY']) }).strict().parse(input)
   const code = discountCode(parsed.code), currency = creditCurrency()
-  if (!code) throw new HttpError(400, '请输入折扣码', 'DISCOUNT_INVALID')
+  if (!code) throw new HttpError(400, '请输入折扣代码', 'DISCOUNT_INVALID')
   if (currency !== parsed.expectedCurrency) throw new HttpError(409, '充值币种已更新，请刷新套餐', 'PRICE_CHANGED')
   if (!configuredProviders().includes(parsed.provider)) throw new HttpError(503, '充值通道尚未开放', 'PAYMENT_UNCONFIGURED')
   return withSyncLimit(user, 'payment_discount', async () => {
@@ -104,7 +104,7 @@ export async function createCreditCheckout(user: BillingUser, input: unknown) {
   const reuse = (o: StoredCreditOrder) => {
     if (o.pack_id !== parsed.packId || o.provider !== parsed.provider || Number(o.amount) !== parsed.expectedAmount || o.currency !== parsed.expectedCurrency
       || (o.quoted_discount?.code ?? '') !== code || (parsed.expectedPayableAmount != null && parsed.expectedPayableAmount !== (o.quoted_discount?.payableAmount ?? Number(o.amount))))
-      throw new HttpError(409, '订单编号已用于其他套餐或折扣码', 'ORDER_CONFLICT')
+      throw new HttpError(409, '订单编号已用于其他套餐或折扣代码', 'ORDER_CONFLICT')
     if (!o.checkout_url) throw new HttpError(409, '此订单的支付链接尚未确认，请刷新订单或稍后重新创建', 'CHECKOUT_PENDING')
     return presentOrder(o)
   }
@@ -116,7 +116,7 @@ export async function createCreditCheckout(user: BillingUser, input: unknown) {
   const quoted = code ? await withSyncLimit(user, 'payment_discount', async () =>
     quoteProviderDiscount(await readProviderDiscount(parsed.provider, { code }), id, pack[currency])) : null
   if ((code && parsed.expectedPayableAmount == null) || (parsed.expectedPayableAmount != null && parsed.expectedPayableAmount !== (quoted?.payableAmount ?? pack[currency])))
-    throw new HttpError(409, '优惠金额已更新，请重新应用折扣码后购买', 'DISCOUNT_CHANGED')
+    throw new HttpError(409, '优惠金额已更新，请重新应用折扣代码后购买', 'DISCOUNT_CHANGED')
   const order = await withIdentity(user.id,user.email,async sql => {
     await ensureCreditAccount(sql,user.id)
     // aigc_api 不能对 credit_accounts 执行 FOR UPDATE。行锁在定义者函数内取得，并保持到本事务结束。
