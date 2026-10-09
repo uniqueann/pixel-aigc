@@ -6,7 +6,7 @@ const signRead = vi.fn()
 const requireActive = vi.fn()
 
 vi.mock('./storage', () => ({ getObject: (...args: unknown[]) => getObject(...args), signRead: (...args: unknown[]) => signRead(...args) }))
-vi.mock('./model-settings', () => ({ requireActive: (...args: unknown[]) => requireActive(...args) }))
+vi.mock('./members', () => ({ requireActive: (...args: unknown[]) => requireActive(...args) }))
 vi.mock('./db', () => ({
   withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn({}),
 }))

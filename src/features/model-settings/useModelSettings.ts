@@ -14,7 +14,7 @@ export function useModelSettings() {
     staleTime: 60000,
   })
   const profilesQuery = useQuery({
-    queryKey: ['model-profiles', 'email_assist'],
+    queryKey: ['model-profiles', 'email_assist', userId],
     queryFn: getModelProfiles,
     enabled: authEnabled && Boolean(userId),
     staleTime: 300000,
@@ -24,6 +24,7 @@ export function useModelSettings() {
     if (!authEnabled || !userId) return
     const refresh = () => {
       void queryClient.invalidateQueries({ queryKey: ['model-settings', userId], exact: true }, { cancelRefetch: false })
+      void queryClient.invalidateQueries({ queryKey: ['model-profiles', 'email_assist', userId], exact: true })
     }
     window.addEventListener('pixel:model-settings-changed', refresh)
     return () => window.removeEventListener('pixel:model-settings-changed', refresh)

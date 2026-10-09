@@ -9,7 +9,7 @@ import {
 } from '../shared/rate-limit.js'
 import { runtimeScope, withIdentity, type Transaction } from './db.js'
 import { HttpError } from './errors.js'
-import { requireActive } from './model-settings.js'
+import { requireActive } from './members.js'
 
 type Bucket = 'generation' | 'detection' | 'payment_discount'
 type User = { id: string; email: string }

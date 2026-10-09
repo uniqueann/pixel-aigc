@@ -42,9 +42,9 @@ function parseParams(original: EmailBatchOriginal, defaults: Defaults): EmailAss
   }
   const languageValue = original['语言'].trim()
   const language = languageValue
-    ? EMAIL_LANGUAGES.find(item => item.label === languageValue || item.value === languageValue.toLowerCase())?.value
+    ? EMAIL_LANGUAGES.find(item => item.label === languageValue || item.value.toLowerCase() === languageValue.toLowerCase())?.value
     : defaults.language
-  if (!language) throw new Error('语言须为中文、英语、日语或 zh、en、ja')
+  if (!language) throw new Error('语言须为支持的中文名称或语言代码')
   return buildEmailAssistRequest({ sourceText, instruction, operation, language, polishStyles }, 'csv-validation').params
 }
 
@@ -92,10 +92,11 @@ export function createEmailBatchTemplate() {
 }
 
 export function exportEmailBatchCsv(rows: EmailBatchRow[]) {
-  return toCsv([...EMAIL_BATCH_HEADERS, '生成结果', '状态', '错误信息'], rows.map((row, index) => [
+  return toCsv([...EMAIL_BATCH_HEADERS, '生成结果', '状态', '错误信息', '模型', '实际扣减积分'], rows.map((row, index) => [
     ...EMAIL_BATCH_HEADERS.map(header => row.original[header]), row.resultText ?? '',
     EMAIL_BATCH_STATUS_LABELS[row.status],
     row.errorMessage ? formatEmailBatchError(index + 1, row.recordNumber, row.errorMessage) : '',
+    row.modelProfileId ?? '', row.creditsCost == null ? '' : String(row.creditsCost),
   ]))
 }
 

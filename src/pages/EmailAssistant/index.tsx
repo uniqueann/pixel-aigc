@@ -51,10 +51,9 @@ function EmailAssistantSession() {
     {authEnabled && configuration.error ? <Alert type="error" showIcon className="email-model-alert"
       message="模型设置加载失败，请重试"
       action={<Button size="small" onClick={() => { void settingsQuery.refetch(); void profilesQuery.refetch() }}>重试</Button>} />
-      : authEnabled && configuration.keyConfigured === false ? <Alert type="info" showIcon className="email-model-alert"
-        message="配置自己的 DeepSeek API Key 后即可生成"
-        description="邮件内容会发送到 DeepSeek；调用费用由你的 DeepSeek 账号承担。任务和修改稿保留 7 天。"
-        action={<Button size="small" onClick={openModelSettings}>模型与密钥设置</Button>} /> : null}
+      : authEnabled && !configuration.loading && !configuration.ready ? <Alert type="info" showIcon className="email-model-alert"
+        message="平台邮件模型暂不可用，请稍后重试" /> : null}
+    <p className="email-save-hint">模型由平台统一提供，成功生成按积分扣费。邮件内容会发送至所选模型服务；任务和修改稿保留 7 天。</p>
     <div hidden={mode !== 'single'}>
       {gate.owner === 'batch' ? <Alert className="email-model-alert" type="info" showIcon
         message={batch.unresolved ? '批量邮件等待确认原任务状态，确认后可继续单个生成' : '批量邮件正在处理，暂停并等待当前邮件完成后可继续单个生成'} /> : null}

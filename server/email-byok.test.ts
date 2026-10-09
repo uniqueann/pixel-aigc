@@ -1,84 +1,56 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { decryptKey, encryptKey } from './model-settings'
 import { generateEmail } from './email-tasks'
+import { emailModelAvailability } from './email-provider'
+import { handleModelRoute } from './model-settings'
 
-const originalFetch = globalThis.fetch
-const originalKey = process.env.AIGC_CREDENTIAL_KEY_V1
-const originalScope = process.env.AIGC_RUNTIME_SCOPE
 const params = { sourceText: '客户想知道订单何时送达', operation: 'reply' as const, language: 'zh' as const }
-
+const response = (finish = 'stop') => new Response(JSON.stringify({ id: 'generation-1',
+  choices: [{ finish_reason: finish, message: { content: '预计送达时间［待补充］。' } }],
+  usage: { prompt_tokens: 42, completion_tokens: 23, total_tokens: 65, completion_tokens_details: { reasoning_tokens: 3 } },
+}), { status: 200 })
 beforeEach(() => {
-  process.env.AIGC_CREDENTIAL_KEY_V1 = Buffer.alloc(32, 7).toString('base64')
-  process.env.AIGC_RUNTIME_SCOPE = 'local'
+  vi.stubEnv('EMAIL_ASSIST_ENABLED', 'true'); vi.stubEnv('DEEPSEEK_EMAIL_ENABLED', 'true'); vi.stubEnv('AI_GATEWAY_EMAIL_ENABLED', 'true')
+  vi.stubEnv('CRON_SECRET', 'test-cron'); vi.stubEnv('DEEPSEEK_API_KEY', 'platform-deepseek'); vi.stubEnv('AI_GATEWAY_API_KEY', 'platform-gateway')
 })
-afterEach(() => {
-  globalThis.fetch = originalFetch
-  if (originalKey === undefined) delete process.env.AIGC_CREDENTIAL_KEY_V1
-  else process.env.AIGC_CREDENTIAL_KEY_V1 = originalKey
-  if (originalScope === undefined) delete process.env.AIGC_RUNTIME_SCOPE
-  else process.env.AIGC_RUNTIME_SCOPE = originalScope
-})
-
-describe('用户模型密钥与邮件调用', () => {
-  it('密钥加密后不含明文，并绑定用户和环境', () => {
-    const encrypted = encryptKey('test-secret-key-1234', 'user-a')
-    expect(encrypted.ciphertext).not.toContain('test-secret-key')
-    expect(decryptKey({ ...encrypted, key_version: 1 }, 'user-a')).toBe('test-secret-key-1234')
-    expect(() => decryptKey({ ...encrypted, key_version: 1 }, 'user-b')).toThrow()
-    process.env.AIGC_RUNTIME_SCOPE = 'preview'
-    expect(() => decryptKey({ ...encrypted, key_version: 1 }, 'user-a')).toThrow()
-  })
-  it('使用用户密钥和指定模型，保存完整结果及 token 用量', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      choices: [{ finish_reason: 'stop', message: { content: '您好，预计送达时间［待补充］。' } }],
-      usage: { prompt_tokens: 42, completion_tokens: 23, total_tokens: 65 },
-    }), { status: 200 }))
-    globalThis.fetch = fetchMock
-    const output = await generateEmail('user-owned-key', 'deepseek-flash', params)
-    expect(output).toEqual({ resultText: '您好，预计送达时间［待补充］。',
-      tokenUsage: { promptTokens: 42, completionTokens: 23, totalTokens: 65 } })
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+describe('邮件平台模型调用', () => {
+  it('DeepSeek 使用平台密钥、指定型号和关闭思考', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response()); vi.stubGlobal('fetch', fetchMock)
+    const output = await generateEmail('deepseek:deepseek-flash', params)
+    expect(output.resultText).toContain('预计送达')
+    expect(output.tokenUsage).toMatchObject({ promptTokens: 42, reasoningTokens: 3 })
     const [url, request] = fetchMock.mock.calls[0]
     expect(url).toBe('https://api.deepseek.com/chat/completions')
-    expect(request.headers.Authorization).toBe('Bearer user-owned-key')
-    const body = JSON.parse(request.body)
-    expect(body.model).toBe('deepseek-flash')
-    expect(body.thinking).toEqual({ type: 'disabled' })
-    expect(body.messages[1].content).toContain(params.sourceText)
-    expect(body.user_id).toBeUndefined()
+    expect(request.headers.Authorization).toBe('Bearer platform-deepseek')
+    expect(JSON.parse(request.body)).toMatchObject({ model: 'deepseek-flash', thinking: { type: 'disabled' }, max_tokens: 1600 })
   })
-  it('总结提示要求输出要点摘要，回复提示仍然起草回信', async () => {
-    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
-      choices: [{ finish_reason: 'stop', message: { content: '要点：客户询问送达时间。' } }],
-      usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
-    }), { status: 200 })))
-    globalThis.fetch = fetchMock
-    const source = '您好，我们上周下的订单 #A1024 还没有收到发货通知，请问什么时候可以发货？谢谢。'
-    await generateEmail('user-owned-key', 'deepseek-flash', { sourceText: source, operation: 'summarize', language: 'en' })
-    const summary = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(summary.model).toBe('deepseek-flash')
-    expect(summary.temperature).toBe(0.3)
-    expect(summary.max_tokens).toBe(1600)
-    const summarySystem = summary.messages[0].content as string
-    expect(summarySystem).toContain('输出语言为英语')
-    expect(summarySystem).toContain('只概括来信，不起草回信')
-    expect(summarySystem).toContain('几条要点或一小段概述')
-    expect(summarySystem).toContain('禁止写成回信')
-    expect(summarySystem).toContain('Best regards')
-    expect(summarySystem).not.toContain('起草一封可以直接修改的邮件回复')
-    expect(summary.messages[1].content).toContain(source)
-    expect(summary.messages[1].content).toContain('请只输出摘要，不要写回信。')
-    await generateEmail('user-owned-key', 'deepseek-flash', params)
-    const reply = JSON.parse(fetchMock.mock.calls[1][1].body)
-    const replySystem = reply.messages[0].content as string
-    expect(replySystem).toContain('你是邮件写作助手。')
-    expect(replySystem).toContain('起草一封可以直接修改的邮件回复')
-    expect(replySystem).not.toContain('禁止写成回信')
-    expect(reply.messages[1].content).not.toContain('请只输出摘要')
+  it('Gemini 使用 Gateway 鉴权、低思考档及总输出预算', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response()); vi.stubGlobal('fetch', fetchMock)
+    const output = await generateEmail('ai-gateway:gemini-3.8-flash', { ...params, language: 'en-GB' })
+    const [url, request] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://ai-gateway.vercel.sh/v1/chat/completions')
+    expect(request.headers.Authorization).toBe('Bearer platform-gateway')
+    expect(JSON.parse(request.body)).toMatchObject({ model: 'google/gemini-3.8-flash', reasoning_effort: 'low', max_tokens: 2048 })
+    expect(JSON.parse(request.body).messages[0].content).toContain('英式英语')
+    expect(output.vendor.generationId).toBe('generation-1')
   })
-  it('密钥无效与输出截断时不把异常内容当成成功结果', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValueOnce(new Response('', { status: 401 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '不完整' } }] }), { status: 200 }))
-    await expect(generateEmail('bad-key', 'deepseek-flash', params)).rejects.toMatchObject({ code: 'INVALID_PROVIDER_KEY' })
-    await expect(generateEmail('good-key', 'deepseek-flash', params)).rejects.toMatchObject({ code: 'RESULT_TRUNCATED' })
+  it('总结不写成回复，回复保留缺失信息占位', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(response())); vi.stubGlobal('fetch', fetchMock)
+    await generateEmail('deepseek:deepseek-v4-pro', { ...params, operation: 'summarize' })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content).toContain('禁止写成回信')
+    await generateEmail('deepseek:deepseek-v4-pro', params)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).messages[0].content).toContain('不擅自承诺')
+  })
+  it('截断、供应商鉴权和余额异常不会返回成功结果或要求用户配置密钥', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response('length'))
+      .mockResolvedValueOnce(new Response('{}', { status: 401 })).mockResolvedValueOnce(new Response('{}', { status: 402 })))
+    await expect(generateEmail('deepseek:deepseek-flash', params)).rejects.toMatchObject({ code: 'RESULT_TRUNCATED' })
+    await expect(generateEmail('deepseek:deepseek-flash', params)).rejects.toMatchObject({ code: 'PROVIDER_AUTH', message: expect.stringContaining('平台') })
+    await expect(generateEmail('deepseek:deepseek-flash', params)).rejects.toMatchObject({ code: 'PROVIDER_BALANCE', message: expect.stringContaining('平台') })
+  })
+  it('凭据存在也不会绕过开关；旧个人密钥接口直接停用', async () => {
+    vi.stubEnv('EMAIL_ASSIST_ENABLED', 'false')
+    expect(emailModelAvailability('deepseek:deepseek-flash').available).toBe(false)
+    await expect(handleModelRoute({} as never, 'PUT', ['model-settings', 'deepseek'], { apiKey: 'user-key' })).rejects.toMatchObject({ status: 410, code: 'BYOK_REMOVED' })
   })
 })

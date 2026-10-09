@@ -2,7 +2,7 @@ import { applyPreferencesPatch, defaultPreferences, normalizePreferences, prefer
 import type { authenticate } from './auth.js'
 import { runtimeScope, withIdentity } from './db.js'
 import { HttpError } from './errors.js'
-import { requireActive } from './model-settings.js'
+import { requireActive } from './members.js'
 
 type User = Awaited<ReturnType<typeof authenticate>>
 function response(row?: { preferences: unknown; updated_at: Date | string }): PreferencesResponse {

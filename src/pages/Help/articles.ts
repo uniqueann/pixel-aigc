@@ -21,7 +21,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   { slug: 'credits', title: '积分与计费说明', group: '费用与账号', body: credits },
   { slug: 'bg-remove', title: '智能抠图使用指南', group: '使用指南', body: bgRemove },
   { slug: 'workstation', title: '图片工作站总览', group: '使用指南', body: workstation },
-  { slug: 'email-assistant', title: '邮件助手与 DeepSeek Key 配置', group: '使用指南', body: emailAssistant },
+  { slug: 'email-assistant', title: '邮件助手与积分计费', group: '使用指南', body: emailAssistant },
   { slug: 'faq', title: '常见问题', group: '更多', body: faq },
   { slug: 'contact', title: '联系支持', group: '更多', body: contact },
 ]

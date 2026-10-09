@@ -10,6 +10,9 @@ import { useEmailAssistantController } from './useEmailAssistantController'
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const mocks = vi.hoisted(() => ({
+  authEnabled: false,
+  getTaskByRequest: vi.fn(),
+  listTasks: vi.fn(),
   createTask: vi.fn(),
   getTask: vi.fn(),
   polling: {
@@ -20,7 +23,9 @@ const mocks = vi.hoisted(() => ({
   refetch: vi.fn(),
 }))
 
-vi.mock('@/services/api/task', () => ({ createTask: mocks.createTask, getTask: mocks.getTask }))
+vi.mock('@/cloud/client', () => ({ get authEnabled() { return mocks.authEnabled } }))
+vi.mock('@/services/api/task', () => ({ createTask: mocks.createTask, getTask: mocks.getTask,
+  getTaskByRequest: mocks.getTaskByRequest, listTasks: mocks.listTasks }))
 vi.mock('@/hooks/useTaskPolling', async () => {
   const { useEffect: useReactEffect } = await import('react')
   return {
@@ -46,10 +51,42 @@ function Harness() {
 }
 
 describe('useEmailAssistantController', () => {
+  it('代理失败且暂未查到任务时锁定原请求，同标识恢复只显示一次扣费', async () => {
+    mocks.authEnabled = true
+    const missing = Object.assign(new Error('尚未找到'), { status: 404 })
+    mocks.getTaskByRequest.mockRejectedValue(missing)
+    mocks.createTask.mockRejectedValueOnce(Object.assign(new Error('代理超时'), { status: 502 }))
+    const params: EmailAssistTaskParams = { sourceText: '客户邮件', operation: 'reply', language: 'en-US' }
+    await act(async () => { await expect(controller.generate(params, 'ai-gateway:gemini-3.8-flash', 'aigc-email-v1')).rejects.toThrow('代理超时') })
+    expect(controller.uncertain).toBe(true)
+    expect(controller.formLocked).toBe(true)
+    await expect(controller.newTask()).rejects.toThrow('确认原请求')
+    const original = mocks.createTask.mock.calls[0][0]
+    mocks.createTask.mockResolvedValueOnce({ id: '恢复任务', capability: Capability.EmailAssist, status: 'succeeded', params,
+      resultText: '完整回复', creditsCost: 3, modelProfileId: original.modelProfileId, createdAt: '2026-10-09', updatedAt: '2026-10-09' })
+    await act(async () => { await controller.recoverSubmission() })
+    expect(mocks.createTask.mock.calls[1][0]).toEqual(original)
+    expect(controller.uncertain).toBe(false)
+    expect(controller.task?.creditsCost).toBe(3)
+  })
+
+  it('明确余额不足且查询证实未创建时解除锁定', async () => {
+    mocks.authEnabled = true
+    mocks.getTaskByRequest.mockRejectedValue(Object.assign(new Error('未创建'), { status: 404 }))
+    mocks.createTask.mockRejectedValueOnce(Object.assign(new Error('积分不足'), { status: 402, code: 'INSUFFICIENT_CREDITS' }))
+    await act(async () => { await expect(controller.generate({ sourceText: '客户邮件', operation: 'reply', language: 'zh' }, 'deepseek:deepseek-flash')).rejects.toThrow('积分不足') })
+    expect(controller.uncertain).toBe(false)
+    expect(controller.formLocked).toBe(false)
+    await act(async () => { await controller.newTask() })
+  })
+
   let container: HTMLDivElement
   let root: Root
 
   beforeEach(async () => {
+    mocks.authEnabled = false
+    mocks.getTaskByRequest.mockReset()
+    mocks.listTasks.mockResolvedValue({ items: [], total: 0 })
     mocks.createTask.mockReset()
     mocks.polling.data = undefined
     mocks.polling.error = null

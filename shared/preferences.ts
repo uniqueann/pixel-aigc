@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { emailLanguageSchema } from './email-models.js'
 import { PLATFORM_SIZE_PRESETS } from './platform-sizes.js'
 import { RELIGHT_DIRECTIONS, RELIGHT_QUALITIES, RELIGHT_TEMPERATURES } from './relight.js'
 import { RETOUCH_DIRECTION_IDS } from './retouch.js'
@@ -53,7 +54,7 @@ export type ImageMemoryTool = keyof ImageMemory
 const counts = z.object({ 'smart-edit': count, relight: count, variation: count, fusion: count, retouch: count }).strict()
 const workbench = z.object({ startPage: z.enum(START_PAGES), rememberSidebar: z.boolean(), assetsView: z.enum(['grid', 'list', 'remember']) }).strict()
 const email = z.object({
-  language: z.enum(['zh', 'en', 'ja']), operation: z.enum(['reply', 'summarize', 'polish', 'grammar']),
+  language: emailLanguageSchema, operation: z.enum(['reply', 'summarize', 'polish', 'grammar']),
   polishStyles: z.array(z.enum(['clear', 'shorten', 'lengthen', 'simplify'])).max(4),
 }).strict()
 const recent = z.object({ page: z.string().refine(isPreferencePage), assetsView: z.enum(['grid', 'list']) }).strict()

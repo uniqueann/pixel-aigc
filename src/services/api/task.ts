@@ -23,7 +23,7 @@ const LIVE_TASK_CAPABILITIES = new Set<Capability>([Capability.EmailAssist])
  * 不写入 LIVE_TASK_CAPABILITIES，各业务入口分别检查自身的模型配置。
  */
 const IMAGE_TASK_CAPABILITIES = new Set<Capability>([Capability.Variation, Capability.TextToImage, Capability.TextToVideo])
-const BILLED_TASK_CAPABILITIES = new Set<Capability>([Capability.ImageEdit, Capability.Variation, Capability.TextToImage, Capability.TextToVideo])
+const BILLED_TASK_CAPABILITIES = new Set<Capability>([Capability.EmailAssist, Capability.ImageEdit, Capability.Variation, Capability.TextToImage, Capability.TextToVideo])
 let creditRefreshSequence = 0
 
 async function refreshCredits() {
@@ -52,7 +52,7 @@ export function createTask<TParams>(payload: CreateTaskPayload<TParams>, options
   if (!canCreateLiveTask(payload.capability))
     return Promise.reject(new Error('该生成能力尚未接入真实服务'))
   if (useMockGateway) return createMockTask(payload)
-  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload, { timeout: 55000, ...options })
+  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload, { timeout: payload.capability === Capability.EmailAssist ? 85000 : 55000, ...options })
     .then(task => {
       if (BILLED_TASK_CAPABILITIES.has(payload.capability)) void refreshCredits().catch(() => undefined)
       return task
@@ -86,6 +86,8 @@ export interface TaskSummary {
   capability: Capability
   status: GenerationTask['status']
   modelProfileId?: string
+  creditsCost?: number
+  billingState?: string
   operation?: string
   language?: string
   preview?: string

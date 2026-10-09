@@ -10,7 +10,6 @@ import { useUserStore } from '@/store/useUserStore'
 const SETTINGS_ITEMS = [
   { key: 'general', label: '通用' },
   { key: 'personalization', label: '个性化' },
-  { key: 'models', label: '模型与密钥' },
   { key: 'data', label: '数据控制' },
   { key: 'account', label: '账号' },
 ]
@@ -74,8 +73,7 @@ export default function SettingsDialog({
 }
 
 function SettingsContent({ section }: { section: string }) {
-  if (section === 'models') return <ModelSettingsPanel />
-  if (section === 'personalization') return <PersonalizationPanel />
+  if (section === 'models' || section === 'personalization') return <><PersonalizationPanel /><ModelSettingsPanel /></>
   if (section === 'data') {
     return (
       <SettingsPanel title="数据控制" description="管理项目数据与产品改进选项。">

@@ -2,17 +2,17 @@
 
 ## 当前交付边界
 
-React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc` schema 保存账号资料、个人工作空间、项目和素材元数据；邮箱密码与 Google 登录共用 Supabase Auth，R2 私有桶保存媒体。注册开放，邮箱需验证。邮件助手使用用户自带 DeepSeek 密钥同步生成。智能抠图在 `TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION` 四项都配置时，经 `POST /api/bg-remove` 调用数据万象 GoodsMatting。转比例的智能裁剪用同一套配置调用 `POST /api/subject-detect`（先 AIObjectDetect，没有框时用 GoodsMatting 的不透明区域）。图片工作站的智能编辑及裂变、自由画布的真实文生图和裂变已复用 `image_jobs` 与积分结算。Google Nano Banana 2.1 走同一套任务层。`AI_GATEWAY_IMAGE_ENABLED` 打开后经 Vercel AI Gateway 调用，否则仍可走 OpenRouter；开关与环境变量见 `docs/ai-gateway-nano-banana.md` 和 `docs/openrouter-nano-banana-integration.md`。`image_jobs.provider` 没有检查约束，不需要数据库迁移。视频生成、视频上传和媒体打包导出仍待接入。
+React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc` schema 保存账号资料、个人工作空间、项目和素材元数据；邮箱密码与 Google 登录共用 Supabase Auth，R2 私有桶保存媒体。注册开放，邮箱需验证。邮件助手使用平台 DeepSeek 密钥或 Vercel AI Gateway 同步生成并结算积分。智能抠图在 `TENCENT_COS_SECRET_ID`、`TENCENT_COS_SECRET_KEY`、`TENCENT_COS_BUCKET`、`TENCENT_COS_REGION` 四项都配置时，经 `POST /api/bg-remove` 调用数据万象 GoodsMatting。转比例的智能裁剪用同一套配置调用 `POST /api/subject-detect`（先 AIObjectDetect，没有框时用 GoodsMatting 的不透明区域）。图片工作站的智能编辑及裂变、自由画布的真实文生图和裂变已复用 `image_jobs` 与积分结算。Google Nano Banana 2.1 走同一套任务层。`AI_GATEWAY_IMAGE_ENABLED` 打开后经 Vercel AI Gateway 调用，否则仍可走 OpenRouter；开关与环境变量见 `docs/ai-gateway-nano-banana.md` 和 `docs/openrouter-nano-banana-integration.md`。`image_jobs.provider` 没有检查约束，不需要数据库迁移。视频生成、视频上传和媒体打包导出仍待接入。
 
 本地默认关闭账号与云端模式。`VITE_AUTH_MODE=enabled` 可独立启用账号，`VITE_CLOUD_MODE=enabled` 启用项目云同步，且要求账号同步启用。账号开启而云同步关闭时，项目仍按 Auth UUID 保存在本地。`POST /api/tasks` 接受邮件助手、`image_edit`、`variation` 与 `text_to_image`。画布图片生成入口需当前账号、对应 `/api/capabilities` 开关及 `/api/image-models?operation=variation` 或 `text_to_image` 均就绪；模型公开响应包含积分报价，不包含供应商成本。商品抠图和主体检测是单独接口，共用四项腾讯云配置。缺配置时 `GET /api/capabilities` 返回 `bgRemove: false`，主体检测接口也会拒绝。
 
-## 邮件助手与用户自带模型密钥
+## 邮件助手平台模型与积分
 
-设置弹窗的“模型与密钥”支持每个用户配置自己的 DeepSeek API Key 和默认邮件模型。邮件页面可为单次任务选择 `deepseek-flash` 或 `deepseek-v4-pro`。API Key 经后端调用 DeepSeek `/models` 验证后，以 AES-256-GCM 密文写入 `aigc.model_credentials`；服务端加密主密钥 `AIGC_CREDENTIAL_KEY_V1` 是 32 字节随机值的 Base64 编码，只存本地或 Vercel 服务端环境变量。密文绑定用户、服务商及环境，API 只返回末四位和验证状态，不回显明文。密钥版本字段支持后续轮换；轮换前必须保留旧密钥直到全部密文重加密。`AIGC_RUNTIME_SCOPE` 本地设为 `local`，Vercel 默认使用 `VERCEL_ENV`；共用数据库时生产、预览、本地凭据相互隔离。
+模型由平台统一提供，DeepSeek Flash 每次成功 1 积分，DeepSeek V4 Pro 与 Gemini 3.8 Flash 每次成功 3 积分。默认模型偏好保存在用户及环境隔离的 `model_preferences` 中，无个人 Key 配置。详细接入、迁移、补偿和验收见 [邮件平台模型说明](email-assistant-platform-models.md)。
 
-邮件助手向 `POST /api/tasks` 提交 `email_assist`、`requestId`、邮件参数和可选的 `modelProfileId`。后端在短事务中验证账号、并发上限和幂等性，建立任务后关闭事务，再以用户密钥调用 DeepSeek；成功或失败均将终态写回。浏览器超时后可以用 `GET /api/tasks/by-request/:requestId` 找回任务。历史列表分页返回摘要，详情才返回邮件正文；用户修改稿与模型原始结果分别保存，超过 7 天不可查询，Vercel 每日任务执行物理清理。`CRON_SECRET` 必须作为服务端环境变量配置，否则清理接口拒绝调用。
+`POST /api/tasks` 接收邮件参数、请求 ID、模型 ID 和价格版本。创建任务与预扣同事务，模型调用在事务外；结果与结算、失败与退款分别同事务。浏览器超时先通过 `/api/tasks/by-request/:requestId` 找回原任务，长期流水保存幂等标识，不保存邮件正文。
 
-用户密钥产生的费用由用户的 DeepSeek 账户承担，不使用 EDM 积分，也没有平台每日免费额度。应用保护上限为每账号同时 1 个任务、全站同时 20 个任务、每账号每小时 60 次；邮件原文不超过 10,000 字符，指导不超过 1,000 字符。服务端日志不记录密钥、邮件原文或生成结果。正式上线前需要对测试账号的自带密钥完成真实调用、余额不足、密钥失效、7 天过期和定时清理验收。
+邮件正文和修改稿保留 7 天，积分流水长期保留。分钟维护收口 90 秒超时任务，每日清理先退款再删除过期内容。应用保护上限仍为账号并发 1、全站并发 20、每账号每小时 60 次；原文最多 10,000 字符，指导最多 1,000 字符。日志不得记录凭据、原文或正文结果。
 
 ## Supabase 与账号
 

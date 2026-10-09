@@ -11,6 +11,9 @@ export interface EmailBatchRow {
   params?: EmailAssistTaskParams
   status: EmailBatchStatus
   requestId?: string
+  modelProfileId?: string
+  priceVersion?: string
+  creditsCost?: number
   taskId?: string
   resultText?: string
   errorCode?: string
@@ -21,6 +24,7 @@ export interface EmailBatchState {
   rows: EmailBatchRow[]
   fileName?: string
   modelProfileId?: string
+  priceVersion?: string
   runState: 'idle' | 'running' | 'pausing' | 'paused' | 'completed'
   pauseMessage?: string
   recovering: boolean

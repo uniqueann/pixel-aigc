@@ -77,7 +77,7 @@ describe('createTask 真实模式接入检查', () => {
   it('批量队列的中止信号传给请求，账号切换时可停止尚未发出的提交', async () => {
     const controller = new AbortController()
     await createTask({ capability: Capability.EmailAssist, requestId: '批量请求', params: { sourceText: '客户邮件' } }, { signal: controller.signal })
-    expect(post).toHaveBeenCalledWith('/tasks', expect.objectContaining({ requestId: '批量请求' }), { timeout: 55000, signal: controller.signal })
+    expect(post).toHaveBeenCalledWith('/tasks', expect.objectContaining({ requestId: '批量请求' }), { timeout: 85000, signal: controller.signal })
   })
 
   it('智能编辑仍需全局注册后才能提交', async () => {

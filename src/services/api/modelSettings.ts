@@ -1,42 +1,21 @@
 import { cloudRequest } from '@/cloud/client'
+import type { EmailModelId } from '@shared/email-models'
 
 export interface ModelProfile {
-  id: string
-  provider: 'deepseek'
+  id: EmailModelId
+  provider: 'deepseek' | 'ai-gateway'
   label: string
   capability: 'email_assist'
+  credits: number
+  priceVersion: string
+  available: boolean
+  unavailableReason: string | null
 }
-
-export interface ModelSettings {
-  deepseek: {
-    configured: boolean
-    keyTail: string | null
-    verificationStatus: 'valid' | 'invalid' | null
-    verifiedAt: string | null
-  }
-  defaultEmailModelId: string
-}
-
+export interface ModelSettings { defaultEmailModelId: EmailModelId | null }
 export function getModelProfiles() {
   return cloudRequest<{ items: ModelProfile[] }>('/model-profiles?capability=email_assist')
 }
-
-export function getModelSettings() {
-  return cloudRequest<ModelSettings>('/model-settings')
-}
-
-export function saveDeepSeekKey(apiKey: string) {
-  return cloudRequest<ModelSettings>('/model-settings/deepseek', 'PUT', { apiKey })
-}
-
-export function deleteDeepSeekKey() {
-  return cloudRequest<ModelSettings>('/model-settings/deepseek', 'DELETE')
-}
-
-export function testDeepSeekKey() {
-  return cloudRequest<ModelSettings>('/model-settings/deepseek/test', 'POST')
-}
-
-export function saveDefaultEmailModel(defaultModelProfileId: string) {
+export function getModelSettings() { return cloudRequest<ModelSettings>('/model-settings') }
+export function saveDefaultEmailModel(defaultModelProfileId: EmailModelId | null) {
   return cloudRequest<ModelSettings>('/model-settings/email', 'PATCH', { defaultModelProfileId })
 }

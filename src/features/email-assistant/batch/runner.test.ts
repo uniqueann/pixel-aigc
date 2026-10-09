@@ -30,6 +30,31 @@ function deferred<T>() {
 }
 
 describe('邮件批量串行队列', () => {
+  it('价格变更暂停后重新确认报价，保留原请求且记录实际扣费', async () => {
+    const { runner, ports } = setup(rows(1))
+    ports.submit.mockRejectedValueOnce(Object.assign(new Error('请确认新价格'), { status: 409, code: 'PRICE_CHANGED' }))
+    await runner.start('deepseek:deepseek-flash', '旧报价')
+    const requestId = ports.submit.mock.calls[0][0].requestId
+    expect(runner.getSnapshot().runState).toBe('paused')
+    expect(ports.onInvalidKey).toHaveBeenCalledTimes(1)
+    ports.submit.mockResolvedValueOnce(task('succeeded', { creditsCost: 1, modelProfileId: 'deepseek:deepseek-flash' }))
+    await runner.start('deepseek:deepseek-flash', 'aigc-email-v1')
+    expect(ports.submit.mock.calls[1][0]).toMatchObject({ requestId, priceVersion: 'aigc-email-v1' })
+    expect(runner.getSnapshot().rows[0]).toMatchObject({ status: 'succeeded', creditsCost: 1 })
+  })
+
+  it('查询已删除任务时结束未知状态，允许作为新请求重试', async () => {
+    const { runner, ports } = setup(rows(1))
+    ports.submit.mockResolvedValueOnce(task('processing'))
+    ports.get.mockRejectedValueOnce(Object.assign(new Error('已过期'), { status: 410, code: 'TASK_EXPIRED' }))
+    await runner.start('deepseek:deepseek-flash')
+    const oldId = ports.submit.mock.calls[0][0].requestId
+    expect(runner.getSnapshot().rows[0]).toMatchObject({ status: 'failed', errorCode: 'TASK_EXPIRED' })
+    expect(runner.getSnapshot().rows[0].requestId).toBeUndefined()
+    await runner.retry('deepseek:deepseek-flash')
+    expect(ports.submit.mock.calls[1][0].requestId).not.toBe(oldId)
+  })
+
   it('一次只提交一条，重复开始不重复请求，整个批次固定默认模型', async () => {
     const { runner, ports } = setup()
     const first = deferred<GenerationTask<unknown>>()
@@ -86,7 +111,7 @@ describe('邮件批量串行队列', () => {
     expect(ports.onInvalidKey).toHaveBeenCalledTimes(code === 'INVALID_PROVIDER_KEY' ? 1 : 0)
   })
 
-  it.each(['RATE_LIMIT', 'USER_CONCURRENCY', 'GLOBAL_CONCURRENCY', 'MODEL_KEY_INVALID'])('提交被 %s 拒绝时保留待处理行及原幂等键', async code => {
+  it.each(['RATE_LIMIT', 'USER_CONCURRENCY', 'GLOBAL_CONCURRENCY', 'MODEL_KEY_INVALID', 'INSUFFICIENT_CREDITS', 'PRICE_CHANGED', 'MODEL_UNAVAILABLE', 'CREDIT_ACCOUNT_REVIEW'])('提交被 %s 拒绝时保留待处理行及原幂等键', async code => {
     const { runner, ports } = setup()
     ports.submit.mockRejectedValueOnce(Object.assign(new Error('服务限制'), { status: 429, code }))
     await runner.start('默认模型')

@@ -13,7 +13,7 @@ import { videoGenerationAvailable } from './video-providers/seedance/config.js'
 import { maintainVideoJobs, recordVideoCallback } from './video-jobs/maintenance.js'
 import { z } from 'zod'
 import { authenticate } from './auth.js'
-import { database, withIdentity } from './db.js'
+import { runtimeScope, database, withIdentity } from './db.js'
 import { describeError, HttpError } from './errors.js'
 import { identifier, projectWriteSchema, uploadSchema } from '../shared/cloud.js'
 import { readProject, requireProject, toAsset, validateReferences } from './projects.js'
@@ -146,7 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       waitUntil(maintainVideoJobs().catch(() => console.error(JSON.stringify({ evt: 'video-maintenance', code: 'MAINTENANCE_FAILED' }))))
       return
     }
-    if ((path.join('/') === 'internal/email-cleanup' || path.join('/') === 'internal/image-jobs-sweep') && method === 'GET') {
+    if ((path.join('/') === 'internal/email-maintenance' || path.join('/') === 'internal/email-cleanup' || path.join('/') === 'internal/image-jobs-sweep') && (method === 'GET' || (path.join('/') === 'internal/email-maintenance' && method === 'POST'))) {
       const secret = process.env.CRON_SECRET
       const supplied = req.headers.authorization?.replace(/^Bearer /, '') ?? ''
       if (!secret || supplied.length !== secret.length || !timingSafeEqual(Buffer.from(supplied), Buffer.from(secret)))
@@ -160,8 +160,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const [sync] = await sql`select aigc.expire_sync_credits() as expired`
           return { expired: Number(expired.expired), deleted: Number(deleted.deleted), limited: Number(limited.deleted), syncExpired:Number(sync.expired) }
         }
-        const [row] = await sql`select aigc.purge_expired_email_tasks() as deleted`
-        return { deleted: Number(row.deleted) }
+        await sql`select set_config('aigc.scope',${runtimeScope()},true),set_config('aigc.user_id','',true)`
+        const [expired] = await sql`select aigc.expire_email_tasks(${runtimeScope()}) as expired`
+        if (path.join('/') === 'internal/email-maintenance') return { expired: Number(expired.expired) }
+        const [row] = await sql`select aigc.purge_expired_email_tasks(${runtimeScope()}) as deleted`
+        return { deleted: Number(row.deleted), expired: Number(expired.expired) }
       })
       res.status(200).json(result)
       return

@@ -8,6 +8,8 @@ import { usePreferencesStore } from '@/features/preferences/store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsDialog from './SettingsDialog'
 
+vi.mock('@/features/model-settings/ModelSettingsPanel', () => ({ default: () => null }))
+
 const SETTINGS_CSS = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
 
 function stubMatchMedia(narrow: boolean) {
@@ -55,7 +57,7 @@ describe('设置弹窗窄屏布局', () => {
     expect(menu.classList.contains('is-narrow')).toBe(true)
     expect(menu.textContent).toContain('通用')
     expect(menu.textContent).toContain('个性化')
-    expect(menu.textContent).toContain('模型与密钥')
+    expect(menu.textContent).not.toContain('模型与密钥')
     expect(menu.textContent).toContain('数据控制')
     expect(menu.textContent).toContain('账号')
 

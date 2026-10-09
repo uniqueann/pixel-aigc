@@ -1,3 +1,7 @@
+import { recommendedEmailModel, EMAIL_LANGUAGES } from '@shared/email-models'
+import EmailModelChoice from '@/features/email-assistant/EmailModelChoice'
+import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
+import { openCreditRecharge } from '@/services/api/billing'
 import { useEffect, useRef, useState, type TdHTMLAttributes } from 'react'
 import { Alert, App, Button, Card, Descriptions, Image, Input, Modal, Progress, Space, Table, Tag, Upload } from 'antd'
 import { CopyOutlined, DownloadOutlined, InboxOutlined, PauseOutlined, PlayCircleOutlined, RedoOutlined } from '@ant-design/icons'
@@ -28,6 +32,8 @@ const STATUS_COLORS: Record<EmailBatchStatus, string> = {
 
 export default function BatchEmailAssistant({ controller, configuration, singleBusy }: Props) {
   const { message } = App.useApp()
+  const [pickedModel, setPickedModel] = useState<string>()
+  const balance = useKnownCreditBalance()
   const [reading, setReading] = useState(false)
   const [importError, setImportError] = useState<string>()
   const [selectedId, setSelectedId] = useState<string>()
@@ -43,9 +49,25 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
   const invalidLocators = controller.rows.flatMap((row, index) => row.status === 'invalid'
     ? [formatEmailBatchLocator(index + 1, row.recordNumber)] : [])
   const locked = controller.busy || controller.unresolved
-  const cannotGenerate = locked || reading || singleBusy || !configuration.ready
-  const modelId = controller.modelProfileId ?? configuration.defaultModelProfileId
-  const modelLabel = configuration.profiles.find(profile => profile.id === modelId)?.label ?? configuration.defaultModelLabel
+  const languages = [...new Set(controller.rows.flatMap(row => row.params ? [row.params.language] : []))]
+  const mixed = languages.length > 1
+  const language = languages.length === 1 ? languages[0] : undefined
+  const modelId = controller.modelProfileId ?? pickedModel ?? configuration.defaultModelProfileId
+    ?? (!mixed ? recommendedEmailModel(language ?? usePreferencesStore.getState().preferences.email.language) : undefined)
+  const profile = configuration.profiles.find(model => model.id === modelId)
+  const cannotGenerate = locked || reading || singleBusy || !configuration.ready || !profile?.available || !modelId
+  const remainingCost = counts.pending * (profile?.credits ?? 0)
+  const charged = controller.rows.reduce((sum, row) => sum + (row.creditsCost ?? 0), 0)
+  const confirmRun = (retry = false) => {
+    if (!modelId || !profile || cannotGenerate) return
+    if (balance != null && balance < profile.credits) { openCreditRecharge(); return }
+    const count = retry ? counts.failed : counts.pending
+    Modal.confirm({ title: retry ? '确认重试失败邮件' : '确认批量生成',
+      content: `${profile.label}，每次成功 ${profile.credits} 积分；本次 ${count} 条，预计 ${count * profile.credits} 积分。失败返还，余额不足时暂停。`,
+      okText: '确认生成', cancelText: '取消',
+      onOk: () => retry ? controller.retry(modelId, undefined, profile.priceVersion) : controller.start(modelId, profile.priceVersion),
+    })
+  }
 
   const importFile = async (file: File) => {
     if (locked) return Upload.LIST_IGNORE
@@ -84,7 +106,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
         <ul className="email-batch-template-notes">
           <li>原始邮件内容必填，最多 10,000 字符；编写指导可空，最多 1,000 字符。</li>
           <li>生成设置：总结、回复、检查语法、润色；例如“润色：提升表达清晰度+缩短”。可选方式还包括“增长”“简化”。</li>
-          <li>语言：中文、英语、日语，也可填写 zh、en、ja。</li>
+          <li>语言：{EMAIL_LANGUAGES.map(item => `${item.label}（${item.value}）`).join('、')}。</li>
           <li>设置或语言留空时使用导入时的个人默认值；仅填写“润色”时使用默认润色方式。</li>
         </ul>
       </Card>
@@ -98,7 +120,12 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
         {controller.fileName ? <p className="email-batch-hint">当前文件：{controller.fileName}。上传新文件会替换本批次。</p> : null}
         <p className="email-batch-hint">批次保留在当前页面。切换单个／批量不会丢失；刷新或离开邮件页会停止后续生成，请及时导出。</p>
         <p className="email-batch-hint">每次按顺序生成一封，每小时最多提交 60 条。已提交邮件在最近 7 天历史中可查询。</p>
-        <p className="email-batch-model">默认模型：{configuration.loading ? '正在加载…' : modelLabel}</p>
+        <div className="email-batch-model"><EmailModelChoice configuration={configuration} value={modelId} language={language}
+          disabled={locked || Boolean(controller.modelProfileId)} onChange={setPickedModel} /></div>
+        {mixed && !modelId ? <Alert type="info" message="混合语种请手动选择统一模型，也可拆成不同语种的批次" /> : null}
+        <p className="email-batch-hint">有效邮件 {validCount} 条 · 待处理预计 {remainingCost} 积分 · 已实扣 {charged} 积分</p>
+        <p className="email-batch-hint">当前余额 {balance ?? '读取中'}{balance != null && profile ? `，按此单价可完成 ${Math.floor(balance / profile.credits)} 条` : ''}
+          <Button type="link" size="small" onClick={openCreditRecharge}>充值积分</Button></p>
         {importError ? <Alert type="error" showIcon message="CSV 导入失败" description={importError} /> : null}
       </Card>
     </div>
@@ -109,11 +136,11 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
           {controller.busy && !controller.recovering ? <Button icon={<PauseOutlined />} disabled={controller.runState === 'pausing'}
             onClick={controller.pause}>{controller.runState === 'pausing' ? '正在暂停…' : '暂停'}</Button>
             : <Button type="primary" icon={<PlayCircleOutlined />} disabled={cannotGenerate || !counts.pending}
-              onClick={() => handleAction(controller.start(configuration.defaultModelProfileId))}>
+              onClick={() => confirmRun()}>
               {controller.runState === 'paused' ? '继续生成' : '生成'}{counts.pending ? ` ${counts.pending} 条` : ''}
             </Button>}
           <Button icon={<RedoOutlined />} disabled={cannotGenerate || !counts.failed}
-            onClick={() => handleAction(controller.retry(configuration.defaultModelProfileId))}>重试失败项</Button>
+            onClick={() => confirmRun(true)}>重试失败项</Button>
           {controller.unresolved ? <Button loading={controller.recovering} disabled={controller.busy && !controller.recovering}
             onClick={() => handleAction(controller.recover())}>重新查询原任务</Button> : null}
         </Space>
@@ -162,6 +189,8 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
         <Descriptions size="small" column={1} items={[
           { key: 'operation', label: '生效设置', children: selected.params ? formatEmailOperation(selected.params) : selected.original['生成设置'] || '—' },
           { key: 'language', label: '生效语言', children: selected.params ? formatEmailLanguage(selected.params) : selected.original['语言'] || '—' },
+          { key: 'cost', label: '实际扣减积分', children: selected.creditsCost ?? '—' },
+          { key: 'model', label: '使用模型', children: configuration.profiles.find(model => model.id === selected.modelProfileId)?.label ?? '—' },
           { key: 'status', label: '状态', children: EMAIL_BATCH_STATUS_LABELS[selected.status] },
         ]} />
         <label>原始邮件内容<Input.TextArea readOnly rows={5} value={selected.original['原始邮件内容']} /></label>

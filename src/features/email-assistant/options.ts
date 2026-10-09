@@ -1,4 +1,4 @@
-import type { EmailAssistLanguage, EmailAssistOperation, EmailPolishStyle } from '@/types'
+import type { EmailAssistOperation, EmailPolishStyle } from '@/types'
 
 export const EMAIL_OPERATIONS: { value: EmailAssistOperation; label: string }[] = [
   { value: 'summarize', label: '总结' },
@@ -14,11 +14,7 @@ export const EMAIL_POLISH_STYLES: { value: EmailPolishStyle; label: string }[] =
   { value: 'simplify', label: '简化' },
 ]
 
-export const EMAIL_LANGUAGES: { value: EmailAssistLanguage; label: string }[] = [
-  { value: 'zh', label: '中文' },
-  { value: 'en', label: '英语' },
-  { value: 'ja', label: '日语' },
-]
+export { EMAIL_LANGUAGES } from '@shared/email-models'
 
 export const EMAIL_BATCH_HEADERS = ['原始邮件内容', '编写指导', '生成设置', '语言'] as const
 export const EMAIL_BATCH_MAX_ROWS = 50

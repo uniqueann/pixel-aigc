@@ -6,7 +6,7 @@ import { SEEDANCE_VIDEO_MODEL, VIDEO_RATIOS, type VideoResult } from '../../shar
 import type { authenticate } from '../auth.js'
 import { runtimeScope, withIdentity } from '../db.js'
 import { HttpError } from '../errors.js'
-import { requireActive } from '../model-settings.js'
+import { requireActive } from '../members.js'
 import { getObjectLimited, putObject } from '../storage.js'
 import { noopBilling, createSqlBilling } from '../image-jobs/billing.js'
 import { reserveAndCreateJob } from '../image-jobs/lifecycle.js'

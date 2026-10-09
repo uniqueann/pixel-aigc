@@ -399,7 +399,7 @@ function MainLayoutContent() {
         <Content className="app-main-content">
           <PreferencesSyncAlert />
           <ErrorBoundary key={location.pathname}>
-            <Outlet context={{ openModelSettings: () => { setSettingsSection('models'); setSettingsOpen(true) } }} />
+            <Outlet context={{ openModelSettings: () => { setSettingsSection('personalization'); setSettingsOpen(true) } }} />
           </ErrorBoundary>
         </Content>
       </Layout>

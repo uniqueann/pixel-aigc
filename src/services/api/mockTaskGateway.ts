@@ -1,3 +1,4 @@
+import { EMAIL_LANGUAGES } from '@shared/email-models'
 import { databaseOperation } from '@/editor/persistence/database'
 import {
   Capability,
@@ -204,9 +205,9 @@ function createMockEmail(params: EmailAssistTaskParams) {
     polish: '润色结果',
     grammar: '语法检查结果',
   }
-  const languageLabels = { zh: '中文', en: 'English', ja: '日本語' }
+  const languageLabel = EMAIL_LANGUAGES.find(item => item.value === params.language)?.label ?? params.language
   const guidance = instruction ? `\n\n已结合编写指导：${instruction}` : ''
-  return `${operationLabels[params.operation]}（${languageLabels[params.language]}）\n\n${source}${source.length >= 96 ? '…' : ''}${guidance}`
+  return `${operationLabels[params.operation]}（${languageLabel}）\n\n${source}${source.length >= 96 ? '…' : ''}${guidance}`
 }
 
 function escapeSvgText(value: string) {
