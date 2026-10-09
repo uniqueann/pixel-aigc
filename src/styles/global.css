@@ -602,7 +602,10 @@ body.sidebar-resizing * {
   min-width: 0;
   color: var(--color-text-primary);
   font-size: 14px;
-  line-height: 22px;
+  /* 不固定 line-height：继承外层行高（选中框 30px / 下拉项约 22px / 静态 32px），
+     让 inline-flex 盒恰好填满行盒，图标经 align-items 居中。
+     之前写死 22px 时，inline-flex 的基线取自 SVG 图标底边（替换元素基线规则），
+     在 30px 行盒里按基线对齐会整体上偏约 2px。 */
 }
 
 .model-choice-static {
@@ -1163,6 +1166,9 @@ body.sidebar-resizing * {
 .canvas-asset-picker-item:hover, .canvas-asset-picker-item:focus-visible { border-color: #21cfa0; }
 .canvas-asset-picker-item:disabled { opacity: .6; cursor: wait; }
 .canvas-asset-picker-item img { width: 100%; height: 120px; object-fit: contain; border-radius: 4px; }
+.canvas-asset-picker-skeleton { height: 190px; border-radius: 8px; background: linear-gradient(100deg, #1f1f23 40%, #2a2a30 50%, #1f1f23 60%); background-size: 200% 100%; animation: canvas-asset-skeleton-pulse 1.2s ease-in-out infinite; }
+@keyframes canvas-asset-skeleton-pulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.canvas-asset-picker-syncing { color: var(--color-text-muted); font-size: 12px; }
 
 .free-canvas-page-header {
   display: flex;
