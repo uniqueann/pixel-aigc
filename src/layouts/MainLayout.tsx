@@ -277,6 +277,7 @@ export default function MainLayout() {
 
 function MainLayoutContent() {
   const location = useLocation()
+  const navigate = useNavigate()
   const { message } = App.useApp()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
@@ -334,6 +335,10 @@ function MainLayoutContent() {
   }, [])
 
   const handleAccountMenu = ({ key }: { key: string }) => {
+    if (key === 'help') {
+      navigate('/help')
+      return
+    }
     if (key === 'settings' || key === 'personalization') {
       setSettingsSection(key === 'personalization' ? 'personalization' : 'general')
       setSettingsOpen(true)

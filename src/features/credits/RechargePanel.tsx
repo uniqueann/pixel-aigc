@@ -89,7 +89,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
     finally {if(isCurrentOwner()) setBusy(undefined)}
   }
   return <Space direction="vertical" size={12} style={{width:'100%',marginBottom:24}}>
-    <span>一次购买，按需使用。充值积分长期有效，新账号赠送 30 积分。</span>
+    <span>一次购买，按需使用。充值积分长期有效，新账号赠送 100 积分。</span>
     {error ? <Alert type="error" message={error} action={<Button size="small" onClick={()=>void load()}>重试</Button>} /> : null}
     {!catalog ? <span>正在加载充值套餐…</span> : <>
       <span>支付币种：{catalog.currency==='USD' ? '美元（USD）' : '人民币（CNY）'}</span>
