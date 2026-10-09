@@ -1,6 +1,7 @@
 import { Select } from 'antd'
 import type { CSSProperties, ReactNode } from 'react'
 import { imageModelHint, imageModelVendor, isImageModelVendor, type ImageModelHintScope, type ImageModelVendor } from '@shared/image-models'
+import { emailModelVendor } from '@shared/email-models'
 import ModelVendorMark from './ModelVendorMark'
 
 export interface ModelChoiceOption {
@@ -30,7 +31,7 @@ interface Props {
 
 function vendorOf(option: ModelChoiceOption): ImageModelVendor | undefined {
   if (isImageModelVendor(option.vendor)) return option.vendor
-  return imageModelVendor(option.id)
+  return imageModelVendor(option.id) ?? emailModelVendor(option.id)
 }
 
 function ModelName({ option }: { option: ModelChoiceOption }) {
