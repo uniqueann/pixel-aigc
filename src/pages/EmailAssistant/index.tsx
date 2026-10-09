@@ -61,7 +61,7 @@ function EmailAssistantSession() {
         entryOperation={entryOperation} entryKey={entryKey} onEntryConsumed={consumeEntry} />
     </div>
     {batchVisited || mode === 'batch' ? <div hidden={mode !== 'batch'}>
-      <BatchEmailAssistant controller={batch} configuration={configuration} singleBusy={gate.owner === 'single'} />
+      <BatchEmailAssistant controller={batch} configuration={configuration} singleBusy={gate.owner === 'single'} openModelSettings={openModelSettings} />
     </div> : null}
   </div>
 }
