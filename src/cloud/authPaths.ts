@@ -1,4 +1,4 @@
-const appPath = /^\/(?:$|email(?:\/|$)|image-workstation(?:\/|$)|toolbox(?:\/|$)|canvas(?:\/|$)|assets(?:\/|$))/
+const appPath = /^\/(?:$|email(?:\/|$)|image-workstation(?:\/|$)|toolbox(?:\/|$)|canvas(?:\/|$)|assets(?:\/|$)|help(?:\/|$))/
 
 export function safeNext(raw: string | null, origin = window.location.origin): string {
   if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return '/'

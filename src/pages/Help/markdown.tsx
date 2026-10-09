@@ -7,7 +7,7 @@ const { Title, Paragraph, Text, Link } = Typography
  * docs/help/*.md 专用的极简 markdown 渲染器。
  *
  * 只支持帮助文档实际用到的子集：`#`/`##` 标题、`-` 无序列表、
- * `|` 表格（含 `---` 分隔行）、围栏代码块、行内的 `**加粗**`、
+ * `1.` 有序列表、`|` 表格（含 `---` 分隔行）、围栏代码块、行内的 `**加粗**`、
  * `` `代码` `` 和 `[文字](链接)`。文档是随仓库维护的一手内容，
  * 新增语法时请同步扩展这里（并补测试）。
  */
@@ -118,6 +118,24 @@ export function Markdown({ body }: { body: string }) {
       flushParagraph(`p-${blocks.length}`)
       blocks.push(<Title key={`h1-${blocks.length}`} level={2} className="help-title">{renderInline(trimmed.slice(2), `h1-${blocks.length}`)}</Title>)
       i += 1
+      continue
+    }
+
+    // 有序列表：连续的 `1.` 行合成一个 <ol>
+    if (/^\d+\.\s/.test(trimmed)) {
+      flushParagraph(`p-${blocks.length}`)
+      const items: string[] = []
+      while (i < lines.length) {
+        const m = /^(\d+)\.\s/.exec(lines[i].trim())
+        if (!m) break
+        items.push(lines[i].trim().slice(m[0].length))
+        i += 1
+      }
+      blocks.push(
+        <ol key={`ol-${blocks.length}`}>
+          {items.map((item, k) => <li key={k}>{renderInline(item, `oli-${blocks.length}-${k}`)}</li>)}
+        </ol>,
+      )
       continue
     }
 

@@ -9,4 +9,11 @@ describe('登录后的返回地址', () => {
       expect(safeNext(target, origin)).toBe('/')
     }
   })
+
+  it('帮助中心深链登录后保留', () => {
+    const origin = 'https://aigc.contentup.cc'
+    expect(safeNext('/help', origin)).toBe('/help')
+    expect(safeNext('/help/credits', origin)).toBe('/help/credits')
+    expect(safeNext('/help/faq?from=menu', origin)).toBe('/help/faq?from=menu')
+  })
 })
