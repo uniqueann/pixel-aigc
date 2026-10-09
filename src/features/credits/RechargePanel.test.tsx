@@ -134,7 +134,7 @@ describe('充值账号与异步结果隔离', () => {
     expect(screen.queryByText('充值订单')).toBeNull()
     fireEvent.click(screen.getAllByRole('button', { name: /购\s*买/ })[0])
     await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-b', 299, 'USD'))
-  }, 15_000)
+  })
   it('旧账号晚到的目录不覆盖新账号余额和订单', async () => {
     const old = deferred<BillingCatalog>()
     api.catalog.mockReturnValueOnce(old.promise).mockResolvedValue({ ...catalog(), balance: 55 })
@@ -159,7 +159,7 @@ describe('充值账号与异步结果隔离', () => {
     await screen.findByText('支付币种：美元（USD）')
     await act(async () => { old.resolve(order({ status: 'paid' })) })
     expect(onPaid).not.toHaveBeenCalled(); expect(api.refresh).not.toHaveBeenCalled()
-  }, 15_000)
+  })
   it('确认到账后刷新余额并通知父组件', async () => {
     const onPaid = vi.fn()
     api.orders.mockResolvedValue({ items: [order()] }); api.order.mockResolvedValue(order({ status: 'paid' }))
@@ -167,7 +167,7 @@ describe('充值账号与异步结果隔离', () => {
     fireEvent.click(await screen.findByRole('button', { name: '查询到账' }))
     await waitFor(() => expect(onPaid).toHaveBeenCalledTimes(1))
     expect(api.refresh).toHaveBeenCalledWith('owner-a')
-  }, 15_000)
+  })
   it('退出登录后清空充值内容', async () => {
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）')
