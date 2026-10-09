@@ -22,6 +22,21 @@ describe('帮助文档 markdown 渲染器', () => {
     expect(ul!.querySelectorAll('li')).toHaveLength(2)
   })
 
+  it('有序列表合成一个 ol', () => {
+    const { container } = render(<Markdown body={'1. 第一步\n2. 第二步\n10. 第十步\n'} />)
+    const ol = container.querySelector('.help-article ol')
+    expect(ol).toBeTruthy()
+    const items = ol!.querySelectorAll('li')
+    expect(items).toHaveLength(3)
+    expect(items[0].textContent).toBe('第一步')
+    expect(items[2].textContent).toBe('第十步')
+  })
+
+  it('有序列表被段落打断后分开渲染', () => {
+    const { container } = render(<Markdown body={'1. 第一步\n\n中间一段\n\n1. 另起一步\n'} />)
+    expect(container.querySelectorAll('.help-article ol')).toHaveLength(2)
+  })
+
   it('链接：外链新窗口打开', () => {
     render(<Markdown body={'去 [DeepSeek](https://platform.deepseek.com) 看看\n'} />)
     const a = screen.getByRole('link', { name: 'DeepSeek' })
