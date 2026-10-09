@@ -1,35 +1,11 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Layout, Menu, Typography } from 'antd'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { Layout, Menu } from 'antd'
 import { HELP_ARTICLES, findHelpArticle } from './articles'
+import { Markdown } from './markdown'
 import './help.css'
 
 const { Sider, Content } = Layout
-const { Title, Paragraph, Text } = Typography
-
-const markdownComponents = {
-  h1: ({ children }: { children?: React.ReactNode }) => <Title level={2} className="help-title">{children}</Title>,
-  h2: ({ children }: { children?: React.ReactNode }) => <Title level={4}>{children}</Title>,
-  h3: ({ children }: { children?: React.ReactNode }) => <Title level={5}>{children}</Title>,
-  p: ({ children }: { children?: React.ReactNode }) => <Paragraph>{children}</Paragraph>,
-  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
-    <Typography.Link href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
-      {children}
-    </Typography.Link>
-  ),
-  strong: ({ children }: { children?: React.ReactNode }) => <Text strong>{children}</Text>,
-  code: ({ children }: { children?: React.ReactNode }) => <Text code>{children}</Text>,
-}
-
-function ArticleBody({ body }: { body: string }) {
-  return (
-    <div className="help-article">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{body}</ReactMarkdown>
-    </div>
-  )
-}
 
 export default function Help() {
   const { article: slug } = useParams()
@@ -60,7 +36,7 @@ export default function Help() {
           <Menu mode="inline" selectedKeys={[article.slug]} items={menuItems} className="help-menu" />
         </Sider>
         <Content className="help-content">
-          <ArticleBody body={article.body} />
+          <Markdown body={article.body} />
         </Content>
       </Layout>
     </div>
