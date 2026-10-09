@@ -12,12 +12,13 @@ interface Props {
   provider: PaymentProvider
   providerLabel: string
   busy?: string
+  expanded: boolean
+  onExpand: () => void
   onPurchase: (pack: Pack, discount?: CreditDiscount) => Promise<void>
 }
 
-/** 由父组件按账号、通道、价格和打开状态重建，报价只存在当前充值会话。 */
-export default function CreditPackPurchase({ owner, catalog, provider, providerLabel, busy, onPurchase }: Props) {
-  const [expanded, setExpanded] = useState(false)
+/** 由父组件按账号、通道、价格和打开状态重建，报价只存在当前充值会话。展开状态由父组件保留。 */
+export default function CreditPackPurchase({ owner, catalog, provider, providerLabel, busy, expanded, onExpand, onPurchase }: Props) {
   const [draft, setDraft] = useState('')
   const [checking, setChecking] = useState(false)
   const [preview, setPreview] = useState<CreditDiscountPreview>()
@@ -35,6 +36,7 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
   }
   const remove = () => { invalidate(); setDraft(''); setNotice(undefined) }
   const unverified = Boolean(draft.trim()) && preview?.code !== draft.trim().toUpperCase()
+  const removable = Boolean(preview) || Boolean(draft.trim())
   const apply = async () => {
     invalidate()
     let code: string
@@ -71,13 +73,13 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
   }
   return <Space direction="vertical" size={12} style={{ width: '100%' }}>
     {catalog.providers.length ? <>
-      {!expanded ? <Button type="link" style={{ padding: 0 }} onClick={() => setExpanded(true)}>有折扣码？</Button> : <>
+      {!expanded ? <Button type="link" style={{ padding: 0 }} onClick={onExpand}>有折扣码？</Button> : <>
         <Space.Compact style={{ width: '100%' }}>
           <Input aria-label="折扣码" placeholder="输入折扣码" value={draft} maxLength={100} disabled={Boolean(busy)}
             onChange={event => { invalidate(); setDraft(event.target.value); setNotice(undefined) }}
             onPressEnter={() => { if (!checking && !busy) void apply() }} />
           <Button loading={checking} disabled={Boolean(busy)} onClick={() => void apply()}>应用折扣码</Button>
-          <Button disabled={Boolean(busy)} onClick={remove}>移除</Button>
+          {removable ? <Button autoInsertSpace={false} disabled={Boolean(busy)} onClick={remove}>移除</Button> : null}
         </Space.Compact>
         {notice ? <Alert type={notice.type} message={notice.text} /> : null}
       </>}

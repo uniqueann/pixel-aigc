@@ -23,6 +23,13 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
   const [error,setError]=useState<string>()
   const [refundOrder,setRefundOrder]=useState<CreditOrder>()
   const [refundReason,setRefundReason]=useState('')
+  // 展开状态跨通道保留；报价仍随购买组件按通道重建而清空。
+  const [discountExpanded,setDiscountExpanded]=useState(false)
+  const [trackedOpen,setTrackedOpen]=useState(open)
+  if (open!==trackedOpen) {
+    setTrackedOpen(open)
+    if (!open) setDiscountExpanded(false)
+  }
   const version=useRef(0)
   const mounted=useRef(true)
   const isCurrentOwner=useCallback(()=>mounted.current && useUserStore.getState().userId===owner,[owner])
@@ -82,7 +89,6 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
     finally {if(isCurrentOwner()) setBusy(undefined)}
   }
   return <Space direction="vertical" size={12} style={{width:'100%',marginBottom:24}}>
-    <strong>购买积分</strong>
     <span>一次购买，按需使用。充值积分长期有效，新账号赠送 30 积分。</span>
     {error ? <Alert type="error" message={error} action={<Button size="small" onClick={()=>void load()}>重试</Button>} /> : null}
     {!catalog ? <span>正在加载充值套餐…</span> : <>
@@ -92,7 +98,8 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
       {!catalog.providers.length ? <Alert type="info" message="充值尚未开放，当前可使用已有积分" /> : null}
       {catalog.paymentBlocked ? <Alert type="warning" message="账户存在待核对的支付记录，请联系支持" /> : null}
       <CreditPackPurchase key={JSON.stringify([owner,open,provider,catalog.currency,catalog.packs,catalog.providers])}
-        owner={owner} catalog={catalog} provider={provider} providerLabel={PROVIDER_LABELS[provider]} busy={busy} onPurchase={purchase} />
+        owner={owner} catalog={catalog} provider={provider} providerLabel={PROVIDER_LABELS[provider]} busy={busy}
+        expanded={discountExpanded} onExpand={()=>setDiscountExpanded(true)} onPurchase={purchase} />
       <BillingExplanation freeBgRemoveRemaining={catalog.freeBgRemoveRemaining} freeBgRemoveMonth={catalog.freeBgRemoveMonth} />
       <small>现金退款需人工审核，仅处理未使用部分，按原支付通道退款；赠送积分不折现。生成失败自动退积分。</small>
     </>}

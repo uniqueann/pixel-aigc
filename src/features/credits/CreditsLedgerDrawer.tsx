@@ -87,7 +87,7 @@ export default function CreditsLedgerDrawer({
 
   return (
     <Drawer
-      title={`积分明细 · 余额 ${page?.balance ?? credits}`}
+      title={`购买积分 · 余额 ${page?.balance ?? credits}`}
       placement="right"
       width="min(420px, 100vw)"
       open={open}
