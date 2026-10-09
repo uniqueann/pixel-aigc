@@ -66,7 +66,11 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
     Modal.confirm({ title: retry ? '确认重试失败邮件' : '确认批量生成',
       content: `${profile.label}，每次成功 ${profile.credits} 积分；本次 ${count} 条，预计 ${count * profile.credits} 积分。${balance != null ? `当前余额预计可完成 ${Math.floor(balance / profile.credits)} 条。` : ''}失败返还，余额不足时暂停。`,
       okText: '确认生成', cancelText: '取消',
-      onOk: () => retry ? controller.retry(modelId, undefined, profile.priceVersion) : controller.start(modelId, profile.priceVersion),
+      // start()/retry() 的 promise 要等整批跑完才 resolve；这里不能返回它，
+      // 否则确认框会一直 loading 盖住页面，挡住「暂停」按钮。
+      onOk: () => {
+        handleAction(retry ? controller.retry(modelId, undefined, profile.priceVersion) : controller.start(modelId, profile.priceVersion))
+      },
     })
   }
 

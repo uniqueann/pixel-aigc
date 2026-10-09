@@ -222,6 +222,32 @@ describe('邮件助手单个与批量页面', () => {
     expect(buttonByText(batchPane(), /导出 CSV/).disabled).toBe(true)
   })
 
+  it('确认框关闭后批次在后台跑，暂停期间不提交、继续后接着跑', async () => {
+    let resolveFirst!: (task: GenerationTask<unknown>) => void
+    mocks.submit.mockReturnValueOnce(new Promise<GenerationTask<unknown>>(done => { resolveFirst = done }))
+    render(<EmailAssistant />, { wrapper })
+    clickMode('批量')
+    await importCsv(['邮件一,,,', '邮件二,,,', '邮件三,,,'])
+    fireEvent.click(buttonByText(batchPane(), /^生成 \d+ 条$/))
+    await waitFor(() => expect(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')).toBeTruthy())
+    fireEvent.click(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')!)
+    await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1))
+    // 批次仍在跑：确认框必须已经关闭，不能盖住「暂停」按钮
+    expect(document.querySelector('.ant-modal-confirm .ant-btn-loading')).toBeNull()
+    await waitFor(() => expect(document.querySelector('.ant-modal-confirm')).toBeNull())
+    // 暂停：等当前条完成后，不再提交新邮件
+    fireEvent.click(buttonByText(batchPane(), /^暂\s*停$/))
+    await act(async () => { resolveFirst(completed()); await Promise.resolve() })
+    await waitFor(() => expect(batchPane().getByText(/共 3 条 · 待处理 2/)).toBeTruthy())
+    expect(mocks.submit).toHaveBeenCalledTimes(1)
+    // 继续：从剩下的条目接着跑
+    fireEvent.click(buttonByText(batchPane(), /继续生成/))
+    await waitFor(() => expect(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')).toBeTruthy())
+    fireEvent.click(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')!)
+    await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(batchPane().getByText(/成功 3/)).toBeTruthy())
+  })
+
   it('批量模板可直达个人默认值设置，确认框提示余额预计可完成条数，开始后锁定型号', async () => {
     useUserStore.setState({ credits: 10, creditsLoaded: true })
     render(<EmailAssistant />, { wrapper })
