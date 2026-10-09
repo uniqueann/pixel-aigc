@@ -21,6 +21,7 @@ interface Props {
   controller: EmailBatchController
   configuration: EmailModelConfiguration
   singleBusy: boolean
+  openModelSettings: () => void
 }
 
 const batchCellLabel = (label: string) => ({ 'data-label': label } as TdHTMLAttributes<HTMLTableCellElement>)
@@ -30,7 +31,7 @@ const STATUS_COLORS: Record<EmailBatchStatus, string> = {
   failed: 'error', invalid: 'warning', uncertain: 'warning',
 }
 
-export default function BatchEmailAssistant({ controller, configuration, singleBusy }: Props) {
+export default function BatchEmailAssistant({ controller, configuration, singleBusy, openModelSettings }: Props) {
   const { message } = App.useApp()
   const [pickedModel, setPickedModel] = useState<string>()
   const balance = useKnownCreditBalance()
@@ -63,7 +64,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
     if (balance != null && balance < profile.credits) { openCreditRecharge(); return }
     const count = retry ? counts.failed : counts.pending
     Modal.confirm({ title: retry ? '确认重试失败邮件' : '确认批量生成',
-      content: `${profile.label}，每次成功 ${profile.credits} 积分；本次 ${count} 条，预计 ${count * profile.credits} 积分。失败返还，余额不足时暂停。`,
+      content: `${profile.label}，每次成功 ${profile.credits} 积分；本次 ${count} 条，预计 ${count * profile.credits} 积分。${balance != null ? `当前余额预计可完成 ${Math.floor(balance / profile.credits)} 条。` : ''}失败返还，余额不足时暂停。`,
       okText: '确认生成', cancelText: '取消',
       // start()/retry() 的 promise 要等整批跑完才 resolve；这里不能返回它，
       // 否则确认框会一直 loading 盖住页面，挡住「暂停」按钮。
@@ -109,9 +110,10 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
         <Image src={templatePreview} alt={`CSV 模板列名：${EMAIL_BATCH_HEADERS.join('、')}`} width="100%" />
         <ul className="email-batch-template-notes">
           <li>原始邮件内容必填，最多 10,000 字符；编写指导可空，最多 1,000 字符。</li>
-          <li>生成设置：总结、回复、检查语法、润色；例如“润色：提升表达清晰度+缩短”。可选方式还包括“增长”“简化”。</li>
+          <li>生成设置列填操作类型：总结、回复、检查语法、润色；例如“润色：提升表达清晰度+缩短”。可选方式还包括“增长”“简化”。</li>
           <li>语言：{EMAIL_LANGUAGES.map(item => `${item.label}（${item.value}）`).join('、')}。</li>
-          <li>设置或语言留空时使用导入时的个人默认值；仅填写“润色”时使用默认润色方式。</li>
+          <li>设置或语言留空时使用导入时的<Button type="link" size="small" onClick={openModelSettings}
+            style={{ padding: '0 2px', height: 'auto', fontSize: 'inherit', verticalAlign: 'baseline' }}>个人默认值</Button>；仅填写“润色”时使用默认润色方式。</li>
         </ul>
       </Card>
       <Card title="导入邮件" size="small">
@@ -126,6 +128,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
         <p className="email-batch-hint">每次按顺序生成一封，每小时最多提交 60 条。已提交邮件在最近 7 天历史中可查询。</p>
         <div className="email-batch-model"><EmailModelChoice configuration={configuration} value={modelId} language={language}
           disabled={locked || Boolean(controller.modelProfileId)} onChange={setPickedModel} /></div>
+        {controller.modelProfileId ? <p className="email-batch-hint">本批次已固定使用同一型号，开始后不可更改。</p> : null}
         {mixed && !modelId ? <Alert type="info" message="混合语种请手动选择统一模型，也可拆成不同语种的批次" /> : null}
         <p className="email-batch-hint">有效邮件 {validCount} 条 · 待处理预计 {remainingCost} 积分 · 已实扣 {charged} 积分</p>
         <p className="email-batch-hint">当前余额 {balance ?? '读取中'}{balance != null && profile ? `，按此单价可完成 ${Math.floor(balance / profile.credits)} 条` : ''}
