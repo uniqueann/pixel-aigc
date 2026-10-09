@@ -23,7 +23,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
   const [error,setError]=useState<string>()
   const [refundOrder,setRefundOrder]=useState<CreditOrder>()
   const [refundReason,setRefundReason]=useState('')
-  // 展开状态跨通道保留；报价仍随购买组件按通道重建而清空。
+  // 展开状态跨通道保留。已输入代码也保留，报价由购买组件在通道变化时清空。
   const [discountExpanded,setDiscountExpanded]=useState(false)
   const [trackedOpen,setTrackedOpen]=useState(open)
   if (open!==trackedOpen) {
@@ -97,7 +97,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
         : catalog.providers.length===1 ? <span>付款方式：{PROVIDER_LABELS[catalog.providers[0]]}</span> : null}
       {!catalog.providers.length ? <Alert type="info" message="充值尚未开放，当前可使用已有积分" /> : null}
       {catalog.paymentBlocked ? <Alert type="warning" message="账户存在待核对的支付记录，请联系支持" /> : null}
-      <CreditPackPurchase key={JSON.stringify([owner,open,provider,catalog.currency,catalog.packs,catalog.providers])}
+      <CreditPackPurchase key={JSON.stringify([owner,open,catalog.currency,catalog.packs,catalog.providers])}
         owner={owner} catalog={catalog} provider={provider} providerLabel={PROVIDER_LABELS[provider]} busy={busy}
         expanded={discountExpanded} onExpand={()=>setDiscountExpanded(true)} onPurchase={purchase} />
       <BillingExplanation freeBgRemoveRemaining={catalog.freeBgRemoveRemaining} freeBgRemoveMonth={catalog.freeBgRemoveMonth} />
@@ -105,7 +105,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
     </>}
     {orders.length ? <><strong>充值订单</strong>{orders.map(order=><div key={order.id} style={{padding:'8px 0',borderBottom:'1px solid var(--color-border)'}}>
       <span>{order.paidAmount == null && order.quotedDiscount ? '预计 ' : ''}{formatCreditPrice(order.paidAmount ?? order.quotedAmount ?? order.amount,order.currency)} · {order.credits} 分 · {STATUS_LABELS[order.status]}</span>
-      {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount) ? <small style={{display:'block'}}>原价 {formatCreditPrice(order.amount,order.currency)} · 折扣码 {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount)?.code}</small> : null}
+      {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount) ? <small style={{display:'block'}}>原价 {formatCreditPrice(order.amount,order.currency)} · 折扣代码 {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount)?.code}</small> : null}
       <small style={{display:'block'}}>{new Date(order.createdAt).toLocaleString('zh-CN')} · {PROVIDER_LABELS[order.provider]}</small>
       <Space>{order.status === 'pending' ? <><Button size="small" loading={busy===order.id} onClick={()=>void checkOrder(order.id)}>查询到账</Button>{order.checkoutUrl ? <Button size="small" onClick={()=>window.location.assign(order.checkoutUrl!)}>继续支付</Button> : null}</> : null}
         {order.status === 'paid' ? <Button size="small" disabled={order.refundRequested} onClick={()=>{setRefundOrder(order);setRefundReason('')}}>{order.refundRequested ? '退款申请已提交' : '申请退款'}</Button> : null}</Space>

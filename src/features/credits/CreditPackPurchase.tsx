@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Input, Space } from 'antd'
+import { TagOutlined } from '@ant-design/icons'
+import { Button, Input, Space } from 'antd'
 import { formatCreditPrice, type BillingCatalog, type PaymentProvider } from '@shared/billing'
 import { normalizeCreditDiscountCode, type CreditDiscount, type CreditDiscountPreview } from '@shared/credit-discounts'
 import { previewCreditDiscount } from '@/services/api/billing'
 import { useUserStore } from '@/store/useUserStore'
+
+const DISCOUNT_SUCCESS = '#34d399'
+const DISCOUNT_ERROR = '#e07a6e'
+const FORMAT_ERROR = '折扣码仅支持 1–14 位字母或数字'
 
 type Pack = BillingCatalog['packs'][number]
 interface Props {
@@ -17,12 +22,26 @@ interface Props {
   onPurchase: (pack: Pack, discount?: CreditDiscount) => Promise<void>
 }
 
-/** 由父组件按账号、通道、价格和打开状态重建，报价只存在当前充值会话。展开状态由父组件保留。 */
+function savingsText(result: CreditDiscountPreview) {
+  const bps = result.packs.find(item => item.available && item.discount)?.discount?.percentBps ?? 0
+  const rounded = Math.round(bps / 10) / 10
+  const label = Number.isInteger(rounded) ? String(rounded) : String(rounded)
+  return `太棒了！你节省了 ${label}%！最终金额以结账页为准。`
+}
+
+function panelNotice(error: unknown, fallback: string) {
+  const text = error instanceof Error ? error.message : fallback
+  return text === FORMAT_ERROR ? '折扣代码格式无效：仅支持 1-14 位大写字母或数字。' : text
+}
+
+/** 报价只存在当前充值会话。展开状态由父组件保留；切换通道时保留已输入代码并清报价。 */
 export default function CreditPackPurchase({ owner, catalog, provider, providerLabel, busy, expanded, onExpand, onPurchase }: Props) {
   const [draft, setDraft] = useState('')
+  const [draftProvider, setDraftProvider] = useState(provider)
   const [checking, setChecking] = useState(false)
   const [preview, setPreview] = useState<CreditDiscountPreview>()
   const [notice, setNotice] = useState<{ type: 'error' | 'success'; text: string }>()
+  const [trackedProvider, setTrackedProvider] = useState(provider)
   const version = useRef(0)
   const controller = useRef<AbortController>()
   const mounted = useRef(true)
@@ -31,18 +50,27 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
     mounted.current = true
     return () => { mounted.current = false; controller.current?.abort() }
   }, [])
+  useEffect(() => {
+    version.current += 1
+    controller.current?.abort()
+  }, [provider])
+  if (trackedProvider !== provider) {
+    setTrackedProvider(provider)
+    setChecking(false)
+  }
   const invalidate = () => {
     version.current++; controller.current?.abort(); setChecking(false); setPreview(undefined)
   }
-  const remove = () => { invalidate(); setDraft(''); setNotice(undefined) }
-  const unverified = Boolean(draft.trim()) && preview?.code !== draft.trim().toUpperCase()
-  const removable = Boolean(preview) || Boolean(draft.trim())
+  const staleChannel = draftProvider !== provider && Boolean(draft.trim())
+  const quote = !staleChannel && preview?.provider === provider ? preview : undefined
+  const unverified = Boolean(draft.trim()) && quote?.code !== draft.trim().toUpperCase()
+  const visibleNotice = staleChannel ? { type: 'error' as const, text: '付款方式已更换，请重新验证。' } : notice
   const apply = async () => {
     invalidate()
     let code: string
     try { code = normalizeCreditDiscountCode(draft) }
-    catch (error) { setNotice({ type: 'error', text: (error as Error).message }); return }
-    if (!code) { setNotice({ type: 'error', text: '请输入折扣码' }); return }
+    catch (error) { setNotice({ type: 'error', text: panelNotice(error, '折扣代码格式无效：仅支持 1-14 位大写字母或数字。') }); return }
+    if (!code) { setNotice({ type: 'error', text: '请输入折扣代码。' }); return }
     const request = version.current, abort = new AbortController()
     controller.current = abort; setChecking(true); setNotice(undefined)
     try {
@@ -50,19 +78,19 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
       if (!current() || request !== version.current || abort.signal.aborted) return
       if (result.provider !== provider || result.currency !== catalog.currency || result.code !== code
         || result.packs.some(item => catalog.packs.find(pack => pack.id === item.packId)?.amount !== item.amount))
-        throw new Error('充值信息已更新，请重新应用折扣码')
+        throw new Error('充值信息已更新，请重新验证折扣代码')
       if (!result.packs.some(item => item.available && item.discount)) {
-        setNotice({ type: 'error', text: result.packs.find(item => item.message)?.message ?? '此折扣码不适用于当前套餐' }); return
+        setNotice({ type: 'error', text: result.packs.find(item => item.message)?.message ?? '此折扣代码不适用于当前套餐' }); return
       }
-      setDraft(result.code); setPreview(result)
-      setNotice({ type: 'success', text: '折扣码已应用，到账积分保持不变。最终金额以结账页为准。' })
+      setDraft(result.code); setDraftProvider(provider); setPreview(result)
+      setNotice({ type: 'success', text: savingsText(result) })
     } catch (error) {
       if (current() && request === version.current && !abort.signal.aborted)
-        setNotice({ type: 'error', text: error instanceof Error ? error.message : '暂时无法验证折扣码，请稍后重试' })
+        setNotice({ type: 'error', text: panelNotice(error, '暂时无法验证这个折扣代码，请稍后重试。') })
     } finally { if (current() && request === version.current) setChecking(false) }
   }
   const purchase = async (pack: Pack, discount?: CreditDiscount) => {
-    if (unverified || checking) { setNotice({ type: 'error', text: '请先应用或移除折扣码再购买' }); return }
+    if (unverified || checking) { setDraftProvider(provider); setNotice({ type: 'error', text: '请先点击验证。' }); return }
     const request = version.current
     try { await onPurchase(pack, discount) }
     catch (error) {
@@ -73,19 +101,22 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
   }
   return <Space direction="vertical" size={12} style={{ width: '100%' }}>
     {catalog.providers.length ? <>
-      {!expanded ? <Button type="link" style={{ padding: 0 }} onClick={onExpand}>有折扣码？</Button> : <>
+      {!expanded ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>有折扣代码吗？</span>
+        <Button size="small" icon={<TagOutlined />} onClick={onExpand}>应用折扣代码</Button>
+      </div> : <>
         <Space.Compact style={{ width: '100%' }}>
-          <Input aria-label="折扣码" placeholder="输入折扣码" value={draft} maxLength={100} disabled={Boolean(busy)}
-            onChange={event => { invalidate(); setDraft(event.target.value); setNotice(undefined) }}
+          <Input aria-label="折扣代码" placeholder="折扣代码" value={draft} maxLength={14} autoFocus autoComplete="off"
+            autoCapitalize="characters" spellCheck={false} disabled={Boolean(busy)} status={visibleNotice?.type === 'error' ? 'error' : undefined}
+            onChange={event => { invalidate(); setDraft(event.target.value.toUpperCase()); setDraftProvider(provider); setNotice(undefined) }}
             onPressEnter={() => { if (!checking && !busy) void apply() }} />
-          <Button loading={checking} disabled={Boolean(busy)} onClick={() => void apply()}>应用折扣码</Button>
-          {removable ? <Button autoInsertSpace={false} disabled={Boolean(busy)} onClick={remove}>移除</Button> : null}
+          <Button autoInsertSpace={false} loading={checking} disabled={Boolean(busy)} onClick={() => void apply()}>验证</Button>
         </Space.Compact>
-        {notice ? <Alert type={notice.type} message={notice.text} /> : null}
+        {visibleNotice ? <p style={{ margin: 0, fontSize: 14, color: visibleNotice.type === 'error' ? DISCOUNT_ERROR : DISCOUNT_SUCCESS }}>{visibleNotice.text}</p> : null}
       </>}
     </> : null}
     {catalog.packs.map(pack => {
-      const offer = preview?.packs.find(item => item.packId === pack.id)
+      const offer = quote?.packs.find(item => item.packId === pack.id)
       const discount = offer?.available && offer.discount ? offer.discount : undefined
       return <div key={pack.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, border: '1px solid var(--color-border)', borderRadius: 8, padding: 12 }}>
         <span><strong>{pack.name} · {pack.credits} 积分</strong><br />
