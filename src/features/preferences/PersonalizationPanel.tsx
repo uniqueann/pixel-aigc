@@ -1,4 +1,4 @@
-import { EMAIL_LANGUAGES } from '@shared/email-models'
+import { EMAIL_LANGUAGE_OPTIONS } from '@shared/email-models'
 import { useState } from 'react'
 import { App, Button, Popconfirm, Select, Space, Switch } from 'antd'
 import { defaultImageModel } from '@shared/image-models'
@@ -99,7 +99,7 @@ export default function PersonalizationPanel() {
     <h3 className="preferences-group-title">邮件助手</h3>
     <div className="settings-rows">
       <PreferenceRow label="默认输出语言" detail="新邮件任务的输出语言，与界面语言分开">
-        <Select aria-label="默认输出语言" value={email.language} options={EMAIL_LANGUAGES} onChange={language => update({ email: { language } })} />
+        <Select aria-label="默认输出语言" value={email.language} options={EMAIL_LANGUAGE_OPTIONS} onChange={language => update({ email: { language } })} />
       </PreferenceRow>
       <PreferenceRow label="默认操作" detail="新任务默认使用的处理方式">
         <Select aria-label="默认操作" value={email.operation} options={[{ value: 'reply', label: '回复' }, { value: 'summarize', label: '总结' }, { value: 'polish', label: '润色' }, { value: 'grammar', label: '检查语法' }]} onChange={operation => update({ email: { operation } })} />

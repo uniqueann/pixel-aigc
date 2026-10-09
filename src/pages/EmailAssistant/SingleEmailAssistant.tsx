@@ -11,7 +11,7 @@ import type { useEmailAssistantController } from '@/features/email-assistant/use
 import { authEnabled } from '@/cloud/client'
 import type { EmailGenerationGate } from '@/features/email-assistant/useEmailGenerationGate'
 import type { EmailModelConfiguration } from '@/features/email-assistant/useEmailModelConfiguration'
-import { EMAIL_LANGUAGES, EMAIL_OPERATIONS as TASK_TYPES, EMAIL_POLISH_STYLES as POLISH_STYLES } from '@/features/email-assistant/options'
+import { EMAIL_LANGUAGE_OPTIONS, EMAIL_OPERATIONS as TASK_TYPES, EMAIL_POLISH_STYLES as POLISH_STYLES } from '@/features/email-assistant/options'
 import { usePreferencesStore } from '@/features/preferences/store'
 import type {
   EmailAssistLanguage,
@@ -23,13 +23,12 @@ interface Props {
   controller: ReturnType<typeof useEmailAssistantController>
   configuration: EmailModelConfiguration
   gate: EmailGenerationGate
-  openModelSettings: () => void
   entryOperation?: EmailAssistOperation
   entryKey?: string
   onEntryConsumed?: () => void
 }
 
-export default function SingleEmailAssistant({ controller, configuration, gate, openModelSettings, entryOperation, entryKey, onEntryConsumed }: Props) {
+export default function SingleEmailAssistant({ controller, configuration, gate, entryOperation, entryKey, onEntryConsumed }: Props) {
   const { message } = App.useApp()
   const [sourceText, setSourceText] = useState('')
   const [instruction, setInstruction] = useState('')
@@ -205,7 +204,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
                   value={language}
                   disabled={controller.formLocked}
                   onChange={setLanguage}
-                  options={EMAIL_LANGUAGES}
+                  options={EMAIL_LANGUAGE_OPTIONS}
                 />
               </div>
               {operation === 'polish' ? (
@@ -223,11 +222,8 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
               ) : null}
               {authEnabled ? <div>
                 <div className="field-label">本次使用的模型</div>
-                <Space>
-                  <EmailModelChoice configuration={configuration} value={selectedModelProfileId} language={language}
-                    disabled={controller.formLocked || Boolean(modelSettingsError)} onChange={setModelProfileId} />
-                  <Button size="small" onClick={openModelSettings}>设置</Button>
-                </Space>
+                <EmailModelChoice configuration={configuration} value={selectedModelProfileId} language={language}
+                  disabled={controller.formLocked || Boolean(modelSettingsError)} onChange={setModelProfileId} />
               </div> : null}
               {authEnabled ? <div>本次成功生成扣 {selectedProfile?.credits ?? '—'} 积分 · 当前余额 {balance ?? '读取中'}
                 {insufficient ? <Button type="link" onClick={openCreditRecharge}>充值积分</Button> : null}

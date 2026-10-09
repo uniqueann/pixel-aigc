@@ -8,7 +8,7 @@ const models = [
   { id: 'bailian:qwen-image-3.0', label: 'Qwen Image 3.0', vendor: 'qwen' },
   { id: 'bailian:qwen-image-3.0-pro', label: 'Qwen Image 3.0 Pro' },
   { id: 'openrouter:gemini-nano-banana-2.1', label: 'Google Nano Banana 2.1' },
-  { id: 'deepseek:用户默认模型', label: '用户默认模型', vendor: 'dragoncode' },
+  { id: 'unknown:用户默认模型', label: '用户默认模型', vendor: 'dragoncode' },
 ]
 
 afterEach(() => cleanup())

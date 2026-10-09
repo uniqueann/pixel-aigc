@@ -1,4 +1,4 @@
-import { recommendedEmailModel, EMAIL_LANGUAGES } from '@shared/email-models'
+import { recommendedEmailModel, EMAIL_LANGUAGE_OPTIONS } from '@shared/email-models'
 import EmailModelChoice from '@/features/email-assistant/EmailModelChoice'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { openCreditRecharge } from '@/services/api/billing'
@@ -111,7 +111,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
         <ul className="email-batch-template-notes">
           <li>原始邮件内容必填，最多 10,000 字符；编写指导可空，最多 1,000 字符。</li>
           <li>生成设置列填操作类型：总结、回复、检查语法、润色；例如“润色：提升表达清晰度+缩短”。可选方式还包括“增长”“简化”。</li>
-          <li>语言：{EMAIL_LANGUAGES.map(item => `${item.label}（${item.value}）`).join('、')}。</li>
+          <li>语言：{EMAIL_LANGUAGE_OPTIONS.map(item => `${item.label}（${item.value}）`).join('、')}。</li>
           <li>设置或语言留空时使用导入时的<Button type="link" size="small" onClick={openModelSettings}
             style={{ padding: '0 2px', height: 'auto', fontSize: 'inherit', verticalAlign: 'baseline' }}>个人默认值</Button>；仅填写“润色”时使用默认润色方式。</li>
         </ul>

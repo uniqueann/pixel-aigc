@@ -14,7 +14,7 @@ export const EMAIL_POLISH_STYLES: { value: EmailPolishStyle; label: string }[] =
   { value: 'simplify', label: '简化' },
 ]
 
-export { EMAIL_LANGUAGES } from '@shared/email-models'
+export { EMAIL_LANGUAGES, EMAIL_LANGUAGE_OPTIONS } from '@shared/email-models'
 
 export const EMAIL_BATCH_HEADERS = ['原始邮件内容', '编写指导', '生成设置', '语言'] as const
 export const EMAIL_BATCH_MAX_ROWS = 50

@@ -33,7 +33,7 @@ export const OPENROUTER_NANO_BANANA_PROFILE_ID = 'openrouter:gemini-nano-banana-
 export const OPENROUTER_NANO_BANANA_MODEL = 'google/gemini-nano-banana-2.1'
 
 /** 模型厂商。dragoncode / bailian / openrouter / ai-gateway 是接入渠道，不是厂商。 */
-export const IMAGE_MODEL_VENDORS = ['openai', 'qwen', 'google'] as const
+export const IMAGE_MODEL_VENDORS = ['openai', 'qwen', 'google', 'deepseek'] as const
 export type ImageModelVendor = typeof IMAGE_MODEL_VENDORS[number]
 
 /** 文生图、多图工具、单图工具可以各写一条。单图工具不要用参考图数量。 */

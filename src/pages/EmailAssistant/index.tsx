@@ -57,7 +57,7 @@ function EmailAssistantSession() {
     <div hidden={mode !== 'single'}>
       {gate.owner === 'batch' ? <Alert className="email-model-alert" type="info" showIcon
         message={batch.unresolved ? '批量邮件等待确认原任务状态，确认后可继续单个生成' : '批量邮件正在处理，暂停并等待当前邮件完成后可继续单个生成'} /> : null}
-      <SingleEmailAssistant controller={single} configuration={configuration} gate={gate} openModelSettings={openModelSettings}
+      <SingleEmailAssistant controller={single} configuration={configuration} gate={gate}
         entryOperation={entryOperation} entryKey={entryKey} onEntryConsumed={consumeEntry} />
     </div>
     {batchVisited || mode === 'batch' ? <div hidden={mode !== 'batch'}>
