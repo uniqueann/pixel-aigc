@@ -8,7 +8,8 @@ import { useUserStore } from '@/store/useUserStore'
 
 const DISCOUNT_SUCCESS = '#34d399'
 const DISCOUNT_ERROR = '#e07a6e'
-const FORMAT_ERROR = '折扣码仅支持 1–14 位字母或数字'
+const FORMAT_ERROR = '折扣代码仅支持 1–14 位字母或数字'
+const CHANNEL_CHANGED = '付款方式已更换，请重新验证。'
 
 type Pack = BillingCatalog['packs'][number]
 interface Props {
@@ -34,10 +35,9 @@ function panelNotice(error: unknown, fallback: string) {
   return text === FORMAT_ERROR ? '折扣代码格式无效：仅支持 1-14 位大写字母或数字。' : text
 }
 
-/** 报价只存在当前充值会话。展开状态由父组件保留；切换通道时保留已输入代码并清报价。 */
+/** 报价只存在当前充值会话。展开状态由父组件保留；切换通道时保留已输入代码，只有已验证报价才清空并提示。 */
 export default function CreditPackPurchase({ owner, catalog, provider, providerLabel, busy, expanded, onExpand, onPurchase }: Props) {
   const [draft, setDraft] = useState('')
-  const [draftProvider, setDraftProvider] = useState(provider)
   const [checking, setChecking] = useState(false)
   const [preview, setPreview] = useState<CreditDiscountPreview>()
   const [notice, setNotice] = useState<{ type: 'error' | 'success'; text: string }>()
@@ -55,16 +55,19 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
     controller.current?.abort()
   }, [provider])
   if (trackedProvider !== provider) {
+    const hadQuote = Boolean(preview?.provider === trackedProvider && preview.packs.some(item => item.available && item.discount))
     setTrackedProvider(provider)
     setChecking(false)
+    if (hadQuote) {
+      setPreview(undefined)
+      setNotice({ type: 'error', text: CHANNEL_CHANGED })
+    } else setNotice(undefined)
   }
   const invalidate = () => {
     version.current++; controller.current?.abort(); setChecking(false); setPreview(undefined)
   }
-  const staleChannel = draftProvider !== provider && Boolean(draft.trim())
-  const quote = !staleChannel && preview?.provider === provider ? preview : undefined
+  const quote = preview?.provider === provider ? preview : undefined
   const unverified = Boolean(draft.trim()) && quote?.code !== draft.trim().toUpperCase()
-  const visibleNotice = staleChannel ? { type: 'error' as const, text: '付款方式已更换，请重新验证。' } : notice
   const apply = async () => {
     invalidate()
     let code: string
@@ -82,7 +85,7 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
       if (!result.packs.some(item => item.available && item.discount)) {
         setNotice({ type: 'error', text: result.packs.find(item => item.message)?.message ?? '此折扣代码不适用于当前套餐' }); return
       }
-      setDraft(result.code); setDraftProvider(provider); setPreview(result)
+      setDraft(result.code); setPreview(result)
       setNotice({ type: 'success', text: savingsText(result) })
     } catch (error) {
       if (current() && request === version.current && !abort.signal.aborted)
@@ -90,7 +93,7 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
     } finally { if (current() && request === version.current) setChecking(false) }
   }
   const purchase = async (pack: Pack, discount?: CreditDiscount) => {
-    if (unverified || checking) { setDraftProvider(provider); setNotice({ type: 'error', text: '请先点击验证。' }); return }
+    if (unverified || checking) { setNotice({ type: 'error', text: '请先点击验证。' }); return }
     const request = version.current
     try { await onPurchase(pack, discount) }
     catch (error) {
@@ -107,12 +110,12 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
       </div> : <>
         <Space.Compact style={{ width: '100%' }}>
           <Input aria-label="折扣代码" placeholder="折扣代码" value={draft} maxLength={14} autoFocus autoComplete="off"
-            autoCapitalize="characters" spellCheck={false} disabled={Boolean(busy)} status={visibleNotice?.type === 'error' ? 'error' : undefined}
-            onChange={event => { invalidate(); setDraft(event.target.value.toUpperCase()); setDraftProvider(provider); setNotice(undefined) }}
+            autoCapitalize="characters" spellCheck={false} disabled={Boolean(busy)} status={notice?.type === 'error' ? 'error' : undefined}
+            onChange={event => { invalidate(); setDraft(event.target.value.toUpperCase()); setNotice(undefined) }}
             onPressEnter={() => { if (!checking && !busy) void apply() }} />
           <Button autoInsertSpace={false} loading={checking} disabled={Boolean(busy)} onClick={() => void apply()}>验证</Button>
         </Space.Compact>
-        {visibleNotice ? <p style={{ margin: 0, fontSize: 14, color: visibleNotice.type === 'error' ? DISCOUNT_ERROR : DISCOUNT_SUCCESS }}>{visibleNotice.text}</p> : null}
+        {notice ? <p style={{ margin: 0, fontSize: 14, color: notice.type === 'error' ? DISCOUNT_ERROR : DISCOUNT_SUCCESS }}>{notice.text}</p> : null}
       </>}
     </> : null}
     {catalog.packs.map(pack => {

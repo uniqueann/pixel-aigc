@@ -74,7 +74,7 @@ export async function acquireSyncRequest(sql: Transaction, userId: string, scope
     })
   }
   if (Number(usage.active) >= limit.concurrent) {
-    throw new HttpError(429, bucket === 'payment_discount' ? '折扣码正在验证，请等待当前请求完成' : SYNC_USER_CONCURRENCY_MESSAGE, 'USER_CONCURRENCY', {
+    throw new HttpError(429, bucket === 'payment_discount' ? '折扣代码正在验证，请等待当前请求完成' : SYNC_USER_CONCURRENCY_MESSAGE, 'USER_CONCURRENCY', {
       extra: rateLimitExtra(USER_CONCURRENCY_RETRY_AFTER),
     })
   }

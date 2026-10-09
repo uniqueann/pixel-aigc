@@ -1,6 +1,6 @@
 # Creem 美元积分充值接入与验收
 
-更新日期：2026-10-09。本期两个通道统一美元，Dodo Payments 为默认通道，Creem 为可选通道。沿用 EDM 商户，但商品、回调和签名密钥独立。AIGC 使用一次性积分订单和现有账本，不使用 EDM 的订阅授权或套餐表。折扣码规则、配置与验收见 [折扣码接入说明](credit-discount-codes.md)。
+更新日期：2026-10-09。本期两个通道统一美元，Dodo Payments 为默认通道，Creem 为可选通道。沿用 EDM 商户，但商品、回调和签名密钥独立。AIGC 使用一次性积分订单和现有账本，不使用 EDM 的订阅授权或套餐表。折扣代码规则、配置与验收见 [折扣代码接入说明](credit-discount-codes.md)。
 
 ## 一、商户商品
 
@@ -121,7 +121,7 @@ Checkout 返回商品可能是 ID 或对象。商品后续改价不会改写旧�
 - TEST 替代密钥已作为 Secret 更新至 Preview、Development；LIVE 替代密钥已作为 Secret 更新至 Production。本机私有配置已同步，原密钥暂留供现有部署使用；本轮没有重新部署应用。
 - 两环境的三档商品查询均为 HTTP 200；不存在折扣、Checkout、交易的查询均为 HTTP 404，查询权限通过核验。该检查没有创建付款或退款。
 - 本轮核对时 Production 的 `AIGC_CREEM_ENABLED=true`，Preview 的 `creem-test` 分支也已有开启配置；本轮保留现有开关。第六节中的关闭状态为当时的历史记录，不代表当前配置。
-- 折扣规则、数据库迁移与后续实际付款验收见 [充值折扣码接入与验收](credit-discount-codes.md)。
+- 折扣规则、数据库迁移与后续实际付款验收见 [充值折扣代码接入与验收](credit-discount-codes.md)。
 
 ## 官方参考
 
