@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { withSyncLimit, type SyncRequestMetrics } from './sync-limits'
 import { HttpError } from './errors'
 const mocks = vi.hoisted(() => ({ sql: vi.fn() }))
-vi.mock('./model-settings', () => ({ requireActive: async () => undefined }))
+vi.mock('./members', () => ({ requireActive: async () => undefined }))
 vi.mock('./db', () => ({
   runtimeScope: () => 'preview',
   withIdentity: async (_id: string, _email: string, action: (sql: unknown) => Promise<unknown>) => action(Object.assign(mocks.sql, { json: (value: unknown) => value })),

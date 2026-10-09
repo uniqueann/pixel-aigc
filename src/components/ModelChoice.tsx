@@ -6,6 +6,8 @@ import ModelVendorMark from './ModelVendorMark'
 export interface ModelChoiceOption {
   id: string
   label: string
+  disabled?: boolean
+  hint?: string
   /** 目录里的厂商。缺省时按模型 id 识别；未知厂商不显示图标。 */
   vendor?: string
   hints?: Partial<Record<ImageModelHintScope, string>>
@@ -79,7 +81,8 @@ export default function ModelChoice({
       options={models.map(item => ({
         value: item.id,
         title: item.label,
-        hint: imageModelHint(item, hintScope),
+        hint: item.hint ?? imageModelHint(item, hintScope),
+        disabled: item.disabled,
         label: choiceLabel(item),
       }))}
       optionRender={(option) => {

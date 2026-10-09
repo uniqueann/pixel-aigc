@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { getVercelOidcToken } from '@vercel/oidc'
+import { readVercelOidcToken } from '../../ai-gateway-auth.js'
+export { readVercelOidcToken } from '../../ai-gateway-auth.js'
 import type { NormalizedImageRequest } from '../../../shared/image-generation.js'
 import { HttpError } from '../../errors.js'
 import { getObject, putObject } from '../../storage.js'
@@ -56,11 +57,6 @@ export function r2AiGatewayResultStore(): AiGatewayResultStore {
       }
     },
   }
-}
-
-export async function readVercelOidcToken() {
-  const token = await getVercelOidcToken()
-  return typeof token === 'string' ? token : ''
 }
 
 function vendorOf(usage: ParsedAiGatewayUsage | undefined): ProviderVendorUsage {

@@ -1,3 +1,4 @@
+import { EMAIL_PRICE_VERSION } from '@shared/email-models'
 import { Capability, type EmailAssistTaskParams, type GenerationTask } from '@/types'
 import type { CreateTaskPayload } from '@/services/api/task'
 import { buildEmailAssistRequest } from '../requestBuilder'
@@ -16,6 +17,7 @@ interface BatchPorts {
 
 const ACTIVE = new Set(['pending', 'queued', 'processing'])
 const PAUSE_CODES = new Set([
+  'INSUFFICIENT_CREDITS', 'PRICE_CHANGED', 'CREDIT_ACCOUNT_REVIEW', 'MODEL_UNAVAILABLE', 'PROVIDER_AUTH', 'PROVIDER_UNAVAILABLE', 'PROVIDER_TIMEOUT',
   'INVALID_PROVIDER_KEY', 'PROVIDER_BALANCE', 'PROVIDER_RATE_LIMIT', 'RATE_LIMIT',
   'USER_CONCURRENCY', 'GLOBAL_CONCURRENCY', 'ACCOUNT_CHANGED', 'ACCOUNT_DISABLED',
   'AUTH_DISABLED', 'KEY_NOT_CONFIGURED', 'KEY_NOT_VERIFIED',
@@ -61,7 +63,7 @@ export function createEmailBatchRunner(ports: BatchPorts) {
   async function completeTask(row: EmailBatchRow, received: GenerationTask<unknown>) {
     let task = received
     if (disposed) return
-    update(row.id, { taskId: task.id, status: 'processing', errorMessage: undefined, errorCode: undefined })
+    update(row.id, { taskId: task.id, modelProfileId: task.modelProfileId, creditsCost: task.creditsCost, status: 'processing', errorMessage: undefined, errorCode: undefined })
     try {
       while (!disposed) {
         if (task.capability !== Capability.EmailAssist || !task.id) throw new Error('接口返回了不匹配的邮件任务')
@@ -72,17 +74,18 @@ export function createEmailBatchRunner(ports: BatchPorts) {
         task = await ports.get(task.id)
       }
     } catch (error) {
-      if (!disposed) uncertain(row, `任务查询失败：${errorMessage(error)}`)
+      if (!disposed && errorCode(error) === 'TASK_EXPIRED') update(row.id, { status: 'failed', requestId: undefined, taskId: undefined, creditsCost: undefined, errorCode: 'TASK_EXPIRED', errorMessage: '原任务已删除或过期，请查看积分流水；重新生成会作为新任务扣费' })
+      else if (!disposed) uncertain(row, `任务查询失败：${errorMessage(error)}`)
       return
     }
     if (disposed) return
     if (task.status === 'succeeded' && task.resultText?.trim()) {
-      update(row.id, { status: 'succeeded', resultText: task.editedText ?? task.resultText, errorMessage: undefined, errorCode: undefined })
+      update(row.id, { status: 'succeeded', modelProfileId: task.modelProfileId, creditsCost: task.creditsCost, resultText: task.editedText ?? task.resultText, errorMessage: undefined, errorCode: undefined })
       return
     }
     const code = task.errorCode ?? 'RESULT_PROTOCOL'
     const message = task.errorMessage ?? (task.status === 'succeeded' ? '任务已完成，但接口没有返回邮件文本' : '邮件生成失败，请重试')
-    update(row.id, { status: 'failed', errorCode: code, errorMessage: message })
+    update(row.id, { status: 'failed', modelProfileId: task.modelProfileId, creditsCost: task.creditsCost, errorCode: code, errorMessage: message })
     if (code === 'INVALID_PROVIDER_KEY') ports.onInvalidKey?.()
     if (PAUSE_CODES.has(code)) stop(message)
   }
@@ -97,13 +100,14 @@ export function createEmailBatchRunner(ports: BatchPorts) {
       // 曾提交过的请求先查询原任务；未创建时才用同一幂等键重新提交。
       if (row.requestId) task = await ports.find(requestId)
     } catch (error) {
-      if (!disposed) uncertain(currentRow, `原请求查询失败：${errorMessage(error)}`)
+      if (!disposed && errorCode(error) === 'TASK_EXPIRED') update(row.id, { status: 'failed', requestId: undefined, taskId: undefined, errorCode: 'TASK_EXPIRED', errorMessage: '原任务已删除或过期，请查看积分流水；重新生成会作为新任务扣费' })
+      else if (!disposed) uncertain(currentRow, `原请求查询失败：${errorMessage(error)}`)
       return
     }
     if (disposed) return
     if (!task) {
       try {
-        task = await ports.submit({ ...buildEmailAssistRequest(row.params, requestId), modelProfileId: state.modelProfileId }, requestController.signal)
+        task = await ports.submit({ ...buildEmailAssistRequest(row.params, requestId), modelProfileId: state.modelProfileId, priceVersion: state.priceVersion }, requestController.signal)
       } catch (error) {
         if (disposed) return
         try { task = await ports.find(requestId) }
@@ -120,6 +124,7 @@ export function createEmailBatchRunner(ports: BatchPorts) {
           const hasHttpStatus = error && typeof error === 'object' && 'status' in error && typeof error.status === 'number'
           const pause = !hasHttpStatus || PAUSE_CODES.has(code ?? '') || (hasHttpStatus && Number(error.status) >= 500)
           update(row.id, { status: pause ? 'pending' : 'failed', errorCode: code, errorMessage: message })
+          if (code === 'PRICE_CHANGED' || code === 'MODEL_UNAVAILABLE') ports.onInvalidKey?.()
           if (pause) stop(message)
           return
         }
@@ -128,7 +133,7 @@ export function createEmailBatchRunner(ports: BatchPorts) {
     if (!disposed && task) await completeTask(currentRow, task)
   }
 
-  async function run(modelProfileId: string, retryIds?: string[]) {
+  async function run(modelProfileId: string, retryIds?: string[], priceVersion = EMAIL_PRICE_VERSION) {
     if (disposed || working || unresolved()) return
     const targets = state.rows.filter(row => retryIds ? retryIds.includes(row.id) && row.status === 'failed' : row.status === 'pending')
     if (!targets.length) return
@@ -140,10 +145,10 @@ export function createEmailBatchRunner(ports: BatchPorts) {
     pauseRequested = false
     if (retryIds) {
       publish({ rows: state.rows.map(row => targets.some(target => target.id === row.id)
-        ? { ...row, status: 'pending', requestId: row.taskId ? undefined : row.requestId, taskId: undefined, errorCode: undefined, errorMessage: undefined, resultText: undefined }
+        ? { ...row, status: 'pending', requestId: row.taskId ? undefined : row.requestId, taskId: undefined, errorCode: undefined, errorMessage: undefined, resultText: undefined, creditsCost: undefined }
         : row) })
     }
-    publish({ runState: 'running', pauseMessage: undefined, modelProfileId: state.modelProfileId ?? modelProfileId })
+    publish({ runState: 'running', pauseMessage: undefined, modelProfileId: state.modelProfileId ?? modelProfileId, priceVersion })
     try {
       for (const target of targets) {
         if (disposed || pauseRequested) break
@@ -173,7 +178,8 @@ export function createEmailBatchRunner(ports: BatchPorts) {
           if (task) await completeTask(row, task)
           else update(row.id, { status: 'pending', errorMessage: undefined, errorCode: undefined })
         } catch (error) {
-          if (!disposed) uncertain(row, `原请求查询失败：${errorMessage(error)}`)
+          if (!disposed && errorCode(error) === 'TASK_EXPIRED') update(row.id, { status: 'failed', requestId: undefined, taskId: undefined, errorCode: 'TASK_EXPIRED', errorMessage: '原任务已删除或过期，请查看积分流水；重新生成会作为新任务扣费' })
+          else if (!disposed) uncertain(row, `原请求查询失败：${errorMessage(error)}`)
         }
       }
     } finally {
@@ -192,10 +198,10 @@ export function createEmailBatchRunner(ports: BatchPorts) {
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
     load: (rows: EmailBatchRow[], fileName?: string) => {
       if (disposed || working || unresolved()) throw new Error('请先等待当前任务完成或重新查询，再替换 CSV')
-      publish({ rows, fileName, runState: 'idle', modelProfileId: undefined, pauseMessage: undefined })
+      publish({ rows, fileName, runState: 'idle', modelProfileId: undefined, priceVersion: undefined, pauseMessage: undefined })
     },
-    start: (modelProfileId: string) => run(modelProfileId),
-    retry: (modelProfileId: string, ids = state.rows.filter(row => row.status === 'failed').map(row => row.id)) => run(modelProfileId, ids),
+    start: (modelProfileId: string, priceVersion?: string) => run(modelProfileId, undefined, priceVersion),
+    retry: (modelProfileId: string, ids = state.rows.filter(row => row.status === 'failed').map(row => row.id), priceVersion?: string) => run(modelProfileId, ids, priceVersion),
     pause: () => {
       if (!working || state.recovering) return
       pauseRequested = true

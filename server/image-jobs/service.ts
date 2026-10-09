@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { authenticate } from '../auth.js'
 import { runtimeScope, withIdentity } from '../db.js'
 import { describeError, HttpError } from '../errors.js'
-import { requireActive } from '../model-settings.js'
+import { requireActive } from '../members.js'
 import { getObject, putObject, signRead } from '../storage.js'
 import type { NormalizedImageRequest } from '../../shared/image-generation.js'
 import {

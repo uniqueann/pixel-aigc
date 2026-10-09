@@ -1,3 +1,4 @@
+import { EMAIL_MODELS } from '@shared/email-models'
 import { BG_REMOVE_MONTHLY_FREE, SYNC_TOOL_LABELS, syncCreditPrice, type SyncCreditOperation } from '@shared/billing'
 import { creditToolName } from '@shared/credits'
 import type { ImageResolution } from '@shared/image-generation'
@@ -148,7 +149,7 @@ function mattingItem(remaining: number, month: string) {
 function freeToolItem() {
   const email = NAV_META['/email']
   if (!email) throw new Error('计费说明缺少邮件助手名称')
-  return `${SUBJECT_DETECTION_LABEL}、${SMART_SELECT_LABEL}不单独扣分。${strategyLabel('letterbox')}、${strategyLabel('crop')}、${toolLabel(TOOLBOX_TOOLS, 'watermark')}、${toolLabel(TOOLBOX_TOOLS, 'pipeline')}和${LOCAL_TEMPLATE_LABEL}在本机处理，不扣积分。转比例里的${strategyLabel('outpaint')}按${SYNC_TOOL_LABELS.outpaint}计费。${email}使用自带密钥，不扣平台积分。`
+  return `${SUBJECT_DETECTION_LABEL}、${SMART_SELECT_LABEL}不单独扣分。${strategyLabel('letterbox')}、${strategyLabel('crop')}、${toolLabel(TOOLBOX_TOOLS, 'watermark')}、${toolLabel(TOOLBOX_TOOLS, 'pipeline')}和${LOCAL_TEMPLATE_LABEL}在本机处理，不扣积分。转比例里的${strategyLabel('outpaint')}按${SYNC_TOOL_LABELS.outpaint}计费。${email}使用平台模型：${EMAIL_MODELS.map(model => `${model.label} 每次成功 ${model.credits} 积分`).join('，')}，失败返还。`
 }
 
 function refundItems(includeVideo: boolean) {

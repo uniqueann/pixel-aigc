@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { App, Button, Card, Col, Input, Popconfirm, Radio, Row, Select, Space } from 'antd'
-import ModelChoice from '@/components/ModelChoice'
+import { App, Alert, Button, Card, Col, Input, Popconfirm, Radio, Row, Select, Space } from 'antd'
+import EmailModelChoice from '@/features/email-assistant/EmailModelChoice'
+import { recommendedEmailModel } from '@shared/email-models'
+import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
+import { openCreditRecharge } from '@/services/api/billing'
 import { CopyOutlined, RedoOutlined } from '@ant-design/icons'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import { buildEmailAssistRequest } from '@/features/email-assistant/requestBuilder'
@@ -8,7 +11,7 @@ import type { useEmailAssistantController } from '@/features/email-assistant/use
 import { authEnabled } from '@/cloud/client'
 import type { EmailGenerationGate } from '@/features/email-assistant/useEmailGenerationGate'
 import type { EmailModelConfiguration } from '@/features/email-assistant/useEmailModelConfiguration'
-import { EMAIL_OPERATIONS as TASK_TYPES, EMAIL_POLISH_STYLES as POLISH_STYLES } from '@/features/email-assistant/options'
+import { EMAIL_LANGUAGES, EMAIL_OPERATIONS as TASK_TYPES, EMAIL_POLISH_STYLES as POLISH_STYLES } from '@/features/email-assistant/options'
 import { usePreferencesStore } from '@/features/preferences/store'
 import type {
   EmailAssistLanguage,
@@ -34,9 +37,13 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
   const [language, setLanguage] = useState<EmailAssistLanguage>(() => usePreferencesStore.getState().preferences.email.language)
   const [polishStyles, setPolishStyles] = useState<EmailPolishStyle[]>(() => usePreferencesStore.getState().preferences.email.polishStyles)
   const [modelProfileId, setModelProfileId] = useState<string>()
-  const { profilesQuery, profiles, keyConfigured, loading: modelSettingsLoading,
+  const { profiles, loading: modelSettingsLoading,
     error: modelSettingsError, ready: modelSettingsReady, defaultModelProfileId } = configuration
-  const selectedModelProfileId = modelProfileId ?? defaultModelProfileId
+  const selectedModelProfileId = modelProfileId ?? defaultModelProfileId ?? recommendedEmailModel(language)
+  const selectedProfile = profiles.find(model => model.id === selectedModelProfileId)
+  const balance = useKnownCreditBalance()
+  const modelReady = modelSettingsReady && (!authEnabled || Boolean(selectedProfile?.available))
+  const insufficient = balance != null && balance < (selectedProfile?.credits ?? 0)
   const generationBlocked = gate.owner === 'batch'
   const { acquire, release } = gate
   const handledEntry = useRef(entryOperation ? entryKey : undefined)
@@ -100,20 +107,21 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
   }, [controller.resultText, controller.task])
 
   const handleGenerate = async () => {
-    if (!modelSettingsReady) {
+    if (!modelReady) {
       message.warning(modelSettingsLoading ? '正在加载模型设置，请稍候'
-        : keyConfigured === false ? '请先配置自己的 DeepSeek API Key' : '模型设置加载失败，请重试')
+        : selectedProfile?.unavailableReason ?? '模型设置加载失败，请重试')
       return
     }
+    if (insufficient) { openCreditRecharge(); return }
     if (!gate.acquire('single')) { message.warning('当前有邮件正在处理，请等待完成'); return }
     let waiting = false
     try {
       const request = buildEmailAssistRequest(currentParams)
-      const task = await controller.generate(request.params, selectedModelProfileId)
+      const task = await controller.generate(request.params, selectedModelProfileId, selectedProfile?.priceVersion)
       waiting = ['pending', 'queued', 'processing'].includes(task.status)
       if (task.status === 'succeeded') message.success('邮件内容已生成')
       else if (task.status === 'failed') {
-        if (task.errorCode === 'INVALID_PROVIDER_KEY') window.dispatchEvent(new Event('pixel:model-settings-changed'))
+        if (['PROVIDER_AUTH', 'MODEL_UNAVAILABLE'].includes(task.errorCode ?? '')) window.dispatchEvent(new Event('pixel:model-settings-changed'))
         message.error(task.errorMessage ?? '邮件生成失败')
       }
     } catch (error) {
@@ -132,10 +140,10 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
   }
 
   const handleRetry = async () => {
-    if (!modelSettingsReady || !gate.acquire('single')) return
+    if (!modelReady || insufficient || !gate.acquire('single')) return
     let waiting = false
     try {
-      const task = await controller.retry()
+      const task = controller.task ? await controller.generate(controller.task.params, selectedModelProfileId, selectedProfile?.priceVersion) : undefined
       waiting = !!task && ['pending', 'queued', 'processing'].includes(task.status)
       if (task?.status === 'succeeded') message.success('邮件内容已重新生成')
       else if (task?.status === 'failed') message.error(task.errorMessage ?? '重试失败')
@@ -154,6 +162,8 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
 
   return (
     <div className="email-single-panel">
+      {controller.uncertain ? <Alert type="warning" showIcon message="原请求状态尚未确认，请查询后再生成"
+        action={<Button loading={controller.submitting} onClick={() => void controller.recoverSubmission().catch(error => message.error(error instanceof Error ? error.message : '查询失败'))}>查询或恢复原请求</Button>} /> : null}
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>
           <Card title="原始邮件内容" size="small">
@@ -195,11 +205,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
                   value={language}
                   disabled={controller.formLocked}
                   onChange={setLanguage}
-                  options={[
-                    { value: 'zh', label: '中文' },
-                    { value: 'en', label: 'English' },
-                    { value: 'ja', label: '日本語' },
-                  ]}
+                  options={EMAIL_LANGUAGES}
                 />
               </div>
               {operation === 'polish' ? (
@@ -218,23 +224,19 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
               {authEnabled ? <div>
                 <div className="field-label">本次使用的模型</div>
                 <Space>
-                  <ModelChoice
-                    ariaLabel="本次使用的模型"
-                    models={profilesQuery.data ? profiles : []}
-                    value={profilesQuery.data ? selectedModelProfileId : undefined}
-                    placeholder="正在加载模型设置…"
-                    loading={modelSettingsLoading}
-                    disabled={controller.formLocked || modelSettingsLoading || Boolean(modelSettingsError)}
-                    onChange={setModelProfileId}
-                    selectStyle={{ width: 220 }}
-                  />
+                  <EmailModelChoice configuration={configuration} value={selectedModelProfileId} language={language}
+                    disabled={controller.formLocked || Boolean(modelSettingsError)} onChange={setModelProfileId} />
                   <Button size="small" onClick={openModelSettings}>设置</Button>
                 </Space>
+              </div> : null}
+              {authEnabled ? <div>本次成功生成扣 {selectedProfile?.credits ?? '—'} 积分 · 当前余额 {balance ?? '读取中'}
+                {insufficient ? <Button type="link" onClick={openCreditRecharge}>充值积分</Button> : null}
+                <div className="email-save-hint">失败返还；重新生成按新任务扣费。长邮件可能超过输出预算，请适当缩短。</div>
               </div> : null}
               <Button
                 type="primary"
                 loading={controller.submitting}
-                disabled={!sourceText.trim() || controller.formLocked || generationBlocked || !modelSettingsReady}
+                disabled={!sourceText.trim() || controller.formLocked || generationBlocked || !modelReady}
                 onClick={handleGenerate}
               >
                 生成
@@ -252,7 +254,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
             protocolError={controller.protocolError}
             pollError={controller.pollError}
             onRetry={() => void handleRetry()}
-            retryDisabled={generationBlocked || !modelSettingsReady}
+            retryDisabled={generationBlocked || !modelReady}
             onModifyParameters={controller.modifyParameters}
             onRefetch={() => void controller.refetch()}
           />
@@ -268,7 +270,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
                   size="small"
                   icon={<RedoOutlined />}
                   loading={controller.submitting}
-                  disabled={controller.formLocked || generationBlocked || !modelSettingsReady}
+                  disabled={controller.formLocked || generationBlocked || !modelReady}
                   onClick={handleGenerate}
                 >
                   重新生成
@@ -284,6 +286,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
               placeholder={controller.active ? '正在生成邮件内容…' : '生成结果将在这里显示'}
             />
             {controller.savingEdit ? <span className="email-save-hint">正在保存修改稿…</span> : null}
+            {controller.task ? <span className="email-save-hint">{profiles.find(model => model.id === controller.task?.modelProfileId)?.label ?? '历史模型'} · 实扣 {controller.task.creditsCost} 积分{controller.task.billingState === 'refunded' ? ' · 已返还' : controller.task.billingState === 'reserved' ? ` · 预扣 ${controller.task.creditsReserved}` : ''}</span> : null}
             {controller.task?.tokenUsage ? <span className="email-save-hint">本次使用 {controller.task.tokenUsage.totalTokens} tokens</span> : null}
           </Card>
           {authEnabled ? <Card title="最近 7 天" size="small" style={{ marginTop: 16 }}>

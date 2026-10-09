@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { EMAIL_PRICE_VERSION } from '@shared/email-models'
+import type { CreateTaskPayload } from '@/services/api/task'
 import { authEnabled } from '@/cloud/client'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
 import { createTask, deleteTask, getTask, getTaskByRequest, listTasks, saveTaskEdit, type TaskSummary } from '@/services/api/task'
@@ -29,6 +31,8 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
   const [history, setHistory] = useState<TaskSummary[]>([])
   const [historyTotal, setHistoryTotal] = useState(0)
   const [historyPage, setHistoryPage] = useState(1)
+  const pendingRequestRef = useRef<CreateTaskPayload<EmailAssistTaskParams>>()
+  const [uncertain, setUncertain] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
   const [submissionError, setSubmissionError] = useState<string>()
@@ -134,6 +138,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
   }, [flushEdit, task])
 
   const newTask = useCallback(async () => {
+    if (pendingRequestRef.current) throw new Error('请先确认原请求状态，避免重复生成')
     touchedRef.current = true
     if (!await flushEdit()) throw new Error('修改稿保存失败，请重试后新建任务')
     ++selectionEpochRef.current
@@ -145,7 +150,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
     setProtocolError(undefined)
   }, [flushEdit])
 
-  const generate = useCallback(async (params: EmailAssistTaskParams, modelProfileId?: string) => {
+  const generate = useCallback(async (params: EmailAssistTaskParams, modelProfileId?: string, priceVersion?: string) => {
     touchedRef.current = true
     if (!await flushEdit()) throw new Error('修改稿保存失败，请重试后生成')
     const epoch = ++selectionEpochRef.current
@@ -154,14 +159,14 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
     setSubmissionError(undefined)
     setProtocolError(undefined)
     setResultText('')
-    const requestId = crypto.randomUUID()
+    const payload = pendingRequestRef.current ?? { capability: Capability.EmailAssist, params,
+      requestId: crypto.randomUUID(), modelProfileId, priceVersion: priceVersion ?? EMAIL_PRICE_VERSION }
+    pendingRequestRef.current = payload
+    const requestId = payload.requestId
     try {
-      const nextTask = await createTask({
-        capability: Capability.EmailAssist,
-        params,
-        requestId,
-        modelProfileId,
-      })
+      const nextTask = await createTask(payload)
+      pendingRequestRef.current = undefined
+      setUncertain(false)
       if (epoch === selectionEpochRef.current) {
         selectedTaskIdRef.current = nextTask.id
         handleTask(nextTask as GenerationTask<unknown>)
@@ -172,14 +177,25 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
       if (authEnabled) {
         try {
           const recovered = await getTaskByRequest(requestId)
+          pendingRequestRef.current = undefined
+          setUncertain(false)
           if (epoch === selectionEpochRef.current) {
             selectedTaskIdRef.current = recovered.id
             handleTask(recovered)
           }
           await refreshHistory().catch(() => undefined)
           return recovered
-        } catch { /* 任务尚未创建时显示原始错误。 */ }
+        } catch (recoveryError) {
+          const status = recoveryError && typeof recoveryError === 'object' && 'status' in recoveryError ? recoveryError.status : undefined
+          if (status === 410) { pendingRequestRef.current = undefined; setUncertain(false) }
+          else if (status === 404 && error && typeof error === 'object' && 'status' in error && Number(error.status) >= 400 && Number(error.status) < 500 && error.status !== 408) {
+            pendingRequestRef.current = undefined; setUncertain(false)
+          } else setUncertain(true)
+        }
       }
+      if (!authEnabled) pendingRequestRef.current = undefined
+      if (error && typeof error === 'object' && 'code' in error && ['PRICE_CHANGED','MODEL_UNAVAILABLE'].includes(String(error.code)))
+        window.dispatchEvent(new Event('pixel:model-settings-changed'))
       const message = error instanceof Error ? error.message : '邮件任务提交失败'
       setSubmissionError(message)
       throw error
@@ -188,7 +204,31 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
     }
   }, [flushEdit, handleTask, refreshHistory])
 
-  const retry = useCallback(() => task ? generate(task.params, task.modelProfileId) : Promise.resolve(undefined), [generate, task])
+  const recoverSubmission = useCallback(async () => {
+    const payload = pendingRequestRef.current
+    if (!payload) return
+    setSubmitting(true)
+    try {
+      let recovered: GenerationTask<unknown>
+      try { recovered = await getTaskByRequest(payload.requestId) }
+      catch (error) {
+        if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
+          await generate(payload.params, payload.modelProfileId, payload.priceVersion)
+          return
+        }
+        if (error && typeof error === 'object' && 'status' in error && error.status === 410) {
+          pendingRequestRef.current = undefined; setUncertain(false)
+        }
+        throw error
+      }
+      pendingRequestRef.current = undefined; setUncertain(false)
+      selectedTaskIdRef.current = recovered.id; handleTask(recovered)
+      setSubmissionError(undefined)
+      await refreshHistory().catch(() => undefined)
+    } finally { setSubmitting(false) }
+  }, [generate, handleTask, refreshHistory])
+
+  const retry = useCallback((priceVersion?: string) => task ? generate(task.params, task.modelProfileId, priceVersion) : Promise.resolve(undefined), [generate, task])
 
   const modifyParameters = useCallback(() => {
     ++selectionEpochRef.current
@@ -224,7 +264,8 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
     submitting,
     savingEdit,
     active: !!status && ACTIVE_STATUSES.has(status),
-    formLocked: submitting || (!!status && ACTIVE_STATUSES.has(status)),
+    uncertain, recoverSubmission,
+    formLocked: uncertain || submitting || (!!status && ACTIVE_STATUSES.has(status)),
     submissionError,
     protocolError,
     pollError: taskQuery.error,

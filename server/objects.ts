@@ -1,7 +1,7 @@
 import type { authenticate } from './auth.js'
 import { runtimeScope, withIdentity } from './db.js'
 import { HttpError } from './errors.js'
-import { requireActive } from './model-settings.js'
+import { requireActive } from './members.js'
 import { isSafeObjectKey } from './image-jobs/service.js'
 import { getObject, signRead } from './storage.js'
 

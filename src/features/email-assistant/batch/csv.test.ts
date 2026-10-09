@@ -48,7 +48,7 @@ describe('邮件批量 CSV', () => {
     [['正文', '', '回复：缩短', '中文'], '只有润色'],
     [['正文', '', '润色：', '中文'], '润色方式请填写'],
     [['正文', '', '润色：正式', '中文'], '润色方式支持'],
-    [['正文', '', '回复', '法语'], '语言须为'],
+    [['正文', '', '回复', '火星语'], '语言须为'],
     [['字'.repeat(10001), '', '回复', '中文'], '10,000'],
     [['正文', '字'.repeat(1001), '回复', '中文'], '1,000'],
   ])('保留错误行并继续校验其他行：%s', (invalid, hint) => {
@@ -85,9 +85,9 @@ describe('邮件批量 CSV', () => {
     const output = exportEmailBatchCsv(rows)
     expect(output.startsWith('\uFEFF')).toBe(true)
     const parsed = Papa.parse<string[]>(output, { skipEmptyLines: true }).data
-    expect(parsed[0]).toEqual([...EMAIL_BATCH_HEADERS, '生成结果', '状态', '错误信息'])
-    expect(parsed[1]).toEqual(["'=客户内容", '指导', '回复', '中文', '回复,"谢谢"\n第二段', '成功', ''])
-    expect(parsed[2].slice(-2)).toEqual(['填写错误', '第 2 条（CSV 第 3 行）：原始邮件内容不能为空'])
+    expect(parsed[0]).toEqual([...EMAIL_BATCH_HEADERS, '生成结果', '状态', '错误信息', '模型', '实际扣减积分'])
+    expect(parsed[1]).toEqual(["'=客户内容", '指导', '回复', '中文', '回复,"谢谢"\n第二段', '成功', '', '', ''])
+    expect(parsed[2].slice(5,7)).toEqual(['填写错误', '第 2 条（CSV 第 3 行）：原始邮件内容不能为空'])
     expect(parsed[0]).not.toContain('序号')
   })
 

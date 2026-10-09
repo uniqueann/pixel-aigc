@@ -44,6 +44,9 @@ export interface GenerationTask<TParams = Record<string, unknown>> {
   tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number }
   errorMessage?: string
   errorCode?: string
+  creditsReserved?: number
+  billingState?: 'legacy_free' | 'reserved' | 'settled' | 'refunded'
+  priceVersion?: string
   creditsCost: number
   createdAt: string
   updatedAt: string
@@ -147,7 +150,7 @@ export interface ImageToVideoTaskParams {
 }
 
 export type EmailAssistOperation = 'summarize' | 'reply' | 'polish' | 'grammar'
-export type EmailAssistLanguage = 'zh' | 'en' | 'ja'
+export type EmailAssistLanguage = import('@shared/email-models').EmailLanguage
 export type EmailPolishStyle = 'clear' | 'shorten' | 'lengthen' | 'simplify'
 
 /** 邮件助手异步任务参数 */

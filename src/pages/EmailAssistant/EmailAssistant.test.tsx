@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { StrictMode, type ReactNode } from 'react'
-import { App } from 'antd'
+import { App, Modal } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,8 +21,8 @@ vi.mock('@/services/api/task', () => ({
 }))
 vi.mock('@/features/model-settings/useModelSettings', () => ({
   useModelSettings: () => ({
-    settingsQuery: { data: { defaultEmailModelId: 'deepseek:用户默认模型', deepseek: { configured: true, verificationStatus: 'valid' } }, error: null },
-    profilesQuery: { data: { items: [{ id: 'deepseek:用户默认模型', label: '用户默认模型' }] }, error: null },
+    settingsQuery: { data: { defaultEmailModelId: 'deepseek:用户默认模型' }, error: null },
+    profilesQuery: { data: { items: [{ id: 'deepseek:用户默认模型', label: '用户默认模型', available: true, credits: 1, priceVersion: 'aigc-email-v1' }] }, error: null },
   }),
 }))
 
@@ -74,7 +74,7 @@ describe('邮件助手单个与批量页面', () => {
     entry = '/email'
     wrapper = ({ children }) => <StrictMode><MemoryRouter initialEntries={[entry]}><QueryClientProvider client={client}><App>{children}</App></QueryClientProvider></MemoryRouter></StrictMode>
   })
-  afterEach(() => { cleanup(); client?.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); useUserStore.setState({ userId: null }) })
+  afterEach(() => { Modal.destroyAll(); cleanup(); client?.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); useUserStore.setState({ userId: null }) })
 
   function EntryControls() {
     const navigate = useNavigate(), location = useLocation()
@@ -122,7 +122,7 @@ describe('邮件助手单个与批量页面', () => {
     expect(mocks.get).not.toHaveBeenCalled()
     expect(document.querySelector('.email-single-panel input[value="grammar"]')).toHaveProperty('checked', true)
     expect(screen.getByPlaceholderText('粘贴需要处理的邮件内容')).toHaveProperty('value', '')
-    expect(within(document.querySelector('.email-single-panel') as HTMLElement).getByText('用户默认模型')).toBeTruthy()
+    expect(within(document.querySelector('.email-single-panel') as HTMLElement).getByText('用户默认模型 · 1 积分')).toBeTruthy()
     expect(within(document.querySelector('.email-single-panel') as HTMLElement).queryByRole('combobox', { name: '本次使用的模型' })).toBeNull()
     first.unmount()
     entry = '/email'
@@ -150,6 +150,8 @@ describe('邮件助手单个与批量页面', () => {
     clickMode('批量')
     await importCsv(['有效邮件,重点日期,总结,en', ',指导,回复,中文'])
     fireEvent.click(buttonByText(batchPane(), /^生成 \d+ 条$/))
+    await waitFor(() => expect(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')).toBeTruthy())
+    fireEvent.click(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')!)
     await waitFor(() => expect(batchPane().getByText('成功')).toBeTruthy())
     expect(mocks.submit).toHaveBeenCalledTimes(1)
     expect(mocks.submit).toHaveBeenCalledWith(expect.objectContaining({ modelProfileId: 'deepseek:用户默认模型', params: {
@@ -173,6 +175,8 @@ describe('邮件助手单个与批量页面', () => {
     clickMode('批量')
     await importCsv(['邮件一,,,', '邮件二,,,'])
     fireEvent.click(buttonByText(batchPane(), /^生成 \d+ 条$/))
+    await waitFor(() => expect(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')).toBeTruthy())
+    fireEvent.click(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')!)
     await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1))
     clickMode('单个')
     const singlePane = within(document.querySelector('.email-single-panel') as HTMLElement)
@@ -193,6 +197,8 @@ describe('邮件助手单个与批量页面', () => {
     clickMode('批量')
     await importCsv(['旧账号邮件一,,,', '旧账号邮件二,,,'])
     fireEvent.click(buttonByText(batchPane(), /^生成 \d+ 条$/))
+    await waitFor(() => expect(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')).toBeTruthy())
+    fireEvent.click(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')!)
     await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(1))
     act(() => useUserStore.getState().setUser('账号二', 'free'))
     clickMode('批量')
