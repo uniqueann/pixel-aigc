@@ -78,7 +78,7 @@ export interface ImageEditTaskParams extends ImageTaskParams {
   referenceImageKey?: string
   referenceImageUrl?: string
   relight?: {
-    direction: 'left' | 'right' | 'top' | 'bottom' | 'front' | 'back'
+    direction: 'left' | 'right' | 'top' | 'bottom' | 'front' | 'back' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
     quality: 'soft' | 'hard'
     temperature: 'warm' | 'neutral' | 'cool'
   }
