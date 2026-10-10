@@ -21,7 +21,7 @@ export interface WorkstationContext {
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
   referenceAsset?: ImageAsset
   relight?: {
-    direction: 'left' | 'right' | 'top' | 'bottom' | 'front' | 'back'
+    direction: 'left' | 'right' | 'top' | 'bottom' | 'front' | 'back' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
     quality: 'soft' | 'hard'
     temperature: 'warm' | 'neutral' | 'cool'
   }

@@ -1,6 +1,9 @@
 import { promptLimit } from './prompt-limits.js'
 
-export const RELIGHT_DIRECTIONS = ['left', 'right', 'top', 'bottom', 'front', 'back'] as const
+export const RELIGHT_DIRECTIONS = [
+  'left', 'right', 'top', 'bottom', 'front', 'back',
+  'top-left', 'top-right', 'bottom-left', 'bottom-right',
+] as const
 export const RELIGHT_QUALITIES = ['soft', 'hard'] as const
 export const RELIGHT_TEMPERATURES = ['warm', 'neutral', 'cool'] as const
 
@@ -36,6 +39,10 @@ export const RELIGHT_DIRECTION_INSTRUCTIONS: Record<RelightDirection, string> = 
   front: '正面光：主光从镜头方向正面打下，朝向镜头的表面均匀受光，侧面和后方变暗，投影落在商品正后方。',
   bottom: '底光：主光从下方打下，底部和下沿高光明显增强，顶部和上沿变暗，投影向上落在商品上方。',
   back: '逆光：主光从商品背后射来，轮廓边缘出现明显轮廓光，正面偏暗，投影落向镜头、铺在商品前方。',
+  'top-left': '左上光：主光从画面左上方射来，商品左侧和顶部受光、左上棱面高光明显增强，右侧和底部变暗，投影落向右下方。',
+  'top-right': '右上光：主光从画面右上方射来，商品右侧和顶部受光、右上棱面高光明显增强，左侧和底部变暗，投影落向左下方。',
+  'bottom-left': '左下光：主光从画面左下方射来，商品左侧和底部受光、左下棱面高光明显增强，右侧和顶部变暗，投影落向右上方。',
+  'bottom-right': '右下光：主光从画面右下方射来，商品右侧和底部受光、右下棱面高光明显增强，左侧和顶部变暗，投影落向左上方。',
 }
 
 export const RELIGHT_QUALITY_INSTRUCTIONS: Record<RelightQuality, string> = {
@@ -56,6 +63,10 @@ const directionLabel: Record<RelightDirection, string> = {
   bottom: '底部',
   front: '正面',
   back: '逆光',
+  'top-left': '左上',
+  'top-right': '右上',
+  'bottom-left': '左下',
+  'bottom-right': '右下',
 }
 
 const qualityLabel: Record<RelightQuality, string> = {
@@ -70,11 +81,15 @@ const temperatureLabel: Record<RelightTemperature, string> = {
 }
 
 export const RELIGHT_DIRECTION_CHOICES: ReadonlyArray<{ id: RelightDirection; label: string }> = [
+  { id: 'top-left', label: '左上' },
   { id: 'top', label: '顶' },
+  { id: 'top-right', label: '右上' },
   { id: 'left', label: '左' },
   { id: 'front', label: '正面' },
   { id: 'right', label: '右' },
+  { id: 'bottom-left', label: '左下' },
   { id: 'bottom', label: '底' },
+  { id: 'bottom-right', label: '右下' },
   { id: 'back', label: '逆光' },
 ]
 
