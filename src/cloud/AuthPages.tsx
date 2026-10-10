@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Alert, Button, Input, Space } from 'antd'
 import { authEnabled, cloudConfigurationError, supabase } from './client'
+import { callbackHasLink, exchangeCodeOnce, verifyEmailLink } from './authCallback'
 import { safeNext } from './authPaths'
 
 const callbackUrl = () => `${window.location.origin}/auth/callback`
 const validPassword = (value: string) => value.length >= 8 && value.length <= 128
 
-let exchange: Promise<unknown> | undefined
 export default function AuthPages() {
   const path = window.location.pathname
   const params = new URLSearchParams(window.location.search)
@@ -15,24 +15,39 @@ export default function AuthPages() {
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [error, setError] = useState(cloudConfigurationError ?? (path === '/auth/callback' ? params.get('error_description') ?? params.get('error') ?? (!params.has('code') ? '登录链接无效或已过期，请重新申请' : '') : ''))
+  const [error, setError] = useState(cloudConfigurationError ?? (path === '/auth/callback' ? params.get('error_description') ?? params.get('error') ?? (callbackHasLink(params) ? '' : '登录链接无效或已过期，请重新申请') : ''))
   const next = safeNext(params.get('next'))
 
   useEffect(() => {
     const client = supabase
     if (path !== '/auth/callback' || !client) return
     const callbackParams = new URLSearchParams(window.location.search)
+    if (callbackParams.has('error')) return
     const code = callbackParams.get('code')
-    if (callbackParams.has('error') || !code) return
-    if (!exchange) exchange = client.auth.exchangeCodeForSession(code)
-    void exchange.then(result => {
-      const response = result as Awaited<ReturnType<typeof client.auth.exchangeCodeForSession>>
-      if (response.error) throw response.error
-      if (callbackParams.get('next') === '/reset-password') {
-        sessionStorage.setItem('pixel-aigc-recovery', response.data.user?.id ?? '')
+    if (code) {
+      void exchangeCodeOnce(() => client.auth.exchangeCodeForSession(code)).then(result => {
+        const response = result as Awaited<ReturnType<typeof client.auth.exchangeCodeForSession>>
+        if (response.error) throw response.error
+        if (callbackParams.get('next') === '/reset-password') {
+          sessionStorage.setItem('pixel-aigc-recovery', response.data.user?.id ?? '')
+          window.location.replace('/reset-password')
+        } else window.location.replace(safeNext(sessionStorage.getItem('pixel-aigc-next')))
+      }).catch(err => setError(err instanceof Error ? err.message : '登录链接无效，请重试'))
+      return
+    }
+    if (!callbackParams.has('token_hash')) return
+    void verifyEmailLink(client, callbackParams).then(outcome => {
+      if (outcome.kind === 'error') {
+        setError(outcome.message)
+        return
+      }
+      if (outcome.kind === 'recovery') {
+        sessionStorage.setItem('pixel-aigc-recovery', outcome.userId)
         window.location.replace('/reset-password')
-      } else window.location.replace(safeNext(sessionStorage.getItem('pixel-aigc-next')))
-    }).catch(err => setError(err instanceof Error ? err.message : '登录链接无效，请重试'))
+        return
+      }
+      window.location.replace(safeNext(sessionStorage.getItem('pixel-aigc-next')))
+    })
   }, [path])
 
   const run = async (action: () => Promise<void>) => {
@@ -61,8 +76,8 @@ export default function AuthPages() {
           : await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${callbackUrl()}?next=/reset-password` })
         if (resultError) throw resultError
         setNotice(path === '/verify-email'
-          ? '如果该邮箱可用于此操作，请查收验证邮件。验证链接会打开 ContentUp；完成后返回 Pixel AIGC 登录。'
-          : '如果该邮箱可用于此操作，请查收邮件。请在发起请求的浏览器中打开链接。')
+          ? '如果该邮箱可用于此操作，请查收验证邮件。'
+          : '如果该邮箱可用于此操作，请查收邮件。')
       } else if (path === '/reset-password') {
         if (!validPassword(password) || password !== confirm) throw new Error('密码须为 8–128 位，且两次输入一致')
         const { data } = await client.auth.getUser()
@@ -82,7 +97,7 @@ export default function AuthPages() {
   const labels: Record<string,string> = { '/login': '登录', '/register': '注册', '/verify-email': '验证邮箱', '/forgot-password': '找回密码', '/reset-password': '设置新密码', '/auth/callback': '正在完成验证' }
   return <div className="project-recovery-screen" style={{ maxWidth: 420, margin: '10vh auto', gap: 16 }}>
     <h2>Pixel AIGC · {labels[path] ?? '账号'}</h2>
-    {path === '/verify-email' && <p>注册邮件已发送。共享账号的验证链接会打开 ContentUp；验证成功后返回 Pixel AIGC 登录。需要重发时输入邮箱。</p>}
+    {path === '/verify-email' && <p>注册邮件已发送。需要重发时输入邮箱。</p>}
     {path === '/reset-password' && <p>新密码会用于此共享账号，也会影响 ContentUp、EDM 的密码登录。</p>}
     {error && <Alert type="error" showIcon message={error} />}
     {notice && <Alert type="info" showIcon message={notice} />}

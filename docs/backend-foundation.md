@@ -20,7 +20,11 @@ React/Vite 前端与 Vercel Node.js API 共仓库部署。`content-up` 的 `aigc
 
 账号迁移新增 `members.display_name`、`workspaces`、`workspace_members` 与状态审计，给项目补充个人空间归属。现有 `invitations` 保留历史记录，但不参与准入。所有业务表开启 RLS；API 角色 `aigc_api` 无登录、无 BYPASSRLS、无成员状态写入或 Generation 写入权限。每个业务事务先切换到该角色，再使用事务局部身份设置执行查询。运行登录角色不得拥有管理员权限或继承旧应用角色。
 
-在 Supabase 启用邮箱注册、邮箱验证、Google Provider 和可正常发信的 SMTP。Google OAuth 应用的重定向地址使用 Supabase 控制台给出的 `/auth/v1/callback`；Supabase 的允许跳转地址加入 `http://127.0.0.1:5173/auth/callback*` 与 `https://aigc.contentup.cc/auth/callback*`，保留旧根路径与其他应用已有条目。恢复邮件须在发起请求的浏览器完成 PKCE 交换。共享验证邮件模板目前将确认链接固定到 ContentUp 的 `/auth/confirm`，因此 AIGC 注册后会在 ContentUp 验证，再返回 AIGC 登录；不要宣称验证邮件直接回到 AIGC。修改共享邮件模板前，需回归 ContentUp 和 EDM。
+在 Supabase 启用邮箱注册、邮箱验证、Google Provider 和可正常发信的 SMTP。Google OAuth 应用的重定向地址使用 Supabase 控制台给出的 `/auth/v1/callback`；Supabase 的允许跳转地址加入 `http://127.0.0.1:5173/auth/callback*` 与 `https://aigc.contentup.cc/auth/callback*`，保留旧根路径与其他应用已有条目。生产允许列表里已有 `https://aigc.contentup.cc/auth/callback` 和 `https://aigc.contentup.cc/auth/callback?next=/reset-password`。本次不修改 Supabase 配置或邮件模板。
+
+`/auth/callback` 仍用 `code` 完成 Google 登录，以及仍指向 `{{ .ConfirmationURL }}` 的邮件链接。这类 PKCE 交换须在发起请求的浏览器完成。同一页也接受 ContentUp `/auth/confirm` 转发来的 `token_hash` 与 `type`，调用 `verifyOtp` 且只验证一次。`type` 为 `recovery` 时写入现有恢复标记并进入 `/reset-password`；`email` 或 `signup`（以及魔法链接、邀请、修改邮箱这些同样的邮件 type）进入注册前保存的站内地址，没有则进入首页。因此换浏览器打开这类链接，也能在 AIGC 建立会话。
+
+共享模板尚未切换。控制台里确认注册仍是 `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/account`（Site URL 为 `https://contentup.cc`）。重置密码、魔法链接、邀请和修改邮箱仍使用 `{{ .ConfirmationURL }}`。要等 ContentUp、EDM 和 AIGC 的对应改动都部署之后，再把确认注册和重置密码改为经 ContentUp `/auth/confirm` 携带 `type=email` 或 `type=recovery`，以及 `redirect_to={{ .RedirectTo }}`。重置邮件的 `redirect_to` 会保留 `?next=/reset-password`。切换前，确认邮件仍在 ContentUp 验证，重置邮件仍受同一浏览器限制；不要提前宣称邮件已经回到 AIGC。
 
 Google 提供商的客户端标识与密钥只配置到 Supabase 控制台；前端只配置 publishable key。服务端通过 `getUser` 验证身份和邮箱确认状态，随后幂等初始化 AIGC 成员与个人空间。可编辑的 user_metadata 仅用作初始展示名称，不参与授权。AIGC 停用不封禁共享 Auth 账号。
 
@@ -118,4 +122,4 @@ IndexedDB 当前项目与归档按用户隔离，旧匿名 `current` 仅在点�
 
 Vercel `pixel-aigc` 的 Production 与 Preview 已更新 `AIGC_DATABASE_URL`、`SUPABASE_URL`、`SUPABASE_PUBLISHABLE_KEY` 并新增 `VITE_AUTH_MODE=enabled`；变量更新后需新部署生效。旧版 `VITE_SUPABASE_*` 被保存为不可读取的 Secret，Vercel 现行校验阻止继续以 Secret 更新公开给浏览器的 `VITE_` 值；因此前端优先读取同范围的 `VITE_AIGC_SUPABASE_URL` 和 `VITE_AIGC_SUPABASE_PUBLISHABLE_KEY` Config，旧名称保留为本地回退。回调允许列表保留 ContentUp、EDM 原条目，新增本地与生产 AIGC 的普通登录及密码恢复四个精确地址。
 
-生产域名 `https://aigc.contentup.cc` 已验证：未登录请求 `/api/me` 返回 `401/AUTH_REQUIRED`，现有共享 Google 账号完成 OAuth 回调后显示个人首页与账号资料。共享验证邮件仍按 ContentUp 模板跳转，邮箱注册、恢复邮件以及停用恢复流程尚待独立测试账号验收。
+生产域名 `https://aigc.contentup.cc` 已验证：未登录请求 `/api/me` 返回 `401/AUTH_REQUIRED`，现有共享 Google 账号完成 OAuth 回调后显示个人首页与账号资料。回调已能消费转发来的 `token_hash`，但共享模板仍未切换：确认邮件仍跳到 ContentUp，重置邮件仍是 `{{ .ConfirmationURL }}`。邮箱注册、恢复邮件以及停用恢复流程要等 ContentUp、EDM 和 AIGC 都部署且模板切换后再用独立测试账号验收。
