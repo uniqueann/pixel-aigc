@@ -1,0 +1,988 @@
+[
+  {
+    "场景": "选择候选结果后吸顶滚动一",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1180,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 840.8046875
+    },
+    "left": {
+      "clientHeight": 586,
+      "clientWidth": 812,
+      "height": 586.421875,
+      "position": "sticky",
+      "scrollHeight": 586,
+      "scrollWidth": 812,
+      "width": 812,
+      "x": 280,
+      "y": 56
+    },
+    "right": {
+      "clientHeight": 930,
+      "clientWidth": 308,
+      "height": 932.3046875,
+      "position": "relative",
+      "scrollHeight": 930,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 1110,
+      "y": -109.5
+    },
+    "scroll": {
+      "clientHeight": 844,
+      "clientWidth": 1180,
+      "height": 844,
+      "position": "static",
+      "scrollHeight": 1095,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": true,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "场景": "上传结果响应式 1280×720",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1020,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 661
+    },
+    "left": {
+      "clientHeight": 561,
+      "clientWidth": 652,
+      "height": 561.421875,
+      "position": "sticky",
+      "scrollHeight": 561,
+      "scrollWidth": 652,
+      "width": 652,
+      "x": 280,
+      "y": 56
+    },
+    "right": {
+      "clientHeight": 930,
+      "clientWidth": 308,
+      "height": 932.3046875,
+      "position": "relative",
+      "scrollHeight": 930,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 950,
+      "y": -109.5
+    },
+    "scroll": {
+      "clientHeight": 664,
+      "clientWidth": 1020,
+      "height": 664,
+      "position": "static",
+      "scrollHeight": 1095,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": true,
+    "viewport": {
+      "height": 720,
+      "width": 1280
+    }
+  },
+  {
+    "场景": "上传结果响应式 1280×560",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1020,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 501
+    },
+    "left": {
+      "clientHeight": 561,
+      "clientWidth": 652,
+      "height": 561.421875,
+      "position": "static",
+      "scrollHeight": 561,
+      "scrollWidth": 652,
+      "width": 652,
+      "x": 280,
+      "y": -109.5
+    },
+    "right": {
+      "clientHeight": 930,
+      "clientWidth": 308,
+      "height": 932.3046875,
+      "position": "relative",
+      "scrollHeight": 930,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 950,
+      "y": -109.5
+    },
+    "scroll": {
+      "clientHeight": 504,
+      "clientWidth": 1020,
+      "height": 504,
+      "position": "static",
+      "scrollHeight": 1095,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 560,
+      "width": 1280
+    }
+  },
+  {
+    "场景": "上传结果响应式 901×780",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 641,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 641,
+      "width": 641,
+      "x": 260,
+      "y": 721
+    },
+    "left": {
+      "clientHeight": 391,
+      "clientWidth": 273,
+      "height": 390.7734375,
+      "position": "sticky",
+      "scrollHeight": 391,
+      "scrollWidth": 273,
+      "width": 273,
+      "x": 280,
+      "y": 56
+    },
+    "right": {
+      "clientHeight": 930,
+      "clientWidth": 308,
+      "height": 932.3046875,
+      "position": "relative",
+      "scrollHeight": 930,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 571,
+      "y": -109.5
+    },
+    "scroll": {
+      "clientHeight": 724,
+      "clientWidth": 641,
+      "height": 724,
+      "position": "static",
+      "scrollHeight": 1095,
+      "scrollWidth": 641,
+      "width": 641,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": true,
+    "viewport": {
+      "height": 780,
+      "width": 901
+    }
+  },
+  {
+    "场景": "上传结果响应式 900×780",
+    "example": null,
+    "footer": {
+      "clientHeight": 56,
+      "clientWidth": 600,
+      "height": 57,
+      "position": "static",
+      "scrollHeight": 56,
+      "scrollWidth": 600,
+      "width": 600,
+      "x": 280,
+      "y": 1394.2265625
+    },
+    "left": {
+      "clientHeight": 535,
+      "clientWidth": 600,
+      "height": 535.421875,
+      "position": "static",
+      "scrollHeight": 535,
+      "scrollWidth": 600,
+      "width": 600,
+      "x": 280,
+      "y": -109.5
+    },
+    "right": {
+      "clientHeight": 930,
+      "clientWidth": 598,
+      "height": 932.3046875,
+      "position": "relative",
+      "scrollHeight": 930,
+      "scrollWidth": 598,
+      "width": 600,
+      "x": 280,
+      "y": 443.921875
+    },
+    "scroll": {
+      "clientHeight": 724,
+      "clientWidth": 640,
+      "height": 724,
+      "position": "static",
+      "scrollHeight": 1667,
+      "scrollWidth": 640,
+      "width": 640,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 780,
+      "width": 900
+    }
+  },
+  {
+    "场景": "上传结果响应式 390×844 稳定后",
+    "example": null,
+    "footer": {
+      "clientHeight": 95,
+      "clientWidth": 298,
+      "height": 95.8515625,
+      "position": "static",
+      "scrollHeight": 95,
+      "scrollWidth": 298,
+      "width": 298,
+      "x": 80,
+      "y": 1157.2265625
+    },
+    "left": {
+      "clientHeight": 378,
+      "clientWidth": 298,
+      "height": 378.421875,
+      "position": "static",
+      "scrollHeight": 378,
+      "scrollWidth": 298,
+      "width": 298,
+      "x": 80,
+      "y": -177.5
+    },
+    "right": {
+      "clientHeight": 918,
+      "clientWidth": 296,
+      "height": 920.3046875,
+      "position": "relative",
+      "scrollHeight": 918,
+      "scrollWidth": 296,
+      "width": 298,
+      "x": 80,
+      "y": 218.921875
+    },
+    "scroll": {
+      "clientHeight": 788,
+      "clientWidth": 322,
+      "height": 788,
+      "position": "static",
+      "scrollHeight": 1521,
+      "scrollWidth": 322,
+      "width": 322,
+      "x": 68,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  {
+    "场景": "窄屏融合示例展开",
+    "example": {
+      "clientHeight": 195,
+      "clientWidth": 296,
+      "height": 196.8515625,
+      "position": "relative",
+      "scrollHeight": 195,
+      "scrollWidth": 296,
+      "width": 298,
+      "x": 80,
+      "y": 425.0546875
+    },
+    "footer": {
+      "clientHeight": 95,
+      "clientWidth": 298,
+      "height": 95.8515625,
+      "position": "static",
+      "scrollHeight": 95,
+      "scrollWidth": 298,
+      "width": 298,
+      "x": 80,
+      "y": 1038.03125
+    },
+    "left": {
+      "clientHeight": 828,
+      "clientWidth": 298,
+      "height": 828.40625,
+      "position": "static",
+      "scrollHeight": 828,
+      "scrollWidth": 298,
+      "width": 298,
+      "x": 80,
+      "y": -206.5
+    },
+    "right": {
+      "clientHeight": 378,
+      "clientWidth": 296,
+      "height": 380.125,
+      "position": "relative",
+      "scrollHeight": 378,
+      "scrollWidth": 296,
+      "width": 298,
+      "x": 80,
+      "y": 639.90625
+    },
+    "scroll": {
+      "clientHeight": 788,
+      "clientWidth": 322,
+      "height": 788,
+      "position": "static",
+      "scrollHeight": 1430,
+      "scrollWidth": 322,
+      "width": 322,
+      "x": 68,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  {
+    "场景": "融合仅上传参考图",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1180,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 552.125
+    },
+    "left": {
+      "clientHeight": 341,
+      "clientWidth": 812,
+      "height": 340.921875,
+      "position": "sticky",
+      "scrollHeight": 341,
+      "scrollWidth": 812,
+      "width": 812,
+      "x": 280,
+      "y": 142
+    },
+    "right": {
+      "clientHeight": 390,
+      "clientWidth": 308,
+      "height": 392.125,
+      "position": "relative",
+      "scrollHeight": 390,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 1110,
+      "y": 142
+    },
+    "scroll": {
+      "clientHeight": 844,
+      "clientWidth": 1180,
+      "height": 844,
+      "position": "static",
+      "scrollHeight": 844,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": true,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "场景": "融合上传两张图",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1180,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 596.421875
+    },
+    "left": {
+      "clientHeight": 436,
+      "clientWidth": 812,
+      "height": 436.421875,
+      "position": "sticky",
+      "scrollHeight": 436,
+      "scrollWidth": 812,
+      "width": 812,
+      "x": 280,
+      "y": 142
+    },
+    "right": {
+      "clientHeight": 390,
+      "clientWidth": 308,
+      "height": 392.125,
+      "position": "relative",
+      "scrollHeight": 390,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 1110,
+      "y": 142
+    },
+    "scroll": {
+      "clientHeight": 844,
+      "clientWidth": 1180,
+      "height": 844,
+      "position": "static",
+      "scrollHeight": 844,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": true,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "场景": "蒙版画布窄屏保留撤销记录",
+    "可撤销": true,
+    "example": null,
+    "footer": {
+      "clientHeight": 95,
+      "clientWidth": 262,
+      "height": 95.8515625,
+      "position": "static",
+      "scrollHeight": 95,
+      "scrollWidth": 262,
+      "width": 261.84375,
+      "x": 116.15625,
+      "y": 854.6953125
+    },
+    "left": {
+      "clientHeight": 405,
+      "clientWidth": 262,
+      "height": 404.5703125,
+      "position": "static",
+      "scrollHeight": 405,
+      "scrollWidth": 262,
+      "width": 261.84375,
+      "x": 116.15625,
+      "y": 134
+    },
+    "right": {
+      "clientHeight": 278,
+      "clientWidth": 260,
+      "height": 280.125,
+      "position": "relative",
+      "scrollHeight": 287,
+      "scrollWidth": 260,
+      "width": 261.84375,
+      "x": 116.15625,
+      "y": 556.5703125
+    },
+    "scroll": {
+      "clientHeight": 788,
+      "clientWidth": 286,
+      "height": 788,
+      "position": "static",
+      "scrollHeight": 907,
+      "scrollWidth": 286,
+      "width": 285.84375,
+      "x": 104.15625,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 844,
+      "width": 390
+    }
+  },
+  {
+    "场景": "扩图拖拽后缩放和侧栏切换保留尺寸",
+    "配置": "扩图\n输出模式\n保留原图分辨率\n\n原图保持原尺寸，只向外延伸背景。 预计输出 1359 × 604 像素。\n\n扩图方式\n自由拖拽\n平台预设",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1020,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 661
+    },
+    "left": {
+      "clientHeight": 521,
+      "clientWidth": 652,
+      "height": 520.5703125,
+      "position": "sticky",
+      "scrollHeight": 521,
+      "scrollWidth": 652,
+      "width": 652,
+      "x": 280,
+      "y": 142
+    },
+    "right": {
+      "clientHeight": 253,
+      "clientWidth": 308,
+      "height": 254.9765625,
+      "position": "relative",
+      "scrollHeight": 253,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 950,
+      "y": 142
+    },
+    "scroll": {
+      "clientHeight": 664,
+      "clientWidth": 1020,
+      "height": 664,
+      "position": "static",
+      "scrollHeight": 684,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": true,
+    "viewport": {
+      "height": 720,
+      "width": 1280
+    }
+  },
+  {
+    "场景": "工具卡片 智能编辑",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1180,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 530.125
+    },
+    "left": {
+      "clientHeight": 354,
+      "clientWidth": 812,
+      "height": 353.5703125,
+      "position": "static",
+      "scrollHeight": 354,
+      "scrollWidth": 812,
+      "width": 812,
+      "x": 280,
+      "y": 142
+    },
+    "right": {
+      "clientHeight": 368,
+      "clientWidth": 308,
+      "height": 370.125,
+      "position": "relative",
+      "scrollHeight": 368,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 1110,
+      "y": 142
+    },
+    "scroll": {
+      "clientHeight": 844,
+      "clientWidth": 1180,
+      "height": 844,
+      "position": "static",
+      "scrollHeight": 844,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "场景": "工具卡片 重绘",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1180,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 513.5703125
+    },
+    "left": {
+      "clientHeight": 354,
+      "clientWidth": 812,
+      "height": 353.5703125,
+      "position": "static",
+      "scrollHeight": 354,
+      "scrollWidth": 812,
+      "width": 812,
+      "x": 280,
+      "y": 142
+    },
+    "right": {
+      "clientHeight": 244,
+      "clientWidth": 308,
+      "height": 246.421875,
+      "position": "relative",
+      "scrollHeight": 247,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 1110,
+      "y": 142
+    },
+    "scroll": {
+      "clientHeight": 844,
+      "clientWidth": 1180,
+      "height": 844,
+      "position": "static",
+      "scrollHeight": 844,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "场景": "工具卡片 精修",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1180,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 704.9765625
+    },
+    "left": {
+      "clientHeight": 354,
+      "clientWidth": 812,
+      "height": 353.5703125,
+      "position": "static",
+      "scrollHeight": 354,
+      "scrollWidth": 812,
+      "width": 812,
+      "x": 280,
+      "y": 142
+    },
+    "right": {
+      "clientHeight": 543,
+      "clientWidth": 308,
+      "height": 544.9765625,
+      "position": "relative",
+      "scrollHeight": 543,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 1110,
+      "y": 142
+    },
+    "scroll": {
+      "clientHeight": 844,
+      "clientWidth": 1180,
+      "height": 844,
+      "position": "static",
+      "scrollHeight": 844,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "场景": "最终桌面示例展开",
+    "example": {
+      "clientHeight": 207,
+      "clientWidth": 810,
+      "height": 208.8515625,
+      "position": "relative",
+      "scrollHeight": 207,
+      "scrollWidth": 810,
+      "width": 812,
+      "x": 280,
+      "y": 513.5703125
+    },
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1180,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 740.421875
+    },
+    "left": {
+      "clientHeight": 580,
+      "clientWidth": 812,
+      "height": 580.421875,
+      "position": "static",
+      "scrollHeight": 580,
+      "scrollWidth": 812,
+      "width": 812,
+      "x": 280,
+      "y": 142
+    },
+    "right": {
+      "clientHeight": 390,
+      "clientWidth": 308,
+      "height": 392.125,
+      "position": "relative",
+      "scrollHeight": 390,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 1110,
+      "y": 142
+    },
+    "scroll": {
+      "clientHeight": 844,
+      "clientWidth": 1180,
+      "height": 844,
+      "position": "static",
+      "scrollHeight": 844,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "场景": "最终桌面示例收起",
+    "example": {
+      "clientHeight": 60,
+      "clientWidth": 810,
+      "height": 61.5703125,
+      "position": "relative",
+      "scrollHeight": 60,
+      "scrollWidth": 810,
+      "width": 812,
+      "x": 280,
+      "y": 513.5703125
+    },
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1180,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 593.140625
+    },
+    "left": {
+      "clientHeight": 433,
+      "clientWidth": 812,
+      "height": 433.140625,
+      "position": "static",
+      "scrollHeight": 433,
+      "scrollWidth": 812,
+      "width": 812,
+      "x": 280,
+      "y": 142
+    },
+    "right": {
+      "clientHeight": 390,
+      "clientWidth": 308,
+      "height": 392.125,
+      "position": "relative",
+      "scrollHeight": 390,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 1110,
+      "y": 142
+    },
+    "scroll": {
+      "clientHeight": 844,
+      "clientWidth": 1180,
+      "height": 844,
+      "position": "static",
+      "scrollHeight": 844,
+      "scrollWidth": 1180,
+      "width": 1180,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": false,
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  {
+    "场景": "长配置吸顶滚动位置一",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1020,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 660.8828125
+    },
+    "left": {
+      "clientHeight": 467,
+      "clientWidth": 652,
+      "height": 467.421875,
+      "position": "sticky",
+      "scrollHeight": 467,
+      "scrollWidth": 652,
+      "width": 652,
+      "x": 280,
+      "y": 56
+    },
+    "right": {
+      "clientHeight": 796,
+      "clientWidth": 308,
+      "height": 798.3828125,
+      "position": "relative",
+      "scrollHeight": 796,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 950,
+      "y": -155.5
+    },
+    "scroll": {
+      "clientHeight": 664,
+      "clientWidth": 1020,
+      "height": 664,
+      "position": "static",
+      "scrollHeight": 961,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": true,
+    "viewport": {
+      "height": 720,
+      "width": 1280
+    }
+  },
+  {
+    "场景": "长配置吸顶滚动位置二",
+    "example": null,
+    "footer": {
+      "clientHeight": 58,
+      "clientWidth": 1020,
+      "height": 59,
+      "position": "sticky",
+      "scrollHeight": 58,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 661
+    },
+    "left": {
+      "clientHeight": 467,
+      "clientWidth": 652,
+      "height": 467.421875,
+      "position": "sticky",
+      "scrollHeight": 467,
+      "scrollWidth": 652,
+      "width": 652,
+      "x": 280,
+      "y": 56
+    },
+    "right": {
+      "clientHeight": 796,
+      "clientWidth": 308,
+      "height": 798.3828125,
+      "position": "relative",
+      "scrollHeight": 796,
+      "scrollWidth": 308,
+      "width": 310,
+      "x": 950,
+      "y": -141
+    },
+    "scroll": {
+      "clientHeight": 664,
+      "clientWidth": 1020,
+      "height": 664,
+      "position": "static",
+      "scrollHeight": 961,
+      "scrollWidth": 1020,
+      "width": 1020,
+      "x": 260,
+      "y": 56
+    },
+    "sticky": true,
+    "viewport": {
+      "height": 720,
+      "width": 1280
+    }
+  }
+]

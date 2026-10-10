@@ -144,7 +144,7 @@ export default function CanvasArea({
 
   if (interactionMode === 'multi-source') {
     return (
-      <div className={canvasShellClass}>
+      <div className={`${canvasShellClass}${!imageUrl && !referenceImageUrl ? ' is-empty' : ''}`}>
         <div className="workstation-fusion-sources">
           <FusionSlot
             label="商品"
@@ -169,7 +169,7 @@ export default function CanvasArea({
 
   if (!imageUrl) {
     return (
-      <div className={canvasShellClass}>
+      <div className={`${canvasShellClass} is-empty`}>
         <Upload.Dragger
           className="workstation-upload"
           accept="image/png,image/jpeg,image/webp"
@@ -205,30 +205,32 @@ export default function CanvasArea({
   if (interactionMode === 'mask-paint') {
     return (
       <div className={canvasShellClass}>
-        <div className="workstation-canvas-toolbar">
-          <BrushToolbar
-            brushSize={brushSize}
-            tool={paintTool}
-            smartSelectEnabled={smartSelectEnabled}
-            smartSelectReady={smartSelectReady}
-            smartSelectError={Boolean(capabilityError)}
-            refineMode={refineMode}
-            canUndo={historyState.canUndo}
-            canRedo={historyState.canRedo}
-            onBrushSizeChange={setBrushSize}
-            onToolChange={selectPaintTool}
-            onSmartSelectToggle={() => setSmartSelectEnabled((enabled) => !enabled)}
-            onInvert={() => {
-              void maskHandleRef.current?.invertSelection().catch(error => {
-                message.error(error instanceof Error ? error.message : '反选失败')
-              })
-            }}
-            onUndo={() => maskHandleRef.current?.undo()}
-            onRedo={() => maskHandleRef.current?.redo()}
-            onClear={() => maskHandleRef.current?.clear()}
-          />
+        <div className="workstation-canvas-controls">
+          <div className="workstation-canvas-toolbar">
+            <BrushToolbar
+              brushSize={brushSize}
+              tool={paintTool}
+              smartSelectEnabled={smartSelectEnabled}
+              smartSelectReady={smartSelectReady}
+              smartSelectError={Boolean(capabilityError)}
+              refineMode={refineMode}
+              canUndo={historyState.canUndo}
+              canRedo={historyState.canRedo}
+              onBrushSizeChange={setBrushSize}
+              onToolChange={selectPaintTool}
+              onSmartSelectToggle={() => setSmartSelectEnabled((enabled) => !enabled)}
+              onInvert={() => {
+                void maskHandleRef.current?.invertSelection().catch(error => {
+                  message.error(error instanceof Error ? error.message : '反选失败')
+                })
+              }}
+              onUndo={() => maskHandleRef.current?.undo()}
+              onRedo={() => maskHandleRef.current?.redo()}
+              onClear={() => maskHandleRef.current?.clear()}
+            />
+          </div>
+          {!refineMode && <div className="workstation-canvas-replace">{replaceButton}</div>}
         </div>
-        {!refineMode && <div className="workstation-canvas-replace">{replaceButton}</div>}
         <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载蒙版画布…</div>}>
           <MaskPaintCanvas
             ref={setMaskHandle}
@@ -253,10 +255,12 @@ export default function CanvasArea({
   if (interactionMode === 'drag-resize') {
     return (
       <div className={canvasShellClass}>
-        <div className="workstation-canvas-hint">
-          {presetTargetSize ? '已按平台预设自动居中' : '拖拽绿色边框的控制点调整扩图范围'}
+        <div className="workstation-canvas-controls">
+          <div className="workstation-canvas-hint">
+            {presetTargetSize ? '已按平台预设自动居中' : '拖拽绿色边框的控制点调整扩图范围'}
+          </div>
+          <div className="workstation-canvas-replace">{replaceButton}</div>
         </div>
-        <div className="workstation-canvas-replace">{replaceButton}</div>
         <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载扩图画布…</div>}>
           <OutpaintCanvas
             ref={setOutpaintHandle}
@@ -273,18 +277,20 @@ export default function CanvasArea({
 
   return (
     <div className={canvasShellClass}>
-      <div className="workstation-canvas-toolbar">
-        <Segmented
-          value={compareMode}
-          options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
-          onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
-        />
+      <div className="workstation-canvas-controls">
+        <div className="workstation-canvas-toolbar">
+          <Segmented
+            value={compareMode}
+            options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
+            onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
+          />
+        </div>
+        <div className="workstation-canvas-replace">{replaceButton}</div>
       </div>
-      <div className="workstation-canvas-replace">{replaceButton}</div>
       <img
         src={compareMode === 'original' ? originalImageUrl ?? imageUrl : imageUrl}
         alt={compareMode === 'original' ? '原始图片' : '当前编辑效果'}
-        style={{ maxWidth: '72%', maxHeight: '72%', objectFit: 'contain', cursor: onPreview ? 'zoom-in' : undefined }}
+        className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
         onClick={onPreview ? () => onPreview(compareMode) : undefined}
       />
       <div className="workstation-canvas-footnote">
