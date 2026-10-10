@@ -129,7 +129,7 @@ export default function PipelineTool() {
     finally { if (mounted.current) setPackaging(false) }
   }
 
-  return <div className="toolbox-watermark toolbox-pipeline">
+  return <div className="toolbox-watermark toolbox-pipeline toolbox-sticky-preview">
     <div className="toolbox-pipeline-lead">
       <div className="toolbox-section-heading"><div><strong>转比例 → 加水印</strong><span>一次设置，自动处理整批图片</span></div></div>
       <ToolboxImageCard

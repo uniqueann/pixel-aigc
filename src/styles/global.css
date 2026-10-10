@@ -3069,12 +3069,12 @@ body.sidebar-resizing * {
   padding: 0 20px;
 }
 
-.toolbox-pipeline .toolbox-preview-panel {
+.toolbox-sticky-preview > .toolbox-watermark-main > .toolbox-preview-panel {
   align-self: start;
 }
 
 @media (min-width: 901px) {
-  .toolbox-pipeline .toolbox-preview-panel {
+  .toolbox-sticky-preview > .toolbox-watermark-main > .toolbox-preview-panel {
     position: sticky;
     top: 0;
   }
