@@ -394,7 +394,7 @@ export default function AspectRatioTool() {
   }
 
   return (
-    <div className="toolbox-watermark">
+    <div className="toolbox-watermark toolbox-sticky-preview">
       <ToolboxImageCard
         items={items.map(item => ({
           id: item.id,

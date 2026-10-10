@@ -285,7 +285,7 @@ export default function WatermarkTool() {
   }
 
   return (
-    <div className="toolbox-watermark">
+    <div className="toolbox-watermark toolbox-sticky-preview">
       <ToolboxImageCard
         items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, status: item.status, error: item.error }))}
         selectedId={selectedId}
