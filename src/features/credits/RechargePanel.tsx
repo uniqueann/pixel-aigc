@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Button, Input, Modal, Select, Space } from 'antd'
+import { Alert, Button, Modal, Select, Space } from 'antd'
+import { CornerHintTextArea } from '@/components/CornerHintTextArea'
 import { useUserStore } from '@/store/useUserStore'
 import { BILLING_REFRESH_EVENT, checkoutCredits, getBillingCatalog, getCreditOrder, listCreditOrders, refreshBillingBalance, requestCashRefund } from '@/services/api/billing'
 import { formatCreditPrice, type BillingCatalog, type CreditOrder, type PaymentProvider } from '@shared/billing'
@@ -123,7 +124,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
       })()}>
       <p>申请提交后由人工核对未使用积分和可退金额，审核通过后原路退款。</p>
       {error ? <Alert type="error" message={error} /> : null}
-      <Input.TextArea aria-label="退款原因" value={refundReason} onChange={event=>setRefundReason(event.target.value)} maxLength={500} placeholder="请填写退款原因" />
+      <CornerHintTextArea aria-label="退款原因" value={refundReason} onChange={event=>setRefundReason(event.target.value)} maxLength={500} placeholder="请填写退款原因" />
     </Modal>
   </Space>
 }

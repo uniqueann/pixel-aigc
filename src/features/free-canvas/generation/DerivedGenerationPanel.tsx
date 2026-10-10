@@ -1,5 +1,6 @@
 import { ArrowLeftOutlined } from '@ant-design/icons'
-import { Button, Input, Radio, Spin, Tooltip } from 'antd'
+import { Button, Radio, Spin, Tooltip } from 'antd'
+import { CornerHintTextArea } from '@/components/CornerHintTextArea'
 import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
@@ -174,7 +175,7 @@ export default function DerivedGenerationPanel({
       {!showForm ? <VideoAvailabilityNotice state={videoState} onRetry={onReloadModels} /> : <>
       <label className="free-canvas-field">
         <span>{imageToVideo ? '动态描述' : '变化描述（可选）'}</span>
-        <Input.TextArea
+        <CornerHintTextArea
           rows={5}
           maxLength={imageToVideo ? VIDEO_PROMPT_MAX : VARIATION_USER_PROMPT_MAX}
           showCount
