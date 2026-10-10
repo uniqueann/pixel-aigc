@@ -1,5 +1,4 @@
-import { Button, Checkbox, Segmented, Select, Space } from 'antd'
-import { CornerHintTextArea } from '@/components/CornerHintTextArea'
+import { Button, Checkbox, Input, Segmented, Select, Space } from 'antd'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import ModelChoice from '@/components/ModelChoice'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
@@ -165,7 +164,7 @@ export default function ParamPanel({
         ) : null}
         <div>
           <div style={labelStyle}>{retouch || fusion ? '补充说明（可选）' : variation ? '补充要求（可选）' : '编辑要求'}</div>
-          <CornerHintTextArea
+          <Input.TextArea
             value={smartEditPrompt}
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
@@ -273,7 +272,7 @@ export default function ParamPanel({
         </div>
         <div>
           <div style={labelStyle}>补充说明（可选）</div>
-          <CornerHintTextArea
+          <Input.TextArea
             value={smartEditPrompt}
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
@@ -317,7 +316,7 @@ export default function ParamPanel({
         {intro}
         <div>
           <div style={labelStyle}>重绘描述</div>
-          <CornerHintTextArea
+          <Input.TextArea
             value={repaintPrompt}
             disabled={disabled}
             onChange={(event) => onRepaintPromptChange(event.target.value)}
@@ -338,7 +337,7 @@ export default function ParamPanel({
         <div>
           <p className="toolbox-hint" style={{ margin: '0 0 8px', fontSize: 12 }}>上传后用画笔或智能选区涂抹要消除的区域。智能选区免费。</p>
           <div style={labelStyle}>背景描述（可选）</div>
-          <CornerHintTextArea
+          <Input.TextArea
             value={erasePrompt}
             disabled={disabled}
             onChange={(event) => onErasePromptChange(event.target.value)}
