@@ -93,7 +93,7 @@ export default function BrushToolbar({
           />
         </span>
       </Tooltip>
-      <span style={{ width: 84, padding: '0 8px' }}>
+      <span style={{ display: 'inline-block', width: 84, padding: '0 8px' }}>
         <Slider
           aria-label="笔刷大小"
           min={4}

@@ -2,7 +2,7 @@ import type { ToolExample } from '@/features/image-workstation/tools/examples'
 
 export default function ToolExampleStrip({ example }: { example: ToolExample }) {
   return (
-    <details className="tool-example" open>
+    <details className="tool-example workstation-panel" open>
       <summary>示例</summary>
       <div className="tool-example-row">
         <div className="tool-example-group">

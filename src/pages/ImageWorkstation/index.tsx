@@ -51,6 +51,7 @@ import { workstationRequestQuote } from '@/features/image-workstation/creditQuot
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 import { syncCreditPrice } from '@shared/billing'
 import { COUNT_TOOLS, type CountTool } from '@shared/preferences'
+import { useStickyPreview } from './utils/useStickyPreview'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
@@ -98,7 +99,7 @@ export default function ImageWorkstation() {
   const toolReady = isWorkstationToolReady(activeTool, capabilityReady)
   const toolState = toolReady ? true : isWorkstationToolReady(activeTool, capability => capabilityState(capability) !== false) ? undefined : false
   const configurationReady = activeTool.slug === 'repaint' ? repaintReady : toolState
-  const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode)
+  const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode) && toolState !== false
   const variationTool = activeTool.capability === Capability.Variation
   const retouchTool = activeTool.slug === 'retouch'
   const fusionTool = activeTool.slug === 'fusion'
@@ -416,6 +417,15 @@ export default function ImageWorkstation() {
   const blockReason = generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
   const example = toolExample(activeTool.slug)
   const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
+  const hasVisibleInput = fusionTool ? Boolean(fusionProduct || fusionReference) : Boolean(showSourcePreview && controller.inputAsset)
+  const { previewRef, footerRef, sticky } = useStickyPreview(hasVisibleInput && !showExample)
+  const inputDescription = fusionTool
+    ? `${fusionProduct ? `商品 ${fusionProduct.width}×${fusionProduct.height}` : '请上传商品图'} · ${fusionReference ? `场景 ${fusionReference.width}×${fusionReference.height}` : '请上传场景图'}`
+    : !showSourcePreview
+      ? '当前工具即将上线，不会使用上一工具的图片'
+      : controller.inputAsset
+        ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
+        : '请先上传需要处理的图片'
 
   return (
     <div className="image-workstation-page">
@@ -429,52 +439,52 @@ export default function ImageWorkstation() {
         value={activeTool.slug}
         onChange={(slug) => navigate(`/image-workstation/${slug}`)}
       />
-      {showExample && example ? <ToolExampleStrip example={example} /> : null}
       <div className="image-workstation-main">
-        <div className="image-workstation-canvas-column">
-          <CanvasArea
-            interactionMode={activeTool.interactionMode}
-            imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
-            imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
-            referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
-            originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}
-            imageNaturalSize={inputSize}
-            presetTargetSize={presetTargetSize}
-            outpaintOutputMode={outpaintOutputMode}
-            onOutpaintTargetSizeChange={setOutpaintTargetSize}
-            compareMode={compareMode}
-            uploading={uploading}
-            fusionUploading={fusionSelection.loading}
-            uploadDisabled={controller.formLocked || Boolean(edgeRefine)}
-            refineMode={Boolean(edgeRefine)}
-            onCompareModeChange={setCompareMode}
-            onImageUpload={fusionTool ? (file) => { void handleFusionUpload('product', file) } : handleImageUpload}
-            onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
-            onReady={handleCanvasReady}
-            onMaskChange={setHasMaskPaint}
-            uploadHint={activeTool.slug === 'remove' ? '上传后用画笔或智能选区涂抹要消除的区域' : undefined}
-            onPreview={(view) => {
-              const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
-              if (id) openAt(id)
-            }}
-          />
-          <ImageAssetStrip
-            assets={controller.outputAssets}
-            selectedAssetId={controller.inputAsset?.id}
-            downloadingAssetId={downloadingAssetId}
-            onSelect={(assetId) => {
-              controller.selectOutput(assetId)
-              setCompareMode('effect')
-            }}
-            onDownload={(asset, index) => void handleDownload(asset, index)}
-            onPreview={openAt}
-          />
-          <PreviewGallery {...galleryProps} onDownload={item => {
-            const index = controller.outputAssets.findIndex(asset => asset.id === item.id)
-            if (index >= 0) return handleDownload(controller.outputAssets[index], index)
-          }} />
+        <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
+          <section className="workstation-panel image-workstation-preview-panel" aria-labelledby="workstation-preview-heading">
+            <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
+            <CanvasArea
+              interactionMode={activeTool.interactionMode}
+              imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
+              imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
+              referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
+              originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}
+              imageNaturalSize={inputSize}
+              presetTargetSize={presetTargetSize}
+              outpaintOutputMode={outpaintOutputMode}
+              onOutpaintTargetSizeChange={setOutpaintTargetSize}
+              compareMode={compareMode}
+              uploading={uploading}
+              fusionUploading={fusionSelection.loading}
+              uploadDisabled={controller.formLocked || Boolean(edgeRefine)}
+              refineMode={Boolean(edgeRefine)}
+              onCompareModeChange={setCompareMode}
+              onImageUpload={fusionTool ? (file) => { void handleFusionUpload('product', file) } : handleImageUpload}
+              onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
+              onReady={handleCanvasReady}
+              onMaskChange={setHasMaskPaint}
+              uploadHint={activeTool.slug === 'remove' ? '上传后用画笔或智能选区涂抹要消除的区域' : undefined}
+              onPreview={(view) => {
+                const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
+                if (id) openAt(id)
+              }}
+            />
+            <ImageAssetStrip
+              assets={controller.outputAssets}
+              selectedAssetId={controller.inputAsset?.id}
+              downloadingAssetId={downloadingAssetId}
+              onSelect={(assetId) => {
+                controller.selectOutput(assetId)
+                setCompareMode('effect')
+              }}
+              onDownload={(asset, index) => void handleDownload(asset, index)}
+              onPreview={openAt}
+            />
+          </section>
+          {showExample && example ? <ToolExampleStrip example={example} /> : null}
         </div>
-        <aside className="image-workstation-settings">
+        <aside className="workstation-panel image-workstation-settings" aria-labelledby="workstation-settings-heading">
+          <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>
           <CapabilityStatus
             ready={configurationReady}
             error={capabilityError}
@@ -485,7 +495,6 @@ export default function ImageWorkstation() {
           />
           {toolState !== false ? (
             <ParamPanel
-              title={activeTool.label}
               capability={activeTool.capability}
               mode={inpaintMode}
               smartEditPrompt={relightTool ? relightNote : fusionTool ? fusionNote : retouchTool ? retouchNote : variationTool ? variationPrompt : smartEditPrompt}
@@ -545,49 +554,49 @@ export default function ImageWorkstation() {
           />
         </aside>
       </div>
-      {!edgeRefine && configurationReady === true && <CreditQuoteNotice quote={generateQuote} onRetry={() => void activeConfiguration.refetch()} />}
-      <div className="image-workstation-footer">
-        <div>
-          {fusionTool
-            ? `${fusionProduct ? `商品 ${fusionProduct.width}×${fusionProduct.height}` : '请上传商品图'} · ${fusionReference ? `场景 ${fusionReference.width}×${fusionReference.height}` : '请上传场景图'}`
-            : !showSourcePreview
-            ? '当前工具即将上线，不会使用上一工具的图片'
-            : controller.inputAsset
-              ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
-              : '请先上传需要处理的图片'}
-        </div>
-        {edgeRefine ? (
-          <>
-            <Button onClick={cancelEdgeRefine}>取消精修</Button>
-            <Button type="primary" disabled={!controller.inputAsset} onClick={() => void finishEdgeRefine()}>完成精修</Button>
-          </>
-        ) : (
+      <div ref={footerRef} className="image-workstation-footer">
+        {!edgeRefine && configurationReady === true && <CreditQuoteNotice quote={generateQuote} onRetry={() => void activeConfiguration.refetch()} />}
+        <div className="image-workstation-footer-row">
+          <span className="image-workstation-input-description" title={inputDescription}>{inputDescription}</span>
           <div className="image-workstation-footer-actions">
-            <Button
-              icon={<DownloadOutlined />}
-              disabled={!selectedResult || controller.formLocked}
-              loading={Boolean(selectedResult && downloadingAssetId === selectedResult.id)}
-              onClick={() => void handleDownload(selectedResult, Math.max(0, controller.outputAssets.findIndex((asset) => asset.id === selectedResult?.id)))}
-            >
-              下载结果
-            </Button>
-            <Tooltip title={blockReason}>
-              <span>
-                <CreditActionButton
-                  type="primary"
-                  loading={controller.submitting}
-                  quote={generateQuote}
-                  disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
-                  onClick={handleGenerate}
+            {edgeRefine ? (
+              <>
+                <Button onClick={cancelEdgeRefine}>取消精修</Button>
+                <Button type="primary" disabled={!controller.inputAsset} onClick={() => void finishEdgeRefine()}>完成精修</Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  icon={<DownloadOutlined />}
+                  disabled={!selectedResult || controller.formLocked}
+                  loading={Boolean(selectedResult && downloadingAssetId === selectedResult.id)}
+                  onClick={() => void handleDownload(selectedResult, Math.max(0, controller.outputAssets.findIndex((asset) => asset.id === selectedResult?.id)))}
                 >
-                  {COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}
-                </CreditActionButton>
-              </span>
-            </Tooltip>
+                  下载结果
+                </Button>
+                <Tooltip title={blockReason}>
+                  <span>
+                    <CreditActionButton
+                      type="primary"
+                      loading={controller.submitting}
+                      quote={generateQuote}
+                      disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
+                      onClick={handleGenerate}
+                    >
+                      {COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}
+                    </CreditActionButton>
+                  </span>
+                </Tooltip>
+              </>
+            )}
           </div>
-        )}
+        </div>
+        {!edgeRefine && <><CreditBalanceNotice quote={generateQuote} /><CreditSettlementHint quote={generateQuote} /></>}
       </div>
-      {!edgeRefine && <><CreditBalanceNotice quote={generateQuote} /><CreditSettlementHint quote={generateQuote} /></>}
+      <PreviewGallery {...galleryProps} onDownload={item => {
+        const index = controller.outputAssets.findIndex(asset => asset.id === item.id)
+        if (index >= 0) return handleDownload(controller.outputAssets[index], index)
+      }} />
     </div>
   )
 }

@@ -19,6 +19,12 @@ const mocks = vi.hoisted(() => ({
   controllerArgs: undefined as { modelProfileId?: string } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
+  fusion: {
+    product: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined,
+    reference: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined,
+    loading: { product: false, reference: false },
+    load: vi.fn(),
+  },
 }))
 vi.mock('react-router-dom', () => ({ useParams: () => ({ tool: mocks.tool }), useNavigate: () => vi.fn() }))
 vi.mock('@/hooks/useCapabilities', () => ({ useCapabilities: () => mocks.status }))
@@ -31,6 +37,7 @@ vi.mock('@/features/image-workstation/hooks/useImageWorkstationController', () =
 vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ models: mocks.models, loading: mocks.modelsLoading, refetch: vi.fn() }) }))
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false }))
 vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
+vi.mock('@/features/image-workstation/hooks/useFusionImageSelection', () => ({ useFusionImageSelection: () => mocks.fusion }))
 
 import ImageWorkstation from './index'
 
@@ -52,6 +59,8 @@ describe('图片工作站配置提示', () => {
     mocks.controller.inputAsset = undefined
     mocks.controller.outputAssets = []
     mocks.controller.formLocked = false
+    mocks.fusion.product = undefined
+    mocks.fusion.reference = undefined
     usePreferencesStore.setState({ preferences: defaultPreferences(), memoryEpoch: 0 })
   })
 
@@ -59,6 +68,55 @@ describe('图片工作站配置提示', () => {
     cleanup()
     vi.unstubAllGlobals()
     useUserStore.setState({ userId: null, credits: 0, creditsLoaded: false })
+  })
+
+  it.each([
+    ['smart-edit', '智能编辑'], ['relight', '重新打光'], ['remove', '消除'], ['repaint', '重绘'],
+    ['variation', '裂变'], ['fusion', '融合'], ['outpaint', '扩图'], ['retouch', '精修'],
+  ])('%s 共用左右卡片，标题在配置不可用时仍保留', (tool, label) => {
+    mocks.tool = tool
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(screen.getByRole('region', { name: '图片与预览' }).contains(container.querySelector('.workstation-canvas-shell'))).toBe(true)
+    expect(screen.getByRole('complementary', { name: label })).toBeTruthy()
+    expect(screen.getAllByRole('heading', { name: label })).toHaveLength(1)
+    expect(container.querySelector('.image-workstation-footer')?.contains(buttonByText(/生成(?: \d+ 张)? ·/))).toBe(true)
+  })
+
+  it('示例位于左栏独立卡片，折叠不重建右侧配置和图片区域', () => {
+    mocks.tool = 'variation'
+    const { container } = render(<App><ImageWorkstation /></App>)
+    const example = screen.getByText('示例').closest('details')!
+    const settings = screen.getByRole('complementary', { name: '裂变' })
+    const preview = screen.getByRole('region', { name: '图片与预览' })
+    expect(example.parentElement).toBe(container.querySelector('.image-workstation-canvas-column'))
+    expect(preview.contains(example)).toBe(false)
+    expect(example.open).toBe(true)
+    example.open = false
+    fireEvent(example, new Event('toggle'))
+    expect(screen.getByRole('complementary', { name: '裂变' })).toBe(settings)
+    expect(screen.getByRole('region', { name: '图片与预览' })).toBe(preview)
+    expect(container.querySelector('.is-sticky')).toBeNull()
+  })
+
+  it.each(['product', 'reference', 'both'])('融合上传 %s 后隐藏示例，图片仍在对应槽位', (input) => {
+    mocks.tool = 'fusion'
+    const asset = { id: 'fusion-input', name: '商品.png', width: 800, height: 800, url: 'blob:fusion' }
+    if (input !== 'reference') mocks.fusion.product = asset
+    if (input !== 'product') mocks.fusion.reference = asset
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.queryByText('示例')).toBeNull()
+    if (mocks.fusion.product) expect(screen.getByAltText('商品')).toBeTruthy()
+    if (mocks.fusion.reference) expect(screen.getByAltText('场景或参考')).toBeTruthy()
+  })
+
+  it('未上线的单图工具不展示上一工具的图片', () => {
+    mocks.tool = 'variation'
+    mocks.status.capabilities.variation = false
+    mocks.controller.inputAsset = { id: 'previous', name: '上一工具.png', width: 800, height: 800, url: 'blob:previous' }
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('上传需要处理的商品图片')).toBeTruthy()
+    expect(screen.queryByAltText('当前编辑效果')).toBeNull()
+    expect(container.querySelector('.is-sticky')).toBeNull()
   })
 
   it.each(['smart-edit', 'relight', 'variation', 'fusion', 'retouch', 'repaint'])('%s 等待配置时不闪现未上线提示', async (tool) => {
