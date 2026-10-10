@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Dashboard from '@/pages/Dashboard'
-import { useUserStore } from '@/store/useUserStore'
+import { useUserStore, type AccountContext } from '@/store/useUserStore'
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { setPersistenceUser } from '@/editor/persistence/database'
@@ -47,11 +47,57 @@ beforeEach(() => {
   vi.stubGlobal('URL', class extends URL { static createObjectURL = mocks.createUrl; static revokeObjectURL = mocks.revokeUrl })
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
   vi.stubGlobal('BroadcastChannel', undefined)
-  setPersistenceUser(OWNER_A); useUserStore.setState({ userId: OWNER_A })
+  setPersistenceUser(OWNER_A); useUserStore.setState({ userId: OWNER_A, account: null })
   usePersistenceStore.setState({ ownerId: OWNER_A }); useEditorStore.setState({ project: null })
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 afterEach(() => { cleanup(); client.clear(); vi.unstubAllGlobals() })
+
+describe('首页新用户卡片', () => {
+  const welcome = { initialCredits: 30, creditNoticeSeen: true, starterCardDismissed: false, analyticsEnabled: true, hasCreatedWork: false }
+  function account(owner = OWNER_A, hasCreatedWork = false) {
+    useUserStore.setState({ userId: owner, account: { userId: owner, welcome: { ...welcome, hasCreatedWork } } as AccountContext })
+    mocks.request.mockImplementation((path: string) => Promise.resolve(path === '/activation' ? welcome : { items: [] }))
+  }
+  it('确认空作品后显示 30 分与每月 20 张免费，按钮直达智能抠图', async () => {
+    account(); mount()
+    const card = await screen.findByRole('region', { name: '开始创作第一张作品' })
+    expect(within(card).getByText('新账号赠送的 30 积分已到账。推荐先试试智能抠图，每月 20 张免费。')).toBeTruthy()
+    expect(within(card).getByRole('link', { name: '开始智能抠图' }).getAttribute('href')).toBe('/toolbox/bg-remove')
+  })
+  it('读取与云端同步期间不闪现卡片，历史作品加载后不显示', async () => {
+    account()
+    let finish!: (value: { failed: number }) => void
+    mocks.hydrateImages.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    mount()
+    await waitFor(() => expect(mocks.hydrateImages).toHaveBeenCalled())
+    expect(screen.queryByRole('region', { name: '开始创作第一张作品' })).toBeNull()
+    mocks.history.mockResolvedValue([image('已有作品')])
+    await act(async () => { finish({ failed: 0 }) })
+    await screen.findByRole('button', { name: /预览重绘/ })
+    expect(screen.queryByRole('region', { name: '开始创作第一张作品' })).toBeNull()
+  })
+  it('关闭后刷新也不出现，换账号不继承关闭状态', async () => {
+    account()
+    const view = mount()
+    fireEvent.click(await screen.findByRole('button', { name: '关闭新用户卡片' }))
+    expect(screen.queryByRole('region', { name: '开始创作第一张作品' })).toBeNull()
+    view.unmount(); account(); const next = mount()
+    await screen.findByText('还没有最近作品')
+    expect(screen.queryByRole('region', { name: '开始创作第一张作品' })).toBeNull()
+    next.unmount(); account(OWNER_B); setPersistenceUser(OWNER_B); mount()
+    expect(await screen.findByRole('region', { name: '开始创作第一张作品' })).toBeTruthy()
+  })
+  it('曾成功生成的账号即使最近作品已过期也不出现，读取失败不当成空作品', async () => {
+    account(OWNER_A, true)
+    const view = mount()
+    await screen.findByText('还没有最近作品')
+    expect(screen.queryByRole('region', { name: '开始创作第一张作品' })).toBeNull()
+    view.unmount(); account(); mocks.history.mockRejectedValue(new Error('作品读取失败')); mount()
+    await screen.findByRole('alert')
+    expect(screen.queryByRole('region', { name: '开始创作第一张作品' })).toBeNull()
+  })
+})
 
 describe('最近作品横向渐隐', () => {
   function metricsOf(el: HTMLElement) {

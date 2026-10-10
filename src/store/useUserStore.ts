@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { WelcomeState } from '@shared/activation'
 
 interface UserStoreState {
   userId: string | null
@@ -13,6 +14,8 @@ interface UserStoreState {
 }
 
 export interface AccountContext {
+  welcome?: WelcomeState
+  runtimeScope?: 'local' | 'preview' | 'production'
   userId: string
   credits: number
   email: string

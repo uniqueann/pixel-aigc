@@ -2,6 +2,8 @@ import { normalizeImageBlob } from '@shared/image-format'
 import { filenameWithMimeExtension } from '@/features/image-workstation/download'
 import { authEnabled, cloudEnabled } from '@/cloud/client'
 import { apiClient } from './client'
+import { useUserStore } from '@/store/useUserStore'
+import { trackFirstUpload, uploadToolForPath } from '@/features/activation/client'
 
 const ACCEPTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
@@ -71,6 +73,8 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
 
 /** 上传图片并返回可注册到 AssetRegistry 的元数据。 */
 export async function uploadImage(file: File, options: { local?: boolean } = {}): Promise<UploadedImage> {
+  const owner = useUserStore.getState().userId
+  const tool = uploadToolForPath()
   if (file.size > MAX_IMAGE_BYTES) throw new Error('图片大小不能超过 20 MB')
   const normalized = await normalizeImageBlob(file)
   file = new File([normalized], filenameWithMimeExtension(file.name, normalized.type), { type: normalized.type, lastModified: file.lastModified })
@@ -78,6 +82,7 @@ export async function uploadImage(file: File, options: { local?: boolean } = {})
   const previewUrl = await readFileAsDataUrl(file)
   const size = await readImageSize(previewUrl)
   if (options.local || useMockGateway || authEnabled || cloudEnabled) {
+    trackFirstUpload(owner, tool)
     return { url: previewUrl, name: file.name, mimeType: file.type, ...size }
   }
 
@@ -85,6 +90,7 @@ export async function uploadImage(file: File, options: { local?: boolean } = {})
   formData.append('file', file)
   const uploaded = await apiClient.post<unknown, { url: string }>('/uploads', formData)
   if (!uploaded.url) throw new Error('上传接口没有返回图片地址')
+  trackFirstUpload(owner, tool)
   return { url: uploaded.url, name: file.name, mimeType: file.type, ...size }
 }
 
