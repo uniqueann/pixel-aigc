@@ -1,4 +1,5 @@
-import { Input, Radio, Segmented, Switch, Tooltip } from 'antd'
+import { Radio, Segmented, Switch, Tooltip } from 'antd'
+import { CornerHintTextArea } from '@/components/CornerHintTextArea'
 import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import { PROMPT_MAX_LENGTH, VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
@@ -156,7 +157,7 @@ export default function GenerationPanel({
       {!showForm ? <VideoAvailabilityNotice state={videoState} onRetry={onReloadModels} /> : <>
       <label className="free-canvas-field">
         <span>画面描述</span>
-        <Input.TextArea
+        <CornerHintTextArea
           rows={6}
           value={prompt}
           maxLength={textToVideo ? VIDEO_PROMPT_MAX : imagePromptMax}

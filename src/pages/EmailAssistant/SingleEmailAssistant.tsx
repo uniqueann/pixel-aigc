@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { App, Alert, Button, Card, Col, Input, Popconfirm, Radio, Row, Select, Space } from 'antd'
+import { App, Alert, Button, Card, Col, Popconfirm, Radio, Row, Select, Space } from 'antd'
+import { CornerHintTextArea } from '@/components/CornerHintTextArea'
 import EmailModelChoice from '@/features/email-assistant/EmailModelChoice'
 import { recommendedEmailModel } from '@shared/email-models'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
@@ -166,7 +167,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>
           <Card title="原始邮件内容" size="small">
-            <Input.TextArea
+            <CornerHintTextArea
               rows={12}
               value={sourceText}
               disabled={controller.formLocked}
@@ -175,7 +176,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
             />
           </Card>
           <Card title="编写指导" size="small" style={{ marginTop: 16 }}>
-            <Input.TextArea
+            <CornerHintTextArea
               rows={4}
               value={instruction}
               disabled={controller.formLocked}
@@ -274,7 +275,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
               </Space>
             ) : null}
           >
-            <Input.TextArea
+            <CornerHintTextArea
               rows={12}
               value={controller.resultText}
               disabled={controller.task?.status !== 'succeeded'}
