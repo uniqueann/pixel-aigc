@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, type TdHTMLAttributes } from 'react'
 import { Alert, App, Button, Card, Descriptions, Image, Input, Modal, Progress, Space, Table, Tag, Upload } from 'antd'
 import { CopyOutlined, DownloadOutlined, InboxOutlined, PauseOutlined, PlayCircleOutlined, RedoOutlined } from '@ant-design/icons'
 import { usePreferencesStore } from '@/features/preferences/store'
+import { useUserStore } from '@/store/useUserStore'
+import { trackFirstUpload } from '@/features/activation/client'
 import type { EmailModelConfiguration } from '@/features/email-assistant/useEmailModelConfiguration'
 import type { EmailBatchController } from '@/features/email-assistant/batch/useEmailBatchController'
 import { EMAIL_BATCH_HEADERS, EMAIL_BATCH_MAX_ROWS } from '@/features/email-assistant/options'
@@ -76,6 +78,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
 
   const importFile = async (file: File) => {
     if (locked) return Upload.LIST_IGNORE
+    const owner = useUserStore.getState().userId
     const epoch = ++importEpoch.current
     setReading(true)
     setImportError(undefined)
@@ -83,6 +86,7 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
       const rows = await readEmailBatchFile(file, usePreferencesStore.getState().preferences.email)
       if (epoch !== importEpoch.current) return Upload.LIST_IGNORE
       controller.load(rows, file.name)
+      if (rows.some(row => row.status === 'pending')) trackFirstUpload(owner, 'email-batch')
       setSelectedId(undefined)
       message.success(`已导入 ${rows.length} 条邮件，其中 ${rows.filter(row => row.status === 'pending').length} 条可生成`)
     } catch (error) {

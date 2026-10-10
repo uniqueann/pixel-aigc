@@ -75,7 +75,12 @@ describe('邮件助手单个与批量页面', () => {
     entry = '/email'
     wrapper = ({ children }) => <StrictMode><MemoryRouter initialEntries={[entry]}><QueryClientProvider client={client}><App>{children}</App></QueryClientProvider></MemoryRouter></StrictMode>
   })
-  afterEach(() => { Modal.destroyAll(); cleanup(); client?.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); useUserStore.setState({ userId: null }) })
+  afterEach(() => {
+    Modal.destroyAll(); cleanup(); client?.clear()
+    // 延迟释放必须在全局模拟恢复前完成，避免下载回调泄漏到后续用例。
+    if (vi.isFakeTimers()) { vi.runOnlyPendingTimers(); vi.useRealTimers() }
+    vi.restoreAllMocks(); vi.unstubAllGlobals(); useUserStore.setState({ userId: null })
+  })
 
   function EntryControls() {
     const navigate = useNavigate(), location = useLocation()
@@ -209,17 +214,26 @@ describe('邮件助手单个与批量页面', () => {
     expect(useTaskStore.getState().tasks['旧账号任务']).toBeUndefined()
   })
 
-  it('可下载模板和包含所有行的结果 CSV，清空后导出不可用', async () => {
+  it('可下载模板和结果 CSV，延迟释放各自地址，清空后导出不可用', async () => {
     render(<EmailAssistant />, { wrapper })
     clickMode('批量')
+    await importCsv(['未生成的邮件,,,', ',错误行,,'])
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce('blob:邮件模板').mockReturnValueOnce('blob:邮件结果')
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL')
     fireEvent.click(buttonByText(batchPane(), /下载模板/))
     expect(mocks.download).toHaveBeenCalledWith('邮件助手-批量模板.csv')
     expect(batchPane().getByAltText('CSV 模板列名：原始邮件内容、编写指导、生成设置、语言')).toBeTruthy()
-    await importCsv(['未生成的邮件,,,', ',错误行,,'])
     fireEvent.click(buttonByText(batchPane(), /导出 CSV/))
     expect(mocks.download).toHaveBeenCalledWith('客户邮件-生成结果.csv')
     fireEvent.click(buttonByText(batchPane(), /清空批次/))
     expect(buttonByText(batchPane(), /导出 CSV/).disabled).toBe(true)
+    act(() => vi.advanceTimersByTime(999))
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    act(() => vi.advanceTimersByTime(1))
+    expect(revokeObjectURL).toHaveBeenCalledTimes(2)
+    expect(revokeObjectURL).toHaveBeenNthCalledWith(1, 'blob:邮件模板')
+    expect(revokeObjectURL).toHaveBeenNthCalledWith(2, 'blob:邮件结果')
   })
 
   it('确认框关闭后批次在后台跑，暂停期间不提交、继续后接着跑', async () => {

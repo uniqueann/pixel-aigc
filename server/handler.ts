@@ -42,6 +42,7 @@ import { measureDetectionSync, type DetectionObserver } from './detection-timing
 import { DETECTION_CLIENT_STAGES } from '../shared/detection.js'
 import { listCreditLedger } from './credits.js'
 import { ensureCreditAccount } from './image-jobs/billing.js'
+import { handleActivationRoute, readWelcomeState } from './activation.js'
 
 const SYNC_PROVIDER_DEADLINE_MS = 100_000
 const clientTimingSchema = z.object({
@@ -528,6 +529,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }))
       return
     }
+    if (path[0] === 'activation') {
+      res.status(200).json(await handleActivationRoute(user, method, path, body))
+      return
+    }
     if (path[0] === 'preferences') {
       res.status(200).json(await handlePreferencesRoute(user, method, path, body))
       return
@@ -715,6 +720,6 @@ async function accountContext(sql: import('./db.js').Transaction, user: Awaited<
     where m.user_id=${user.id} and m.status='active'`
   if (!row) throw new HttpError(403, '账号资料不可用', 'PROFILE_UNAVAILABLE')
   return { userId: user.id, email: user.email, emailVerified: true, displayName: row.displayName, credits: balance,
-    avatarUrl: user.avatarUrl, providers: user.providers, status: 'active',
+    avatarUrl: user.avatarUrl, providers: user.providers, status: 'active', runtimeScope: runtimeScope(), welcome: await readWelcomeState(sql, user.id),
     workspace: { id: row.workspaceId, name: row.workspaceName, type: 'personal', role: row.role } }
 }

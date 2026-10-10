@@ -1,4 +1,6 @@
 import { detectImageMime, equalsAscii } from '@shared/image-format'
+import { useUserStore } from '@/store/useUserStore'
+import { trackFirstUpload, uploadToolForPath } from '@/features/activation/client'
 export const MAX_FILES = 20
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 export const MAX_BATCH_BYTES = 150 * 1024 * 1024
@@ -57,6 +59,8 @@ function readSizeWithImage(file: File) {
 }
 
 export async function inspectImage(file: File) {
+  const owner = useUserStore.getState().userId
+  const tool = uploadToolForPath()
   if (file.size === 0) throw new Error('图片文件为空')
   if (file.size > MAX_IMAGE_BYTES) throw new Error('单张图片不能超过 20 MB')
   const head = new Uint8Array(await file.slice(0, 32).arrayBuffer())
@@ -79,6 +83,7 @@ export async function inspectImage(file: File) {
   if (size.width * size.height > limit) {
     throw new Error(`图片像素超过当前设备的 ${limit / 1_000_000} MP 上限`)
   }
+  trackFirstUpload(owner, tool)
   return { ...size, mimeType }
 }
 

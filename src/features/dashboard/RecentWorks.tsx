@@ -12,6 +12,9 @@ import { HISTORY_CHANGED, listHistoryPreviews, type WorkstationHistoryListItem }
 import { isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { dashboardTime, QUICK_START_GROUPS } from './catalog'
 import { worksStripFades } from './worksStrip'
+import NewUserCard from './NewUserCard'
+import { acknowledgeWelcome } from '@/features/activation/client'
+import { useUserStore } from '@/store/useUserStore'
 
 const entries = QUICK_START_GROUPS.flatMap(group => group.entries)
 
@@ -27,6 +30,11 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
   const [error, setError] = useState<string>()
   const [hydrateError, setHydrateError] = useState<string>()
   const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    const account = useUserStore.getState().account
+    if (items.length && account?.userId === ownerId && account.welcome && !account.welcome.starterCardDismissed)
+      acknowledgeWelcome(ownerId, { starterCardDismissed: true })
+  }, [items.length, ownerId])
   useEffect(() => {
     let active = true, version = 0
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -130,7 +138,7 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
         </span><strong>{workLabel(item)}</strong><time dateTime={item.createdAt}>{dashboardTime(item.createdAt)}</time>
       </button>)}
       </div>
-    </div> : !error && !hydrateError ? <div className="dashboard-empty dashboard-works-empty"><PictureOutlined aria-hidden /><span>还没有最近作品</span></div> : null}
+    </div> : !error && !hydrateError ? <NewUserCard key={ownerId} ownerId={ownerId} /> : null}
     <PreviewGallery {...galleryProps} />
   </section>
 }

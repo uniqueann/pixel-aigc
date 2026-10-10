@@ -6,6 +6,7 @@ import PersonalizationPanel from '@/features/preferences/PersonalizationPanel'
 import PreferencesSyncAlert from '@/features/preferences/PreferencesSyncAlert'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { useUserStore } from '@/store/useUserStore'
+import { saveWelcomeState } from '@/features/activation/client'
 
 const SETTINGS_ITEMS = [
   { key: 'general', label: '通用' },
@@ -77,9 +78,7 @@ function SettingsContent({ section }: { section: string }) {
   if (section === 'data') {
     return (
       <SettingsPanel title="数据控制" description="管理项目数据与产品改进选项。">
-        <SettingRow label="帮助改进 Pixel AIGC" detail="允许使用匿名使用数据改进产品体验">
-          <Switch defaultChecked />
-        </SettingRow>
+        <UsageDataSetting />
       </SettingsPanel>
     )
   }
@@ -90,6 +89,22 @@ function SettingsContent({ section }: { section: string }) {
       <SettingRow label="语言" detail="界面显示语言"><span>简体中文</span></SettingRow>
     </SettingsPanel>
   )
+}
+
+function UsageDataSetting() {
+  const account = useUserStore(state => state.account)
+  const [saving, setSaving] = useState(false)
+  const { message } = App.useApp()
+  return <SettingRow label="帮助改进 Pixel AIGC" detail="记录注册、首次上传与首次成功的时间和工具，不记录图片、邮件或提示词；关闭后停止后续记录">
+    <Switch aria-label="允许记录使用事件" checked={account?.welcome?.analyticsEnabled ?? true}
+      disabled={!account?.welcome || saving} loading={saving} onChange={async enabled => {
+        if (!account) return
+        setSaving(true)
+        try { await saveWelcomeState(account.userId, { analyticsEnabled: enabled }) }
+        catch { message.error('使用数据设置保存失败，请重试') }
+        finally { setSaving(false) }
+      }} />
+  </SettingRow>
 }
 
 function AccountSettings() {

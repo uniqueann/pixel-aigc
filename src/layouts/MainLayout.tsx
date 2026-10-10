@@ -33,6 +33,9 @@ import { clampSidebarWidth, readSidebarState, readSidebarWidth, SIDEBAR_WIDTH_CO
 import { isPreferencePage, resolveStartPage } from '@shared/preferences'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { rememberTool, seedRecentTool } from '@/features/dashboard/recentWork'
+import ToolHelpLink from '@/components/ToolHelpLink'
+import CreditRulesNotice from '@/features/activation/CreditRulesNotice'
+import { syncActivation } from '@/features/activation/client'
 
 const { Sider, Content, Header } = Layout
 
@@ -287,6 +290,13 @@ function MainLayoutContent() {
   const currentUserId=useUserStore(state=>state.userId)
   const credits = useUserStore((s) => s.credits)
   const sidebarOwner = usePreferencesStore(state => state.owner)
+  useEffect(() => {
+    if (!currentUserId) return
+    const sync = () => syncActivation(currentUserId)
+    sync()
+    window.addEventListener('online', sync)
+    return () => window.removeEventListener('online', sync)
+  }, [currentUserId])
   useEffect(()=>{
     const open=()=>setCreditsOpen(true)
     window.addEventListener(RECHARGE_EVENT,open)
@@ -368,6 +378,7 @@ function MainLayoutContent() {
             {isCanvasRoute(location.pathname)
               ? <CanvasProjectCrumb />
               : <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />}
+            <ToolHelpLink />
           </div>
           <div className="app-header-trailing">
             <Dropdown
@@ -397,6 +408,7 @@ function MainLayoutContent() {
           </div>
         </Header>
         <Content className="app-main-content">
+          {currentUserId ? <CreditRulesNotice key={currentUserId} owner={currentUserId} /> : null}
           <PreferencesSyncAlert />
           <ErrorBoundary key={location.pathname}>
             <Outlet context={{ openModelSettings: () => { setSettingsSection('personalization'); setSettingsOpen(true) } }} />
