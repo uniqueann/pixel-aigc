@@ -153,7 +153,7 @@ describe('图片工作站配置提示', () => {
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByText('示例')).toBeTruthy()
     expect(screen.getByAltText('裂变前的白底马克杯')).toBeTruthy()
-    expect(screen.getByText('该能力即将上线，目前还不能提交生成任务。')).toBeTruthy()
+    expect(screen.getByText('该功能即将上线，敬请期待。')).toBeTruthy()
     expect(screen.queryByText('补充要求（可选）')).toBeNull()
   })
 
@@ -241,17 +241,17 @@ describe('图片工作站配置提示', () => {
     mocks.tool = 'repaint'
     mocks.status.capabilities.repaint = false
     render(<App><ImageWorkstation /></App>)
-    expect(screen.getByText('重绘还不能用。请确认已开通万相 wanx2.1-imageedit，并配置 DASHSCOPE_API_KEY。')).toBeTruthy()
+    expect(screen.getByText('重绘服务暂不可用，请稍后重试或联系客服。')).toBeTruthy()
     expect(screen.getByText('重绘描述')).toBeTruthy()
-    expect(screen.queryByText(/智能选区免费/)).toBeNull()
-    expect(screen.queryByText('上传后用画笔或智能选区涂抹要消除的区域')).toBeNull()
+    expect(screen.queryByText(/智能选区不消耗积分/)).toBeNull()
+    expect(screen.queryByText('上传图片后，涂抹需要消除的区域')).toBeNull()
   })
 
   it('消除在上传前说明画笔和免费的智能选区，扩图不再展示无效选择', () => {
     mocks.tool = 'remove'
     const remove = render(<App><ImageWorkstation /></App>)
-    expect(screen.getByText('上传后用画笔或智能选区涂抹要消除的区域')).toBeTruthy()
-    expect(screen.getByText('上传后用画笔或智能选区涂抹要消除的区域。智能选区免费。')).toBeTruthy()
+    expect(screen.getByText('上传图片后，涂抹需要消除的区域')).toBeTruthy()
+    expect(screen.getByText('上传图片后，涂抹需要消除的区域（智能选区不消耗积分）。')).toBeTruthy()
     remove.unmount()
     mocks.tool = 'outpaint'
     render(<App><ImageWorkstation /></App>)
@@ -313,7 +313,7 @@ describe('图片工作站配置提示', () => {
     useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 5, creditsLoaded: true })
     const short = render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(true)
-    expect(short.container.textContent).toContain('积分不足，本次需要 6 积分，当前 5')
+    expect(short.container.textContent).toContain('积分不足（本次需 6 积分，当前可用 5 积分）')
     expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
     short.unmount()
 
@@ -331,7 +331,7 @@ describe('图片工作站配置提示', () => {
     mocks.tool = 'remove'
     const remove = render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 · 5 积分/).disabled).toBe(true)
-    expect(remove.container.textContent).toContain('积分不足，本次需要 5 积分，当前 1')
+    expect(remove.container.textContent).toContain('积分不足（本次需 5 积分，当前可用 1 积分）')
     expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
     remove.unmount()
 
@@ -339,6 +339,6 @@ describe('图片工作站配置提示', () => {
     mocks.controller.inputAsset = undefined
     const outpaint = render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 · 最多 10 积分/).disabled).toBe(true)
-    expect(outpaint.container.textContent).toContain('积分不足，本次最多需要 10 积分，当前 1')
+    expect(outpaint.container.textContent).toContain('积分不足（本次最多需 10 积分，当前可用 1 积分）')
   })
 })

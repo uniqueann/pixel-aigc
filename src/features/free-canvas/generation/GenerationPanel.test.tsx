@@ -64,7 +64,7 @@ describe('自由画布文生图侧栏', () => {
       onModifyParameters={() => undefined} onRefetch={() => undefined} models={[model]} modelProfileId={model.id}
       resolution="2k" estimatedCredits={12} resolutionAdjusted mockGateway={false} />)
     expect(screen.getByText('当前模型或画面比例不支持所选分辨率，已按 2K 计算本次参数与积分。')).toBeTruthy()
-    expect(screen.getByText('本次预计预扣 12 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
+    expect(screen.getByText('本次预计消耗 12 积分，按实际成功张数结算。')).toBeTruthy()
   })
 
   it('缺少报价时显示重读提示，不伪装成免费生成', () => {
@@ -96,7 +96,7 @@ describe('自由画布文生图侧栏', () => {
     cleanup()
     const onChange = vi.fn()
     renderPanel({ models: [qwen], modelProfileId: qwen.id, estimatedCredits: 3, onThinkingChange: onChange })
-    expect(screen.getByText('开启后模型会自动丰富画面描述，生成约慢 3 倍，可能加入未要求的内容')).toBeTruthy()
+    expect(screen.getByText('开启后模型将丰富细节描述；耗时相对增加，画面细节更为丰富。')).toBeTruthy()
     const toggle = screen.getByRole('switch', { name: '自动扩写' })
     expect(toggle.getAttribute('aria-checked')).toBe('false')
     fireEvent.click(toggle)
@@ -109,7 +109,7 @@ describe('自由画布文生图侧栏', () => {
   it('手动重试展示原请求参数的数量和积分，而不套用当前草稿', () => {
     const retry = vi.fn()
     renderPanel({ task: failedTask, count: 1, resolution: '1k', estimatedCredits: 4, onRetry: retry })
-    expect(screen.getByText('手动重试将按原参数创建新任务，生成 2 张，预计预扣 12 积分。')).toBeTruthy()
+    expect(screen.getByText('手动重试将按原参数重新生成 2 张，预计消耗 12 积分。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '按原参数重试 2 张 · 12 积分' }))
     expect(retry).toHaveBeenCalledTimes(1)
   })
@@ -145,8 +145,8 @@ describe('自由画布文生图侧栏', () => {
       task: reloaded, count: 4, resolution: '1k', estimatedCredits: 4, onRetry: retry,
       models: [model, qwenPro], modelProfileId: model.id,
     })
-    expect(screen.getByText('本次预计预扣 4 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
-    expect(screen.getByText('手动重试将按原参数创建新任务，生成 1 张，预计预扣 8 积分。')).toBeTruthy()
+    expect(screen.getByText('本次预计消耗 4 积分，按实际成功张数结算。')).toBeTruthy()
+    expect(screen.getByText('手动重试将按原参数重新生成 1 张，预计消耗 8 积分。')).toBeTruthy()
     expect(screen.queryByText('原模型报价暂不可用，请修改参数后重新生成。')).toBeNull()
     expect(screen.queryByText('报价暂不可用，请重新加载。')).toBeNull()
     const button = screen.getByRole('button', { name: '按原参数重试 1 张 · 8 积分' }) as HTMLButtonElement
@@ -204,13 +204,13 @@ describe('自由画布文生图侧栏', () => {
     renderPanel({ models: [model, nano], modelProfileId: nano.id, resolution: '1k', estimatedCredits: 4 })
     expect(screen.getByRole('combobox', { name: '文生图模型' })).toBeTruthy()
     expect(screen.getByText('Google Nano Banana 2.1')).toBeTruthy()
-    expect(screen.getByText('本次预计预扣 4 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
+    expect(screen.getByText('本次预计消耗 4 积分，按实际成功张数结算。')).toBeTruthy()
     cleanup()
     renderPanel({ models: [model, nano], modelProfileId: nano.id, resolution: '2k', estimatedCredits: 6 })
-    expect(screen.getByText('本次预计预扣 6 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
+    expect(screen.getByText('本次预计消耗 6 积分，按实际成功张数结算。')).toBeTruthy()
     cleanup()
     renderPanel({ models: [model, nano], modelProfileId: nano.id, resolution: '4k', estimatedCredits: 14 })
-    expect(screen.getByText('本次预计预扣 14 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
+    expect(screen.getByText('本次预计消耗 14 积分，按实际成功张数结算。')).toBeTruthy()
     expect(screen.queryByText('自动扩写')).toBeNull()
   })
 
@@ -227,7 +227,7 @@ describe('自由画布文生图侧栏', () => {
     useUserStore.setState({ credits: 1, creditsLoaded: true })
     renderPanel({ task: failedTask })
     expect((screen.getByRole('button', { name: /生成 1 张 · 6 积分/ }) as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(/积分不足，本次需要 6 积分，当前 1/)).toBeTruthy()
+    expect(screen.getByText(/积分不足（本次需 6 积分，当前可用 1 积分）/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
     expect((screen.getByRole('button', { name: /按原参数重试 2 张/ }) as HTMLButtonElement).disabled).toBe(true)
   })

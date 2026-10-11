@@ -166,7 +166,7 @@ describe('视频面板积分预估', () => {
     useUserStore.setState({ credits: 68 })
     render(<Panel model={SEEDANCE_VIDEO_MODEL} configured={false} generateDisabled />)
     expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
-    expect(screen.queryByText(/预计消耗|有声和无声同价|积分不足/)).toBeNull()
+    expect(screen.queryByText(/预计消耗|开启声音不额外收取费用|积分不足/)).toBeNull()
     expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.queryByRole('button', { name: new RegExp(`^${buttonName}`) })).toBeNull()
   })

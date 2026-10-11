@@ -65,7 +65,7 @@ export default function Assets() {
   try {
     ownerId = resolveWorkstationHistoryOwner(authEnabled, userId)
   } catch {
-    return <EmptyState description="登录账号尚未就绪，无法读取历史任务" />
+    return <EmptyState description="请先登录后再查看作品历史" />
   }
   return <AssetsForOwner key={ownerId} ownerId={ownerId} />
 }
@@ -298,7 +298,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       {filter === 'video' && videoState !== 'ready' ? <VideoAvailabilityNotice state={videoState} onRetry={() => void reloadCapabilities()} /> : null}
       {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>重新加载</Button>} /> : null}
       {loading ? (
-        <div className="assets-loading"><Spin /> 正在读取历史任务…</div>
+        <div className="assets-loading"><Spin /> 正在加载作品…</div>
       ) : hydrating && visible.length === 0 && filter !== 'email' ? (
         <div className="assets-loading"><Spin /> 正在加载作品…</div>
       ) : visible.length === 0 ? (

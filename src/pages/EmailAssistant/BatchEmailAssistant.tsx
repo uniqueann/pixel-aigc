@@ -128,12 +128,12 @@ export default function BatchEmailAssistant({ controller, configuration, singleB
           <p className="ant-upload-hint">CSV UTF-8 格式，最多 {EMAIL_BATCH_MAX_ROWS} 条邮件，文件不超过 5 MB</p>
         </Upload.Dragger>
         {controller.fileName ? <p className="email-batch-hint">当前文件：{controller.fileName}。上传新文件会替换本批次。</p> : null}
-        <p className="email-batch-hint">批次保留在当前页面。切换单个／批量不会丢失；刷新或离开邮件页会停止后续生成，请及时导出。</p>
+        <p className="email-batch-hint">批次数据保留在当前页面，切换标签页不会丢失；刷新或离开页面将中断生成，请及时导出结果。</p>
         <p className="email-batch-hint">每次按顺序生成一封，每小时最多提交 60 条。已提交邮件在最近 7 天历史中可查询。</p>
         <div className="email-batch-model"><EmailModelChoice configuration={configuration} value={modelId} language={language}
           disabled={locked || Boolean(controller.modelProfileId)} onChange={setPickedModel} /></div>
-        {controller.modelProfileId ? <p className="email-batch-hint">本批次已固定使用同一型号，开始后不可更改。</p> : null}
-        {mixed && !modelId ? <Alert type="info" message="混合语种请手动选择统一模型，也可拆成不同语种的批次" /> : null}
+        {controller.modelProfileId ? <p className="email-batch-hint">本批次已固定使用所选模型，开始处理后不可更改。</p> : null}
+        {mixed && !modelId ? <Alert type="info" message="包含多种语言，请手动指定统一模型，或拆分为单一语种批次" /> : null}
         <p className="email-batch-hint">有效邮件 {validCount} 条 · 待处理预计 {remainingCost} 积分 · 已实扣 {charged} 积分</p>
         <p className="email-batch-hint">当前余额 {balance ?? '读取中'}{balance != null && profile ? `，按此单价可完成 ${Math.floor(balance / profile.credits)} 条` : ''}
           <Button type="link" size="small" onClick={openCreditRecharge}>充值积分</Button></p>

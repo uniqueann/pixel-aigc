@@ -214,11 +214,11 @@ export default function DerivedGenerationPanel({
         {resolutionAdjusted && <p role="status">当前模型或图片比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
         {modelsLoading
           ? <p role="status">正在加载模型配置…</p>
-          : <p>{mockGateway ? '模拟生成，不消耗积分' : estimatedCredits === undefined ? '模型积分报价尚未就绪，请重新加载。' : `本次预计预扣 ${estimatedCredits} 积分，按实际成功张数结算。失败后由你决定是否再次生成。`}</p>}
+          : <p>{mockGateway ? '模拟生成，不消耗积分' : estimatedCredits === undefined ? '模型积分报价尚未就绪，请重新加载。' : `本次预计消耗 ${estimatedCredits} 积分，按实际成功张数结算。`}</p>}
       </>}
 
       {modelsLoading || imageToVideo ? null : generateDisabled ? (
-        <p className="toolbox-hint">裂变模型尚未就绪，请检查登录与模型配置。</p>
+        <p className="toolbox-hint">裂变服务暂不可用，请检查网络或稍后重试。</p>
       ) : null}
       {imageToVideo && <><VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
         loading={modelsLoading} configured={videoConfigured || mockGateway} />
@@ -244,7 +244,7 @@ export default function DerivedGenerationPanel({
       {!imageToVideo && <CreditBalanceNotice quote={quote} />}
       {preparationPhase && <p role="status">{preparationPhase}</p>}
       {!imageToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
-        手动重试将按原参数创建新任务，生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计预扣 ${retryCredits} 积分。`}
+        手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
       </p>}
       {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
       </>}

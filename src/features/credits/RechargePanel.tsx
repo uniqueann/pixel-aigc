@@ -89,7 +89,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
     finally {if(isCurrentOwner()) setBusy(undefined)}
   }
   return <Space direction="vertical" size={12} style={{width:'100%',marginBottom:24}}>
-    <span>一次购买，按需使用。充值积分长期有效，新账号赠送 30 积分。</span>
+    <span>按需购买，永久有效。新用户注册即赠 30 积分。</span>
     {error ? <Alert type="error" message={error} action={<Button size="small" onClick={()=>void load()}>重试</Button>} /> : null}
     {!catalog ? <span>正在加载充值套餐…</span> : <>
       <span>支付币种：{catalog.currency==='USD' ? '美元（USD）' : '人民币（CNY）'}</span>
@@ -101,7 +101,7 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
         owner={owner} catalog={catalog} provider={provider} providerLabel={PROVIDER_LABELS[provider]} busy={busy}
         expanded={discountExpanded} onExpand={()=>setDiscountExpanded(true)} onPurchase={purchase} />
       <BillingExplanation freeBgRemoveRemaining={catalog.freeBgRemoveRemaining} freeBgRemoveMonth={catalog.freeBgRemoveMonth} />
-      <small>现金退款需人工审核，仅处理未使用部分，按原支付通道退款；赠送积分不折现。生成失败自动退积分。</small>
+      <small>现金退款仅支持未消费的充值积分，审核通过后原路退回；赠送积分不支持折现。生成失败系统秒级退积分。</small>
     </>}
     {orders.length ? <><strong>充值订单</strong>{orders.map(order=><div key={order.id} style={{padding:'8px 0',borderBottom:'1px solid var(--color-border)'}}>
       <span>{order.paidAmount == null && order.quotedDiscount ? '预计 ' : ''}{formatCreditPrice(order.paidAmount ?? order.quotedAmount ?? order.amount,order.currency)} · {order.credits} 分 · {STATUS_LABELS[order.status]}</span>

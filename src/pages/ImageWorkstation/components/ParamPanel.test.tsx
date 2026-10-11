@@ -187,7 +187,7 @@ describe('智能编辑参数面板', () => {
         onPresetPlatformChange={() => undefined}
       />,
     )
-    expect(screen.getByText('效果为 AI 重绘，光线是近似效果。')).toBeTruthy()
+    expect(screen.getByText('模拟光影重绘效果，最终画面以生成效果为准。')).toBeTruthy()
     expect(screen.getByRole('group', { name: '光线方向' })).toBeTruthy()
     expect(screen.getByText('光质')).toBeTruthy()
     expect(screen.getByText('色温')).toBeTruthy()
@@ -247,16 +247,16 @@ describe('智能编辑参数面板', () => {
       onPresetPlatformChange: () => undefined,
     }
     const { rerender } = render(<ParamPanel capability={Capability.Inpaint} mode="remove" {...shared} />)
-    const erase = screen.getByPlaceholderText(/小物体可留空/)
+    const erase = screen.getByPlaceholderText(/大面积消除建议描述期望补充的背景/)
     expect(erase).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
     expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
-    expect(screen.getByText('上传后用画笔或智能选区涂抹要消除的区域。智能选区免费。')).toBeTruthy()
+    expect(screen.getByText('上传图片后，涂抹需要消除的区域（智能选区不消耗积分）。')).toBeTruthy()
 
     rerender(<ParamPanel capability={Capability.Inpaint} mode="repaint" {...shared} />)
     const repaint = screen.getByPlaceholderText(/透明玻璃花瓶/)
     expect(repaint).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
     expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
-    expect(screen.queryByText(/智能选区免费/)).toBeNull()
+    expect(screen.queryByText(/智能选区不消耗积分/)).toBeNull()
   })
 
   it('扩图不展示无效的模型、数量和尺寸选择', () => {

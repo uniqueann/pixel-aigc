@@ -134,7 +134,7 @@ function editItems() {
     : `${SYNC_TOOL_LABELS.erase}每次 ${erase} 分。${SYNC_TOOL_LABELS.repaint}每次 ${repaint} 分。`
   return [
     sameEditPrice,
-    `${SYNC_TOOL_LABELS.outpaint}按实际扩图轮次计费：1 轮 ${onePass} 分，${MAX_EXPAND_PASSES} 轮 ${maxPasses} 分。每边一轮最多扩到原图该边的 ${MAX_SCALE} 倍；一轮盖不住目标时继续扩，最多 ${MAX_EXPAND_PASSES} 轮。还读不到原图尺寸时最多预扣 ${maxPasses} 分，实际轮次更少会退回差额。`,
+    `${SYNC_TOOL_LABELS.outpaint}按扩图范围计费：1 轮 ${onePass} 分，${MAX_EXPAND_PASSES} 轮 ${maxPasses} 分。每边一轮最多扩到原图该边的 ${MAX_SCALE} 倍；超出单轮范围时继续扩展，最多 ${MAX_EXPAND_PASSES} 轮。先按最高 ${maxPasses} 分预扣，实际轮次更少时自动退回差额。`,
   ]
 }
 
@@ -143,7 +143,7 @@ function mattingItem(remaining: number, month: string) {
   const toolbox = toolLabel(TOOLBOX_TOOLS, 'bg-remove')
   const name = toolbox === billed ? billed : `${billed}（工具箱里的${toolbox}）`
   const when = month ? `${month}还可免费 ${remaining} 张` : `本月还可免费 ${remaining} 张`
-  return `${name}按账号和运行环境计算，每个上海时区自然月免费 ${BG_REMOVE_MONTHLY_FREE} 张。${when}，进入下一个上海自然月后重新获得 ${BG_REMOVE_MONTHLY_FREE} 张。正在处理的免费请求占用额度，失败或超时会释放。超出免费额度后每张 ${syncCreditPrice('bg-remove')} 分。`
+  return `${name}每月免费 ${BG_REMOVE_MONTHLY_FREE} 张（每月 1 日刷新）。${when}。正在处理的免费请求占用额度，失败或超时自动释放。超出免费额度后每张 ${syncCreditPrice('bg-remove')} 分。`
 }
 
 function freeToolItem() {
@@ -155,10 +155,10 @@ function freeToolItem() {
 function refundItems(includeVideo: boolean) {
   const syncTools = [SYNC_TOOL_LABELS.erase, SYNC_TOOL_LABELS.repaint, SYNC_TOOL_LABELS.outpaint, SYNC_TOOL_LABELS['bg-remove']].join('、')
   const items = [
-    '图片任务失败或超时会退回预扣积分；成功后只保留成功张数的费用。截止时间之后才送到的结果不再扣分。',
+    '图片任务失败或超时会退回预扣积分；成功后只结算成功张数的费用。超时未完成的任务不再计入扣费。',
   ]
-  if (includeVideo) items.push('视频任务失败或超时会退回预扣积分。截止时间之后才送到的结果不再扣分。')
-  items.push(`${syncTools}失败或超时会退回已扣积分；超时后的结果不会保留，需要重新提交。免费的${SYNC_TOOL_LABELS['bg-remove']}失败或超时会释放本月占用的免费额度。`)
+  if (includeVideo) items.push('视频任务失败或超时会退回预扣积分。超时未完成的任务不再计入扣费。')
+  items.push(`${syncTools}失败或超时会退回已扣积分；超时后的任务需重新提交。免费的${SYNC_TOOL_LABELS['bg-remove']}失败或超时会释放本月占用的免费额度。`)
   return items
 }
 

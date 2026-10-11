@@ -50,7 +50,7 @@ export default function AspectRatioSettingsPanel({ settings, disabled, onChange,
         onChange={event => onChange({ strategy: event.target.value })}
         options={FIT_STRATEGIES.filter(option => allowedStrategies.includes(option.value))}
       />
-      {settings.strategy === 'letterbox' && <p className="toolbox-hint">留白会把原图完整放进目标尺寸，空白处用所选颜色填上。</p>}
+      {settings.strategy === 'letterbox' && <p className="toolbox-hint">四周填充底色以适配目标比例，保留完整原图内容。</p>}
       {settings.strategy === 'outpaint' && (
         <>
           <label className="toolbox-field-label">输出模式</label>
@@ -65,9 +65,9 @@ export default function AspectRatioSettingsPanel({ settings, disabled, onChange,
           />
           <p className="toolbox-hint">
             {settings.outpaintOutputMode === 'original'
-              ? '原图保持原尺寸，按平台比例补背景；每张图片的输出尺寸随原图变化，比例一致时保留原文件。'
-              : `输出精确的 ${preset.width} × ${preset.height} 平台尺寸，原图会按尺寸缩放。`}
-            预览里的深色区域是待补全的留白。
+              ? '原图保持原尺寸，向外智能补全背景；每张图片输出尺寸随原图变化，比例一致时保留原文件。'
+              : `输出标准 ${preset.width} × ${preset.height} 平台尺寸，原图将按比例缩放并智能补全背景。`}
+            预览中的深色区域为待补全画面。
           </p>
         </>
       )}
@@ -103,7 +103,7 @@ export default function AspectRatioSettingsPanel({ settings, disabled, onChange,
               </button>
             ))}
           </div>
-          <p className="toolbox-hint">处理时识别商品主体并按主体裁剪。识别不到或检测失败时，按当前九宫格裁完，这一张仍算成功。队列里出现黄色提示时，先把焦点改到商品所在位置，再重新处理。</p>
+          <p className="toolbox-hint">自动优先识别商品主体并居中裁剪；若未识别到主体，则按九宫格焦点位置裁剪。如裁剪偏移，可手动调整焦点后重新处理。</p>
         </>
       )}
       {templates}

@@ -36,7 +36,7 @@ describe('计费说明文案', () => {
     expect(text).toContain(SMART_SELECT_LABEL)
     expect(text).toContain(LOCAL_TEMPLATE_LABEL)
     expect(text).toContain('失败或超时会退回预扣积分')
-    expect(text).toContain('截止时间之后才送到的结果不再扣分')
+    expect(text).toContain('超时未完成的任务不再计入扣费')
     expect(text).toContain('视频任务失败或超时会退回预扣积分')
     expect(formatBillingMonth('2026-10')).toBe('2026年10月')
   })

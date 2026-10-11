@@ -27,7 +27,7 @@ function savingsText(result: CreditDiscountPreview) {
   const bps = result.packs.find(item => item.available && item.discount)?.discount?.percentBps ?? 0
   const rounded = Math.round(bps / 10) / 10
   const label = Number.isInteger(rounded) ? String(rounded) : String(rounded)
-  return `太棒了！你节省了 ${label}%！最终金额以结账页为准。`
+  return `已享 ${label}% 优惠，实付金额以结算收银台为准。`
 }
 
 function panelNotice(error: unknown, fallback: string) {
@@ -105,8 +105,8 @@ export default function CreditPackPurchase({ owner, catalog, provider, providerL
   return <Space direction="vertical" size={12} style={{ width: '100%' }}>
     {catalog.providers.length ? <>
       {!expanded ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <span style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>有折扣代码吗？</span>
-        <Button size="small" icon={<TagOutlined />} onClick={onExpand}>应用折扣代码</Button>
+        <span style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>有优惠码吗？</span>
+        <Button size="small" icon={<TagOutlined />} onClick={onExpand}>使用优惠码</Button>
       </div> : <>
         <Space.Compact style={{ width: '100%' }}>
           <Input aria-label="折扣代码" placeholder="折扣代码" value={draft} maxLength={14} autoFocus autoComplete="off"

@@ -228,7 +228,7 @@ export default function ParamPanel({
             />
           </div>
         ) : null}
-        <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>效果为 AI 重绘，光线是近似效果。</p>
+        <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>模拟光影重绘效果，最终画面以生成效果为准。</p>
         <div>
           <div style={labelStyle}>光线方向</div>
           <div className="workstation-relight-compass" role="group" aria-label="光线方向">
@@ -320,7 +320,7 @@ export default function ParamPanel({
             value={repaintPrompt}
             disabled={disabled}
             onChange={(event) => onRepaintPromptChange(event.target.value)}
-            placeholder="描述选区里要出现的内容，例如桌面上的透明玻璃花瓶"
+            placeholder="描述选区里要出现的内容，例如：桌面上的透明玻璃花瓶"
             autoSize={tallPromptSize}
             maxLength={MAX_ERASE_PROMPT_LENGTH}
             showCount
@@ -335,13 +335,13 @@ export default function ParamPanel({
       {intro}
       {mode === 'remove' ? (
         <div>
-          <p className="toolbox-hint" style={{ margin: '0 0 8px', fontSize: 12 }}>上传后用画笔或智能选区涂抹要消除的区域。智能选区免费。</p>
+          <p className="toolbox-hint" style={{ margin: '0 0 8px', fontSize: 12 }}>上传图片后，涂抹需要消除的区域（智能选区不消耗积分）。</p>
           <div style={labelStyle}>背景描述（可选）</div>
           <Input.TextArea
             value={erasePrompt}
             disabled={disabled}
             onChange={(event) => onErasePromptChange(event.target.value)}
-            placeholder="小物体可留空。大面积消除时描述去掉后应留下的背景，不要写「删除xxx」"
+            placeholder="消除小物体可留空；大面积消除建议描述期望补充的背景（请勿输入「删除某某」）"
             autoSize={tallPromptSize}
             maxLength={MAX_ERASE_PROMPT_LENGTH}
             showCount
@@ -364,7 +364,7 @@ export default function ParamPanel({
               ]}
             />
             <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
-              {outpaintOutputMode === 'original' ? '原图保持原尺寸，只向外延伸背景。' : '原图按平台尺寸缩放，生成可直接使用的平台图片。'}
+              {outpaintOutputMode === 'original' ? '原图保持原尺寸，向外延伸画面。' : '按目标平台比例缩放原图并补全背景。'}
               {sourceSize && outpaintTargetSize ? ` 预计输出 ${outpaintTargetSize.width} × ${outpaintTargetSize.height} 像素。` : ' 上传图片后显示预计尺寸。'}
             </p>
           </div>
