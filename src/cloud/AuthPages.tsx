@@ -76,8 +76,8 @@ export default function AuthPages() {
           : await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${callbackUrl()}?next=/reset-password` })
         if (resultError) throw resultError
         setNotice(path === '/verify-email'
-          ? '如果该邮箱可用于此操作，请查收验证邮件。'
-          : '如果该邮箱可用于此操作，请查收邮件。')
+          ? '验证邮件已发送，请查收邮件完成验证。'
+          : '重置密码链接已发送至您的邮箱，请查收。')
       } else if (path === '/reset-password') {
         if (!validPassword(password) || password !== confirm) throw new Error('密码须为 8–128 位，且两次输入一致')
         const { data } = await client.auth.getUser()
@@ -97,15 +97,15 @@ export default function AuthPages() {
   const labels: Record<string,string> = { '/login': '登录', '/register': '注册', '/verify-email': '验证邮箱', '/forgot-password': '找回密码', '/reset-password': '设置新密码', '/auth/callback': '正在完成验证' }
   return <div className="project-recovery-screen" style={{ maxWidth: 420, margin: '10vh auto', gap: 16 }}>
     <h2>Pixel AIGC · {labels[path] ?? '账号'}</h2>
-    {path === '/verify-email' && <p>注册邮件已发送。需要重发时输入邮箱。</p>}
-    {path === '/reset-password' && <p>新密码会用于此共享账号，也会影响 ContentUp、EDM 的密码登录。</p>}
+    {path === '/verify-email' && <p>注册邮件已发送，如需重发请输入邮箱。</p>}
+    {path === '/reset-password' && <p>设置新密码后，请使用新密码重新登录。</p>}
     {error && <Alert type="error" showIcon message={error} />}
     {notice && <Alert type="info" showIcon message={notice} />}
     {path !== '/auth/callback' && <form onSubmit={submit} style={{ display: 'grid', gap: 12, width: '100%' }}>
       {path !== '/reset-password' && <Input type="email" autoComplete="email" aria-label="邮箱" required placeholder="邮箱" value={email} onChange={event => setEmail(event.target.value)} />}
       {['/login','/register','/reset-password'].includes(path) && <Input.Password required minLength={path === '/login' ? undefined : 8} maxLength={128} aria-label={path === '/reset-password' ? '新密码' : '密码'} autoComplete={path === '/login' ? 'current-password' : 'new-password'} placeholder={path === '/reset-password' ? '新密码' : '密码'} value={password} onChange={event => setPassword(event.target.value)} />}
       {['/register','/reset-password'].includes(path) && <Input.Password required minLength={8} maxLength={128} aria-label="确认密码" autoComplete="new-password" placeholder="确认密码" value={confirm} onChange={event => setConfirm(event.target.value)} />}
-      <Button htmlType="submit" type="primary" loading={busy}>{path === '/verify-email' ? '重发验证邮件' : path === '/forgot-password' ? '发送恢复邮件' : labels[path]}</Button>
+      <Button htmlType="submit" type="primary" loading={busy}>{path === '/verify-email' ? '重发验证邮件' : path === '/forgot-password' ? '发送重置邮件' : labels[path]}</Button>
     </form>}
     {path === '/login' && <Button onClick={() => { void run(async () => {
       sessionStorage.setItem('pixel-aigc-next', next)
@@ -115,7 +115,7 @@ export default function AuthPages() {
     <Space wrap>
       {path !== '/login' && <a href="/login">返回登录</a>}
       {path === '/login' && <><a href={`/register?next=${encodeURIComponent(next)}`}>注册账号</a><a href="/forgot-password">忘记密码</a></>}
-      {path === '/auth/callback' || path === '/reset-password' ? <a href="/forgot-password">重新申请恢复邮件</a> : null}
+      {path === '/auth/callback' || path === '/reset-password' ? <a href="/forgot-password">重新申请重置邮件</a> : null}
     </Space>
     <Space wrap>
       <a href="/about" target="_blank" rel="noopener noreferrer">产品介绍</a>

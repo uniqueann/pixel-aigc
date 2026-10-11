@@ -53,7 +53,7 @@ function EmailAssistantSession() {
       action={<Button size="small" onClick={() => { void settingsQuery.refetch(); void profilesQuery.refetch() }}>重试</Button>} />
       : authEnabled && !configuration.loading && !configuration.ready ? <Alert type="info" showIcon className="email-model-alert"
         message="平台邮件模型暂不可用，请稍后重试" /> : null}
-    <p className="email-save-hint">模型由平台统一提供，成功生成按积分扣费。邮件内容会发送至所选模型服务；任务和修改稿保留 7 天。</p>
+    <p className="email-save-hint">模型由平台统一提供，按实际成功生成扣除积分。邮件草稿与历史记录保留 7 天。</p>
     <div hidden={mode !== 'single'}>
       {gate.owner === 'batch' ? <Alert className="email-model-alert" type="info" showIcon
         message={batch.unresolved ? '批量邮件等待确认原任务状态，确认后可继续单个生成' : '批量邮件正在处理，暂停并等待当前邮件完成后可继续单个生成'} /> : null}

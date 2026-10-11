@@ -310,7 +310,7 @@ export default function BgRemoveTool() {
       return
     }
     if (needsRemoval(onlyIds) && !serviceReady) {
-      message.warning(serviceReady === false ? '智能抠图即将上线，腾讯云商品抠图的配置还没填好'
+      message.warning(serviceReady === false ? '智能抠图服务正在升级维护中，暂时不可用。'
         : capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
       return
     }
@@ -420,7 +420,7 @@ export default function BgRemoveTool() {
             {selected ? <img src={previewUrl ?? selected.sourceUrl} alt={`${selected.file.name} 的抠图预览`} onClick={selected.output ? () => openAt(selected.id) : undefined} style={{ cursor: selected.output ? 'zoom-in' : undefined }} /> : <p>先添加图片，再选择背景</p>}
           </div>
           <PreviewItemNotice error={selected?.error} />
-          <p className="toolbox-hint">有抠图结果后，预览最长边不超过 {PREVIEW_MAX_DIMENSION}px。换背景只在本机重新合成。</p>
+          <p className="toolbox-hint">预览图为压缩显示（最长边不超过 {PREVIEW_MAX_DIMENSION}px）。更改背景颜色仅在本地合成，不消耗积分。</p>
         </section>
         <section className="toolbox-settings-panel" aria-label="抠图设置">
           <div className="toolbox-section-heading"><div><strong>抠图设置</strong><span>一次设置，应用到整批</span></div></div>
@@ -438,9 +438,9 @@ export default function BgRemoveTool() {
               <ColorPicker value={settings.background} disabled={controlsLocked} onChange={color => void updateBackground(color.toHexString())} />
             </div>
           )}
-          <p className="toolbox-hint">白底和纯色导出 JPEG。透明导出 PNG。已抠过的图片换颜色不会重新请求模型。</p>
+          <p className="toolbox-hint">纯色背景导出为 JPEG，透明背景导出为 PNG。更换背景颜色不重复消耗积分。</p>
           <CapabilityStatus ready={serviceReady} error={capabilityError}
-            unavailableMessage="智能抠图即将上线。腾讯云商品抠图的配置还没填好，现在不能开始处理。"
+            unavailableMessage="智能抠图服务正在升级维护中，暂时不可用。"
             onRetry={() => void refetchCapabilities()} />
           <CreditQuoteNotice quote={generateQuote} onRetry={() => void billing.refetch()} />
           <CreditBalanceNotice quote={generateQuote} />

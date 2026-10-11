@@ -207,7 +207,7 @@ export default function GenerationPanel({
             <span>自动扩写</span>
             <Switch aria-label="自动扩写" checked={enableThinking} disabled={formLocked} onChange={onThinkingChange} />
           </label>
-          <p>开启后模型会自动丰富画面描述，生成约慢 3 倍，可能加入未要求的内容</p>
+          <p>开启后模型将丰富细节描述；耗时相对增加，画面细节更为丰富。</p>
         </>}
         {resolutionAdjusted && <p role="status">当前模型或画面比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
         {ratioAdjusted && <p role="status">当前模型不支持所选比例，已按 {presetKey} 计算本次参数。</p>}
@@ -215,8 +215,8 @@ export default function GenerationPanel({
         {modelsLoading ? <p role="status">正在加载文生图模型配置…</p>
           : <p>{mockGateway ? '模拟生成，不消耗积分' : estimatedCredits === undefined
             ? '模型积分报价尚未就绪，请重新读取文生图配置。'
-            : `本次预计预扣 ${estimatedCredits} 积分，按实际成功张数结算。失败后由你决定是否再次生成。`}</p>}
-        {!modelsLoading && generateDisabled && <p className="toolbox-hint">文生图模型尚未就绪，请检查登录与模型配置。</p>}
+            : `本次预计消耗 ${estimatedCredits} 积分，按实际成功张数结算。`}</p>}
+        {!modelsLoading && generateDisabled && <p className="toolbox-hint">文生图服务暂不可用，请检查网络或稍后重试。</p>}
       </>}
       {textToVideo && <VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
         loading={modelsLoading} configured={videoConfigured || mockGateway} />}
@@ -241,7 +241,7 @@ export default function GenerationPanel({
       <CreditSettlementHint quote={quote} />
       {!textToVideo && <CreditBalanceNotice quote={quote} />}
       {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
-        手动重试将按原参数创建新任务，生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计预扣 ${retryCredits} 积分。`}
+        手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
       </p>}
       {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
       </>}
@@ -271,7 +271,7 @@ export default function GenerationPanel({
         return downloadImageSource(item.fullSrc, `生成结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
       }} />}
 
-      {showForm && <p className="free-canvas-panel-hint">生成期间可移动占位位置；完成后，{textToVideo ? '视频' : '图片'}会保留该位置和尺寸。</p>}
+      {showForm && <p className="free-canvas-panel-hint">生成期间可移动占位位置；生成完成后将自动替换为实际内容。</p>}
     </aside>
   )
 }

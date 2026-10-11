@@ -95,7 +95,7 @@ function UsageDataSetting() {
   const account = useUserStore(state => state.account)
   const [saving, setSaving] = useState(false)
   const { message } = App.useApp()
-  return <SettingRow label="帮助改进 Pixel AIGC" detail="记录注册、首次上传与首次成功的时间和工具，不记录图片、邮件或提示词；关闭后停止后续记录">
+  return <SettingRow label="使用数据与产品改进" detail="仅统计功能使用频次以改进产品体验，绝不收集您的图片、邮件及提示词内容">
     <Switch aria-label="允许记录使用事件" checked={account?.welcome?.analyticsEnabled ?? true}
       disabled={!account?.welcome || saving} loading={saving} onChange={async enabled => {
         if (!account) return
@@ -128,12 +128,12 @@ function AccountSettings() {
       <SettingRow label="昵称" detail="仅在 Pixel AIGC 显示">
         <Space.Compact><Input maxLength={80} value={displayName} onChange={event => setDisplayName(event.target.value)} /><Button disabled={busy || !displayName.trim()} onClick={() => void save('/me', { displayName })}>保存</Button></Space.Compact>
       </SettingRow>
-      <SettingRow label="个人空间" detail="项目归属的个人空间">
+      <SettingRow label="个人空间" detail="默认工作空间">
         <Space.Compact><Input maxLength={80} value={workspaceName} onChange={event => setWorkspaceName(event.target.value)} /><Button disabled={busy || !workspaceName.trim()} onClick={() => void save(`/workspaces/${account.workspace.id}`, { name: workspaceName })}>保存</Button></Space.Compact>
       </SettingRow>
       <SettingRow label="邮箱" detail={account.emailVerified ? '已验证' : '未验证'}><span>{account.email}</span></SettingRow>
-      <SettingRow label="登录方式" detail="共享 Supabase 账号"><span>{account.providers.map(p => p === 'google' ? 'Google' : p === 'email' ? '邮箱密码' : p).join('、')}</span></SettingRow>
-      <SettingRow label="账号安全" detail="重置密码也会影响此账号在 ContentUp、EDM 中的密码登录">
+      <SettingRow label="登录方式" detail="已绑定登录方式"><span>{account.providers.map(p => p === 'google' ? 'Google' : p === 'email' ? '邮箱密码' : p).join('、')}</span></SettingRow>
+      <SettingRow label="账号安全" detail="修改密码将同步影响关联的 ContentUp、EDM 服务登录">
         {account.providers.includes('email') ? <Button onClick={() => window.location.assign('/forgot-password')}>重置密码</Button> : <span>请在 Google 账号中管理登录安全</span>}
       </SettingRow>
     </SettingsPanel>

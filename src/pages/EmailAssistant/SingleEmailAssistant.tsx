@@ -180,7 +180,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
               value={instruction}
               disabled={controller.formLocked}
               onChange={(event) => setInstruction(event.target.value)}
-              placeholder="告诉 AI 想要表达的重点，例如：委婉说明发货延迟"
+              placeholder="输入回复重点，例如：委婉说明发货延迟并给出预计时间"
             />
           </Card>
         </Col>
@@ -227,7 +227,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
               </div> : null}
               {authEnabled ? <div>本次成功生成扣 {selectedProfile?.credits ?? '—'} 积分 · 当前余额 {balance ?? '读取中'}
                 {insufficient ? <Button type="link" onClick={openCreditRecharge}>充值积分</Button> : null}
-                <div className="email-save-hint">失败返还；重新生成按新任务扣费。长邮件可能超过输出预算，请适当缩短。</div>
+                <div className="email-save-hint">仅成功生成扣费，失败自动退还；已根据所选模型调整最大字数。</div>
               </div> : null}
               <Button
                 type="primary"

@@ -57,7 +57,7 @@ export default function WatermarkSettingsPanel({ settings, disabled, onChange, o
             <span>可读性描边</span>
             <Switch checked={settings.readability} disabled={disabled} aria-label="可读性描边" onChange={checked => onChange({ readability: checked })} />
           </div>
-          <p className="toolbox-hint">自动按水印区域明暗选择黑白字，平铺看整张图，透明处按浅色处理。描边为对比色，并随字号缩放。</p>
+          <p className="toolbox-hint">自动根据背景明暗选择黑白文字；开启描边后使用高对比色，确保文字在复杂背景下清晰可读。</p>
           <label className="toolbox-field-label">文字大小：短边的 {settings.textSizePercent}%</label>
           <Slider min={1} max={15} value={settings.textSizePercent} disabled={disabled} onChange={value => onChange({ textSizePercent: value })} />
         </>

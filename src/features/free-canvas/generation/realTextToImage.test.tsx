@@ -229,8 +229,8 @@ describe('自由画布真实文生图闭环', () => {
       onDurationChange={() => undefined} onGenerate={() => undefined} onRetry={() => { retrying.push(controller.retry()) }}
       onModifyParameters={() => undefined} onRefetch={() => undefined}
       models={[current, original]} modelProfileId={current.id} resolution="1k" estimatedCredits={4} mockGateway={false} />)
-    expect(screen.getByText('本次预计预扣 4 积分，按实际成功张数结算。失败后由你决定是否再次生成。')).toBeTruthy()
-    expect(screen.getByText('手动重试将按原参数创建新任务，生成 1 张，预计预扣 8 积分。')).toBeTruthy()
+    expect(screen.getByText('本次预计消耗 4 积分，按实际成功张数结算。')).toBeTruthy()
+    expect(screen.getByText('手动重试将按原参数重新生成 1 张，预计消耗 8 积分。')).toBeTruthy()
     expect(screen.queryByText('原模型报价暂不可用，请修改参数后重新生成。')).toBeNull()
     expect(screen.queryByText('报价暂不可用，请重新加载。')).toBeNull()
     const button = screen.getByRole('button', { name: '按原参数重试 1 张 · 8 积分' }) as HTMLButtonElement

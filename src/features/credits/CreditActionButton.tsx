@@ -22,7 +22,7 @@ export function CreditQuoteNotice({ quote, onRetry }: { quote: CreditQuote; onRe
 }
 
 export function CreditSettlementHint({ quote }: { quote: CreditQuote }) {
-  return quote.status === 'ready' ? <p className="credit-quote-notice">按实际成功结果结算，失败退积分。{quote.maximum || quote.estimatedFree ? '提交时会重新确认费用。' : ''}</p> : null
+  return quote.status === 'ready' ? <p className="credit-quote-notice">仅按成功张数扣费，失败自动退还积分。{quote.maximum || quote.estimatedFree ? '提交时会重新确认费用。' : ''}</p> : null
 }
 
 export function CreditBalanceNotice({ quote }: { quote: CreditQuote }) {
@@ -30,6 +30,6 @@ export function CreditBalanceNotice({ quote }: { quote: CreditQuote }) {
   const balance = useUserStore(state => state.credits)
   const loaded = useUserStore(state => state.creditsLoaded)
   return owner && loaded && quote.status === 'ready' && quote.credits > balance ? <p className="credit-quote-notice" role="status">
-    积分不足，本次{quote.maximum ? '最多' : ''}需要 {quote.credits} 积分，当前 {balance}。<Button size="small" type="link" onClick={openCreditRecharge}>去充值</Button>
+    积分不足（本次{quote.maximum ? '最多' : ''}需 {quote.credits} 积分，当前可用 {balance} 积分）。<Button size="small" type="link" onClick={openCreditRecharge}>去充值</Button>
   </p> : null
 }

@@ -56,7 +56,7 @@ describe('裂变侧栏能力状态', () => {
 
   it('配置确认不可用后才显示未就绪错误', () => {
     renderPanel({ generateDisabled: true, modelsLoading: false })
-    expect(screen.getByText('裂变模型尚未就绪，请检查登录与模型配置。')).toBeTruthy()
+    expect(screen.getByText('裂变服务暂不可用，请检查网络或稍后重试。')).toBeTruthy()
     expect(screen.queryByText('正在加载模型配置…')).toBeNull()
   })
 
@@ -92,7 +92,7 @@ describe('裂变侧栏能力状态', () => {
     renderPanel({
       task, models: [original, current], modelProfileId: current.id, resolution: '1k', count: 4, estimatedCredits: 9, onRetry: retry,
     })
-    expect(screen.getByText('手动重试将按原参数创建新任务，生成 2 张，预计预扣 12 积分。')).toBeTruthy()
+    expect(screen.getByText('手动重试将按原参数重新生成 2 张，预计消耗 12 积分。')).toBeTruthy()
     expect(screen.queryByText('原模型报价暂不可用，请修改参数后重新生成。')).toBeNull()
     expect(screen.queryByText('报价暂不可用，请重新加载。')).toBeNull()
     const button = screen.getByRole('button', { name: '按原参数重试 2 张 · 12 积分' }) as HTMLButtonElement
@@ -129,7 +129,7 @@ describe('裂变侧栏能力状态', () => {
     useUserStore.setState({ credits: 1, creditsLoaded: true })
     renderPanel({ models: [only], modelProfileId: only.id, estimatedCredits: 6 })
     expect((screen.getByRole('button', { name: /生成 1 张 · 6 积分/ }) as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(/积分不足，本次需要 6 积分，当前 1/)).toBeTruthy()
+    expect(screen.getByText(/积分不足（本次需 6 积分，当前可用 1 积分）/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
   })
 })

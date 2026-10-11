@@ -184,9 +184,9 @@ function discountPreview(provider: PaymentProvider = 'dodo'): CreditDiscountPrev
       discount: { code: 'AIGC10', id: 'dis_aigc', percentBps: 1000, payableAmount, discountAmount: pack.USD - payableAmount } }
   }) }
 }
-const APPLIED = '太棒了！你节省了 10%！最终金额以结账页为准。'
+const APPLIED = '已享 10% 优惠，实付金额以结算收银台为准。'
 async function enterDiscount(code = ' aigc10 ') {
-  fireEvent.click(buttonByText('应用折扣代码'))
+  fireEvent.click(buttonByText('使用优惠码'))
   fireEvent.change(screen.getByLabelText('折扣代码'), { target: { value: code } })
 }
 async function applyDiscount() {
@@ -199,10 +199,10 @@ describe('验证折扣代码', () => {
   it('收起时是一行提示和描边按钮，展开后不能再收起', async () => {
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）')
-    expect(screen.getByText('有折扣代码吗？')).toBeTruthy()
-    fireEvent.click(buttonByText('应用折扣代码'))
-    expect(screen.queryByText('有折扣代码吗？')).toBeNull()
-    expect(screen.queryByRole('button', { name: '应用折扣代码' })).toBeNull()
+    expect(screen.getByText('有优惠码吗？')).toBeTruthy()
+    fireEvent.click(buttonByText('使用优惠码'))
+    expect(screen.queryByText('有优惠码吗？')).toBeNull()
+    expect(screen.queryByRole('button', { name: '使用优惠码' })).toBeNull()
     const input = screen.getByLabelText('折扣代码') as HTMLInputElement
     expect(input.maxLength).toBe(14)
     expect(input.placeholder).toBe('折扣代码')
@@ -291,7 +291,7 @@ describe('验证折扣代码', () => {
   it('仅展开折扣代码时切换通道，输入区仍保持展开且不提示', async () => {
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）')
-    fireEvent.click(buttonByText('应用折扣代码'))
+    fireEvent.click(buttonByText('使用优惠码'))
     await selectCreem()
     expect((screen.getByLabelText('折扣代码') as HTMLInputElement).value).toBe('')
     expect(screen.queryByText('付款方式已更换，请重新验证。')).toBeNull()
@@ -301,14 +301,14 @@ describe('验证折扣代码', () => {
     await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
     view.rerender(<RechargePanel open={false} onPaid={() => undefined} />)
     view.rerender(<RechargePanel open onPaid={() => undefined} />)
-    await screen.findByText('有折扣代码吗？'); expect(screen.queryByText('预计 $2.69')).toBeNull()
+    await screen.findByText('有优惠码吗？'); expect(screen.queryByText('预计 $2.69')).toBeNull()
     expect(screen.queryByLabelText('折扣代码')).toBeNull()
   })
   it('切换账号清空已应用优惠，新账号购买不带旧账号代码', async () => {
     render(<RechargePanel open onPaid={() => undefined} />)
     await screen.findByText('支付币种：美元（USD）'); await applyDiscount()
     await act(async () => useUserStore.setState({ userId: 'owner-b' }))
-    await screen.findByText('有折扣代码吗？'); expect(screen.queryByLabelText('折扣代码')).toBeNull()
+    await screen.findByText('有优惠码吗？'); expect(screen.queryByLabelText('折扣代码')).toBeNull()
     expect(screen.queryByText('预计 $2.69')).toBeNull()
     fireEvent.click(purchaseButtons()[0])
     await waitFor(() => expect(api.checkout).toHaveBeenCalledWith('starter', 'dodo', expect.any(String), 'owner-b', 299, 'USD'))

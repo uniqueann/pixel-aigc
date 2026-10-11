@@ -155,7 +155,7 @@ export default function ImageWorkstation() {
       return `已生成 ${controller.outputAssets.length} 个图片结果`
     }
     if (task.status === 'failed' || task.status === 'cancelled') return taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
-    return '图片正在处理中，可以留在当前页面等待结果'
+    return '正在处理中，请稍候...'
   }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
   const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
     ?? controller.outputAssets[0]
@@ -318,7 +318,7 @@ export default function ImageWorkstation() {
 
   const handleGenerate = async () => {
     if (creditQuoteBlocked(generateQuote)) {
-      message.warning('请等待报价加载完成，或重新加载报价')
+      message.warning('正在计算所需积分，请稍候...')
       return
     }
     if (configurationReady === undefined) {
@@ -463,7 +463,7 @@ export default function ImageWorkstation() {
               onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
               onReady={handleCanvasReady}
               onMaskChange={setHasMaskPaint}
-              uploadHint={activeTool.slug === 'remove' ? '上传后用画笔或智能选区涂抹要消除的区域' : undefined}
+              uploadHint={activeTool.slug === 'remove' ? '上传图片后，涂抹需要消除的区域' : undefined}
               onPreview={(view) => {
                 const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
                 if (id) openAt(id)
@@ -489,7 +489,7 @@ export default function ImageWorkstation() {
             ready={configurationReady}
             error={capabilityError}
             unavailableMessage={activeTool.slug === 'repaint'
-              ? '重绘还不能用。请确认已开通万相 wanx2.1-imageedit，并配置 DASHSCOPE_API_KEY。'
+              ? '重绘服务暂不可用，请稍后重试或联系客服。'
               : `${COMING_SOON_SUBMIT_MESSAGE}。`}
             onRetry={() => void refetchCapabilities()}
           />

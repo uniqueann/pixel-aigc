@@ -384,7 +384,7 @@ describe('useImageWorkstationController 集成流程', () => {
       <ControllerHarness tool="relight" onController={captureController} />,
     ))
 
-    await expect(currentController.generate(canvasHandle)).rejects.toThrow('该能力即将上线，目前还不能提交生成任务')
+    await expect(currentController.generate(canvasHandle)).rejects.toThrow('该功能即将上线，敬请期待')
     expect(mocks.uploadDataUrl).not.toHaveBeenCalled()
     expect(mocks.createTask).not.toHaveBeenCalled()
   })
@@ -506,7 +506,7 @@ describe('useImageWorkstationController 集成流程', () => {
     await act(async () => root.render(
       <ControllerHarness tool="variation" onController={captureController} />,
     ))
-    await expect(currentController.generate(null)).rejects.toThrow('该能力即将上线，目前还不能提交生成任务')
+    await expect(currentController.generate(null)).rejects.toThrow('该功能即将上线，敬请期待')
 
     mocks.liveCapabilityReady.mockReturnValue(true)
     const processingTask: GenerationTask = {

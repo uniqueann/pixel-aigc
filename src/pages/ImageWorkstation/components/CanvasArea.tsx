@@ -246,7 +246,7 @@ export default function CanvasArea({
           />
         </Suspense>
         {smartSelectEnabled ? (
-          <div className="workstation-canvas-footnote">点击商品以选中轮廓。水印、文字和道具请用画笔。</div>
+          <div className="workstation-canvas-footnote">点击主体自动选取轮廓；文字、水印或细节建议使用画笔涂抹。</div>
         ) : null}
       </div>
     )
@@ -294,7 +294,7 @@ export default function CanvasArea({
         onClick={onPreview ? () => onPreview(compareMode) : undefined}
       />
       <div className="workstation-canvas-footnote">
-        {interactionMode === 'params-only' ? '选择候选结果后，可基于该结果继续编辑' : '当前工具将在后续迭代中开放'}
+        {interactionMode === 'params-only' ? '选择满意的结果后，可继续进行二次编辑' : '该功能即将上线，敬请期待'}
       </div>
     </div>
   )

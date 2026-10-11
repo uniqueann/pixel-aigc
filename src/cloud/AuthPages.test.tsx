@@ -163,11 +163,11 @@ describe('账号页邮箱链接', () => {
     auth.resend.mockResolvedValue({ error: null })
     visit('/verify-email')
     render(<AuthPages />)
-    expect(screen.getByText('注册邮件已发送。需要重发时输入邮箱。')).toBeTruthy()
+    expect(screen.getByText('注册邮件已发送，如需重发请输入邮箱。')).toBeTruthy()
     expect(document.body.textContent).not.toContain('ContentUp')
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: '重发验证邮件' }))
-    expect(await screen.findByText('如果该邮箱可用于此操作，请查收验证邮件。')).toBeTruthy()
+    expect(await screen.findByText('验证邮件已发送，请查收邮件完成验证。')).toBeTruthy()
     expect(document.body.textContent).not.toContain('ContentUp')
     expect(auth.resend).toHaveBeenCalledWith({
       type: 'signup',
@@ -181,8 +181,8 @@ describe('账号页邮箱链接', () => {
     visit('/forgot-password')
     render(<AuthPages />)
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '发送恢复邮件' }))
-    expect(await screen.findByText('如果该邮箱可用于此操作，请查收邮件。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '发送重置邮件' }))
+    expect(await screen.findByText('重置密码链接已发送至您的邮箱，请查收。')).toBeTruthy()
     expect(document.body.textContent).not.toContain('发起请求的浏览器')
     expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('user@example.com', {
       redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,

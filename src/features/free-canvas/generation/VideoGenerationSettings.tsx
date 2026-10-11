@@ -9,6 +9,6 @@ export default function VideoGenerationSettings({ generateAudio, onAudioChange, 
     <label className="free-canvas-field free-canvas-switch-field"><span>生成声音</span><Switch aria-label="生成声音" checked={generateAudio} disabled={disabled} onChange={onAudioChange} /></label>
     {loading ? <p role="status">正在加载视频配置…</p> : null}
     {!loading && !configured ? <p role="status">视频生成即将上线。</p> : null}
-    <p>生成结果保留 30 天，请及时下载。有声和无声同价。</p>
+    <p>生成结果保留 30 天，请及时下载；开启声音不额外收取费用。</p>
   </>
 }
