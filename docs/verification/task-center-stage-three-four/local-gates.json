@@ -1,0 +1,15 @@
+{
+  "checkedAt": "2026-10-12T06:57:35.267256+00:00",
+  "tests": {
+    "files": 248,
+    "assertions": 1616,
+    "unhandledErrors": 0
+  },
+  "serverTypecheck": "通过",
+  "frontendTypecheck": "通过",
+  "build": "通过",
+  "lint": "通过",
+  "diffCheck": "通过",
+  "productionTaskCenter": "默认关闭，未生产部署",
+  "authenticatedPreviewHTTP": "待验收：直连 TLS 失败，连接器遇部署保护 401"
+}

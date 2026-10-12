@@ -20,6 +20,9 @@ import {
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { NAV_META, SUB_ROUTE_LABELS } from '@/router/meta'
 import { useUserStore } from '@/store/useUserStore'
+import { TaskCenterProvider } from '@/features/task-center/TaskCenterRuntime'
+import { TaskCenterSidebar,TaskCenterEntry } from '@/features/task-center/TaskCenterSidebar'
+import { taskTools,type TaskTool } from '@shared/task-center'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import CreditsLedgerDrawer from '@/features/credits/CreditsLedgerDrawer'
 import CreditSpendGate from '@/features/credits/CreditSpendGate'
@@ -231,6 +234,7 @@ function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: 
         onClick={({ key }) => navigate(key)}
         className="app-sidebar-menu"
       />
+      <TaskCenterSidebar compact={iconOnly} />
       <div className="app-sidebar-account">
         <Dropdown
           trigger={['click']}
@@ -370,60 +374,71 @@ function MainLayoutContent() {
   }
 
   return (
-    <Layout className="app-shell" style={{ height: '100vh' }}>
-      <AppSidebar key={sidebarOwner} topKey={topKey} onAccountMenu={key => handleAccountMenu({ key })} />
-      <Layout className="app-shell-main">
-        <Header className="app-header">
-          <div className="app-header-leading">
-            {isCanvasRoute(location.pathname)
-              ? <CanvasProjectCrumb />
-              : <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />}
-            <ToolHelpLink />
-          </div>
-          <div className="app-header-trailing">
-            <Dropdown
-              trigger={['click']}
-              placement="bottomRight"
-              overlayClassName="account-dropdown"
-              menu={{
-                onClick: ({ key }) => handleAccountMenu({ key }),
-                items: accountMenuItems(),
-              }}
-            >
-              <button type="button" className="header-account-trigger" aria-label="账号与设置" title="账号与设置">
-                <SettingOutlined />
-              </button>
-            </Dropdown>
-            {account && (
-              <button
-                type="button"
-                className="credits-trigger"
-                aria-label={`积分余额 ${credits}`}
-                onClick={() => setCreditsOpen(true)}
+    <TaskCenterProvider onCredits={() => setCreditsOpen(true)}>
+      <Layout className="app-shell" style={{ height: '100vh' }}>
+        <AppSidebar key={sidebarOwner} topKey={topKey} onAccountMenu={key => handleAccountMenu({ key })} />
+        <Layout className="app-shell-main">
+          <Header className="app-header">
+            <div className="app-header-leading">
+              {isCanvasRoute(location.pathname)
+                ? <CanvasProjectCrumb />
+                : <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />}
+              <ToolHelpLink />
+              {taskToolForPath(location.pathname) ? <TaskCenterEntry tool={taskToolForPath(location.pathname)!} /> : null}
+            </div>
+            <div className="app-header-trailing">
+              <Dropdown
+                trigger={['click']}
+                placement="bottomRight"
+                overlayClassName="account-dropdown"
+                menu={{
+                  onClick: ({ key }) => handleAccountMenu({ key }),
+                  items: accountMenuItems(),
+                }}
               >
-                积分 {credits}
-              </button>
-            )}
-            {isCanvasRoute(location.pathname) ? <CanvasProjectMenu /> : null}
-          </div>
-        </Header>
-        <Content className="app-main-content">
-          {currentUserId ? <CreditRulesNotice key={currentUserId} owner={currentUserId} /> : null}
-          <PreferencesSyncAlert />
-          <ErrorBoundary key={location.pathname}>
-            <Outlet context={{ openModelSettings: () => { setSettingsSection('personalization'); setSettingsOpen(true) } }} />
-          </ErrorBoundary>
-        </Content>
+                <button type="button" className="header-account-trigger" aria-label="账号与设置" title="账号与设置">
+                  <SettingOutlined />
+                </button>
+              </Dropdown>
+              {account && (
+                <button
+                  type="button"
+                  className="credits-trigger"
+                  aria-label={`积分余额 ${credits}`}
+                  onClick={() => setCreditsOpen(true)}
+                >
+                  积分 {credits}
+                </button>
+              )}
+              {isCanvasRoute(location.pathname) ? <CanvasProjectMenu /> : null}
+            </div>
+          </Header>
+          <Content className="app-main-content">
+            {currentUserId ? <CreditRulesNotice key={currentUserId} owner={currentUserId} /> : null}
+            <PreferencesSyncAlert />
+            <ErrorBoundary key={location.pathname}>
+              <Outlet context={{ openModelSettings: () => { setSettingsSection('personalization'); setSettingsOpen(true) } }} />
+            </ErrorBoundary>
+          </Content>
+        </Layout>
+        <CreditsLedgerDrawer key={`${currentUserId}:${creditsOpen}`} open={creditsOpen} onClose={() => setCreditsOpen(false)} />
+        <CreditSpendGate key={currentUserId} />
+        <SettingsDialog
+          open={settingsOpen}
+          section={settingsSection}
+          narrow={narrowScreen}
+          onClose={() => setSettingsOpen(false)}
+          onSectionChange={setSettingsSection}
+        />
       </Layout>
-      <CreditsLedgerDrawer key={`${currentUserId}:${creditsOpen}`} open={creditsOpen} onClose={() => setCreditsOpen(false)} />
-      <CreditSpendGate key={currentUserId} />
-      <SettingsDialog
-        open={settingsOpen}
-        section={settingsSection}
-        narrow={narrowScreen}
-        onClose={() => setSettingsOpen(false)}
-        onSectionChange={setSettingsSection}
-      />
-    </Layout>
+    </TaskCenterProvider>
   )
+}
+
+function taskToolForPath(path: string): TaskTool | undefined {
+  const parts = path.split('/').filter(Boolean)
+  if (parts[0] === 'email') return 'email-assist'
+  const candidate = parts[0] === 'image-workstation' ? (parts[1] ?? 'smart-edit')
+    : parts[0] === 'toolbox' || parts[0] === 'canvas' ? parts[1] : undefined
+  return taskTools.find(tool => tool === candidate)
 }

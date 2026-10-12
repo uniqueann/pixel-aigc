@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { QueryClient,QueryClientProvider } from '@tanstack/react-query'
 
 import { App } from 'antd'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -19,7 +20,7 @@ function installMatchMedia(narrow: boolean) {
 
 function renderLayout() {
   return render(
-    <App>
+    <QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}})}><App>
       <MemoryRouter initialEntries={['/image-workstation/smart-edit']}>
         <Routes>
           <Route path="/" element={<MainLayout />}>
@@ -27,7 +28,7 @@ function renderLayout() {
           </Route>
         </Routes>
       </MemoryRouter>
-    </App>,
+    </App></QueryClientProvider>,
   )
 }
 

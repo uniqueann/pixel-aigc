@@ -109,7 +109,7 @@ describe('自由画布真实文生图闭环', () => {
     })
     await act(async () => Promise.all([controller.generate(request, { x: 400, y: 300 }), controller.generate(request, { x: 400, y: 300 })]))
     expect(mocks.create).toHaveBeenCalledTimes(1)
-    expect(mocks.create).toHaveBeenCalledWith(request)
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining(request))
     expect(mocks.upload).not.toHaveBeenCalled()
     expect(recoveryForTask('text-task')?.backendTaskId).toBe('text-task')
     expect(useEditorStore.getState().project?.document.scenes[0].nodes).toHaveLength(2)
@@ -194,7 +194,8 @@ describe('自由画布真实文生图闭环', () => {
     expect(mocks.find).toHaveBeenCalledWith(request.requestId)
     expect(mocks.create).toHaveBeenCalledTimes(1)
     expect(controller.task?.id).toBe('found-task')
-    expect(recoveryForTask('found-task')?.request).toEqual(request)
+    expect(recoveryForTask('found-task')?.request).toEqual(expect.objectContaining(request))
+    expect(recoveryForTask('found-task')?.request.origin).toMatchObject({entry:'canvas',tool:'text-to-image'})
   })
 
   it('查询失败保留等待，明确不存在时才按相同请求继续', async () => {
@@ -206,7 +207,7 @@ describe('自由画布真实文生图闭环', () => {
     expect(controller.pendingSubmission).toBeDefined()
     mocks.find.mockResolvedValueOnce(undefined)
     await act(async () => controller.resumeSubmission())
-    expect(mocks.create.mock.calls[1][0]).toEqual(request)
+    expect(mocks.create.mock.calls[1][0]).toEqual(expect.objectContaining(request))
     expect(controller.pendingSubmission).toBeUndefined()
   })
 

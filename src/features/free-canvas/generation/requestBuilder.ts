@@ -1,3 +1,4 @@
+import type { TaskOrigin } from '@shared/task-center'
 import {
   Capability,
   type ImageToVideoTaskParams,
@@ -18,6 +19,7 @@ export type CanvasGenerationTaskParams =
   | ImageToVideoTaskParams
 
 export interface CanvasGenerationRequest {
+  origin?: TaskOrigin
   capability: Capability.TextToImage | Capability.TextToVideo | Capability.Variation
   requestId: string
   modelProfileId?: string

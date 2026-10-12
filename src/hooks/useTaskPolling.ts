@@ -3,46 +3,108 @@ import { useQuery } from '@tanstack/react-query'
 import { App } from 'antd'
 import { getTask } from '@/services/api/task'
 import { useTaskStore } from '@/store/useTaskStore'
-import { type GenerationTask, type TaskStatus } from '@/types'
+import { useUserStore } from '@/store/useUserStore'
+import { type GenerationTask, type TaskStatus, Capability } from '@/types'
 import { taskRefetchIntervalMs } from '@/hooks/taskPollInterval'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
-
+import { emitTaskCenter } from '@/features/task-center/receipts'
+import { CloudError } from '@/cloud/client'
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
 
-/**
- * 轮询单个任务状态，任务进入终态（succeeded/failed/cancelled）后自动停止轮询，
- * 并在状态从"进行中"变为终态时弹一次全局通知。
- * 生产环境建议优先用 WebSocket/SSE 推送，这里先用轮询兜底，接口不用改。
- */
-export function useTaskPolling(taskId: string | undefined, onTask?: (task: GenerationTask<unknown>) => void, enabled = true) {
-  const upsertTask = useTaskStore((s) => s.upsertTask)
-  const { notification } = App.useApp()
-  const prevStatusRef = useRef<TaskStatus>()
-
+/** 旧业务推进保持兼容；缓存隔离且每个观察者独立消费结果。 */
+export function useTaskPolling(
+  taskId: string | undefined,
+  onTask?: (task: GenerationTask<unknown>) => void,
+  enabled = true,
+) {
+  const user = useUserStore((s) => s.userId),
+    scope = useUserStore((s) => s.account?.runtimeScope ?? 'local'),
+    globalCenter = useUserStore(
+      (s) =>
+        s.account?.userId === s.userId && !!s.account?.features?.taskCenter,
+    )
+  const owner = `${user ?? 'local'}:${scope}`,
+    previous = useRef<TaskStatus>(),
+    callback = useRef(onTask),
+    { notification } = App.useApp()
   useEffect(() => {
-    prevStatusRef.current = undefined
-  }, [taskId])
-
-  return useQuery({
-    queryKey: ['task', taskId],
-    queryFn: async () => {
-      const task = await getTask(taskId!)
-      upsertTask(task)
-      onTask?.(task)
-
-      const prev = prevStatusRef.current
-      if (prev && prev !== task.status && !ACTIVE_STATUSES.has(task.status)) {
-        if (task.status === 'succeeded') {
-          notification.success({ message: '任务已完成', description: '生成结果已就绪，可在结果区查看' })
-        } else if (task.status === 'failed') {
-          notification.error({ message: '任务失败', description: taskFailureText(task.errorCode, task.errorMessage, '请重试或更换参数') })
-        }
-      }
-      prevStatusRef.current = task.status
-
-      return task
+    callback.current = onTask
+  }, [onTask])
+  useEffect(() => {
+    previous.current = undefined
+    useTaskStore.getState().resetOwner(owner)
+  }, [taskId, owner])
+  const query = useQuery({
+    queryKey: ['task', user ?? 'local', scope, taskId],
+    queryFn: async ({ signal }) => {
+      if (signal.aborted)
+        throw signal.reason ?? new DOMException('查询已取消', 'AbortError')
+      const value = await getTask(taskId!, { signal })
+      if (signal.aborted)
+        throw signal.reason ?? new DOMException('查询已取消', 'AbortError')
+      const current = useUserStore.getState()
+      if (
+        current.userId !== user ||
+        (current.account?.runtimeScope ?? 'local') !== scope
+      )
+        throw new CloudError(401, '账号已切换', 'ACCOUNT_CHANGED')
+      return value
     },
     enabled: !!taskId && enabled,
-    refetchInterval: (query) => taskRefetchIntervalMs(query.state.data),
+    refetchInterval: (q) => taskRefetchIntervalMs(q.state.data),
   })
+  useEffect(() => {
+    const task = query.data,
+      current = useUserStore.getState()
+    if (
+      !task ||
+      current.userId !== user ||
+      (current.account?.runtimeScope ?? 'local') !== scope
+    )
+      return
+    useTaskStore.getState().upsertTask(task, owner)
+    callback.current?.(task)
+    const prev = previous.current
+    if (globalCenter)
+      emitTaskCenter({
+        type: 'observed',
+        requestId: task.requestId,
+        sourceId: task.id,
+        sourceKind:
+          task.capability === Capability.EmailAssist
+            ? 'email_task'
+            : 'image_job',
+        active: ACTIVE_STATUSES.has(task.status),
+      })
+    else if (
+      prev &&
+      prev !== task.status &&
+      !ACTIVE_STATUSES.has(task.status)
+    ) {
+      if (task.status === 'succeeded')
+        notification.success({
+          message: '任务已完成',
+          description: '生成结果已就绪，可在结果区查看',
+        })
+      else if (task.status === 'failed')
+        notification.error({
+          message: '任务失败',
+          description: taskFailureText(
+            task.errorCode,
+            task.errorMessage,
+            '请重试或更换参数',
+          ),
+        })
+    }
+    previous.current = task.status
+  }, [
+    query.data,
+    query.dataUpdatedAt,
+    user,
+    scope,
+    owner,
+    globalCenter,
+    notification,
+  ])
+  return query
 }

@@ -1,0 +1,37 @@
+{
+  "mode": "模拟接口，实际组件",
+  "metrics": [
+    {
+      "accountBottom": 709.90625,
+      "pageHeight": 720,
+      "pageWidth": 1280,
+      "scrollWidth": 1280,
+      "sidebarWidth": 168,
+      "taskHeight": 252
+    },
+    {
+      "accountBottom": 709.90625,
+      "pageHeight": 720,
+      "pageWidth": 1280,
+      "scrollWidth": 1280,
+      "sidebarWidth": 68,
+      "taskHeight": 44
+    },
+    {
+      "accountBottom": 1013.90625,
+      "pageHeight": 1024,
+      "pageWidth": 768,
+      "scrollWidth": 768,
+      "sidebarWidth": 84,
+      "taskHeight": 44
+    },
+    {
+      "accountBottom": 469.90625,
+      "pageHeight": 480,
+      "pageWidth": 1280,
+      "scrollWidth": 1280,
+      "sidebarWidth": 260,
+      "taskHeight": 44
+    }
+  ]
+}

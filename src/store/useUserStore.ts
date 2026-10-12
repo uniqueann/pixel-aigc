@@ -14,6 +14,7 @@ interface UserStoreState {
 }
 
 export interface AccountContext {
+  features?: { taskCenter?: boolean }
   welcome?: WelcomeState
   runtimeScope?: 'local' | 'preview' | 'production'
   userId: string
