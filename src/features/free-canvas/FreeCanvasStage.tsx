@@ -827,7 +827,13 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const selectedNode = selectedNodeId
     ? scene.nodes.find((node) => node.id === selectedNodeId)
     : undefined
-  const canDeleteSelected = !!selectedNode && selectedNode.type !== 'generation'
+  const selectedGenerationStatus = selectedNode?.type === 'generation'
+    ? generations[selectedNode.generationId]?.status
+    : undefined
+  const isSelectedTerminalGeneration = selectedNode?.type === 'generation'
+    && !!selectedGenerationStatus
+    && (selectedGenerationStatus === 'failed' || selectedGenerationStatus === 'cancelled')
+  const canDeleteSelected = !!selectedNode && (selectedNode.type !== 'generation' || isSelectedTerminalGeneration)
   const selectedVideo = selectedNode?.type === 'video'
     ? videoElementsRef.current.get(selectedNode.id)
     : undefined
@@ -894,7 +900,15 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <Tooltip title="撤销（⌘/Ctrl+Z）"><Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} aria-label="撤销" /></Tooltip>
         <Tooltip title="重做（⇧⌘/Ctrl+Z）"><Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} aria-label="重做" /></Tooltip>
         <span className="free-canvas-toolbar-divider" />
-        <Tooltip title={selectedNode?.type === 'generation' ? '生成占位不能单独删除' : '删除所选节点'}><Button type="text" danger icon={<DeleteOutlined />} disabled={!canDeleteSelected} onClick={onDelete} aria-label="删除节点" /></Tooltip>
+        <Tooltip
+          title={
+            selectedNode?.type === 'generation'
+              ? (isSelectedTerminalGeneration ? '删除失败的生成占位' : '生成中的占位不能单独删除')
+              : '删除所选节点'
+          }
+        >
+          <Button type="text" danger icon={<DeleteOutlined />} disabled={!canDeleteSelected} onClick={onDelete} aria-label="删除节点" />
+        </Tooltip>
         {selectedNode?.type === 'video' && (
           <>
             <span className="free-canvas-toolbar-divider" />

@@ -149,12 +149,18 @@ describe('统一任务只读查询、展示权限和分页', () => {
   })
   it('已查看与移除绑定版本，迟到补图重新进入近期列表', async () => {
     const f = await fixture(),
-      before = await actor(users[0], 'local', async (r) =>
-        taskSummary(await r.get('image_job', f.image)),
-      )
-    await actor(users[0], 'local', (r) =>
-      r.presentation('image_job', f.image, 'dismiss', before.outcomeVersion!),
-    )
+      before = await actor(users[0], 'local', async (r) => {
+        const summary = taskSummary(await r.get('image_job', f.image))
+        await r.presentation('image_job', f.image, 'seen', summary.outcomeVersion!)
+        const sidebarAfterSeen = await r.sidebar()
+        expect(sidebarAfterSeen.items.map((i) => i.sourceId)).toContain(f.image)
+        return summary
+      })
+    await actor(users[0], 'local', async (r) => {
+      await r.presentation('image_job', f.image, 'dismiss', before.outcomeVersion!)
+      const sidebarAfterDismiss = await r.sidebar()
+      expect(sidebarAfterDismiss.items.map((i) => i.sourceId)).not.toContain(f.image)
+    })
     expect(
       (await actor(users[0], 'local', (r) => r.get('image_job', f.image)))
         .dismissed,

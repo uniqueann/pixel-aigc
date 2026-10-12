@@ -620,7 +620,52 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const taskQuery = useTaskPolling(queryTaskId, handlePolledTask, !pendingSubmission && !!needsQuery)
   const restoredAutomaticRetry = mockGateway && displayedTask ? recoveryForTask(displayedTask.id)?.context.automaticRetry && ACTIVE_STATUSES.has(displayedTask.status) : false
 
+  const cleanupFailedPlaceholders = useCallback(() => {
+    if (!sceneId) return
+    const state = useEditorStore.getState()
+    const currentScene = state.project?.document.scenes.find((s) => s.id === sceneId)
+    if (!currentScene) return
+    const failedNodes = currentScene.nodes.filter((node): node is GenerationNode => {
+      if (node.type !== 'generation') return false
+      const generation = state.project?.generations[node.generationId]
+      if (generation && (generation.status === 'failed' || generation.status === 'cancelled')) {
+        return true
+      }
+      if (displayedTask && (displayedTask.status === 'failed' || displayedTask.status === 'cancelled')) {
+        if (node.generationId === generationIdForTask(displayedTask.id)) return true
+      }
+      return false
+    })
+    for (const node of failedNodes) {
+      for (const rec of Object.values(usePersistenceStore.getState().recoveries)) {
+        if (rec.abandoned || rec.applied) continue
+        if ((rec.backendTaskId && generationIdForTask(rec.backendTaskId) === node.generationId)
+            || (displayedTask && rec.backendTaskId === displayedTask.id)
+            || (displayedTask?.requestId && rec.request.requestId === displayedTask.requestId)) {
+          usePersistenceStore.getState().setRecovery({ ...rec, abandoned: true })
+        }
+      }
+      removeNode(sceneId, node.id)
+    }
+    if (displayedTask && (displayedTask.status === 'failed' || displayedTask.status === 'cancelled')) {
+      for (const rec of Object.values(usePersistenceStore.getState().recoveries)) {
+        if (rec.abandoned || rec.applied) continue
+        if (rec.backendTaskId === displayedTask.id || (displayedTask.requestId && rec.request.requestId === displayedTask.requestId)) {
+          usePersistenceStore.getState().setRecovery({ ...rec, abandoned: true })
+        }
+      }
+      setTask(undefined)
+      setActiveTaskId(undefined)
+      setSubmissionError(undefined)
+      setProtocolError(undefined)
+    }
+    if (failedNodes.length > 0) {
+      void flushProject().catch(() => undefined)
+    }
+  }, [displayedTask, removeNode, sceneId])
+
   const generate = useCallback(async (request: CanvasGenerationRequest, center: CanvasPoint) => {
+    cleanupFailedPlaceholders()
     const scene = readScene()
     const preferred = calculateGenerationPlacements(center, request.params.size, request.params.count)
     const placements = scene
@@ -632,12 +677,13 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       : preferred
     await submitRequest(request, placements)
     return placements
-  }, [readScene, submitRequest])
+  }, [cleanupFailedPlaceholders, readScene, submitRequest])
 
   const generateDerived = useCallback(async (
     request: CanvasGenerationRequest,
     source: DerivedGenerationSource,
   ) => {
+    cleanupFailedPlaceholders()
     const state = useEditorStore.getState()
     const latestNode = readScene()?.nodes.find((node): node is ImageNode => (
       node.id === source.node.id && node.type === 'image'
@@ -661,7 +707,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       automaticRetry: false,
     })
     return placements
-  }, [readScene, submitRequest, mockGateway])
+  }, [cleanupFailedPlaceholders, readScene, submitRequest, mockGateway])
 
   const retry = useCallback(async () => {
     if (submitting || pendingSubmission || !displayedTask || !isCanvasGenerationCapability(displayedTask.capability)) return

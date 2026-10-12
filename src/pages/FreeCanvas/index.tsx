@@ -8,6 +8,7 @@ import { useCanvasActionGate } from '@/layouts/canvasActionGate'
 import { flushProject, copyProjectLocally, hasUnfinishedGeneration } from '@/editor/persistence/projectPersistence'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import type { GenerationDraft } from '@/editor/persistence/types'
+import { generationIdForTask } from '@/editor/adapters/taskAdapter'
 import { RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
 import { useEditorStore } from '@/editor/store'
 import FreeCanvasStage from '@/features/free-canvas/FreeCanvasStage'
@@ -197,9 +198,26 @@ export default function FreeCanvas() {
     const nodeId = state.selectedNodeIds[0]
     if (!state.activeSceneId || !nodeId) return
     const currentScene = state.project?.document.scenes.find((item) => item.id === state.activeSceneId)
-    if (currentScene?.nodes.find((node) => node.id === nodeId)?.type === 'generation') return
+    const targetNode = currentScene?.nodes.find((node) => node.id === nodeId)
+    if (!targetNode) return
+    if (targetNode.type === 'generation') {
+      const job = state.project?.generations[targetNode.generationId]
+      const isTerminal = job?.status && (job.status === 'failed' || job.status === 'cancelled')
+      if (!isTerminal) return
+      for (const rec of Object.values(usePersistenceStore.getState().recoveries)) {
+        if (rec.abandoned || rec.applied) continue
+        if ((rec.backendTaskId && generationIdForTask(rec.backendTaskId) === targetNode.generationId)
+            || (job?.backendTaskId && rec.backendTaskId === job.backendTaskId)) {
+          usePersistenceStore.getState().setRecovery({ ...rec, abandoned: true })
+        }
+      }
+      if (generation.task && (generationIdForTask(generation.task.id) === targetNode.generationId || generation.task.id === job?.backendTaskId)) {
+        generation.dismissTask()
+      }
+    }
     state.executeCommand(new RemoveNodeCommand(state.activeSceneId, nodeId))
-  }, [])
+    void flushProject().catch(() => undefined)
+  }, [generation])
 
   const handleGenerate = () => {
     if (activeSlug === 'text-to-video' && (!videoConfiguration.ready || cloudProject)) {

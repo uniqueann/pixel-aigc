@@ -761,4 +761,48 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     )
   })
 
+  it('前次任务失败后直接发起新文生图，自动清理旧的失败占位卡片并放弃恢复记录', async () => {
+    const request1 = buildTextToImageRequest('失败的任务', IMAGE_SIZE_PRESETS[0], 1)
+    const failedTask: GenerationTask<CanvasGenerationTaskParams> = {
+      id: 'task-failed-old',
+      capability: Capability.TextToImage,
+      status: 'failed',
+      params: request1.params,
+      errorMessage: '模型服务异常',
+      creditsCost: 1,
+      createdAt: '2026-10-03T00:00:00.000Z',
+      updatedAt: '2026-10-03T00:00:01.000Z',
+    }
+    mocks.createTask.mockResolvedValueOnce(failedTask)
+    await act(async () => {
+      await currentController.generate(request1, { x: 640, y: 360 })
+    })
+
+    const initialNodes = useEditorStore.getState().project?.document.scenes[0].nodes ?? []
+    expect(initialNodes).toHaveLength(1)
+    expect(initialNodes[0].type).toBe('generation')
+    expect((initialNodes[0] as { id: string }).id).toContain('task-failed-old')
+    expect(recoveryForTask('task-failed-old')?.abandoned).toBeUndefined()
+
+    const request2 = buildTextToImageRequest('一只可爱的柴犬', IMAGE_SIZE_PRESETS[0], 1)
+    const nextTask: GenerationTask<CanvasGenerationTaskParams> = {
+      id: 'task-success-new',
+      capability: Capability.TextToImage,
+      status: 'processing',
+      params: request2.params,
+      creditsCost: 1,
+      createdAt: '2026-10-03T00:00:02.000Z',
+      updatedAt: '2026-10-03T00:00:02.000Z',
+    }
+    mocks.createTask.mockResolvedValueOnce(nextTask)
+    await act(async () => {
+      await currentController.generate(request2, { x: 640, y: 360 })
+    })
+
+    const currentNodes = useEditorStore.getState().project?.document.scenes[0].nodes ?? []
+    expect(currentNodes).toHaveLength(1)
+    expect(currentNodes[0].type).toBe('generation')
+    expect((currentNodes[0] as { id: string }).id).toContain('task-success-new')
+    expect(recoveryForTask('task-failed-old')?.abandoned).toBe(true)
+  })
 })
