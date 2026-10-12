@@ -17,6 +17,8 @@ export interface WorkstationHistoryMetadata {
   id: string
   objectKey?: string
   taskId?: string
+  sourceKind?: import('@shared/task-center').TaskSourceKind
+  runtimeScope?: import('@shared/task-center').TaskScope
   ordinal?: number
   toolSlug: WorkstationHistorySlug
   capability: Capability

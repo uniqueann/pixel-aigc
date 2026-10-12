@@ -44,6 +44,7 @@ export async function requestErase(
     body = { sourceImageKey, maskImageKey, prompt }
   }
   body.clientTimingMs = clientTiming(prepareStarted, uploadMs)
-  const response = await postBilledSyncImage('erase', body, quote)
+  resultOptions.onTaskIdentity?.(quote.requestId)
+  const response = await postBilledSyncImage('erase', body, quote,resultOptions.signal)
   return readImageResult(response, '消除', resultOptions)
 }

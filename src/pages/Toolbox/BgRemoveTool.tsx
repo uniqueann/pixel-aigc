@@ -28,6 +28,10 @@ import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 import { syncCreditPrice } from '@shared/billing'
+import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
+import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
+import { assertRecoveryActor,persistRecoveredResult } from '@/features/task-center/recoveryMedia'
+import type { RecoveryActionContext } from '@/features/task-center/TaskRecoveryPanel'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败'
@@ -89,6 +93,7 @@ export default function BgRemoveTool() {
   const outputBytes = downloadable.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
   const busy = processing || adding || packaging
   const controlsLocked = processing || packaging
+  useTaskDraftGuard({dirty:items.some(item=>item.status==='pending'||item.status==='failed'),reason:'抠图队列还有未提交或未保存的内容，切换后将放弃当前队列。',blocked:adding||packaging?'正在读取或打包图片，请完成后再切换':undefined})
   const quoteFor = (ids?: string[]) => bgRemoveBatchQuote(items, billing.data, { ids, mock: mockGateway, loading: billing.isPending && billing.fetchStatus === 'fetching' })
   const generateQuote = quoteFor()
   const creditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: generateQuote, balance: knownBalance })
@@ -239,7 +244,7 @@ export default function BgRemoveTool() {
     }
   }
 
-  function addFile(file: File) {
+  function addFile(file: File,recovery?:RecoveryActionContext) {
     if (processingRef.current) return
     const queuedBytes = itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + pendingBytesRef.current
     const blocked = queueLimitMessage(file, itemsRef.current.length + addingCountRef.current, queuedBytes)
@@ -251,6 +256,7 @@ export default function BgRemoveTool() {
       if (scopeRef.current !== scope) return
       const inspected = await inspectImage(file)
       if (!mountedRef.current || scopeRef.current !== scope) return
+      if(recovery)assertRecoveryActor(recovery.actor,recovery.signal)
       const item: BatchImage = {
         id: crypto.randomUUID(), file, sourceMime: inspected.mimeType,
         sourceUrl: URL.createObjectURL(file), width: inspected.width, height: inspected.height, status: 'pending',
@@ -267,6 +273,7 @@ export default function BgRemoveTool() {
       pendingBytesRef.current -= file.size
       if (mountedRef.current && addingCountRef.current === 0) setAdding(false)
     })
+    return addChainRef.current
   }
 
   function removeFile(id: string) {
@@ -381,6 +388,12 @@ export default function BgRemoveTool() {
 
   return (
     <div className="toolbox-watermark">
+      <TaskRecoveryPanel tools={['bg-remove']} blockedReason={busy?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async (result,blob,detail,context)=>{
+        assertRecoveryActor(context.actor,context.signal)
+        await persistRecoveredResult(detail,result,context.actor,context.signal,blob)
+        assertRecoveryActor(context.actor,context.signal)
+        await addFile(new File([blob],`已有抠图-${detail.task.sourceId}.png`,{type:blob.type}),context)
+      }}/>
       <ToolboxImageCard
         items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, status: item.status, error: item.error }))}
         selectedId={selectedId}

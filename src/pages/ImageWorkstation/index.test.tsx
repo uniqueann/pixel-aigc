@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
     load: vi.fn(),
   },
 }))
-vi.mock('react-router-dom', () => ({ useParams: () => ({ tool: mocks.tool }), useNavigate: () => vi.fn() }))
+vi.mock('react-router-dom', async importOriginal => ({ ...await importOriginal<typeof import('react-router-dom')>(), useParams: () => ({ tool: mocks.tool }), useNavigate: () => vi.fn() }))
 vi.mock('@/hooks/useCapabilities', () => ({ useCapabilities: () => mocks.status }))
 vi.mock('@/features/image-workstation/hooks/useImageWorkstationController', () => ({
   useImageWorkstationController: (args: { modelProfileId?: string }) => {

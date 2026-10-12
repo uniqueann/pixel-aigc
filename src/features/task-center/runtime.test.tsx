@@ -11,6 +11,7 @@ import {
   QueryClient,
   QueryClientProvider,
   onlineManager,
+  useQuery,
 } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useUserStore, type AccountContext } from '@/store/useUserStore'
@@ -20,6 +21,7 @@ import { useTaskCenter } from './context'
 import { emitTaskCenter, readReceipts, saveReceipt } from './receipts'
 import { taskCenterKeys } from './client'
 import type { TaskCenterSummary } from '@shared/task-center'
+import type { ReactNode } from 'react'
 
 const api = vi.hoisted(() => ({
   request: vi.fn(),
@@ -119,7 +121,7 @@ function Probe() {
   )
 }
 let client: QueryClient
-function mount() {
+function mount(extra?: ReactNode) {
   client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
@@ -127,6 +129,7 @@ function mount() {
     <QueryClientProvider client={client}>
       <TaskCenterProvider onCredits={() => undefined}>
         <Probe />
+        {extra}
       </TaskCenterProvider>
     </QueryClientProvider>,
   )
@@ -293,6 +296,41 @@ describe('全局任务运行层', () => {
     fireEvent.click(screen.getByText('刷新'))
     await waitFor(() => expect(api.request).toHaveBeenCalledTimes(2))
     expect(api.success).not.toHaveBeenCalled()
+  })
+  it('工具正在查看的终态共用摘要缓存，迟到结果仍观察，离开后停止', async () => {
+    let task = row(9, 'succeeded')
+    function RoutedProbe() {
+      const summary = useQuery<TaskCenterSummary>({ queryKey:taskCenterKeys.summary(actor,task.sourceKind,task.requestId),enabled:false })
+      return <span>工具已完成 {summary.data?.completedCount ?? 0}</span>
+    }
+    api.request.mockImplementation(async (path: string) => path.includes('by-request') ? task : {
+      items: [1, 2, 3, 4, 5].map((index) => row(index)), activeCount: 5, unseenCount: 0,
+      snapshotAt: new Date().toISOString(),
+    })
+    mount(<RoutedProbe />)
+    await waitFor(() => expect(api.request).toHaveBeenCalledOnce())
+    const viewing = { type:'observed' as const, actor, sourceKind:task.sourceKind, sourceId:task.sourceId, requestId:task.requestId, active:false }
+    act(() => emitTaskCenter({ ...viewing, viewing:true }))
+    await waitFor(() => expect(client.getQueryData<TaskCenterSummary>(taskCenterKeys.summary(actor, task.sourceKind, task.requestId))?.completedCount).toBe(1))
+    expect(api.success).not.toHaveBeenCalled()
+    task = { ...task, completedCount:2, partial:false, outcomeVersion:'v1:' + 'b'.repeat(32) }
+    fireEvent.click(screen.getByText('刷新'))
+    await waitFor(() => expect(client.getQueryData<TaskCenterSummary>(taskCenterKeys.summary(actor, task.sourceKind, task.requestId))?.completedCount).toBe(2))
+    expect(api.success).not.toHaveBeenCalled()
+    act(() => emitTaskCenter({ ...viewing, viewing:false }))
+    const reads = api.request.mock.calls.filter(call => call[0].includes('by-request')).length
+    fireEvent.click(screen.getByText('刷新'))
+    await waitFor(() => expect(api.request.mock.calls.filter(call => call[0].includes('sidebar'))).toHaveLength(4))
+    expect(api.request.mock.calls.filter(call => call[0].includes('by-request'))).toHaveLength(reads)
+  })
+  it('拒绝其他环境的工具观察事件，不查询或混入当前缓存', async () => {
+    api.request.mockResolvedValue({ items:[],activeCount:0,unseenCount:0,snapshotAt:new Date().toISOString() })
+    mount()
+    await waitFor(() => expect(api.request).toHaveBeenCalledOnce())
+    act(() => emitTaskCenter({ type:'observed', actor:{ ...actor,scope:'production' }, sourceKind:'image_job',sourceId:row().sourceId,requestId:row().requestId,viewing:true }))
+    fireEvent.click(screen.getByText('刷新'))
+    await waitFor(() => expect(api.request).toHaveBeenCalledTimes(2))
+    expect(api.request.mock.calls.every(call => !call[0].includes('by-request'))).toBe(true)
   })
   it('断网即时提示且保留可信快照，恢复网络后可继续查询', async () => {
     api.request.mockResolvedValue({

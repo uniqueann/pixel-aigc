@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams,useSearchParams } from 'react-router-dom'
+import CanvasTaskRecovery from '@/features/task-center/CanvasTaskRecovery'
+import { parseTaskRoute } from '@/features/task-center/route'
 import { Alert, App, Button, Segmented, Space } from 'antd'
 import { Capability } from '@/types'
 import CloudToolbar from '@/cloud/CloudToolbar'
@@ -59,6 +61,7 @@ function isEditingText(target: EventTarget | null) {
 
 export default function FreeCanvas() {
   const { mode } = useParams<{ mode: string }>()
+  const [routeParams]=useSearchParams()
   const navigate = useNavigate()
   const { message } = App.useApp()
   const configuration = useCanvasVariationModels()
@@ -106,7 +109,7 @@ export default function FreeCanvas() {
   const redo = useEditorStore((state) => state.redo)
   const setViewport = useEditorStore((state) => state.setViewport)
   const scene = project?.document.scenes.find((item) => item.id === activeSceneId)
-  const generation = useFreeCanvasGenerationController(scene?.id)
+  const generation = useFreeCanvasGenerationController(scene?.id,parseTaskRoute(routeParams.get('task'))?.sourceId)
   const foreignSubmission = !!generation.pendingSubmission?.ownerId && generation.pendingSubmission.ownerId !== ownerId
   const taskResultCount = generation.task?.resultVideos?.length || generation.task?.resultImages?.length || generation.task?.resultUrls?.length || 0
   const previewAssetIds = Array.from({ length: taskResultCount }, (_, index) => resultAssetForTask(generation.task, index, project?.assets ?? EMPTY_ASSETS)?.id).filter((id): id is string => !!id)
@@ -393,6 +396,7 @@ export default function FreeCanvas() {
 
   return (
     <div className="free-canvas-page">
+      <CanvasTaskRecovery onTaskObserved={generation.observeRecoveredTask}/>
       <CloudToolbar disabled={actionsBlocked || cloudBusy || hasUnfinishedGeneration()} onUploadImage={() => fileInput.current?.click()} />
       {pickerOpen && <CanvasAssetPicker key={ownerId} ownerId={ownerId} busy={importing} onSelect={importPicture} onClose={() => { if (!importing) setPickerOpen(false) }} />}
       <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="上传图片到画布" onChange={event => {

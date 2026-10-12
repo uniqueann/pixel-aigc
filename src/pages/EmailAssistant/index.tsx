@@ -28,7 +28,7 @@ function EmailAssistantSession() {
   const [batchVisited, setBatchVisited] = useState(mode === 'batch')
   const configuration = useEmailModelConfiguration()
   const gate = useEmailGenerationGate()
-  const single = useEmailAssistantController({ autoRestoreLatest: !entryOperation && !params.has('mode') })
+  const single = useEmailAssistantController({ autoRestoreLatest: !entryOperation && !params.has('mode') && !params.has('task'),readOnlyRecovery:params.has('task') })
   const batch = useEmailBatchController(gate)
   const { settingsQuery, profilesQuery } = configuration
   useEffect(() => {

@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from 'antd'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useUserStore, type AccountContext } from '@/store/useUserStore'
 import type { TaskCenterSummary } from '@shared/task-center'
@@ -128,12 +129,12 @@ function mount(overrides: Partial<TaskCenterContextValue> = {}) {
   }
   render(
     <QueryClientProvider client={client}>
-      <App>
+      <MemoryRouter><App>
         <TaskCenterContext.Provider value={context}>
           <textarea aria-label="工具草稿" defaultValue="保持草稿" />
           <TaskCenterDrawer />
         </TaskCenterContext.Provider>
-      </App>
+      </App></MemoryRouter>
     </QueryClientProvider>,
   )
   return context

@@ -154,6 +154,8 @@ export interface TaskCenterMedia {
   url: string
   urlExpiresAt: string
   availability: ResultAvailability
+  /** 只返回原任务已保存的视频信息，不补造缺失元数据。 */
+  video?: Omit<import('./video-models').VideoResult, 'url' | 'expiresAt' | 'objectKey' | 'ordinal' | 'width' | 'height' | 'mimeType'>
 }
 export interface TaskCenterText {
   kind: 'text'

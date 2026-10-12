@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "scope": "preview",
+  "applicationRole": true,
+  "readOnlyTransaction": true,
+  "counts": [
+    {
+      "account": 0,
+      "sidebar": 0,
+      "history": 0,
+      "nativeSnapshots": 0,
+      "states": {},
+      "videos": 0
+    },
+    {
+      "account": 1,
+      "sidebar": 5,
+      "history": 20,
+      "nativeSnapshots": 3,
+      "states": {
+        "succeeded": 15,
+        "expired": 3,
+        "failed": 2
+      },
+      "videos": 0
+    }
+  ],
+  "crossAccount": "404",
+  "objectRead": "数据库声明有结果，但对象不可读取；保留执行及账本事实",
+  "authenticatedHTTP": false,
+  "generationPosts": 0,
+  "creditsReserved": 0
+}

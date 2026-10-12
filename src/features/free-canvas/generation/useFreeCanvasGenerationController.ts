@@ -132,7 +132,7 @@ function requestForRetry(task: CanvasGenerationTask): CanvasGenerationRequest {
   }
 }
 
-export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) {
+export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,readOnlyTaskId?: string) {
   useUserStore((state) => state.userId)
   const ownerId = currentWorkstationHistoryOwner()
   const mockGateway = isCanvasMockGateway()
@@ -617,7 +617,22 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   }, [displayedTask])
   const needsQuery = displayedTask && (ACTIVE_STATUSES.has(displayedTask.status) || (displayedTask.status === 'succeeded' && !recoveryForTask(displayedTask.id)?.applied))
   const queryTaskId = activeTaskId ?? restoredGeneration?.backendTaskId
-  const taskQuery = useTaskPolling(queryTaskId, handlePolledTask, !pendingSubmission && !!needsQuery)
+  const taskQuery = useTaskPolling(queryTaskId, handlePolledTask, queryTaskId!==readOnlyTaskId && !pendingSubmission && !!needsQuery)
+  const observeRecoveredTask=useCallback((detail:import('@shared/task-center').TaskCenterDetail)=>{
+    if(!isCurrent()||!detail.params||detail.task.sourceKind!=='image_job'||detail.task.origin?.entry!=='canvas'||detail.task.origin.projectId!==projectId||detail.task.origin.sceneId!==sceneId)return
+    const summary=detail.task
+    const nextStatus=summary.state==='expired'?'failed':summary.state
+    const previous=useTaskStore.getState().tasks[summary.sourceId]
+    if(previous?.updatedAt===summary.updatedAt&&previous.status===nextStatus)return
+    const images=detail.results.flatMap(result=>result.kind==='image'&&result.availability==='available'?[{url:result.url,objectKey:result.objectKey,ordinal:result.ordinal,width:result.width,height:result.height,mimeType:result.mimeType,expiresAt:Date.parse(result.urlExpiresAt)}]:[])
+    const videos=detail.results.flatMap(result=>result.kind==='video'&&result.video&&result.availability==='available'?[{...result.video,url:result.url,objectKey:result.objectKey,ordinal:result.ordinal,width:result.width,height:result.height,mimeType:'video/mp4' as const,expiresAt:Date.parse(result.urlExpiresAt)}]:[])
+    const next:CanvasGenerationTask={id:summary.sourceId,requestId:summary.requestId,capability:summary.capability as Capability,status:nextStatus,params:detail.params as unknown as CanvasGenerationTaskParams,
+      resultImages:images,resultVideos:videos,resultUrls:[...images,...videos].map(result=>result.url),modelProfileId:summary.modelProfileId??undefined,
+      errorCode:summary.errorCode??undefined,errorMessage:detail.errorMessage??undefined,warnings:summary.warnings,creditsCost:summary.creditsCharged??summary.creditsReserved,
+      createdAt:summary.createdAt,updatedAt:summary.updatedAt}
+    setTask(next);upsertTask(next)
+    if(!ACTIVE_STATUSES.has(nextStatus))setActiveTaskId(undefined)
+  },[isCurrent,projectId,sceneId,upsertTask])
   const restoredAutomaticRetry = mockGateway && displayedTask ? recoveryForTask(displayedTask.id)?.context.automaticRetry && ACTIVE_STATUSES.has(displayedTask.status) : false
 
   const cleanupFailedPlaceholders = useCallback(() => {
@@ -821,5 +836,6 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     modifyParameters,
     dismissTask,
     refetch: taskQuery.refetch,
+    observeRecoveredTask,
   }
 }

@@ -4,6 +4,7 @@ import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTaskStore } from '@/store/useTaskStore'
+import { useUserStore,type AccountContext } from '@/store/useUserStore'
 import { Capability, type EmailAssistTaskParams, type GenerationTask } from '@/types'
 import { useEmailAssistantController } from './useEmailAssistantController'
 
@@ -21,11 +22,12 @@ const mocks = vi.hoisted(() => ({
     isFetching: false,
   },
   refetch: vi.fn(),
+  save:vi.fn(),
 }))
 
 vi.mock('@/cloud/client', () => ({ get authEnabled() { return mocks.authEnabled } }))
 vi.mock('@/services/api/task', () => ({ createTask: mocks.createTask, getTask: mocks.getTask,
-  getTaskByRequest: mocks.getTaskByRequest, listTasks: mocks.listTasks }))
+  getTaskByRequest: mocks.getTaskByRequest, listTasks: mocks.listTasks,saveTaskEdit:mocks.save }))
 vi.mock('@/hooks/useTaskPolling', async () => {
   const { useEffect: useReactEffect } = await import('react')
   return {
@@ -115,6 +117,20 @@ describe('useEmailAssistantController', () => {
     })
     expect(controller.task).toBeUndefined()
     expect(controller.resultText).toBe('')
+  })
+  it('退出原账号后，清理和保存队列不发送旧修改稿',async()=>{
+    await act(async()=>root.unmount())
+    useUserStore.getState().setAccount({userId:'11111111-1111-4111-8111-111111111111',runtimeScope:'preview'} as AccountContext)
+    root=createRoot(container)
+    await act(async()=>root.render(<Harness/>))
+    mocks.authEnabled=true;mocks.save.mockClear()
+    mocks.getTask.mockResolvedValue({id:'old-edit',capability:Capability.EmailAssist,status:'succeeded',params:{sourceText:'旧邮件',operation:'reply',language:'zh'},resultText:'旧结果',creditsCost:1,createdAt:'2026-10-12',updatedAt:'2026-10-12'})
+    await act(async()=>{await controller.openTask('old-edit')})
+    await act(async()=>controller.setResultText('旧账号私有修改稿'))
+    useUserStore.getState().setAccount({userId:'33333333-3333-4333-8333-333333333333',runtimeScope:'preview'} as AccountContext)
+    await act(async()=>expect(await controller.flushEdit()).toBe(false))
+    expect(mocks.save).not.toHaveBeenCalled()
+    useUserStore.getState().setAccount(null)
   })
 
   it('新建任务保留历史，之后仍可重新打开同一任务', async () => {

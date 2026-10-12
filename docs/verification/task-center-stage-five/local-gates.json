@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-13",
+  "branch": "codex/task-center-tool-recovery",
+  "baseline": "566347f",
+  "status": "passed",
+  "testFiles": 257,
+  "tests": 1671,
+  "vitestUnhandledErrors": 0,
+  "checks": {
+    "fullTests": "passed",
+    "serverTypes": "passed",
+    "frontendTypes": "passed",
+    "build": "passed",
+    "lint": "passed",
+    "diffCheck": "passed"
+  },
+  "buildWarnings": [
+    "现有入口包体积超过 500 kB 的提示"
+  ],
+  "committed": false
+}

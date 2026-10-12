@@ -258,7 +258,7 @@ export function useImageWorkstationController({
       try {
         const result = await normalizeImageBlob(await blobFromImageSource(withRuntimeImage(asset).url, asset.objectKey))
         if (!isCurrentWorkstationHistoryOwner(ownerId)) return
-        const record: WorkstationHistoryRecord = { id, taskId: completedTask.id, ordinal: image?.ordinal, objectKey: asset.objectKey, toolSlug, capability: completedTask.capability, prompt,
+        const record: WorkstationHistoryRecord = { id, taskId: completedTask.id, sourceKind:completedTask.capability===Capability.Inpaint||completedTask.capability===Capability.Outpaint?'sync_credit':'image_job',runtimeScope:useUserStore.getState().account?.runtimeScope,ordinal: image?.ordinal, objectKey: asset.objectKey, toolSlug, capability: completedTask.capability, prompt,
           width: asset.width, height: asset.height, mimeType: result.type, result, createdAt: completedTask.createdAt, updatedAt: completedTask.updatedAt }
         if (epoch === epochRef.current) failedSavesRef.current.set(id, { ownerId, record, epoch })
         await recordWorkstationHistory(ownerId, record)
@@ -339,7 +339,7 @@ export function useImageWorkstationController({
     const epoch = beginOperation()
     const signal = readAbortRef.current.signal
     setSubmitting(true)
-    const id = crypto.randomUUID()
+    let id: string = crypto.randomUUID()
     const now = new Date().toISOString()
     let descriptor: SyncImageObjectResult | undefined
     const current = () => epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId)
@@ -365,7 +365,7 @@ export function useImageWorkstationController({
         if (current()) syncRecoveryRef.current = undefined
         return completed
       }
-      const result = await prepared.execute({ ownerId, signal, onObjectResult: object => {
+      const result = await prepared.execute({ ownerId, signal, onTaskIdentity: requestId => { id=requestId;completed.id=requestId;completed.requestId=requestId }, onObjectResult: object => {
         descriptor = object
         if (!current()) return
         syncRecoveryRef.current = { descriptor: object, complete, epoch, ownerId }

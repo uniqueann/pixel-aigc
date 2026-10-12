@@ -31,6 +31,8 @@ export interface TaskCenterEvent {
   requestId?: string
   sourceKind?: TaskSourceKind
   active?: boolean
+  viewing?: boolean
+  actor?: TaskActor
 }
 const key = (actor: TaskActor) =>
   `pixel-task-receipts:${actor.owner}:${actor.scope}`

@@ -5,6 +5,7 @@ import { authEnabled } from '@/cloud/client'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
 import { createTask, deleteTask, getTask, getTaskByRequest, listTasks, saveTaskEdit, type TaskSummary } from '@/services/api/task'
 import { useTaskStore } from '@/store/useTaskStore'
+import { useUserStore } from '@/store/useUserStore'
 import {
   Capability,
   type EmailAssistTaskParams,
@@ -22,7 +23,8 @@ function isEmailAssistTask(task: GenerationTask<unknown>): task is GenerationTas
     && typeof params.language === 'string'
 }
 
-export function useEmailAssistantController(options?: { autoRestoreLatest?: boolean }) {
+export function useEmailAssistantController(options?: { autoRestoreLatest?: boolean; readOnlyRecovery?: boolean }) {
+  const [sessionActor]=useState(()=>{const state=useUserStore.getState();return {owner:state.userId,scope:state.account?.runtimeScope}})
   const [autoRestoreLatest] = useState(() => options?.autoRestoreLatest ?? true)
   const upsertTask = useTaskStore((state) => state.upsertTask)
   const [activeTaskId, setActiveTaskId] = useState<string>()
@@ -39,7 +41,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
   const [protocolError, setProtocolError] = useState<string>()
   const handledVersionsRef = useRef(new Set<string>())
   const editTimerRef = useRef<ReturnType<typeof setTimeout>>()
-  const pendingEditRef = useRef<{ taskId: string; text: string }>()
+  const pendingEditRef = useRef<{ taskId: string; text: string; owner:string|null;scope:import('@shared/task-center').TaskScope|undefined }>()
   const saveChainRef = useRef<Promise<unknown>>(Promise.resolve())
   const touchedRef = useRef(false)
   const selectionEpochRef = useRef(0)
@@ -96,7 +98,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
   }, [handleTask])
 
   useEffect(() => {
-    if (!authEnabled) return
+    if (!authEnabled || options?.readOnlyRecovery) return
     let active = true
     queueMicrotask(() => {
       if (!active) return
@@ -105,7 +107,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
       }).catch(() => { /* 历史读取失败不阻止新任务。 */ })
     })
     return () => { active = false }
-  }, [autoRestoreLatest, openTask, refreshHistory])
+  }, [autoRestoreLatest, openTask, refreshHistory,options?.readOnlyRecovery])
 
   const flushEdit = useCallback(async () => {
     if (editTimerRef.current) clearTimeout(editTimerRef.current)
@@ -114,15 +116,20 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
       try { await saveChainRef.current; return !pendingEditRef.current }
       catch { return false }
     }
+    const current=()=>{const state=useUserStore.getState();return state.userId===pending.owner&&state.account?.runtimeScope===pending.scope}
+    if(!current()){pendingEditRef.current=undefined;return false}
     pendingEditRef.current = undefined
     setSavingEdit(true)
     try {
-      saveChainRef.current = saveChainRef.current.catch(() => undefined).then(() => saveTaskEdit(pending.taskId, pending.text))
+      saveChainRef.current = saveChainRef.current.catch(() => undefined).then(() => {
+        if(!current())throw new DOMException('账号或环境已切换，已停止保存旧修改稿','AbortError')
+        return saveTaskEdit(pending.taskId,pending.text)
+      })
       await saveChainRef.current
-      return true
+      return current()
     }
     catch (error) {
-      if (!pendingEditRef.current) pendingEditRef.current = pending
+      if (current()&&!pendingEditRef.current) pendingEditRef.current = pending
       setSubmissionError(error instanceof Error ? `修改稿保存失败：${error.message}` : '修改稿保存失败')
       return false
     }
@@ -132,10 +139,10 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
   const editResult = useCallback((value: string) => {
     setResultText(value)
     if (!authEnabled || task?.status !== 'succeeded') return
-    pendingEditRef.current = { taskId: task.id, text: value }
+    pendingEditRef.current = { taskId: task.id, text: value,...sessionActor }
     if (editTimerRef.current) clearTimeout(editTimerRef.current)
     editTimerRef.current = setTimeout(() => { void flushEdit() }, 600)
-  }, [flushEdit, task])
+  }, [flushEdit, task,sessionActor])
 
   const newTask = useCallback(async () => {
     if (pendingRequestRef.current) throw new Error('请先确认原请求状态，避免重复生成')
