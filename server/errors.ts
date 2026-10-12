@@ -1,11 +1,14 @@
 export class HttpError extends Error {
   stage?: string
   extra?: Record<string, unknown>
-  constructor(public status: number, message: string, public code = 'REQUEST_FAILED', options?: { cause?: unknown; stage?: string; extra?: Record<string, unknown> }) {
+  /** 只进入服务端日志，不写入响应体。 */
+  log?: { keys?: readonly string[] }
+  constructor(public status: number, message: string, public code = 'REQUEST_FAILED', options?: { cause?: unknown; stage?: string; extra?: Record<string, unknown>; log?: { keys?: readonly string[] } }) {
     super(message, options?.cause !== undefined ? { cause: options.cause } : undefined)
     this.name = 'HttpError'
     this.stage = options?.stage
     this.extra = options?.extra
+    this.log = options?.log
   }
 }
 

@@ -5,6 +5,7 @@ import sharp from 'sharp'
 import { readRequestBody } from './request-body.js'
 import { taskOriginSchema } from '../shared/task-center.js'
 import { handleTaskCenterRoute,taskCenterEnabled } from './task-center/route.js'
+import { withoutPlatformQuery } from './platform-query.js'
 import { syncQuoteSchema, withSyncCredits, getSyncCreditResult } from './sync-billing.js'
 import { billingCatalog, createCreditCheckout, previewCreditDiscount, getCreditOrder, listCreditOrders, requestCashRefund, handlePaymentWebhook, reconcilePendingCreditOrders } from './payments/service.js'
 import type { VercelRequest, VercelResponse } from './http.js'
@@ -115,8 +116,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let userId: string | undefined
   try {
     const url = new URL(req.url ?? '/', 'http://localhost')
-    const route = url.searchParams.get('__route') ?? url.pathname.replace(/^\/api/, '')
+    const inboundQuery = url.searchParams
+    // 先用 __route 定位路径。Vercel 还会把改写具名段（如 path）注入查询串，业务校验前必须去掉。
+    const route = inboundQuery.get('__route') ?? url.pathname.replace(/^\/api/, '')
     const path = route.split('/').filter(Boolean).map(decodeURIComponent)
+    const query = withoutPlatformQuery(inboundQuery)
     const method = req.method ?? 'GET'
     const heavy = ['bg-remove','subject-detect','outpaint','erase','repaint','smart-select'].includes(path[0])
     await readRequestBody(req,path[0] === 'repaint' ? 48*1024*1024 : heavy ? 28*1024*1024 : 3*1024*1024)
@@ -137,7 +141,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path.join('/') === 'internal/video-jobs-callback' && method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
       if (Buffer.byteLength(JSON.stringify(body ?? null)) > 64 * 1024) throw new HttpError(413, '回调内容过大')
-      const jobId = await recordVideoCallback(url.searchParams, body)
+      const jobId = await recordVideoCallback(query, body)
       res.status(202).json({ received: true })
       if (jobId) waitUntil(maintainVideoJobs(jobId).catch(() => console.error(JSON.stringify({ evt: 'video-maintenance', code: 'CALLBACK_ADVANCE_FAILED' }))))
       return
@@ -208,7 +212,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
     if (path[0] === 'image-models' && method === 'GET') {
-      const operation = url.searchParams.get('operation')
+      const operation = query.get('operation')
       const parsed = operation
         ? z.enum(['image_edit', 'text_to_image', 'variation', 'inpaint', 'outpaint']).safeParse(operation)
         : undefined
@@ -222,7 +226,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     userId = user.id
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
     if (Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? null)) > maxBytes) throw new HttpError(413, '请求内容过大')
-    if (path[0]==='task-center') { res.status(200).json(await handleTaskCenterRoute(user,method,path,body,url.searchParams)); return }
+    if (path[0]==='task-center') { res.status(200).json(await handleTaskCenterRoute(user,method,path,body,query)); return }
     if (path.join('/') === 'credits/catalog' && method === 'GET') { res.status(200).json(await billingCatalog(user)); return }
     if (path.join('/') === 'credits/discount-preview' && method === 'POST') { res.status(200).json(await previewCreditDiscount(user,body)); return }
     if (path.join('/') === 'credits/checkout' && method === 'POST') { res.status(200).json(await createCreditCheckout(user,body)); return }
@@ -565,18 +569,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
     if (path[0] === 'objects' && path.length === 1 && method === 'GET') {
-      const key = url.searchParams.get('key') ?? ''
-      if (url.searchParams.get('mode') === 'url') {
+      const key = query.get('key') ?? ''
+      if (query.get('mode') === 'url') {
         res.setHeader('Cache-Control', 'private, no-store')
-        res.status(200).json(await signOwnedObjectRead(user, key, url.searchParams.get('disposition') === 'attachment'
-          ? url.searchParams.get('filename')?.trim() || '视频.mp4' : undefined))
+        res.status(200).json(await signOwnedObjectRead(user, key, query.get('disposition') === 'attachment'
+          ? query.get('filename')?.trim() || '视频.mp4' : undefined))
         return
       }
       const downloaded = await loadOwnedObject(user, key)
-      const filename = url.searchParams.get('filename')?.trim()
+      const filename = query.get('filename')?.trim()
       res.setHeader('Content-Type', downloaded.contentType)
       res.setHeader('Cache-Control', 'private, no-store')
-      if (url.searchParams.get('download') === '1' && filename) {
+      if (query.get('download') === '1' && filename) {
         res.setHeader('Content-Disposition', objectContentDisposition(filename))
       }
       res.status(200).end(Buffer.from(downloaded.bytes))
@@ -587,34 +591,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const capability = body && typeof body === 'object' && 'capability' in body
           ? String((body as { capability?: unknown }).capability) : ''
         if (IMAGE_TASK_CAPABILITIES.has(capability) || capability === 'text_to_video') {
-          res.status(200).json(await handleImageTaskRoute(user, method, path, body, url.searchParams))
+          res.status(200).json(await handleImageTaskRoute(user, method, path, body, query))
           return
         }
         if (capability && capability !== 'email_assist') {
           throw new HttpError(501, '该能力尚未接入真实任务', 'CAPABILITY_UNAVAILABLE')
         }
-        res.status(200).json(await handleEmailTaskRoute(user, method, path, body, url.searchParams))
+        res.status(200).json(await handleEmailTaskRoute(user, method, path, body, query))
         return
       }
-      if (method === 'GET' && path.length === 1 && (IMAGE_TASK_CAPABILITIES.has(url.searchParams.get('capability') ?? '') || url.searchParams.get('capability') === 'text_to_video')) {
-        res.status(200).json(await handleImageTaskRoute(user, method, path, body, url.searchParams))
+      if (method === 'GET' && path.length === 1 && (IMAGE_TASK_CAPABILITIES.has(query.get('capability') ?? '') || query.get('capability') === 'text_to_video')) {
+        res.status(200).json(await handleImageTaskRoute(user, method, path, body, query))
         return
       }
       if (path.length === 2) {
         const id = z.uuid().safeParse(path[1])
         if (id.success && await peekImageTask(user, id.data)) {
-          res.status(200).json(await handleImageTaskRoute(user, method, path, body, url.searchParams))
+          res.status(200).json(await handleImageTaskRoute(user, method, path, body, query))
           return
         }
       }
       if (path[1] === 'by-request' && path.length === 3 && method === 'GET') {
-        const image = await handleImageTaskRoute(user, method, path, body, url.searchParams)
+        const image = await handleImageTaskRoute(user, method, path, body, query)
         if (image) {
           res.status(200).json(image)
           return
         }
       }
-      res.status(200).json(await handleEmailTaskRoute(user, method, path, body, url.searchParams))
+      res.status(200).json(await handleEmailTaskRoute(user, method, path, body, query))
       return
     }
     const result = await withIdentity(user.id, user.email, async sql => {
@@ -629,7 +633,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (path.join('/') === 'me' && method === 'GET') return accountContext(sql, user)
       if (path.join('/') === 'credits/ledger' && method === 'GET') {
         await ensureCreditAccount(sql, user.id)
-        return listCreditLedger(sql, url.searchParams.get('cursor'))
+        return listCreditLedger(sql, query.get('cursor'))
       }
       if (path.join('/') === 'me' && method === 'PATCH') {
         const { displayName } = z.object({ displayName: z.string().trim().min(1).max(80) }).strict().parse(body)
@@ -723,9 +727,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (retryAfter && retryAfter > 0) res.setHeader('Retry-After', String(Math.ceil(retryAfter)))
     res.status(status).json({ error: message, code, requestId, ...(extra ?? {}), ...(session ? { session } : {}) })
     const details = describeError(error)
+    const keys = error instanceof HttpError && error.log?.keys?.length ? error.log.keys : undefined
     console.error(JSON.stringify({
       requestId, userId, status, category: details.name, durationMs: Date.now() - start,
       message: details.message, cause: details.cause ?? null, stage: details.stage ?? null,
+      ...(keys ? { keys } : {}),
     }))
   }
 }
