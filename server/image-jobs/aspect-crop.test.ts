@@ -40,4 +40,30 @@ describe('cropToSourceAspect', () => {
     expect(threeTwo.cropped).toBe(true)
     expect(threeTwo.width).toBe(Math.round(2161 * 1.5))
   })
+
+  it('损坏或无法解码的图片抛出 BAD_RESULT 错误', async () => {
+    const badPng = Uint8Array.from([
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+      8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 248, 207,
+      192, 240, 31, 0, 5, 0, 1, 255, 23, 82, 97, 93, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+    ])
+    await expect(cropToSourceAspect(badPng, 100, 100)).rejects.toMatchObject({
+      status: 502,
+      code: 'BAD_RESULT',
+      message: '结果图片损坏或无法解码',
+    })
+    await expect(cropToSourceAspect(Buffer.from('not-an-image'), 100, 100)).rejects.toMatchObject({
+      status: 502,
+      code: 'BAD_RESULT',
+    })
+  })
+
+  it('修正后的模拟 1x1 PNG 能正常通过解码', async () => {
+    const { MOCK_PNG_1X1 } = await import('../image-providers/mock.js')
+    const result = await cropToSourceAspect(MOCK_PNG_1X1, 1, 1)
+    expect(result.width).toBe(1)
+    expect(result.height).toBe(1)
+    expect(result.mimeType).toBe('image/png')
+  })
 })
+

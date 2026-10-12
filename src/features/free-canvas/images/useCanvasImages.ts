@@ -50,6 +50,7 @@ export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | un
           if (current()) {
             invalidateOwnedImage(ownerId, objectKey)
             setErrors(previous => ({ ...previous, [id]: { scope, message: `“${asset.name}”读取失败：${error instanceof Error ? error.message : '请重试读取'}` } }))
+            setVersion(value => value + 1)
           }
         })
     }
@@ -60,10 +61,19 @@ export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | un
     return Object.fromEntries(Object.entries(assets).map(([id, asset]) => {
       if (asset.type !== 'image' || !(asset.objectKey ?? asset.storage?.objectKey) || hasDisplayableUrl(asset.url)) return [id, asset]
       const runtime = withRuntimeImage(asset, ownerId)
-      return [id, { ...runtime, missing: !runtimeImageBlob(runtime.url) }]
+      const errorEntry = errors[id]
+      const loadError = errorEntry && errorEntry.scope === scope ? errorEntry.message : undefined
+      return [id, { ...runtime, missing: !runtimeImageBlob(runtime.url), loadError }]
     })) as Record<string, Asset>
-  }, [assets, version, ownerId])
-  const visibleIds = new Set(JSON.parse(targets) as string[])
-  const error = Object.entries(errors).filter(([id, entry]) => visibleIds.has(id) && entry.scope === scope).map(([, entry]) => entry.message).join('；') || undefined
-  return { assets: renderAssets, error, reload: () => { setAttempt(value => value + 1) } }
+  }, [assets, version, ownerId, errors, scope])
+  const visibleIds = useMemo(() => new Set(JSON.parse(targets) as string[]), [targets])
+  const brokenAssetIds = useMemo(() => {
+    return Object.entries(errors)
+      .filter(([id, entry]) => visibleIds.has(id) && entry.scope === scope)
+      .map(([id]) => id)
+  }, [errors, scope, visibleIds])
+  const error = useMemo(() => {
+    return Object.entries(errors).filter(([id, entry]) => visibleIds.has(id) && entry.scope === scope).map(([, entry]) => entry.message).join('；') || undefined
+  }, [errors, scope, visibleIds])
+  return { assets: renderAssets, error, brokenAssetIds, reload: () => { setAttempt(value => value + 1) } }
 }

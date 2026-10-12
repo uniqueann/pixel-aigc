@@ -53,6 +53,7 @@ export type ProviderErrorCode =
   | 'TIMEOUT'
   | 'UPSTREAM_UNAVAILABLE'
   | 'BAD_RESPONSE'
+  | 'BAD_RESULT'
   | 'UNKNOWN'
 
 export interface ProviderVendorUsage {

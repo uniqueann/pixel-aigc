@@ -28,20 +28,29 @@ export async function cropToSourceAspect(
   sourceWidth: number,
   sourceHeight: number,
 ) {
-  const image = sharp(bytes, { failOn: 'none', limitInputPixels: 40_000_000 })
-  const meta = await image.metadata()
-  if (!meta.width || !meta.height) throw new HttpError(502, '结果图片无法解析尺寸', 'BAD_RESULT')
-  const targetRatio = Math.max(1, sourceWidth) / Math.max(1, sourceHeight)
-  const rect = cropRect(meta.width, meta.height, targetRatio)
-  const format = meta.format === 'jpeg' || meta.format === 'webp' ? meta.format : 'png'
-  const output = rect.cropped
-    ? await sharp(bytes, { failOn: 'none', limitInputPixels: 40_000_000 }).extract(rect)[format]().toBuffer()
-    : Buffer.from(bytes)
-  return {
-    bytes: new Uint8Array(output),
-    width: rect.width,
-    height: rect.height,
-    mimeType: mimeFromFormat(format),
-    cropped: rect.cropped,
+  try {
+    const image = sharp(bytes, { failOn: 'warning', limitInputPixels: 40_000_000 })
+    const meta = await image.metadata()
+    if (!meta.width || !meta.height) throw new HttpError(502, '结果图片无法解析尺寸', 'BAD_RESULT')
+    const targetRatio = Math.max(1, sourceWidth) / Math.max(1, sourceHeight)
+    const rect = cropRect(meta.width, meta.height, targetRatio)
+    const format = meta.format === 'jpeg' || meta.format === 'webp' ? meta.format : 'png'
+    let output: Buffer
+    if (rect.cropped) {
+      output = await sharp(bytes, { failOn: 'warning', limitInputPixels: 40_000_000 }).extract(rect)[format]().toBuffer()
+    } else {
+      await sharp(bytes, { failOn: 'warning', limitInputPixels: 40_000_000 }).raw().toBuffer()
+      output = Buffer.from(bytes)
+    }
+    return {
+      bytes: new Uint8Array(output),
+      width: rect.width,
+      height: rect.height,
+      mimeType: mimeFromFormat(format),
+      cropped: rect.cropped,
+    }
+  } catch (error) {
+    if (error instanceof HttpError) throw error
+    throw new HttpError(502, '结果图片损坏或无法解码', 'BAD_RESULT')
   }
 }
