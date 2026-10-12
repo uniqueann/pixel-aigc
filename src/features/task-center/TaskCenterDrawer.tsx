@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import {
   Alert,
@@ -44,6 +45,7 @@ import {
 import { useTaskCenter } from './context'
 import { TaskStatusDot } from './TaskCenterSidebar'
 import { relativeTime } from './format'
+import { taskDestination } from './route'
 
 export function TaskCenterDrawer() {
   const center = useTaskCenter()
@@ -61,6 +63,7 @@ function TaskDrawerPanel({
 }) {
   const { message } = App.useApp(),
     actor = center.actor
+  const navigate = useNavigate()
   const [gallery, setGallery] = useState(-1),
     [readingError, setReadingError] = useState(false),
     [actionBusy, setActionBusy] = useState(false)
@@ -382,6 +385,7 @@ function TaskDrawerPanel({
                     {taskStateLabel(task)}
                   </h3>
                 </div>
+                {taskDestination(task) ? <Button onClick={() => { navigate(taskDestination(task)!); center.close() }}>在工具中查看</Button> : <p>原工具或画布来源不足，可在此查看已有结果。</p>}
                 <Descriptions
                   size="small"
                   column={1}

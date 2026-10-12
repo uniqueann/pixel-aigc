@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-13",
+  "id": "dpl_HhLx5if8pY87bSiijiCVsYvqpeuw",
+  "url": "https://pixel-aigc-ikpyrvzdp-ningnings-projects-2ed21e15.vercel.app",
+  "state": "READY",
+  "stateVerifiedBy": "Vercel MCP",
+  "target": "preview",
+  "applicationSourceSha256": "404018fc86c4cac4a4a2bbe16e6e1f6cd30a583ba8901068a50d411c1c6157dc",
+  "baseline": "566347f",
+  "branch": "codex/task-center-tool-recovery",
+  "uploadedWorkingTree": true,
+  "implementationCommitted": false,
+  "apiTypeScriptErrors": 0,
+  "environmentOverrides": {
+    "TASK_CENTER_ENABLED": true,
+    "AIGC_RUNTIME_SCOPE": "preview"
+  },
+  "productionModified": false,
+  "authenticatedHTTP": false,
+  "latestAccess": {
+    "browser": "ERR_CONNECTION_CLOSED",
+    "cliHTTPStatus": 0,
+    "cliTLS": "SSL_ERROR_SYSCALL"
+  },
+  "previousIterationProbe": {
+    "url": "https://pixel-aigc-2yragerjy-ningnings-projects-2ed21e15.vercel.app",
+    "cliHTTPStatus": 401,
+    "applicationCode": "AUTH_REQUIRED",
+    "browser": "Vercel 登录保护"
+  },
+  "creditsReserved": 0,
+  "creditsBudget": 30,
+  "pending": [
+    "稳定预览访问及业务账号登录",
+    "两个指定账号的用途确认",
+    "真实供应商图片、同步工具、邮件及免费抠图恢复链路",
+    "已有视频播放下载和保留策略",
+    "完整生产灰度"
+  ]
+}

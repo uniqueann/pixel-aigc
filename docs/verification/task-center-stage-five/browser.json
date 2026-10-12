@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-13",
+  "mode": "实际工具和布局组件，模拟接口",
+  "realProvider": false,
+  "generationPosts": 0,
+  "creditsReserved": 0,
+  "checks": [
+    {
+      "name": "查看任务详情保留当前工作站输入",
+      "status": "passed"
+    },
+    {
+      "name": "跨工具导航取消后保留输入",
+      "status": "passed"
+    },
+    {
+      "name": "明确放弃草稿后进入邮件任务",
+      "status": "passed"
+    },
+    {
+      "name": "载入原参数后图片正确解码",
+      "status": "passed",
+      "image": {
+        "width": 480,
+        "height": 480
+      }
+    },
+    {
+      "name": "邮件原结果和已有修改稿独立显示，编辑表单保持空白",
+      "status": "passed"
+    },
+    {
+      "name": "邮件原参数只在显式点击后载入",
+      "status": "passed"
+    },
+    {
+      "name": "刷新后仍读取 URL 对应原任务，没有生成 POST",
+      "status": "passed"
+    },
+    {
+      "name": "375 像素恢复界面无页面横向溢出",
+      "status": "passed",
+      "viewportWidth": 375,
+      "documentWidth": 375,
+      "bodyWidth": 375
+    }
+  ],
+  "viewportOverrideReset": true,
+  "screenshots": [
+    "01-draft-confirm.png",
+    "02-workstation-loaded.png",
+    "03-email-readonly.png",
+    "04-workstation-375.png"
+  ]
+}

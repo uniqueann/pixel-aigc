@@ -76,6 +76,8 @@ export async function downloadImageResult(payload: SyncImageObjectResult, tool: 
 }
 
 export interface ImageResultReadOptions {
+  /** 在在线 POST 前传递真实同步请求编号，不改变返回 Blob 的旧接口。 */
+  onTaskIdentity?: (requestId: string) => void
   sourceSize?: {width:number;height:number}
   ownerId?: string
   expectedMime?: SyncImageObjectResult['mimeType']

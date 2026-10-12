@@ -21,6 +21,7 @@ import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { NAV_META, SUB_ROUTE_LABELS } from '@/router/meta'
 import { useUserStore } from '@/store/useUserStore'
 import { TaskCenterProvider } from '@/features/task-center/TaskCenterRuntime'
+import { TaskNavigationProvider } from '@/features/task-center/navigation'
 import { TaskCenterSidebar,TaskCenterEntry } from '@/features/task-center/TaskCenterSidebar'
 import { taskTools,type TaskTool } from '@shared/task-center'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -374,7 +375,7 @@ function MainLayoutContent() {
   }
 
   return (
-    <TaskCenterProvider onCredits={() => setCreditsOpen(true)}>
+    <TaskNavigationProvider><TaskCenterProvider onCredits={() => setCreditsOpen(true)}>
       <Layout className="app-shell" style={{ height: '100vh' }}>
         <AppSidebar key={sidebarOwner} topKey={topKey} onAccountMenu={key => handleAccountMenu({ key })} />
         <Layout className="app-shell-main">
@@ -416,7 +417,7 @@ function MainLayoutContent() {
           <Content className="app-main-content">
             {currentUserId ? <CreditRulesNotice key={currentUserId} owner={currentUserId} /> : null}
             <PreferencesSyncAlert />
-            <ErrorBoundary key={location.pathname}>
+            <ErrorBoundary key={`${currentUserId}:${account?.runtimeScope}:${location.pathname}`}>
               <Outlet context={{ openModelSettings: () => { setSettingsSection('personalization'); setSettingsOpen(true) } }} />
             </ErrorBoundary>
           </Content>
@@ -431,7 +432,7 @@ function MainLayoutContent() {
           onSectionChange={setSettingsSection}
         />
       </Layout>
-    </TaskCenterProvider>
+    </TaskCenterProvider></TaskNavigationProvider>
   )
 }
 

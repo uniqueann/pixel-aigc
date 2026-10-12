@@ -107,6 +107,9 @@ function TaskCenterSession({
   const watched = useRef(
     new Map<string, { sourceKind: TaskSourceKind; requestId: string }>(),
   )
+  const routed = useRef(
+    new Map<string, { sourceKind: TaskSourceKind; requestId: string; sourceId: string }>(),
+  )
   const observations = useRef(
     new Map<string, { active: boolean; version: string | null }>(),
   )
@@ -140,7 +143,10 @@ function TaskCenterSession({
         notified.current.add(key)
         if (notified.current.size > 500)
           notified.current.delete(notified.current.values().next().value!)
-        if (selectedRef.current?.taskKey !== task.taskKey) {
+        const viewing = [...routed.current.values()].some(
+          (entry) => entry.sourceKind === task.sourceKind && entry.sourceId === task.sourceId,
+        )
+        if (selectedRef.current?.taskKey !== task.taskKey && !viewing) {
           const title = task.tool ? taskToolLabels[task.tool] : '任务'
           const announce =
             task.state === 'succeeded'
@@ -176,6 +182,7 @@ function TaskCenterSession({
       initiated.current.delete(receiptKey(task))
     }
     if (actor) {
+      client.setQueryData(taskCenterKeys.summary(actor, task.sourceKind, task.requestId), task)
       removeReceipt(actor, task.sourceKind, task.requestId)
       setReceipts(readReceipts(actor))
     }
@@ -233,6 +240,7 @@ function TaskCenterSession({
     const entries = new Map([
       ...watched.current,
       ...pending.map((r) => [receiptKey(r), r] as const),
+      ...routed.current,
     ])
     const visible = new Set(query.data.items.map(receiptKey))
     const waiting = [...entries.values()].filter(
@@ -277,6 +285,7 @@ function TaskCenterSession({
     const handler = (event: Event) => {
       if (!actor || !enabled || !sameTaskActor(actor)) return
       const data = (event as CustomEvent<TaskCenterEvent>).detail
+      if (data.actor && (data.actor.owner !== actor.owner || data.actor.scope !== actor.scope)) return
       if (data.type === 'storage-error' && !storageWarned.current) {
         storageWarned.current = true
         message.warning('提交凭据未能保存在本机，刷新后可从近期任务查找')
@@ -292,6 +301,12 @@ function TaskCenterSession({
       }
       if (data.type === 'observed' && data.sourceId && data.sourceKind) {
         const key = `${data.sourceKind}:${data.sourceId}`
+        if (data.viewing !== undefined && data.requestId) {
+          const entry = { sourceKind: data.sourceKind, sourceId: data.sourceId, requestId: data.requestId }
+          if (data.viewing) routed.current.set(receiptKey(entry), entry)
+          else routed.current.delete(receiptKey(entry))
+          if (!data.viewing) return
+        }
         if (data.active)
           observations.current.set(key, {
             active: true,
@@ -302,12 +317,12 @@ function TaskCenterSession({
             sourceKind: data.sourceKind,
             requestId: data.requestId,
           }
-          watched.current.set(receiptKey(entry), entry)
+          if (data.viewing === undefined) watched.current.set(receiptKey(entry), entry)
         }
         const known = summaries.current.get(key)
         if (known) {
           if (taskIsActive(known)) watched.current.set(receiptKey(known), known)
-          if (taskIsActive(known) === !!data.active) return
+          if (taskIsActive(known) === !!data.active && data.viewing === undefined) return
         } else if (!data.requestId && !watchBusy.current) {
           watchBusy.current = true
           const abort = new AbortController()

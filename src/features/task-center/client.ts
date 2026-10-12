@@ -56,6 +56,7 @@ export const taskCenterKeys = {
     [...taskCenterKeys.root(actor), 'sidebar'] as const,
   detail: (actor: TaskActor, key: string) =>
     [...taskCenterKeys.root(actor), 'detail', key] as const,
+  summary:(actor:TaskActor,kind:TaskSourceKind,requestId:string)=>[...taskCenterKeys.root(actor),'summary',kind,requestId] as const,
 }
 export function readTaskSidebar(actor: TaskActor, signal?: AbortSignal) {
   return read<TaskCenterSidebar>(actor, '/task-center?view=sidebar', signal)

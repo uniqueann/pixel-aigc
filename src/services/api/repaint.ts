@@ -36,6 +36,7 @@ export async function requestRepaint(image: Blob | null, mask: Blob | string, pr
     body = { sourceImageKey, maskImageKey, prompt: text }
   }
   body.clientTimingMs = clientTiming(prepareStarted, uploadMs)
-  const response = await postBilledSyncImage('repaint', body, quote)
+  resultOptions.onTaskIdentity?.(quote.requestId)
+  const response = await postBilledSyncImage('repaint', body, quote,resultOptions.signal)
   return readImageResult(response, '重绘', resultOptions)
 }

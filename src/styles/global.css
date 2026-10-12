@@ -3197,3 +3197,9 @@ body.sidebar-resizing * {
   .app-header-leading .ant-breadcrumb li:not(:last-child) { display: none; }
   .app-header-leading .ant-breadcrumb li { white-space: nowrap; }
 }
+.task-recovery-panel { margin-bottom: 16px; width: 100%; flex: 0 0 100%; grid-column: 1 / -1; }
+.task-recovery-results { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.task-recovery-results > div { display: flex; flex-direction: column; gap: 8px; max-width: 100%; }
+.task-recovery-text pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+.task-recovery-panel .preview-video-frame { max-width: 100%; }
+.task-recovery-panel .preview-video-frame video { max-width: 100% !important; max-height: 260px !important; }

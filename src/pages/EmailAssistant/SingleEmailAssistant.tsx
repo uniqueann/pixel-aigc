@@ -9,6 +9,9 @@ import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import { buildEmailAssistRequest } from '@/features/email-assistant/requestBuilder'
 import type { useEmailAssistantController } from '@/features/email-assistant/useEmailAssistantController'
 import { taskCenterOn } from '@/features/task-center/client'
+import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
+import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
+import { assertRecoveryActor } from '@/features/task-center/recoveryMedia'
 import { authEnabled } from '@/cloud/client'
 import type { EmailGenerationGate } from '@/features/email-assistant/useEmailGenerationGate'
 import type { EmailModelConfiguration } from '@/features/email-assistant/useEmailModelConfiguration'
@@ -48,6 +51,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
   const { acquire, release } = gate
   const handledEntry = useRef(entryOperation ? entryKey : undefined)
   const { newTask, formLocked } = controller
+  const confirmRecovery = useTaskDraftGuard({dirty:Boolean(sourceText.trim()||instruction.trim()||controller.resultText),reason:'当前邮件输入尚未保存，切换后将放弃当前草稿。',beforeLeave:controller.flushEdit})
 
   useEffect(() => {
     if (!entryOperation || !entryKey) return
@@ -161,6 +165,21 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
   }
 
   return (
+    <>
+    <TaskRecoveryPanel tools={['email-assist']} blockedReason={controller.formLocked||generationBlocked?'当前邮件正在处理或等待确认，请完成后再载入参数':undefined} onLoadParameters={async(prepared,detail,context)=>{
+      const params=prepared.params
+      if(typeof params.sourceText!=='string'||!TASK_TYPES.some(item=>item.value===params.operation)||!EMAIL_LANGUAGE_OPTIONS.some(item=>item.value===params.language))throw new Error('原邮件参数不完整')
+      if(params.instruction!==undefined&&typeof params.instruction!=='string')throw new Error('原邮件说明参数无效')
+      if(!await confirmRecovery('载入原邮件参数会替换当前输入；已有修改稿需先保存。'))return false
+      if(!await controller.flushEdit())throw new Error('修改稿保存失败，请重试后再载入')
+      assertRecoveryActor(context.actor,context.signal)
+      await controller.newTask()
+      assertRecoveryActor(context.actor,context.signal)
+      setSourceText(params.sourceText);setInstruction(typeof params.instruction==='string'?params.instruction:'')
+      setOperation(params.operation as EmailAssistOperation);setLanguage(params.language as EmailAssistLanguage)
+      setPolishStyles(Array.isArray(params.polishStyles)?params.polishStyles.filter((value):value is EmailPolishStyle=>POLISH_STYLES.some(item=>item.value===value)):['clear'])
+      setModelProfileId(detail.task.modelProfileId??undefined)
+    }}/>
     <div className="email-single-panel">
       {controller.uncertain ? <Alert type="warning" showIcon message="原请求状态尚未确认，请查询后再生成"
         action={<Button loading={controller.submitting} onClick={() => void controller.recoverSubmission().catch(error => message.error(error instanceof Error ? error.message : '查询失败'))}>查询或恢复原请求</Button>} /> : null}
@@ -231,6 +250,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
                 <div className="email-save-hint">仅成功生成扣费，失败自动退还；已根据所选模型调整最大字数。</div>
               </div> : null}
               <Button
+                data-task-generate
                 type="primary"
                 loading={controller.submitting}
                 disabled={!sourceText.trim() || controller.formLocked || generationBlocked || !modelReady}
@@ -303,5 +323,6 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
         </Col>
       </Row>
     </div>
+    </>
   )
 }

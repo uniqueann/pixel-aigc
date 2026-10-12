@@ -52,6 +52,13 @@ import { isCanvasMockGateway } from '@/features/free-canvas/generation/availabil
 import { syncCreditPrice } from '@shared/billing'
 import { COUNT_TOOLS, type CountTool } from '@shared/preferences'
 import { useStickyPreview } from './utils/useStickyPreview'
+import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
+import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
+import { assertRecoveryActor,persistRecoveredResult,recoveredResultId } from '@/features/task-center/recoveryMedia'
+import { bindRuntimeImage,releaseRuntimeImageUser,setRuntimeImageUsers,withRuntimeImage } from '@/editor/runtimeImages'
+import type { TaskTool } from '@shared/task-center'
+import { readRelight } from '@shared/relight'
+import { readRetouchDirections } from '@shared/retouch'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
@@ -426,9 +433,49 @@ export default function ImageWorkstation() {
       : controller.inputAsset
         ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
         : '请先上传需要处理的图片'
+  const recoveryRuntime = useRef({})
+  useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) },[])
+  const confirmRecovery = useTaskDraftGuard({ dirty: Boolean(sourceAsset || fusionProduct || fusionReference || activePrompt.trim() || hasMaskPaint),
+    reason:'当前工作站的原图、蒙版和输入内容尚未保存。切换后这些草稿将被放弃。',
+    blocked:uploading || fusionLoading ? '正在读取输入图片，请完成后再切换' : undefined })
 
   return (
     <div className="image-workstation-page">
+      <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} blockedReason={controller.formLocked || uploading || fusionLoading ? '当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。':undefined}
+        onUseImage={async (result,blob,detail,context) => {
+          if (!await confirmRecovery('将原任务结果作为新输入会替换当前原图和蒙版。')) return
+          assertRecoveryActor(context.actor,context.signal)
+          const asset=createImageAsset({id:`asset:${recoveredResultId(detail,result)}`,name:'已有任务结果',url:result.url,objectKey:result.objectKey,width:result.width,height:result.height,mimeType:result.mimeType,source:'generation'})
+          bindRuntimeImage(context.actor.owner,asset,blob,recoveryRuntime.current)
+          useEditorStore.getState().registerAsset(asset)
+          setRuntimeImageUsers(recoveryRuntime.current,[asset.id,...(fusionReference ? [fusionReference.id] : [])])
+          const visibleAsset=withRuntimeImage(asset,context.actor.owner)
+          if(fusionTool) fusionSelection.adopt(visibleAsset,fusionReference)
+          else {setSourceAsset(visibleAsset);replaceSourceAsset(asset)}
+          setHasMaskPaint(false)
+          await persistRecoveredResult(detail,result,context.actor,context.signal,blob)
+        }}
+        onLoadParameters={['smart-edit','relight','fusion','retouch','variation'].includes(activeTool.slug)?async (prepared,detail,context) => {
+          const params=prepared.params
+          if(!prepared.source || (fusionTool&&!prepared.reference))throw new Error('原输入或参考图缺失，不能完整载入')
+          if(typeof params.count!=='number'||!Number.isInteger(params.count)||params.count<1||!['1k','2k','4k'].includes(String(params.resolution)))throw new Error('原生成参数不完整')
+          if(params.prompt!==undefined&&typeof params.prompt!=='string')throw new Error('原提示词参数无效')
+          if(!await confirmRecovery('载入原任务参数会替换当前原图、蒙版和表单。'))return false
+          assertRecoveryActor(context.actor,context.signal)
+          const source=prepared.source
+          bindRuntimeImage(context.actor.owner,source,prepared.sourceBlob!,recoveryRuntime.current)
+          useEditorStore.getState().registerAsset(source)
+          if(prepared.reference){bindRuntimeImage(context.actor.owner,prepared.reference,prepared.referenceBlob!,recoveryRuntime.current);useEditorStore.getState().registerAsset(prepared.reference)}
+          setRuntimeImageUsers(recoveryRuntime.current,[source.id,...(prepared.reference ? [prepared.reference.id] : [])])
+          const visibleSource=withRuntimeImage(source,context.actor.owner)
+          if(fusionTool)fusionSelection.adopt(visibleSource,prepared.reference ? withRuntimeImage(prepared.reference,context.actor.owner) : undefined)
+          else {setSourceAsset(visibleSource);replaceSourceAsset(source)}
+          const note=typeof params.prompt==='string'?params.prompt:''
+          if(relightTool)setRelightNote(note);else if(fusionTool)setFusionNote(note);else if(retouchTool)setRetouchNote(note);else if(variationTool)setVariationPrompt(note);else setSmartEditPrompt(note)
+          updateParameters({count:params.count,resolution:params.resolution as '1k'|'2k'|'4k',...(retouchTool?{retouchDirections:readRetouchDirections(params)}:{}),...(relightTool&&readRelight(params)?{relight:readRelight(params)}:{})},false)
+          if(detail.task.modelProfileId){if(variationTool)setVariationModelId(detail.task.modelProfileId);else if(relightTool)setRelightModelId(detail.task.modelProfileId);else setModelProfileId(detail.task.modelProfileId)}
+          setHasMaskPaint(false)
+        }:undefined}/>
       <ToolSwitcher
         className="image-workstation-tool-switcher page-tab-row"
         options={WORKSTATION_TOOLS.map((item) => ({
@@ -576,7 +623,7 @@ export default function ImageWorkstation() {
                 </Button>
                 <Tooltip title={blockReason}>
                   <span>
-                    <CreditActionButton
+                    <CreditActionButton data-task-generate
                       type="primary"
                       loading={controller.submitting}
                       quote={generateQuote}

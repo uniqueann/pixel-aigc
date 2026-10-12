@@ -227,7 +227,7 @@ export default function DerivedGenerationPanel({
       <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
       <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
         <span style={{ display: 'block' }}>
-          <CreditActionButton
+          <CreditActionButton data-task-generate
             className="free-canvas-generate"
             type="primary"
             block

@@ -8,6 +8,7 @@
     "build": "npm run typecheck:server && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "test": "vitest run",
     "test:task-center:postgres": "tsx scripts/task-center-postgres-check.ts",
+    "test:task-center:http": "tsx --env-file-if-exists=.env.local scripts/task-center-http-check.ts",
     "test:image-jobs:postgres": "tsx scripts/image-job-concurrency-check.ts",
     "test:image-jobs:preview": "tsx --env-file-if-exists=.env.local scripts/image-job-preview-check.ts",
     "preview": "vite preview",

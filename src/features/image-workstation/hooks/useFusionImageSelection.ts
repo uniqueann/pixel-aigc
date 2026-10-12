@@ -51,5 +51,10 @@ export function useFusionImageSelection(tool: string) {
     } finally { if (current()) setLoading(previous => ({ ...previous, [role]: false })) }
   }, [])
   const visible = selection.ownerId && isCurrentWorkstationHistoryOwner(selection.ownerId)
-  return { product: visible ? selection.product : undefined, reference: visible ? selection.reference : undefined, loading, load }
+  const adopt = (product: ImageAsset, reference?: ImageAsset) => {
+    versions.current.product++; versions.current.reference++
+    setSelection({ ownerId: currentWorkstationHistoryOwner(), product, reference })
+    setLoading({ product:false, reference:false })
+  }
+  return { product: visible ? selection.product : undefined, reference: visible ? selection.reference : undefined, loading, load, adopt }
 }

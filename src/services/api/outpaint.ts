@@ -37,6 +37,7 @@ export async function requestOutpaint(image: Blob | null, mimeType: string, padd
     body = { sourceImageKey, padding }
   }
   body.clientTimingMs = clientTiming(prepareStarted, uploadMs)
-  const response = await postBilledSyncImage('outpaint', body, quote)
+  resultOptions.onTaskIdentity?.(quote.requestId)
+  const response = await postBilledSyncImage('outpaint', body, quote,resultOptions.signal)
   return readImageResult(response, '扩图', resultOptions)
 }

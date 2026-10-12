@@ -32,6 +32,10 @@ import { creditQuoteBlocked, type CreditQuote } from '@/features/credits/quotes'
 import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
+import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
+import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
+import { assertRecoveryActor,persistRecoveredResult } from '@/features/task-center/recoveryMedia'
+import type { RecoveryActionContext } from '@/features/task-center/TaskRecoveryPanel'
 
 
 function errorMessage(error: unknown) {
@@ -79,6 +83,7 @@ export default function AspectRatioTool() {
   const pendingBytesRef = useRef(0)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
+  useTaskDraftGuard({dirty:items.length>0,reason:'转比例队列只保存在当前页面。切换后将放弃当前图片队列。',blocked:adding||packaging?'正在读取或打包图片，请完成后再切换':undefined})
   const { capabilities: { outpaint: outpaintReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
   const [presets, setPresets] = useState<AspectRatioPreset[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
@@ -245,7 +250,7 @@ export default function AspectRatioTool() {
     } catch (error) { message.error(errorMessage(error)) }
   }
 
-  function addFile(file: File) {
+  function addFile(file: File,recovery?:RecoveryActionContext) {
     if (processingRef.current) return
     const queuedBytes = itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + pendingBytesRef.current
     const blocked = queueLimitMessage(file, itemsRef.current.length + addingCountRef.current, queuedBytes)
@@ -256,6 +261,7 @@ export default function AspectRatioTool() {
     addChainRef.current = addChainRef.current.then(async () => {
       const inspected = await inspectImage(file)
       if (!mountedRef.current) return
+      if(recovery)assertRecoveryActor(recovery.actor,recovery.signal)
       const item: BatchImage = {
         id: crypto.randomUUID(), file, sourceMime: inspected.mimeType,
         sourceUrl: URL.createObjectURL(file), width: inspected.width, height: inspected.height, status: 'pending',
@@ -269,6 +275,7 @@ export default function AspectRatioTool() {
       pendingBytesRef.current -= file.size
       if (mountedRef.current && addingCountRef.current === 0) setAdding(false)
     })
+    return addChainRef.current
   }
 
   function removeFile(id: string) {
@@ -395,6 +402,11 @@ export default function AspectRatioTool() {
 
   return (
     <div className="toolbox-watermark toolbox-sticky-preview">
+      <TaskRecoveryPanel tools={['aspect-ratio']} blockedReason={processing||adding||packaging?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async(result,blob,detail,context)=>{
+        await persistRecoveredResult(detail,result,context.actor,context.signal,blob)
+        assertRecoveryActor(context.actor,context.signal)
+        await addFile(new File([blob],`已有扩展-${detail.task.sourceId}.jpg`,{type:blob.type}),context)
+      }}/>
       <ToolboxImageCard
         items={items.map(item => ({
           id: item.id,

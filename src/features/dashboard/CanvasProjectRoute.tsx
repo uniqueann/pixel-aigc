@@ -10,6 +10,9 @@ import { hasUnfinishedGeneration } from '@/editor/persistence/projectPersistence
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { useUserStore } from '@/store/useUserStore'
 import FreeCanvas from '@/pages/FreeCanvas'
+import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
+import { useRecoveredTask } from '@/features/task-center/useRecoveredTask'
+import { useMemo } from 'react'
 
 function switchBlocked() {
   const state = usePersistenceStore.getState()
@@ -20,9 +23,10 @@ function switchBlocked() {
   if (useCloudStore.getState().busy) return '当前正在同步，请完成后重试'
 }
 
-function ProjectOpenGate({ id, source, ownerId }: { id: string; source: string | null; ownerId: string }) {
+function ProjectOpenGate({ id, source, ownerId,taskScene }: { id: string; source: string | null; ownerId: string;taskScene?:string }) {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname,search } = useLocation()
+  const resolvedPath = useMemo(() => { const next=new URLSearchParams(search);next.delete('projectId');next.delete('projectSource');if(taskScene)next.set('sceneId',taskScene);return `${pathname}${next.size?`?${next}`:''}` },[pathname,search,taskScene])
   const busy = useCloudStore(state => state.busy)
   const [stage, setStage] = useState<'idle' | 'opening' | 'confirm' | 'error'>('idle')
   const [error, setError] = useState<string>()
@@ -48,26 +52,26 @@ function ProjectOpenGate({ id, source, ownerId }: { id: string; source: string |
       await (source === 'local' ? openLocalProject : openCloudProject)(id, {
         expectedUserId: ownerId, signal: request.signal, onCommitStart: () => { committing.current = true },
       })
-      if (active.current && currentWorkstationHistoryOwner() === ownerId) navigate(pathname, { replace: true })
+      if (active.current && currentWorkstationHistoryOwner() === ownerId) navigate(resolvedPath, { replace: true })
     } catch (reason) {
       if (active.current && !controller.current?.signal.aborted) {
         setError(reason instanceof Error ? reason.message : '项目打开失败'); setStage('error')
       }
     }
-  }, [check, id, source, ownerId, navigate, pathname])
+  }, [check, id, source, ownerId, navigate, resolvedPath])
 
   const prepare = useCallback(() => {
     try {
       check()
       // 继续当前画布时保留本机内容，允许回去处理任务或保存失败。
-      if (useEditorStore.getState().project?.id === id) { navigate(pathname, { replace: true }); return }
+      if (useEditorStore.getState().project?.id === id) { navigate(resolvedPath, { replace: true }); return }
       const blocked = switchBlocked()
       if (blocked) throw new Error(blocked)
       const state = usePersistenceStore.getState()
       if (useEditorStore.getState().project && (!state.cloud || state.cloud.pending || state.status !== 'saved')) setStage('confirm')
       else void run()
     } catch (reason) { setError(reason instanceof Error ? reason.message : '项目打开失败'); setStage('error') }
-  }, [check, id, navigate, pathname, run])
+  }, [check, id, navigate, resolvedPath, run])
 
   useEffect(() => {
     let lifetime = true
@@ -90,6 +94,7 @@ function ProjectOpenGate({ id, source, ownerId }: { id: string; source: string |
     </> : stage === 'error' ? <>
       <Alert type="error" showIcon message="无法打开项目" description={error} />
       <Space wrap><Button disabled={busy} onClick={prepare}>重试打开</Button><Button onClick={cancel}>返回当前画布</Button><Link to="/">返回首页</Link></Space>
+      <TaskRecoveryPanel tools={['text-to-image','variation','text-to-video','image-to-video']} projectId={id}/>
     </> : <><Spin /><p>正在打开画布…</p><Button onClick={cancel}>取消打开</Button></>}
   </div>
 }
@@ -102,5 +107,13 @@ export default function CanvasProjectRoute() {
   try { ownerId = currentWorkstationHistoryOwner() }
   catch { return <p role="status">正在准备账号…</p> }
   const id = params.get('projectId') ?? '', source = params.get('projectSource')
+  if(params.has('task'))return <TaskProjectTarget id={id} ownerId={ownerId}/>
   return <ProjectOpenGate key={`${ownerId}:${id}:${source}`} id={id} source={source} ownerId={ownerId} />
+}
+const canvasTools=['text-to-image','variation','text-to-video','image-to-video'] as const
+function TaskProjectTarget({id,ownerId}:{id:string;ownerId:string}) {
+  const recovery=useRecoveredTask(canvasTools,id,false)
+  const origin=recovery.data?.task.origin
+  if(origin?.entry==='canvas')return <ProjectOpenGate key={`${ownerId}:${origin.projectId}:${origin.projectSource}`} id={origin.projectId} source={origin.projectSource} ownerId={ownerId} taskScene={origin.sceneId}/>
+  return <div className="dashboard-project-open"><TaskRecoveryPanel tools={canvasTools} projectId={id}/></div>
 }

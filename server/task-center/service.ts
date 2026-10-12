@@ -107,6 +107,7 @@ export async function presentTaskDetail(
             mimeType: item.result_mime_type,
             width: item.result_width,
             height: item.result_height,
+            metadata: item.result_metadata,
           }))
   const results: TaskCenterMedia[] = await Promise.all(
     references.map(async (raw) => {
@@ -122,6 +123,14 @@ export async function presentTaskDetail(
         url: '',
         urlExpiresAt: '',
         availability: 'unavailable',
+      }
+      if (media.kind === 'video') {
+        const meta = (reference.metadata ?? {}) as Record<string, unknown>
+        if (typeof meta.durationSeconds === 'number' && typeof meta.sizeBytes === 'number' && typeof meta.hasAudio === 'boolean' && task.resultExpiresAt) {
+          media.video = { durationSeconds: meta.durationSeconds, sizeBytes: meta.sizeBytes, hasAudio: meta.hasAudio,
+            posterKey: typeof meta.posterKey === 'string' && storage.safe(owner,meta.posterKey) ? meta.posterKey : undefined,
+            retentionExpiresAt: task.resultExpiresAt }
+        }
       }
       if (!storage.safe(owner, key)) return { ...media, objectKey: '' }
       if (task.resultAvailability === 'expired')
