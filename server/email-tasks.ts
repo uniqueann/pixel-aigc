@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { taskOriginSchema, validTaskOrigin } from '../shared/task-center.js'
 import type { authenticate } from './auth.js'
 import { runtimeScope, withIdentity, type Transaction } from './db.js'
 import { HttpError } from './errors.js'
@@ -19,12 +20,15 @@ const paramsSchema = z.object({
 }).strict()
 const createSchema = z.object({
   capability: z.literal('email_assist'), requestId: uuid, params: paramsSchema,
+  origin: taskOriginSchema.optional(),
   modelProfileId: z.string().optional(), priceVersion: z.string().optional(),
-}).strict()
+}).strict().superRefine((value,ctx) => {
+  if (!validTaskOrigin(value.origin,value.capability)) ctx.addIssue({ code: 'custom',message: '邮件任务来源无效',path: ['origin'] })
+})
 
 function toTask(row: Record<string, unknown>) {
   return {
-    id: row.id, capability: 'email_assist', status: row.status, params: row.params,
+    id: row.id, requestId:row.request_id, capability: 'email_assist', status: row.status, params: row.params,
     modelProfileId: row.model_profile_id, resultText: row.result_text ?? undefined,
     editedText: row.edited_text ?? undefined, errorCode: row.error_code ?? undefined,
     errorMessage: row.error_message ?? undefined,
@@ -143,8 +147,8 @@ async function submit(user: User, body: unknown) {
     if (active.used >= 1) throw new HttpError(429, '当前已有邮件任务正在处理，请等待完成', 'USER_CONCURRENCY')
     const [global] = await sql`select aigc.email_processing_count(${runtimeScope()}) as used`
     if (Number(global.used) >= 20) throw new HttpError(429, '服务当前任务较多，请稍后重试', 'GLOBAL_CONCURRENCY')
-    const [row] = await sql`insert into aigc.email_tasks(user_id,scope,request_id,request_fingerprint,params,model_profile_id,status,price_version,credits_reserved,billing_state)
-      values(${user.id},${runtimeScope()},${parsed.requestId},${fingerprint},${sql.json(params)},${modelProfileId},'processing',${EMAIL_PRICE_VERSION},${profile.credits},'reserved') returning *`
+    const [row] = await sql`insert into aigc.email_tasks(user_id,scope,request_id,request_fingerprint,params,model_profile_id,status,price_version,credits_reserved,billing_state,origin)
+      values(${user.id},${runtimeScope()},${parsed.requestId},${fingerprint},${sql.json(params)},${modelProfileId},'processing',${EMAIL_PRICE_VERSION},${profile.credits},'reserved',${parsed.origin ? sql.json(parsed.origin) : null}) returning *`
     const [reserve] = await sql`select aigc.reserve_email_credits(${row.id}) as outcome`
     if (reserve.outcome.blocked) throw new HttpError(409, '积分账户需要人工核对，请联系支持', 'CREDIT_ACCOUNT_REVIEW')
     if (reserve.outcome.expired) throw new HttpError(410, '原邮件任务已删除或过期，请新建任务', 'TASK_EXPIRED')

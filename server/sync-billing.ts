@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { taskOriginSchema, validTaskOrigin } from '../shared/task-center.js'
 import { SYNC_PRICE_VERSION, type SyncCreditOperation, type SyncCreditQuote } from '../shared/billing.js'
 import { insufficientCreditsMessage } from '../shared/credits.js'
 import { withIdentity } from './db.js'
@@ -14,7 +15,7 @@ export interface StoredSyncResult {
 }
 function fingerprint(input: Record<string, unknown>) {
   // 客户端计时和报价不属于生成内容，同一请求重放不会因为上传耗时变化而冲突。
-  const content=Object.fromEntries(Object.entries(input).filter(([key])=>key!=='billing' && key!=='clientTimingMs'))
+  const content=Object.fromEntries(Object.entries(input).filter(([key])=>key!=='billing' && key!=='clientTimingMs' && key!=='origin'))
   return createHash('sha256').update(JSON.stringify(content)).digest('hex')
 }
 async function presentSavedResult(result: Record<string, unknown>): Promise<StoredSyncResult> {
@@ -26,14 +27,20 @@ export async function withSyncCredits(
   user: BillingUser, operation: SyncCreditOperation, quote: SyncCreditQuote, input: Record<string,unknown>,
   action: () => Promise<StoredSyncResult>,
 ): Promise<StoredSyncResult> {
+  const origin = taskOriginSchema.optional().parse(input.origin)
+  if (!validTaskOrigin(origin,operation)) throw new HttpError(400,'同步任务来源无效','INVALID_REQUEST')
   if (quote.priceVersion !== SYNC_PRICE_VERSION) throw new HttpError(409,'价格已更新，请重新确认报价','PRICE_CHANGED')
   const amount = operation === 'outpaint' || operation === 'bg-remove' ? quote.maxCredits : 5
   if (quote.maxCredits < amount || (operation === 'outpaint' && amount !== 5 && amount !== 10))
     throw new HttpError(409,'本次操作的积分报价不一致，请重新确认','PRICE_CHANGED')
   const job = await withIdentity(user.id,user.email,async sql => {
     await sql`select aigc.expire_sync_credits()`
-    const [row] = await sql`select aigc.reserve_sync_credits(${quote.requestId},${operation},${fingerprint(input)},${quote.priceVersion},${amount}) as job`
+    const [row] = await sql`select aigc.reserve_sync_credits(${quote.requestId},${operation},${fingerprint(input)},${quote.priceVersion},${amount},${origin ? sql.json(origin) : null}) as job`
     return row.job as Record<string,unknown>
+  }).catch(error=>{
+    if(error instanceof Error && 'code' in error && error.code==='P0001' && error.message==='同步请求编号冲突')
+      throw new HttpError(409,'原请求编号已用于其他生成参数','SYNC_REQUEST_CONFLICT')
+    throw error
   })
   if (job.quoteChanged) throw new HttpError(409,'本月免费抠图额度已用完，请重新确认 1 积分报价','PRICE_CHANGED')
   if (job.insufficient) throw new HttpError(402,insufficientCreditsMessage(Number(job.required),Number(job.balance)),'INSUFFICIENT_CREDITS', { extra: { required: job.required, balance: job.balance } })

@@ -33,22 +33,22 @@ export function createSqlStore(sql: Transaction, userId: string, media: 'image' 
         ? await sql`insert into aigc.image_jobs(
             id,user_id,scope,request_id,request_fingerprint,capability,model_profile_id,provider,
             params,provider_params,warnings,requested_count,status,credits_reserved,billing_state,
-            deadline_at,next_poll_at
+            deadline_at,next_poll_at,origin
           ) values(
             ${input.id},${userId},${scope},${input.requestId},${input.fingerprint},${input.capability},
             ${input.modelProfileId},${input.provider},${sql.json(input.params as never)},${sql.json(input.providerParams as never)},
             ${input.warnings},${input.requestedCount},'queued',${input.creditsReserved},${input.billingState},
-            ${input.deadlineAt},${input.nextPollAt}
+            ${input.deadlineAt},${input.nextPollAt},${input.origin ? sql.json(input.origin) : null}
           ) returning *`
         : await sql`insert into aigc.image_jobs(
             user_id,scope,request_id,request_fingerprint,capability,model_profile_id,provider,
             params,provider_params,warnings,requested_count,status,credits_reserved,billing_state,
-            deadline_at,next_poll_at
+            deadline_at,next_poll_at,origin
           ) values(
             ${userId},${scope},${input.requestId},${input.fingerprint},${input.capability},
             ${input.modelProfileId},${input.provider},${sql.json(input.params as never)},${sql.json(input.providerParams as never)},
             ${input.warnings},${input.requestedCount},'queued',${input.creditsReserved},${input.billingState},
-            ${input.deadlineAt},${input.nextPollAt}
+            ${input.deadlineAt},${input.nextPollAt},${input.origin ? sql.json(input.origin) : null}
           ) returning *`
       if (input.initialLease) {
         const [leased] = await sql`update aigc.image_jobs set lease_token=gen_random_uuid(),lease_owner='submit',

@@ -61,6 +61,7 @@ import { VIDEO_RETENTION_MS } from '../../shared/video-models.js'
 import { createSqlStore } from './repository.js'
 import { ImageLeaseLost, sqlImageExecution, type ImageExecutionPort } from './execution.js'
 import { getDeadline } from '@vercel/functions'
+import { taskOriginSchema, validTaskOrigin } from '../../shared/task-center.js'
 import {
   ACTIVE_JOB_STATUSES,
   LATE_RESULT_WARNING,
@@ -182,23 +183,28 @@ const textToImageParams = z.object({
 export const createImageTaskSchema = z.discriminatedUnion('capability', [
   z.object({
     capability: z.literal('image_edit'),
+    origin: taskOriginSchema.optional(),
     requestId: uuid,
     params: imageEditParams,
     modelProfileId: z.string().optional(),
   }).strict(),
   z.object({
     capability: z.literal('variation'),
+    origin: taskOriginSchema.optional(),
     requestId: uuid,
     params: variationParams,
     modelProfileId: z.string().optional(),
   }).strict(),
   z.object({
     capability: z.literal('text_to_image'),
+    origin: taskOriginSchema.optional(),
     requestId: uuid,
     params: textToImageParams,
     modelProfileId: z.string().optional(),
   }).strict(),
-])
+]).superRefine((value,ctx) => {
+  if (!validTaskOrigin(value.origin,value.capability)) ctx.addIssue({ code: 'custom',message: '任务来源与生成能力不匹配',path: ['origin'] })
+})
 
 type ImageTaskCapability = 'image_edit' | 'variation' | 'text_to_image'
 type StoredImageParams = {
@@ -647,6 +653,7 @@ export async function createImageJobInStore(
     id: jobId,
     requestId: parsed.requestId,
     fingerprint,
+    origin: parsed.origin,
     capability: parsed.capability,
     modelProfileId: profile.id,
     provider: profile.provider,
@@ -1258,6 +1265,7 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
   const errorMessage = bundle.job.error_message ?? mapped.errorMessage
   return {
     id: bundle.job.id,
+    requestId: bundle.job.request_id,
     capability: bundle.job.capability,
     status: mapped.status,
     params: bundle.job.params,

@@ -32,6 +32,7 @@ export function createMemoryStore(userId: string, scope = 'local', clock = () =>
       const created = now()
       const job: ImageJobRow = {
         id: input.id ?? randomUUID(),
+        origin: input.origin ?? null,
         user_id: userId,
         scope,
         request_id: input.requestId,

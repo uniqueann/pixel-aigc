@@ -3,6 +3,8 @@ import { MAX_OUTPAINT_OUTPUT_PIXELS } from '../shared/outpaint.js'
 import { outpaintCreditPrice } from '../shared/billing.js'
 import sharp from 'sharp'
 import { readRequestBody } from './request-body.js'
+import { taskOriginSchema } from '../shared/task-center.js'
+import { handleTaskCenterRoute,taskCenterEnabled } from './task-center/route.js'
 import { syncQuoteSchema, withSyncCredits, getSyncCreditResult } from './sync-billing.js'
 import { billingCatalog, createCreditCheckout, previewCreditDiscount, getCreditOrder, listCreditOrders, requestCashRefund, handlePaymentWebhook, reconcilePendingCreditOrders } from './payments/service.js'
 import type { VercelRequest, VercelResponse } from './http.js'
@@ -175,6 +177,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const [deleted] = await sql`select aigc.purge_expired_image_jobs() as deleted`
           const [limited] = await sql`select aigc.purge_expired_sync_requests() as deleted`
           const [sync] = await sql`select aigc.expire_sync_credits() as expired`
+          await sql`select aigc.purge_task_ui_state()`
           return { expired: Number(expired.expired), deleted: Number(deleted.deleted), limited: Number(limited.deleted), syncExpired:Number(sync.expired) }
         }
         const [expired] = await sql`select aigc.expire_email_tasks(${runtimeScope()}) as expired`
@@ -219,6 +222,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     userId = user.id
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
     if (Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? null)) > maxBytes) throw new HttpError(413, '请求内容过大')
+    if (path[0]==='task-center') { res.status(200).json(await handleTaskCenterRoute(user,method,path,body,url.searchParams)); return }
     if (path.join('/') === 'credits/catalog' && method === 'GET') { res.status(200).json(await billingCatalog(user)); return }
     if (path.join('/') === 'credits/discount-preview' && method === 'POST') { res.status(200).json(await previewCreditDiscount(user,body)); return }
     if (path.join('/') === 'credits/checkout' && method === 'POST') { res.status(200).json(await createCreditCheckout(user,body)); return }
@@ -229,13 +233,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path.join('/') === 'bg-remove' && method === 'POST') {
       if (!tencentCiConfig()) throw new HttpError(503, '智能抠图尚未配置腾讯云', 'BG_REMOVE_UNCONFIGURED')
       const inlineInput = z.object({
-        billing: syncQuoteSchema,
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
-        billing: syncQuoteSchema,
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
         sourceImageKey: z.string().min(1).max(512), clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const input = z.union([objectInput, inlineInput]).parse(body)
@@ -309,14 +313,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         bottom: z.number().int().min(0).max(20000),
       }).strict()
       const inlineInput = z.object({
-        billing: syncQuoteSchema,
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         padding,
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
-        billing: syncQuoteSchema,
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
         sourceImageKey: z.string().min(1).max(512),
         padding,
         clientTimingMs: clientTimingSchema.optional(),
@@ -375,7 +379,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path.join('/') === 'erase' && method === 'POST') {
       if (!bailianConfig()) throw new HttpError(503, '图片消除尚未配置阿里云百炼 API Key', 'ERASE_UNAVAILABLE')
       const inlineInput = z.object({
-        billing: syncQuoteSchema,
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         maskMimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
@@ -384,7 +388,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
-        billing: syncQuoteSchema,
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
         sourceImageKey: z.string().min(1).max(512),
         maskImageKey: z.string().min(1).max(512),
         prompt: z.string().max(BAILIAN_IMAGEEDIT_PROMPT_MAX).optional(),
@@ -446,7 +450,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path.join('/') === 'repaint' && method === 'POST') {
       if (!bailianConfig()) throw new HttpError(503, '重绘尚未配置阿里云百炼 API Key', 'REPAINT_UNAVAILABLE')
       const inlineInput = z.object({
-        billing: syncQuoteSchema,
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
         mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
         dataBase64: z.string().min(1),
         maskBase64: z.string().min(1),
@@ -454,7 +458,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
       const objectInput = z.object({
-        billing: syncQuoteSchema,
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
         sourceImageKey: z.string().min(1).max(512),
         maskImageKey: z.string().min(1).max(512),
         prompt: z.string().min(1).max(BAILIAN_IMAGEEDIT_PROMPT_MAX),
@@ -735,6 +739,6 @@ async function accountContext(sql: import('./db.js').Transaction, user: Awaited<
     where m.user_id=${user.id} and m.status='active'`
   if (!row) throw new HttpError(403, '账号资料不可用', 'PROFILE_UNAVAILABLE')
   return { userId: user.id, email: user.email, emailVerified: true, displayName: row.displayName, credits: balance,
-    avatarUrl: user.avatarUrl, providers: user.providers, status: 'active', runtimeScope: runtimeScope(), welcome: await readWelcomeState(sql, user.id),
+    avatarUrl: user.avatarUrl, providers: user.providers, status: 'active', runtimeScope: runtimeScope(), features: { taskCenter:taskCenterEnabled() }, welcome: await readWelcomeState(sql, user.id),
     workspace: { id: row.workspaceId, name: row.workspaceName, type: 'personal', role: row.role } }
 }

@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "scope": "preview",
+  "adapter": "实际业务库应用角色及任务中心内部路由调用，不代表已登录 HTTP 验收",
+  "historyCount": 23,
+  "sidebarItems": 5,
+  "checks": [
+    "集合与原请求查询成功",
+    "两账号三环境隔离",
+    "已查看展示写入成功",
+    "原任务与账本不变",
+    "同步任务 UPDATE 权限未扩大"
+  ],
+  "httpAuthenticated": false
+}
