@@ -18,11 +18,18 @@ export function TaskNavigationProvider({ children }: { children: ReactNode }) {
     {router ? <RouteDraftBlocker /> : null}{children}
   </Context.Provider>
 }
+function draftNavigationBlocks(current: { pathname: string; search: string }, next: { pathname: string; search: string }) {
+  if (current.pathname !== next.pathname) return true
+  if (!current.pathname.startsWith('/canvas/')) return false
+  const from = new URLSearchParams(current.search).get('task')
+  const to = new URLSearchParams(next.search).get('task')
+  return to !== null && from !== to
+}
 function RouteDraftBlocker() {
   const context = useContext(Context)!
   const { message } = App.useApp()
   const handling = useRef(false)
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => currentLocation.pathname !== nextLocation.pathname
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => draftNavigationBlocks(currentLocation, nextLocation)
     && [...context.guards.values()].some(read => {const guard=read();return guard.dirty||guard.blocked}))
   useEffect(() => {
     if (blocker.state !== 'blocked' || handling.current) return
@@ -37,6 +44,7 @@ function RouteDraftBlocker() {
         if (guard.beforeLeave && !await guard.beforeLeave()) { allowed = false; break }
       }
       if (allowed && guards.some(guard => guard.dirty)) allowed = await context.confirmReplace(guards.filter(guard => guard.dirty).map(guard => guard.reason).join('；'))
+      if (allowed) for (const guard of guards) if (guard.dirty) await guard.onAbandon?.()
       if (active) { if (allowed) blocker.proceed(); else blocker.reset() }
       handling.current = false
     }

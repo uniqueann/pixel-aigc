@@ -6,6 +6,7 @@ import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
 import { bindRuntimeImage,releaseRuntimeImageUser } from '@/editor/runtimeImages'
 import { useEffect,useRef } from 'react'
 import type { TaskCenterDetail } from '@shared/task-center'
+import { abandonCanvasGenerationDraft, canvasDraftDirty } from './canvasDraftGuard'
 import { useTaskDraftGuard } from './useTaskDraftGuard'
 import { applyRecoveredCanvasTask,type CanvasRecoveryContext } from './canvasRecovery'
 import { assertRecoveryActor } from './recoveryMedia'
@@ -18,7 +19,7 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
   const drafts=usePersistenceStore(state=>state.drafts)
   const runtime=useRef({})
   useEffect(()=>{const user=runtime.current;return()=>releaseRuntimeImageUser(user)},[])
-  const confirm=useTaskDraftGuard({dirty:false,reason:'画布草稿会由现有项目保存流程保留。'})
+  const confirm=useTaskDraftGuard({dirty:canvasDraftDirty(drafts),reason:'当前画布的生成提示词尚未提交。切换后这些草稿将被放弃。',onAbandon:abandonCanvasGenerationDraft})
   const projectId=project?.id
   const context=useCallback((input:RecoveryActionContext):CanvasRecoveryContext=>{
     if(!projectId||!sceneId)throw new Error('原画布或场景未准备好')

@@ -191,6 +191,24 @@ describe('统一任务只读查询、展示权限和分页', () => {
         .outcome_version,
     ).toBe(email.outcomeVersion)
   })
+  it('同步任务可标记已查看，且不要求同步表更新权限', async () => {
+    const f = await fixture()
+    const seen = await actor(users[0], 'local', async (r) => {
+      const summary = taskSummary(await r.get('sync_credit', f.sync))
+      expect(summary.outcomeVersion).toMatch(/^v1:/)
+      return r.presentation('sync_credit', f.sync, 'seen', summary.outcomeVersion!)
+    })
+    expect(seen).toMatchObject({ sourceKind: 'sync_credit', sourceId: f.sync, seen: true })
+    const [priv] = await port.query(
+      "select has_table_privilege('aigc_api','aigc.sync_credit_jobs','UPDATE') as write",
+    )
+    expect(priv.write).toBe(false)
+    await expect(
+      actor(users[0], 'local', (r) =>
+        r.presentation('sync_credit', f.sync, 'seen', 'v1:' + 'b'.repeat(32)),
+      ),
+    ).rejects.toMatchObject({ status: 409 })
+  })
   it('两账号三环境的读取和展示写入隔离，不开放同步表写权限', async () => {
     const f = await fixture(users[0], 'preview')
     for (const owner of users)

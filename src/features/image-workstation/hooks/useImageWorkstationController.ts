@@ -2,6 +2,9 @@ import { normalizeImageBlob } from '@shared/image-format'
 import { readResultImage } from '../imageMetadata'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
+import { currentTaskActor } from '@/features/task-center/client'
+import { clearLiveSession, readLiveSession, writeLiveSession } from '../liveSession'
+import { watchWorkstationLiveTask } from '../resumeLiveTask'
 import { renderScaledSource } from '@/pages/Toolbox/aspect-ratio/outpaintClient'
 import { requestErase } from '@/services/api/erase'
 import { readOwnedImage, invalidateOwnedImage } from '@/services/api/ownedImages'
@@ -133,6 +136,8 @@ export function useImageWorkstationController({
   const registerAsset = useEditorStore((state) => state.registerAsset)
   const registerGeneration = useEditorStore((state) => state.registerGeneration)
   const upsertTask = useTaskStore((state) => state.upsertTask)
+  const liveOwner = useUserStore((state) => state.account?.userId === state.userId ? state.userId : undefined)
+  const liveScope = useUserStore((state) => state.account?.runtimeScope)
   const [inputAssetId, setInputAssetId] = useState<AssetId | undefined>(initialAsset?.id)
   const [outputAssetIds, setOutputAssetIds] = useState<AssetId[]>([])
   const [activeTaskId, setActiveTaskId] = useState<string>()
@@ -158,13 +163,21 @@ export function useImageWorkstationController({
   const inputRetryRef = useRef<InputRetryContext>()
   const [inputRetryRequest, setInputRetryRequest] = useState<WorkstationGenerationRequest>()
   const submissionGateRef = useRef<number>()
+  const toolSlugRef = useRef(activeTool.slug)
+  const resumeAbortRef = useRef<AbortController>(new AbortController())
   const inputPreparationRef = useRef<FusionPreparationState>()
   const [inputPreparation, setInputPreparation] = useState<FusionPreparationState>()
   const updateInputPreparation = useCallback((value?: FusionPreparationState) => {
     inputPreparationRef.current = value
     setInputPreparation(value)
   }, [])
-  const beginOperation = useCallback(() => {
+  const beginOperation = useCallback((preserveLiveSession = false) => {
+    if (!preserveLiveSession) {
+      const actor = currentTaskActor()
+      if (actor) clearLiveSession(actor, toolSlugRef.current)
+    }
+    resumeAbortRef.current.abort()
+    resumeAbortRef.current = new AbortController()
     abandonPendingRuntimeImages(runtimeUserRef.current)
     readAbortRef.current.abort()
     readAbortRef.current = new AbortController()
@@ -188,7 +201,7 @@ export function useImageWorkstationController({
     const unsubscribe = useUserStore.subscribe((state, previous) => {
       if (state.userId !== previous.userId) {
         fusionInputsRef.current.clear()
-        beginOperation(); setTask(undefined); setActiveTaskId(undefined); setOutputAssetIds([]); setInputAssetId(undefined)
+        beginOperation(true); setTask(undefined); setActiveTaskId(undefined); setOutputAssetIds([]); setInputAssetId(undefined)
       }
     })
     const fusionInputs = fusionInputsRef.current
@@ -196,11 +209,14 @@ export function useImageWorkstationController({
   }, [beginOperation])
   const inputIdentityRef = useRef({ tool: activeTool.slug, product: productAsset, reference: referenceAsset })
   useEffect(() => {
+    toolSlugRef.current = activeTool.slug
     const previous = inputIdentityRef.current
-    const changed = previous.tool !== activeTool.slug || (activeTool.slug === 'fusion' && (!sameFusionInput(previous.product, productAsset) || !sameFusionInput(previous.reference, referenceAsset)))
+    const toolChanged = previous.tool !== activeTool.slug
+    const changed = toolChanged || (activeTool.slug === 'fusion' && (!sameFusionInput(previous.product, productAsset) || !sameFusionInput(previous.reference, referenceAsset)))
     inputIdentityRef.current = { tool: activeTool.slug, product: productAsset, reference: referenceAsset }
     fusionInputsRef.current.syncInputs(productAsset, referenceAsset)
-    if (changed) beginOperation()
+    // 切换工具只清空当前内存；各自进行中的任务记录留给对应工具在刷新后接回。
+    if (changed) beginOperation(toolChanged)
   }, [activeTool.slug, beginOperation, productAsset, referenceAsset])
 
   useEffect(() => {
@@ -330,6 +346,52 @@ export function useImageWorkstationController({
     void applyCompletedTask(nextTask, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), context.ownerId, undefined, context.epoch)
   }, [applyCompletedTask, service])
   const taskQuery = useTaskPolling(activeTaskId, handlePolledTask)
+  const applyCompletedRef = useRef(applyCompletedTask)
+  useEffect(() => { applyCompletedRef.current = applyCompletedTask }, [applyCompletedTask])
+  useEffect(() => {
+    if (!liveOwner || !liveScope) return
+    const actor = currentTaskActor()
+    if (!actor) return
+    const session = readLiveSession(actor, activeTool.slug)
+    if (!session) return
+    const epoch = epochRef.current
+    const controller = new AbortController()
+    resumeAbortRef.current = controller
+    const signal = controller.signal
+    const ownerId = actor.owner
+    let stopped = false
+    const current = () => !stopped && epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId) && !signal.aborted
+    void watchWorkstationLiveTask({
+      session,
+      capability: activeTool.capability,
+      signal,
+      onUpdate: (view) => {
+        if (!current()) return
+        if (view.phase === 'absent') {
+          clearLiveSession(actor, session.tool)
+          setTask(undefined)
+          setActiveTaskId(undefined)
+          setSubmissionError('刷新后没有找到仍在进行的任务')
+          return
+        }
+        if (view.phase === 'missing') return
+        const next = view.task
+        submissionsRef.current.set(next.id, {
+          request: { capability: next.capability, params: next.params as WorkstationGenerationRequest['params'], outputSize: { width: next.resultImages?.[0]?.width || 1, height: next.resultImages?.[0]?.height || 1 } },
+          options: { inputAssetIds: [] },
+          ownerId,
+          epoch,
+        })
+        setTask(next)
+        upsertTask(next)
+        if (view.phase === 'processing' && view.handoff) setActiveTaskId(next.id)
+        if (view.phase === 'succeeded') void applyCompletedRef.current(next, [], ownerId, undefined, epoch)
+      },
+    }).catch(() => undefined)
+    return () => { stopped = true; controller.abort() }
+    // 恢复只跟随账号、环境和工具；结果应用函数用 ref 避免轮询被重建。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveOwner, liveScope, activeTool.slug, activeTool.capability])
 
   const completeSync = useCallback(async (input: {
     sourceAsset: ImageAsset; capability: Capability; params: InpaintTaskParams | OutpaintTaskParams; parentGenerationId?: GenerationId
@@ -365,7 +427,11 @@ export function useImageWorkstationController({
         if (current()) syncRecoveryRef.current = undefined
         return completed
       }
-      const result = await prepared.execute({ ownerId, signal, onTaskIdentity: requestId => { id=requestId;completed.id=requestId;completed.requestId=requestId }, onObjectResult: object => {
+      const result = await prepared.execute({ ownerId, signal, onTaskIdentity: requestId => {
+        id=requestId;completed.id=requestId;completed.requestId=requestId
+        const actor = currentTaskActor()
+        if (actor) writeLiveSession({ v: 1, owner: actor.owner, scope: actor.scope, tool: toolSlugRef.current, sourceKind: 'sync_credit', requestId, sourceId: requestId, createdAt: Date.now() })
+      }, onObjectResult: object => {
         descriptor = object
         if (!current()) return
         syncRecoveryRef.current = { descriptor: object, complete, epoch, ownerId }
@@ -474,12 +540,16 @@ export function useImageWorkstationController({
         if (inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, phase: 'submitting' })
       } else prepared = await prepareImageEditRequest(request, sourceAsset, { ownerId, signal })
       if (!isCurrent()) throw fusionAbortError()
+      const requestId = crypto.randomUUID()
+      const actor = currentTaskActor()
+      if (actor) writeLiveSession({ v: 1, owner: actor.owner, scope: actor.scope, tool: toolSlugRef.current, sourceKind: 'image_job', requestId, createdAt: Date.now() })
       const result = await service.submit({
         capability: prepared.capability,
-        requestId: crypto.randomUUID(),
+        requestId,
         params: prepared.params,
         modelProfileId: prepared.modelProfileId ?? modelProfileId,
       }, { ...options, deferAssets: true, canApply: isCurrent })
+      if (actor && isCurrent()) writeLiveSession({ v: 1, owner: actor.owner, scope: actor.scope, tool: toolSlugRef.current, sourceKind: 'image_job', requestId, sourceId: result.task.id, createdAt: Date.now() })
       if (!isCurrent()) throw fusionAbortError()
       if (inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, phase: 'submitted' })
       submissionsRef.current.set(result.task.id, { request: prepared, options, ownerId, epoch, referenceAsset: fusionReference })
@@ -639,6 +709,12 @@ export function useImageWorkstationController({
     setProtocolError(undefined)
   }, [beginOperation])
 
+  const restoreInputAsset = useCallback((asset: ImageAsset) => {
+    if (!useEditorStore.getState().project) createProject('图片工作台', { width: asset.width, height: asset.height })
+    registerAsset(asset)
+    setInputAssetId(asset.id)
+  }, [createProject, registerAsset])
+
   const replaceSourceAsset = useCallback((asset: ImageAsset) => {
     beginOperation()
     if (!useEditorStore.getState().project) createProject('图片工作台', { width: asset.width, height: asset.height })
@@ -685,5 +761,6 @@ export function useImageWorkstationController({
     refetch: taskQuery.refetch,
     selectOutput,
     replaceSourceAsset,
+    restoreInputAsset,
   }
 }

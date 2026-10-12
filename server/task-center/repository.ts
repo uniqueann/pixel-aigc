@@ -241,7 +241,10 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
       action: 'seen' | 'dismiss',
       version: string,
     ) {
-      if (!(await this.native(kind, id, true))) await get(kind, id)
+      // sync_credit_jobs 只授予 SELECT。FOR UPDATE 还要求 UPDATE，标记已查看会直接 500。
+      // 结果版本仍按观察到的 outcome_version 乐观写入，迟到结果不会沿用旧的已查看标记。
+      const lockSource = kind !== 'sync_credit'
+      if (!(await this.native(kind, id, lockSource))) await get(kind, id)
       const row = await get(kind, id)
       if (!row.outcome_version || row.outcome_version !== version)
         throw new HttpError(

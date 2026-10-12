@@ -43,6 +43,30 @@ describe('任务导航的草稿保护',()=>{
     expect(screen.queryByText('当前内容尚未保存')).toBeNull()
     expect((screen.getByLabelText('当前原图备注') as HTMLTextAreaElement).value).toBe('未保存内容')
   })
+  it('画布同页跳到其他任务时确认，取消不放弃草稿',async()=>{
+    cleanup();router.dispose()
+    const abandon=vi.fn()
+    function CanvasDraft(){
+      const navigate=useNavigate()
+      useTaskDraftGuard({dirty:true,reason:'当前画布的生成提示词尚未提交。切换后这些草稿将被放弃。',onAbandon:abandon})
+      return <><button onClick={()=>navigate('/canvas/text-to-image?task=22222222-2222-4222-8222-222222222222')}>打开其他任务</button><button onClick={()=>navigate('/canvas/text-to-image')}>关闭任务</button></>
+    }
+    router=createMemoryRouter([{path:'/',element:<TaskNavigationProvider><Outlet/></TaskNavigationProvider>,children:[{path:'canvas/:mode',element:<CanvasDraft/>}]}],{initialEntries:['/canvas/text-to-image']})
+    render(<App><RouterProvider router={router}/></App>)
+    fireEvent.click(screen.getByText('打开其他任务'))
+    expect(await screen.findByText('当前画布的生成提示词尚未提交。切换后这些草稿将被放弃。')).toBeTruthy()
+    fireEvent.click(screen.getByText('留在当前页'))
+    await waitFor(()=>expect(router.state.location.search).toBe(''))
+    expect(abandon).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('打开其他任务'))
+    fireEvent.click(await screen.findByText('放弃草稿并继续'))
+    await waitFor(()=>expect(router.state.location.search).toBe('?task=22222222-2222-4222-8222-222222222222'))
+    expect(abandon).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByText('关闭任务'))
+    await waitFor(()=>expect(router.state.location.pathname+router.state.location.search).toBe('/canvas/text-to-image'))
+    expect(abandon).toHaveBeenCalledOnce()
+    expect(screen.queryByText('当前画布的生成提示词尚未提交。切换后这些草稿将被放弃。')).toBeNull()
+  })
   it('修改稿保存失败时阻止导航',async()=>{
     flush.mockResolvedValue(false)
     fireEvent.click(screen.getByText('打开其他工具'))

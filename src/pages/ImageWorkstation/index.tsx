@@ -54,7 +54,11 @@ import { COUNT_TOOLS, type CountTool } from '@shared/preferences'
 import { useStickyPreview } from './utils/useStickyPreview'
 import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
 import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
+import { currentTaskActor } from '@/features/task-center/client'
 import { assertRecoveryActor,persistRecoveredResult,recoveredResultId } from '@/features/task-center/recoveryMedia'
+import { clearInputDraft, writeInputDraft } from '@/features/image-workstation/liveSession'
+import { useWorkstationInputDraft } from '@/features/image-workstation/useWorkstationInputDraft'
+import { readResultImage } from '@/features/image-workstation/imageMetadata'
 import { bindRuntimeImage,releaseRuntimeImageUser,setRuntimeImageUsers,withRuntimeImage } from '@/editor/runtimeImages'
 import type { TaskTool } from '@shared/task-center'
 import { readRelight } from '@shared/relight'
@@ -147,6 +151,10 @@ export default function ImageWorkstation() {
   })
   const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
   const replaceSourceAsset = controller.replaceSourceAsset
+  const invalidateRestoredInput = useWorkstationInputDraft(activeTool.slug, fusionTool, asset => {
+    setSourceAsset(asset)
+    controller.restoreInputAsset(asset)
+  })
 
   const inpaintMode = activeTool.slug === 'repaint' ? 'repaint' : activeTool.slug === 'remove' ? 'remove' : undefined
   const selectedPreset = PLATFORM_SIZE_PRESETS.find((preset) => preset.platform === presetPlatform)
@@ -226,7 +234,12 @@ export default function ImageWorkstation() {
     }
   }
 
+  const uploadSlugRef = useRef(activeTool.slug)
+  const invalidateInputRef = useRef(invalidateRestoredInput)
+  useEffect(() => { uploadSlugRef.current = activeTool.slug }, [activeTool.slug])
+  useEffect(() => { invalidateInputRef.current = invalidateRestoredInput }, [invalidateRestoredInput])
   const handleImageUpload = useCallback(async (file: File) => {
+    invalidateInputRef.current()
     setUploading(true)
     try {
       const uploaded = await uploadImage(file)
@@ -239,6 +252,8 @@ export default function ImageWorkstation() {
       })
       setSourceAsset(asset)
       replaceSourceAsset(asset)
+      const actor = currentTaskActor()
+      if (actor) clearInputDraft(actor, uploadSlugRef.current)
       setCompareMode('effect')
       message.success('图片已上传')
     } catch (error) {
@@ -287,6 +302,7 @@ export default function ImageWorkstation() {
     })
     queueMicrotask(() => {
       if (!active) return
+      invalidateRestoredInput()
       setSourceAsset(asset)
       replaceSourceAsset(asset)
       setEdgeRefine(handoff)
@@ -297,7 +313,7 @@ export default function ImageWorkstation() {
       URL.revokeObjectURL(url)
       if (!edgeRefineFinishedRef.current) setEdgeRefineHandoff(handoff)
     }
-  }, [activeTool.slug, replaceSourceAsset])
+  }, [activeTool.slug, invalidateRestoredInput, replaceSourceAsset])
 
   const finishEdgeRefine = async () => {
     if (!edgeRefine) return
@@ -444,16 +460,20 @@ export default function ImageWorkstation() {
       <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} blockedReason={controller.formLocked || uploading || fusionLoading ? '当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。':undefined}
         onUseImage={async (result,blob,detail,context) => {
           if (!await confirmRecovery('将原任务结果作为新输入会替换当前原图和蒙版。')) return
+          invalidateRestoredInput()
           assertRecoveryActor(context.actor,context.signal)
-          const asset=createImageAsset({id:`asset:${recoveredResultId(detail,result)}`,name:'已有任务结果',url:result.url,objectKey:result.objectKey,width:result.width,height:result.height,mimeType:result.mimeType,source:'generation'})
-          bindRuntimeImage(context.actor.owner,asset,blob,recoveryRuntime.current)
+          const measured = await readResultImage(blob)
+          assertRecoveryActor(context.actor,context.signal)
+          const asset=createImageAsset({id:`asset:${recoveredResultId(detail,result)}`,name:'已有任务结果',url:result.url,objectKey:result.objectKey,width:measured.width,height:measured.height,mimeType:measured.mimeType,source:'generation'})
+          bindRuntimeImage(context.actor.owner,asset,measured.blob,recoveryRuntime.current)
           useEditorStore.getState().registerAsset(asset)
           setRuntimeImageUsers(recoveryRuntime.current,[asset.id,...(fusionReference ? [fusionReference.id] : [])])
           const visibleAsset=withRuntimeImage(asset,context.actor.owner)
           if(fusionTool) fusionSelection.adopt(visibleAsset,fusionReference)
           else {setSourceAsset(visibleAsset);replaceSourceAsset(asset)}
+          if (!fusionTool && result.objectKey) writeInputDraft({ v: 1, owner: context.actor.owner, scope: context.actor.scope, tool: activeTool.slug, name: asset.name, objectKey: result.objectKey, width: measured.width, height: measured.height, mimeType: measured.mimeType, createdAt: Date.now() })
           setHasMaskPaint(false)
-          await persistRecoveredResult(detail,result,context.actor,context.signal,blob)
+          await persistRecoveredResult(detail,result,context.actor,context.signal,measured.blob)
         }}
         onLoadParameters={['smart-edit','relight','fusion','retouch','variation'].includes(activeTool.slug)?async (prepared,detail,context) => {
           const params=prepared.params
@@ -461,6 +481,7 @@ export default function ImageWorkstation() {
           if(typeof params.count!=='number'||!Number.isInteger(params.count)||params.count<1||!['1k','2k','4k'].includes(String(params.resolution)))throw new Error('原生成参数不完整')
           if(params.prompt!==undefined&&typeof params.prompt!=='string')throw new Error('原提示词参数无效')
           if(!await confirmRecovery('载入原任务参数会替换当前原图、蒙版和表单。'))return false
+          invalidateRestoredInput()
           assertRecoveryActor(context.actor,context.signal)
           const source=prepared.source
           bindRuntimeImage(context.actor.owner,source,prepared.sourceBlob!,recoveryRuntime.current)
@@ -469,7 +490,10 @@ export default function ImageWorkstation() {
           setRuntimeImageUsers(recoveryRuntime.current,[source.id,...(prepared.reference ? [prepared.reference.id] : [])])
           const visibleSource=withRuntimeImage(source,context.actor.owner)
           if(fusionTool)fusionSelection.adopt(visibleSource,prepared.reference ? withRuntimeImage(prepared.reference,context.actor.owner) : undefined)
-          else {setSourceAsset(visibleSource);replaceSourceAsset(source)}
+          else {
+            setSourceAsset(visibleSource);replaceSourceAsset(source)
+            if (source.objectKey && source.width > 0 && source.height > 0) writeInputDraft({ v: 1, owner: context.actor.owner, scope: context.actor.scope, tool: activeTool.slug, name: source.name || '原任务输入', objectKey: source.objectKey, width: source.width, height: source.height, mimeType: source.mimeType || 'image/png', createdAt: Date.now() })
+          }
           const note=typeof params.prompt==='string'?params.prompt:''
           if(relightTool)setRelightNote(note);else if(fusionTool)setFusionNote(note);else if(retouchTool)setRetouchNote(note);else if(variationTool)setVariationPrompt(note);else setSmartEditPrompt(note)
           updateParameters({count:params.count,resolution:params.resolution as '1k'|'2k'|'4k',...(retouchTool?{retouchDirections:readRetouchDirections(params)}:{}),...(relightTool&&readRelight(params)?{relight:readRelight(params)}:{})},false)
@@ -493,6 +517,7 @@ export default function ImageWorkstation() {
             <CanvasArea
               interactionMode={activeTool.interactionMode}
               imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
+              activityLabel={controller.active && !(fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined) ? '正在恢复进行中的任务' : undefined}
               imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
               referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
               originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}

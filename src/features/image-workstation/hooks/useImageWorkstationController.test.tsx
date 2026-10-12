@@ -5,13 +5,14 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
-import { useUserStore } from '@/store/useUserStore'
+import { useUserStore, type AccountContext } from '@/store/useUserStore'
 import { Capability, type GenerationTask, type InpaintTaskParams } from '@/types'
 import { RELIGHT_DEFAULT, type RelightOptions } from '@shared/relight'
 import { getWorkstationTool } from '../tools/registry'
 import type { WorkstationCanvasHandle } from '../types'
 import { useImageWorkstationController } from './useImageWorkstationController'
 import type { TaskInputUploadOptions } from '@/services/api/upload'
+import { writeLiveSession } from '../liveSession'
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   requestErase: vi.fn(),
   requestRepaint: vi.fn(),
   requestOutpaint: vi.fn(),
+  recoverSyncResult: vi.fn(),
   historySave: vi.fn(),
   polling: { data: undefined as GenerationTask<unknown> | undefined },
 }))
@@ -52,6 +54,10 @@ vi.mock('@/services/api/outpaint', async importOriginal => ({
 }))
 vi.mock('@/services/api/repaint', () => ({
   requestRepaint: mocks.requestRepaint,
+}))
+vi.mock('@/services/api/billing', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/services/api/billing')>()),
+  recoverSyncResult: mocks.recoverSyncResult,
 }))
 vi.mock('@/hooks/useTaskPolling', async () => {
   const { useEffect: useReactEffect } = await import('react')
@@ -137,6 +143,8 @@ describe('useImageWorkstationController 集成流程', () => {
   let root: Root
 
   beforeEach(async () => {
+    useUserStore.getState().setAccount(null)
+    localStorage.clear()
     useUserStore.getState().setUser('11111111-1111-4111-8111-111111111111', 'free')
     mocks.historySave.mockReset().mockResolvedValue(undefined)
     mocks.createTask.mockReset()
@@ -154,6 +162,7 @@ describe('useImageWorkstationController 集成流程', () => {
     mocks.requestErase.mockReset()
     mocks.requestRepaint.mockReset()
     mocks.requestOutpaint.mockReset()
+    mocks.recoverSyncResult.mockReset()
     mocks.polling.data = undefined
     useEditorStore.setState({
       project: null,
@@ -171,6 +180,8 @@ describe('useImageWorkstationController 集成流程', () => {
 
   afterEach(async () => {
     await act(async () => root.unmount())
+    useUserStore.getState().setAccount(null)
+    localStorage.clear()
     container.remove()
   })
 
@@ -1000,6 +1011,25 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(currentController.activeTask).toBeUndefined()
     expect(useEditorStore.getState().project?.generations['generation:fusion-task']).toBeUndefined()
     expect(currentController.submissionError).toBeUndefined()
+  })
+
+  it('刷新后接回进行中的同步任务，完成后显示实测尺寸且不重新提交', async () => {
+    const owner = '11111111-1111-4111-8111-111111111111'
+    const requestId = '22222222-2222-4222-8222-222222222222'
+    writeLiveSession({ v: 1, owner, scope: 'preview', tool: 'repaint', sourceKind: 'sync_credit', requestId, sourceId: requestId, createdAt: Date.now() })
+    mocks.recoverSyncResult
+      .mockResolvedValueOnce({ state: 'reserved' })
+      .mockResolvedValue({ state: 'settled', result: { objectKey: 'temporary/repaint-results/u/1.png', url: 'https://r2.test/1.png', mimeType: 'image/png', expiresAt: Date.now() + 60_000 } })
+    await act(async () => root.render(<ControllerHarness tool="repaint" onController={captureController} />))
+    await act(async () => {
+      useUserStore.getState().setAccount({ userId: owner, runtimeScope: 'preview', credits: 10, email: 'a@b.c', emailVerified: true, displayName: 'a', avatarUrl: null, providers: [], status: 'active', workspace: { id: 'w', name: 'w', type: 'personal', role: 'admin' } } as AccountContext)
+    })
+    await vi.waitFor(() => expect(currentController.activeTask?.status).toBe('processing'))
+    expect(currentController.active).toBe(true)
+    await vi.waitFor(async () => { await act(async () => {}); expect(currentController.outputAssets[0]).toMatchObject({ width: 640, height: 480 }) })
+    expect(mocks.createTask).not.toHaveBeenCalled()
+    expect(mocks.requestRepaint).not.toHaveBeenCalled()
+    expect(mocks.recoverSyncResult).toHaveBeenCalledWith(requestId, owner)
   })
 
   it('生成接口失败不提供输入重试，也不自动创建第二个任务', async () => {
