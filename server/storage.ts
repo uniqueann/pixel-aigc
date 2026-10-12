@@ -8,6 +8,11 @@ const s3 = () => client ??= new S3Client({ region: 'auto', requestChecksumCalcul
   credentials: { accessKeyId: env('R2_ACCESS_KEY_ID'), secretAccessKey: env('R2_SECRET_ACCESS_KEY') } })
 const bucket = () => env('R2_BUCKET')
 
+/** 后台传入总预算信号时，每次对象操作另外限制为 30 秒。 */
+function objectOperationSignal(signal?: AbortSignal) {
+  return signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : undefined
+}
+
 /** R2 GetObject 对不存在的键抛 NoSuchKey / NotFound，而不是先变成 HttpError。 */
 function isMissingObject(error: unknown) {
   if (!error || typeof error !== 'object') return false
@@ -25,21 +30,42 @@ export async function signRead(key: string, expiresIn = 900, disposition?: strin
 }
 
 export async function deleteObject(key: string, signal?: AbortSignal) {
-  await s3().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }), signal ? { abortSignal: signal } : undefined)
+  const operation = objectOperationSignal(signal)
+  operation?.throwIfAborted()
+  await s3().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }), operation ? { abortSignal: operation } : undefined)
 }
 
 export async function putObject(key: string, bytes: Uint8Array, contentType: string, signal?: AbortSignal) {
+  const operation = objectOperationSignal(signal)
+  operation?.throwIfAborted()
   await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: contentType }),
-    signal ? { abortSignal: signal } : undefined)
+    operation ? { abortSignal: operation } : undefined)
 }
 
-export async function getObject(key: string) {
-  const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key })).catch(error => {
+export async function getObject(key: string, signal?: AbortSignal) {
+  const operation = objectOperationSignal(signal)
+  operation?.throwIfAborted()
+  const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: key }),
+    operation ? { abortSignal: operation } : undefined).catch(error => {
     if (isMissingObject(error)) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
     throw error
   })
   if (!result.Body) throw new HttpError(404, '对象不存在', 'OBJECT_NOT_FOUND')
-  return { bytes: await result.Body.transformToByteArray(), contentType: result.ContentType }
+  const body = result.Body
+  const destroy = () => {
+    if ('destroy' in body && typeof body.destroy === 'function') body.destroy(operation?.reason)
+  }
+  if (operation?.aborted) {
+    if ('destroy' in body && typeof body.destroy === 'function') body.destroy()
+    operation.throwIfAborted()
+  }
+  // SDK 收到响应头后可能移除请求的 abort 监听；正文仍须受到预算约束。
+  operation?.addEventListener('abort', destroy, { once: true })
+  try {
+    return { bytes: await body.transformToByteArray(), contentType: result.ContentType }
+  } finally {
+    operation?.removeEventListener('abort', destroy)
+  }
 }
 
 export async function getObjectLimited(key: string, maxBytes: number, signal?: AbortSignal) {

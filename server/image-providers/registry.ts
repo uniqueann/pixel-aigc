@@ -30,6 +30,7 @@ export function configuredImageModels(
       : profile
     const provider = imageProviderById(active.provider)
     if (!provider) return []
+    if (active.provider === 'mock') return provider.configured(env) ? [active] : []
     // 千问和 Nano Banana 的 profile.enabled 保持 false，避免积分说明和本地 Mock 在开关关闭时露出模型。
     // 千问由 QWEN_IMAGE_ENABLED 与百炼 Key 决定。
     // Nano Banana 在 AI Gateway 开关和凭证就绪时改走 ai-gateway；否则仍看 OpenRouter 开关和 Key。

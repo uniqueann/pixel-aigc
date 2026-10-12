@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fetchJson, mapHttpStatus, retryBackoffMs } from './http.js'
+import { fetchJson, mapHttpStatus, operationSignal, retryBackoffMs } from './http.js'
 
 function jsonResponse(body: unknown, status = 200, headers?: Record<string, string>) {
   return new Response(JSON.stringify(body), {
@@ -9,6 +9,17 @@ function jsonResponse(body: unknown, status = 200, headers?: Record<string, stri
 }
 
 describe('供应商 HTTP', () => {
+  it('总预算与单次请求超时均可中止操作', async () => {
+    const controller = new AbortController()
+    const overall = operationSignal({ signal: controller.signal } as Parameters<typeof operationSignal>[0], 1000)
+    controller.abort(new Error('总预算结束'))
+    expect(overall.aborted).toBe(true)
+    expect(overall.reason.message).toBe('总预算结束')
+    const operation = operationSignal({ signal: new AbortController().signal } as Parameters<typeof operationSignal>[0], 5)
+    await new Promise<void>(resolve => operation.addEventListener('abort', () => resolve(), { once: true }))
+    expect(operation.reason.name).toBe('TimeoutError')
+  })
+
   it('429/5xx 指数退避，401/400 不重试', () => {
     expect(retryBackoffMs(0)).toBe(1000)
     expect(retryBackoffMs(1)).toBe(2000)
@@ -41,5 +52,17 @@ describe('供应商 HTTP', () => {
     expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
       upstreamRequestId: 'dc-auth-9', alert: true, kind: 'provider-auth', status: 401,
     }))
+  })
+
+  it('生成 POST 的 5xx 只发送一次，GET 查询仍按有限次数退避',async () => {
+    const ctx = { fetch: vi.fn().mockResolvedValue(jsonResponse({},503)),sleep: vi.fn(async () => undefined),now: () => 1,log: vi.fn() }
+    await expect(fetchJson('https://provider.test/generate',{ method: 'POST' },ctx,{ timeoutMs: 1000,retryCount: 2,label: 'submit' }))
+      .rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE',definiteNotAccepted: undefined })
+    expect(ctx.fetch).toHaveBeenCalledTimes(1)
+    expect(ctx.sleep).not.toHaveBeenCalled()
+    ctx.fetch.mockClear()
+    await expect(fetchJson('https://provider.test/tasks/id',{},ctx,{ timeoutMs: 1000,retryCount: 2,label: 'query' })).rejects.toThrow()
+    expect(ctx.fetch).toHaveBeenCalledTimes(3)
+    expect(ctx.sleep).toHaveBeenCalledTimes(2)
   })
 })

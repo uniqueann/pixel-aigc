@@ -4,7 +4,7 @@ export { readVercelOidcToken } from '../../ai-gateway-auth.js'
 import type { NormalizedImageRequest } from '../../../shared/image-generation.js'
 import { HttpError } from '../../errors.js'
 import { getObject, putObject } from '../../storage.js'
-import { isAbortOrTimeout, requestHost } from '../http.js'
+import { isAbortOrTimeout, operationSignal, requestHost } from '../http.js'
 import type {
   ImageProvider,
   ProviderCapabilities,
@@ -36,20 +36,20 @@ import {
 } from './response.js'
 
 export interface AiGatewayResultStore {
-  putObject(key: string, bytes: Uint8Array, contentType: string): Promise<void>
-  getObject(key: string): Promise<{ bytes: Uint8Array; contentType?: string } | undefined>
+  putObject(key: string, bytes: Uint8Array, contentType: string,signal?: AbortSignal): Promise<void>
+  getObject(key: string,signal?: AbortSignal): Promise<{ bytes: Uint8Array; contentType?: string } | undefined>
 }
 
 const inflight = new Map<string, Promise<{ providerTaskId: string }>>()
 
 export function r2AiGatewayResultStore(): AiGatewayResultStore {
   return {
-    async putObject(key, bytes, contentType) {
-      await putObject(key, bytes, contentType)
+    async putObject(key, bytes, contentType,signal) {
+      await putObject(key, bytes, contentType,signal)
     },
-    async getObject(key) {
+    async getObject(key,signal) {
       try {
-        const object = await getObject(key)
+        const object = await getObject(key,signal)
         return { bytes: object.bytes, contentType: object.contentType }
       } catch (error) {
         if (error instanceof HttpError && error.status === 404) return undefined
@@ -82,7 +82,9 @@ function safeRequestId(requestId: string | undefined) {
   return requestId && /^[0-9a-f-]{36}$/i.test(requestId) ? requestId : randomUUID()
 }
 
-function imageKey(requestId: string, ordinal: number) {
+function imageKey(requestId: string, ordinal: number,ctx?: ProviderContext) {
+  const identity = ctx?.execution
+  if (identity) return `temporary/ai-gateway-results/${identity.scope}/${identity.userId}/${identity.jobId}/${identity.attemptId}/${ordinal}.img`
   return `temporary/ai-gateway-results/${requestId}/${ordinal}.img`
 }
 
@@ -98,8 +100,8 @@ function isRatio(value: unknown): value is string {
   return typeof value === 'string' && (AI_GATEWAY_IMAGE_RATIOS as readonly string[]).includes(value)
 }
 
-async function readUsage(store: AiGatewayResultStore, key: string) {
-  const object = await store.getObject(usageKey(key))
+async function readUsage(store: AiGatewayResultStore, key: string,signal?: AbortSignal) {
+  const object = await store.getObject(usageKey(key),signal)
   if (!object) return undefined
   try {
     const parsed: unknown = JSON.parse(Buffer.from(object.bytes).toString('utf8'))
@@ -152,7 +154,7 @@ export function createAiGatewayImageProvider(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
-        signal: ctx.signal ?? AbortSignal.timeout(settings.requestTimeoutMs),
+        signal: operationSignal(ctx,settings.requestTimeoutMs),
       })
     } catch (error) {
       const timeout = isAbortOrTimeout(error)
@@ -185,15 +187,16 @@ export function createAiGatewayImageProvider(
         errorType: details.type || null,
         upstreamMessage: clipGatewayLog(details.message, [settings.apiKey, token]),
       })
+      if (response.status < 500 && ['INVALID_KEY','INSUFFICIENT_BALANCE','INVALID_PARAMS','CONTENT_REJECTED','PROVIDER_FORBIDDEN','RATE_LIMIT'].includes(failure.code)) failure.definiteNotAccepted = true
       throw failure
     }
     return { payload, started }
   }
 
   async function generate(input: ProviderSubmitInput, ctx: ProviderContext, key: string) {
-    const existing = await store.getObject(key)
+    const existing = await store.getObject(key,ctx.signal)
     if (existing?.bytes.byteLength) {
-      const usage = await readUsage(store, key)
+      const usage = await readUsage(store,key,ctx.signal)
       ctx.log({ stage: 'ai-gateway-image-replay', requestId: ctx.requestId, ordinal: input.ordinal ?? 0, ...usageLog(usage) })
       return {
         providerTaskId: encodeAiGatewayTask({
@@ -235,10 +238,10 @@ export function createAiGatewayImageProvider(
     })
     const image = parsed.images[0]
     if (!image) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回图片', false, 502)
-    await store.putObject(key, image.bytes, image.mimeType)
+    await store.putObject(key, image.bytes, image.mimeType,ctx.signal)
     if (parsed.usage) {
       try {
-        await store.putObject(usageKey(key), Buffer.from(JSON.stringify(parsed.usage)), 'application/json')
+        await store.putObject(usageKey(key), Buffer.from(JSON.stringify(parsed.usage)), 'application/json',ctx.signal)
       } catch (error) {
         ctx.log({
           stage: 'ai-gateway-image-usage-store',
@@ -286,29 +289,37 @@ export function createAiGatewayImageProvider(
       }
       if (!input.prompt.trim()) throw new ProviderError('INVALID_PARAMS', '请填写画面描述', false, 400)
       const ordinal = Number.isInteger(input.ordinal) && (input.ordinal ?? 0) >= 0 ? input.ordinal ?? 0 : 0
-      const key = imageKey(safeRequestId(ctx.requestId), ordinal)
+      const key = imageKey(safeRequestId(ctx.requestId),ordinal,ctx)
       const pending = inflight.get(key)
       if (pending) return pending
       const run = generate(input, ctx, key).finally(() => { inflight.delete(key) })
       inflight.set(key, run)
       return run
     },
-    async getStatus(providerTaskId: string): Promise<ProviderTaskState> {
+    async recoverSubmission(ordinal,ctx) {
+      if (!ctx.execution) return undefined
+      const key = imageKey('',ordinal,ctx)
+      const object = await store.getObject(key,ctx.signal)
+      if (!object?.bytes.byteLength || !object.contentType?.startsWith('image/')) return undefined
+      const usage = await readUsage(store,key,ctx.signal)
+      return { providerTaskId: encodeAiGatewayTask({ key,mimeType: object.contentType,...(usage ? { usage } : {}) }) }
+    },
+    async getStatus(providerTaskId: string,ctx: ProviderContext): Promise<ProviderTaskState> {
       const task = decodeAiGatewayTask(providerTaskId)
       const key = task ? aiGatewayResultKey(aiGatewayResultUrl(task.key)) : undefined
       if (!task || !key) {
         return { state: 'failed', code: 'BAD_RESPONSE', message: '图片任务编号无效', retryable: false }
       }
-      const object = await store.getObject(key)
+      const object = await store.getObject(key,ctx.signal)
       if (!object?.bytes.byteLength) {
         return { state: 'failed', code: 'BAD_RESPONSE', message: '图片服务没有返回图片', retryable: false }
       }
       return { state: 'succeeded', resultUrls: [aiGatewayResultUrl(key)], vendor: vendorOf(task.usage) }
     },
-    async fetchResult(url: string) {
+    async fetchResult(url: string,ctx: ProviderContext) {
       const key = aiGatewayResultKey(url)
       if (!key) throw new ProviderError('BAD_RESPONSE', '结果图片地址无效', false, 502)
-      const object = await store.getObject(key)
+      const object = await store.getObject(key,ctx.signal)
       const mimeType = object?.contentType?.split(';')[0]?.trim() ?? ''
       if (!object?.bytes.byteLength || !mimeType.startsWith('image/')) {
         throw new ProviderError('BAD_RESPONSE', '结果不是有效图片', false, 502)

@@ -217,6 +217,12 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
     hints: { text_to_image: '支持 4K', image_input: '支持 4K', single_image: '支持 4K' },
     enabled: false,
   },
+  {
+    id: 'mock:image-stage2',provider: 'mock',vendor: 'openai',model: 'stage2',label: '后台验收 Mock',
+    operations: ['image_edit','text_to_image','variation'],
+    ui: { supportsMask: false,maxCount: 4,resolutions: ['1k','2k','4k'],sizeMode: 'ratio',ratios: ['1:1','3:2','2:3'],maxRefImages: 4 },
+    pricing: { unit: 'image',creditsPerImage: { '1k': 1,'2k': 1,'4k': 1 } },enabled: false,
+  },
 ]
 
 export function imageModelHint(

@@ -9,6 +9,7 @@ vi.mock('./storage', () => ({ getObject: (...args: unknown[]) => getObject(...ar
 vi.mock('./members', () => ({ requireActive: (...args: unknown[]) => requireActive(...args) }))
 vi.mock('./db', () => ({
   withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn({}),
+  runtimeScope: () => 'local',
 }))
 
 import { loadOwnedObject, objectContentDisposition, signOwnedObjectRead } from './objects.js'
@@ -30,6 +31,21 @@ describe('同域读取私有对象', () => {
       contentType: 'image/png',
     })
     expect(requireActive).toHaveBeenCalled()
+  })
+
+  it('带环境的图片对象不能跨环境读取或重签，同环境新键和旧键兼容', async () => {
+    getObject.mockClear()
+    signRead.mockClear()
+    for (const scope of ['preview','production']) {
+      const key = `generated/${user.id}/${scope}/job/0/transfer.png`
+      await expect(loadOwnedObject(user, key)).rejects.toMatchObject({ code: 'INVALID_SOURCE' })
+      await expect(signOwnedObjectRead(user, key)).rejects.toMatchObject({ code: 'INVALID_SOURCE' })
+    }
+    expect(getObject).not.toHaveBeenCalled()
+    expect(signRead).not.toHaveBeenCalled()
+    getObject.mockResolvedValue({ bytes: new Uint8Array([1]), contentType: 'image/png' })
+    await expect(loadOwnedObject(user, `generated/${user.id}/local/job/0/transfer.png`)).resolves.toMatchObject({ contentType: 'image/png' })
+    await expect(loadOwnedObject(user, `generated/${user.id}/legacy-job/0.png`)).resolves.toMatchObject({ contentType: 'image/png' })
   })
 
   it('下载文件名带 UTF-8 编码，避免中文被丢掉', () => {

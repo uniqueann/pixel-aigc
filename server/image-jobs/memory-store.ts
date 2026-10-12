@@ -1,17 +1,23 @@
 import { randomUUID } from 'node:crypto'
-import type { ImageJobItemRow, ImageJobRow, ImageJobStore, InsertImageJobInput } from './types.js'
+import type { ImageJobAttempt, ImageJobItemRow, ImageJobRow, ImageJobStore, InsertImageJobInput } from './types.js'
 
-export function createMemoryStore(userId: string, scope = 'local'): ImageJobStore & {
+export function createMemoryStore(userId: string, scope = 'local', clock = () => Date.now()): ImageJobStore & {
   jobs: Map<string, ImageJobRow>
   items: Map<string, ImageJobItemRow[]>
   leases: Set<string>
+  attempts: Map<string, ImageJobAttempt>
+  setClock: (clock: () => number) => void
 } {
   const jobs = new Map<string, ImageJobRow>()
   const items = new Map<string, ImageJobItemRow[]>()
   const leases = new Set<string>()
-  const now = () => new Date()
+  const attempts = new Map<string, ImageJobAttempt>()
+  const now = () => new Date(clock())
 
   return {
+    kind: 'memory',
+    attempts,
+    setClock(value) { clock = value },
     jobs,
     items,
     leases,
@@ -43,7 +49,9 @@ export function createMemoryStore(userId: string, scope = 'local'): ImageJobStor
         credits_reserved: input.creditsReserved,
         credits_charged: 0,
         billing_state: input.billingState,
-        lease_until: null,
+        lease_until: input.initialLease ? new Date(clock() + 120_000) : null,
+        lease_token: input.initialLease ? randomUUID() : null,
+        lease_owner: input.initialLease ? 'submit' : null,
         next_poll_at: input.nextPollAt,
         deadline_at: input.deadlineAt,
         created_at: created,
@@ -61,6 +69,8 @@ export function createMemoryStore(userId: string, scope = 'local'): ImageJobStor
         user_id: userId,
         scope,
         provider_task_id: null,
+        submission_state: job.capability === 'text_to_video' ? null : 'not_sent',
+        submission_attempt_id: null,
         status: 'pending',
         attempts: 0,
         progress: null,
@@ -78,14 +88,43 @@ export function createMemoryStore(userId: string, scope = 'local'): ImageJobStor
     async listItems(jobId) {
       return [...(items.get(jobId) ?? [])]
     },
-    async tryAcquireLease(jobId, until) {
+    async tryAcquireLease(jobId, until, owner = 'poll') {
       const job = jobs.get(jobId)
-      if (!job || job.user_id !== userId) return undefined
-      if (leases.has(jobId)) return undefined
-      const next = { ...job, lease_until: until, updated_at: now() }
+      if (!job || job.user_id !== userId || job.scope !== scope) return undefined
+      if (job.lease_until && new Date(job.lease_until).getTime() > clock()) return undefined
+      const next = { ...job, lease_until: until, lease_token: randomUUID(), lease_owner: owner, updated_at: now() }
       jobs.set(jobId, next)
       leases.add(jobId)
       return next
+    },
+    async assertLease(jobId, token) {
+      const job = await this.findById(jobId)
+      return job?.lease_token === token && new Date(job.lease_until ?? 0).getTime() > clock() ? job : undefined
+    },
+    async startSubmission(jobId, token, ordinals, attemptId) {
+      const job = await this.assertLease(jobId, token)
+      if (!job || new Date(job.deadline_at).getTime() <= clock()) return undefined
+      const rows = items.get(jobId) ?? []
+      if (ordinals.some(ordinal => rows[ordinal]?.submission_state !== 'not_sent' || rows[ordinal]?.provider_task_id)) return undefined
+      const attempt: ImageJobAttempt = { id: attemptId,job_id: jobId,user_id: userId,scope,kind: 'submit',ordinals,
+        provider_task_id: null,outcome: null,error_code: null,error_message: null,retryable: false,
+        object_key: null,mime_type: null,width: null,height: null,checksum: null,created_at: now() }
+      attempts.set(attemptId, attempt)
+      for (const ordinal of ordinals) rows[ordinal] = { ...rows[ordinal], submission_state: 'sending', submission_attempt_id: attemptId, attempts: rows[ordinal].attempts + 1 }
+      return attempt
+    },
+    async recordSubmission(attemptId, receipt) {
+      const attempt = attempts.get(attemptId)
+      if (attempt?.user_id === userId && attempt.scope === scope
+        && (attempt.outcome === null || (attempt.outcome === 'unknown' && receipt.outcome === 'accepted'))) attempts.set(attemptId, { ...attempt, ...receipt })
+    },
+    async listAttempts(jobId) {
+      return [...attempts.values()].filter(attempt => attempt.job_id === jobId && attempt.user_id === userId && attempt.scope === scope && !attempt.cleaned_at && !attempt.cleanup_token)
+    },
+    async startTransfer(jobId, token, ordinal, attemptId, descriptor) {
+      if (!await this.assertLease(jobId, token)) throw new Error('图片任务租约已失效')
+      attempts.set(attemptId, { id: attemptId,job_id: jobId,user_id: userId,scope,kind: 'transfer',ordinals: [ordinal],
+        provider_task_id: null,outcome: null,error_code: null,error_message: null,retryable: false,...descriptor,created_at: now() })
     },
     async updateJob(id, patch) {
       const job = jobs.get(id)
@@ -120,7 +159,8 @@ export function createMemoryStore(userId: string, scope = 'local'): ImageJobStor
     },
     async expireUserOverdue(at) {
       for (const job of jobs.values()) {
-        if ((job.status === 'queued' || job.status === 'processing') && new Date(job.deadline_at) <= at) {
+        if ((job.status === 'queued' || job.status === 'processing') && new Date(job.deadline_at) <= at
+          && (!job.lease_until || new Date(job.lease_until) <= at)) {
           const rows = items.get(job.id) ?? []
           for (const item of rows) {
             if (item.status === 'pending' || item.status === 'submitted' || item.status === 'processing') item.status = 'expired'

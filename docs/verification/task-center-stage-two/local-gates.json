@@ -1,0 +1,15 @@
+{
+  "testFiles": 240,
+  "tests": 1576,
+  "testsPassed": true,
+  "unhandledErrors": false,
+  "buildPassed": true,
+  "lintPassed": true,
+  "diffCheckPassed": true,
+  "mergeReadinessRecheckedOn": "2026-10-12",
+  "reviewFixes": [
+    "保留数据库已写入的平台限流退避，收尾不会提前再次执行",
+    "兼容查询根据实际明细恢复部分成功任务的截止后补收"
+  ],
+  "note": "两项合并前修复后重新通过全量测试、构建和 Lint；Lint 在构建结束后独立执行；构建保留既有大分块提示"
+}

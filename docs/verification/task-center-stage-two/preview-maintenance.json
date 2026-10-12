@@ -1,0 +1,156 @@
+{
+  "checkedAt": "2026-10-12T00:22:06.727Z",
+  "jobId": "b9a12b77-ad70-4984-b664-6206113b1af6",
+  "requestId": "073d7aa3-fdb1-4c14-bf04-e16a0c131ef7",
+  "scope": "preview",
+  "completed": true,
+  "status": "succeeded",
+  "billingState": "settled",
+  "charged": 1,
+  "submitAttempts": 1,
+  "transferAttempts": 1,
+  "reserveEntries": 1,
+  "settleEntries": 1,
+  "userTaskGetCalls": 0,
+  "supplier": "Mock",
+  "storage": "部署实际 R2（完成状态仅在 PUT 成功后发布）",
+  "acceptanceDeploymentId": "dpl_GoNVyhpFoxmETHgjXXfbhPke4pjQ",
+  "stablePreviewUrl": "https://pixel-aigc-stage2-preview-ningnings-projects-2ed21e15.vercel.app",
+  "source": "工作树上传；Git 基线 a8a78b1，非已提交实现",
+  "mergeReadinessFollowUp": "2026-10-12 后续修复平台退避和部分成功任务 GET 补收；本地全量及真实 PostgreSQL 双连接重新通过，尚未包含在此前预览部署中",
+  "productionAccountUnchanged": true,
+  "otherScopeLedgerEntries": 0,
+  "previewCron": "aigc-image-maintenance-preview",
+  "previewCronActive": true,
+  "completionLogs": [
+    {
+      "timestamp": 1791764520089,
+      "evt": "image-job",
+      "region": "pdx1",
+      "runId": "68146776-384f-478a-9858-e1fc8780371c",
+      "scope": "preview",
+      "stage": "image-maintenance-complete",
+      "claimed": 1,
+      "advanced": 1,
+      "terminal": 1,
+      "unknown": 0,
+      "fenceRejected": 0,
+      "failed": 0,
+      "imageExpired": 0,
+      "syncExpired": 0,
+      "orphansDeleted": 0,
+      "budgetExhausted": false,
+      "durationMs": 640
+    },
+    {
+      "timestamp": 1791764460048,
+      "evt": "image-job",
+      "region": "pdx1",
+      "runId": "4a380e00-0a3d-4a42-9669-730c4dbb45cc",
+      "scope": "preview",
+      "stage": "image-maintenance-complete",
+      "claimed": 1,
+      "advanced": 1,
+      "terminal": 0,
+      "unknown": 0,
+      "fenceRejected": 0,
+      "failed": 0,
+      "imageExpired": 0,
+      "syncExpired": 0,
+      "orphansDeleted": 0,
+      "budgetExhausted": false,
+      "durationMs": 301
+    },
+    {
+      "timestamp": 1791764400037,
+      "evt": "image-job",
+      "region": "pdx1",
+      "runId": "faae76e4-0861-4c06-abe8-ea5378b732c2",
+      "scope": "preview",
+      "stage": "image-maintenance-complete",
+      "claimed": 1,
+      "advanced": 1,
+      "terminal": 0,
+      "unknown": 0,
+      "fenceRejected": 0,
+      "failed": 0,
+      "imageExpired": 0,
+      "syncExpired": 0,
+      "orphansDeleted": 0,
+      "budgetExhausted": false,
+      "durationMs": 367
+    }
+  ],
+  "applicationRoleIsolation": {
+    "role": "aigc_api",
+    "passed": true,
+    "matrix": [
+      {
+        "actor": "本人",
+        "scope": "local",
+        "jobs": 0,
+        "attempts": 0
+      },
+      {
+        "actor": "本人",
+        "scope": "preview",
+        "jobs": 1,
+        "attempts": 2
+      },
+      {
+        "actor": "本人",
+        "scope": "production",
+        "jobs": 0,
+        "attempts": 0
+      },
+      {
+        "actor": "另一账号",
+        "scope": "local",
+        "jobs": 0,
+        "attempts": 0
+      },
+      {
+        "actor": "另一账号",
+        "scope": "preview",
+        "jobs": 0,
+        "attempts": 0
+      },
+      {
+        "actor": "另一账号",
+        "scope": "production",
+        "jobs": 0,
+        "attempts": 0
+      }
+    ]
+  },
+  "browserClosedByAutomation": false,
+  "directR2DownloadVerified": false,
+  "paidSupplierVerified": false,
+  "currentDeploymentId": "dpl_FKFjPtfLXmiVbRKb4Nqyo1tK1ucf",
+  "currentDeploymentUrl": "https://pixel-aigc-82oncpt9k-ningnings-projects-2ed21e15.vercel.app",
+  "currentDeploymentReady": true,
+  "note": "成功生成的证据来自 acceptanceDeploymentId；最终版本另补提交错误凭据脱敏，目标路径由本地测试验证。稳定别名指向最终版本。",
+  "finalMaintenanceReceipt": {
+    "received": true,
+    "runId": "67655b59-a3bf-4b81-8531-aaf99f04a635",
+    "scope": "preview"
+  },
+  "finalMaintenanceCompletion": {
+    "evt": "image-job",
+    "region": "pdx1",
+    "runId": "67655b59-a3bf-4b81-8531-aaf99f04a635",
+    "scope": "preview",
+    "stage": "image-maintenance-complete",
+    "claimed": 0,
+    "advanced": 0,
+    "terminal": 0,
+    "unknown": 0,
+    "fenceRejected": 0,
+    "failed": 0,
+    "imageExpired": 0,
+    "syncExpired": 0,
+    "orphansDeleted": 0,
+    "budgetExhausted": false,
+    "durationMs": 181
+  }
+}

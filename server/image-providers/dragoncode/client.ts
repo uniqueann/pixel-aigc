@@ -54,7 +54,12 @@ async function dragonCodeJson(
       label,
     })
   } catch (error) {
-    if (error instanceof ProviderError) throw sanitizeProviderError(error)
+    if (error instanceof ProviderError) {
+      const safe = sanitizeProviderError(error)
+      safe.definiteNotAccepted = error.definiteNotAccepted
+      safe.requestSent = error.requestSent
+      throw safe
+    }
     throw error
   }
 }
@@ -122,7 +127,9 @@ export function createDragonCodeProvider(
       })
       const numericCode = readNumericCode(payload)
       if (numericCode !== undefined && numericCode !== 200) {
-        throw mapDragonCodeHttpError(numericCode, payload)
+        const failure = mapDragonCodeHttpError(numericCode,payload)
+        if ([400,401,402,403,422,429].includes(numericCode)) failure.definiteNotAccepted = true
+        throw failure
       }
       const taskId = readSubmitTaskId(payload)
       if (!taskId) {

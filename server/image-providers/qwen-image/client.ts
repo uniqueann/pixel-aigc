@@ -5,7 +5,7 @@ import {
   dashScopeHost,
   isTransientConnectError,
 } from '../../dashscope.js'
-import { fetchImageBytes, isAbortOrTimeout, requestHost, retryBackoffMs } from '../http.js'
+import { fetchImageBytes, isAbortOrTimeout, operationSignal, requestHost, retryBackoffMs } from '../http.js'
 import type {
   ImageProvider,
   ProviderCapabilities,
@@ -172,12 +172,13 @@ async function qwenCall(
 ) {
   const fetchImpl = selectQwenFetch(ctx.fetch, settings.connectTimeoutMs)
   let lastError: unknown
-  for (let attempt = 0; attempt <= settings.retryCount; attempt += 1) {
+  const retryCount = (init.method ?? 'GET').toUpperCase() === 'GET' ? settings.retryCount : 0
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
     const started = ctx.now()
     try {
       const response = await fetchImpl(url, {
         ...init,
-        signal: ctx.signal ?? AbortSignal.timeout(settings.requestTimeoutMs),
+        signal: operationSignal(ctx,settings.requestTimeoutMs),
       })
       const payload = await readPayload(response)
       const requestCode = readRequestCode(payload)
@@ -186,7 +187,7 @@ async function qwenCall(
         ? mapQwenFailure(response.status, requestCode.code, requestCode.message)
         : undefined
       // 瞬时限流不在这次请求里睡。浏览器大约 55 秒就放弃 POST，Pro 也经不起 1 秒、2 秒连打。
-      const retry = !!mapped?.retryable && !mapped.holdPending && attempt < settings.retryCount
+      const retry = !!mapped?.retryable && !mapped.holdPending && !ctx.signal?.aborted && attempt < retryCount
       ctx.log({
         stage: label,
         attempt,
@@ -202,12 +203,15 @@ async function qwenCall(
         await ctx.sleep(retryBackoffMs(attempt))
         continue
       }
-      if (mapped) throw mapped
+      if (mapped) {
+        if (response.status < 500 && ['INVALID_KEY','INSUFFICIENT_BALANCE','INVALID_PARAMS','CONTENT_REJECTED','RATE_LIMIT'].includes(mapped.code)) mapped.definiteNotAccepted = true
+        throw mapped
+      }
       return payload
     } catch (error) {
       lastError = error
       if (error instanceof ProviderError) {
-        if (error.retryable && !error.holdPending && attempt < settings.retryCount) {
+        if (error.retryable && !error.holdPending && !ctx.signal?.aborted && attempt < retryCount) {
           await ctx.sleep(retryBackoffMs(attempt))
           continue
         }
@@ -216,9 +220,8 @@ async function qwenCall(
       const preSend = isPreSendConnectError(error)
       const timeout = !preSend && isAbortOrTimeout(error)
       const connect = isTransientConnectError(error)
-      // 提交的建连重试最多一次。两次 10 秒建连仍短于 30 秒租约，避免轮询重入时再发一单。
-      const budget = label === 'qwen-image-submit' && preSend ? Math.min(settings.retryCount, 1) : settings.retryCount
-      const retry = (timeout || connect) && attempt < budget
+      // 生成 POST 的重试交给持久化执行器；GET 查询才允许在本次调用内重试。
+      const retry = !ctx.signal?.aborted && (timeout || connect) && attempt < retryCount
       ctx.log({
         stage: label,
         attempt,
@@ -373,7 +376,11 @@ export function createQwenImageProvider(
         })
         throw mapQwenFailure(429, upstreamCode, upstreamMessage)
       }
-      const body = generationBody(input, settings)
+      let body: ReturnType<typeof generationBody>
+      try { body = generationBody(input,settings) } catch (error) {
+        if (error instanceof ProviderError) error.requestSent = false
+        throw error
+      }
       const payload = await qwenCall(
         `${settings.baseUrl}${QWEN_GENERATION_PATH}`,
         {
