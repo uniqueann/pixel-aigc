@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons'
 import { Button, Tooltip } from 'antd'
 import { Canvas, FabricImage, FabricText, Group, Point, Rect, Shadow, type FabricObject } from 'fabric'
-import type { EditorNode, GenerationNode, ImageNode, NodeId, VideoNode, ViewportState } from '@/editor/types'
+import type { Asset, EditorNode, GenerationNode, ImageNode, NodeId, VideoNode, ViewportState } from '@/editor/types'
 import type { TaskStatus } from '@/types'
 import {
   calculateFitViewport,
@@ -241,6 +241,83 @@ function applyGenerationNodeToObject(object: FabricObject, node: GenerationNode)
   object.setCoords()
 }
 
+function hasDisplayableUrl(url?: string) {
+  return typeof url === 'string' && (url.startsWith('data:') || url.startsWith('blob:'))
+}
+
+function createBrokenImageObject(node: ImageNode) {
+  const background = new Rect({
+    left: 0,
+    top: 0,
+    originX: 'left',
+    originY: 'top',
+    width: node.width,
+    height: node.height,
+    rx: 12,
+    ry: 12,
+    fill: '#3b2729',
+    stroke: '#ff7875',
+    strokeWidth: 2,
+  })
+  const label = new FabricText('图片损坏', {
+    left: node.width / 2,
+    top: node.height / 2 - 14,
+    originX: 'center',
+    originY: 'center',
+    fill: '#f5f5f4',
+    fontFamily: 'sans-serif',
+    fontSize: 17,
+    fontWeight: 600,
+  })
+  const detail = new FabricText('无法解码，可按 Delete 删除', {
+    left: node.width / 2,
+    top: node.height / 2 + 17,
+    originX: 'center',
+    originY: 'center',
+    fill: '#aeb7b4',
+    fontFamily: 'sans-serif',
+    fontSize: 11,
+  })
+  const object = new Group([background, label, detail], {
+    left: node.x,
+    top: node.y,
+    originX: 'left',
+    originY: 'top',
+    angle: node.rotation,
+    opacity: node.opacity,
+    visible: node.visible,
+    selectable: node.visible,
+    evented: node.visible,
+    lockMovementX: node.locked,
+    lockMovementY: node.locked,
+    lockRotation: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    hasControls: false,
+    borderColor: SELECTION_COLOR,
+    padding: 2,
+    hoverCursor: node.locked ? 'not-allowed' : 'move',
+  })
+  object.setCoords()
+  return object
+}
+
+function applyBrokenImageNodeToObject(object: FabricObject, node: ImageNode) {
+  object.set({
+    left: node.x,
+    top: node.y,
+    angle: node.rotation,
+    opacity: node.opacity,
+    visible: node.visible,
+    selectable: node.visible,
+    evented: node.visible,
+    lockMovementX: node.locked,
+    lockMovementY: node.locked,
+    hoverCursor: node.locked ? 'not-allowed' : 'move',
+  })
+  object.setCoords()
+}
+
 const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(function FreeCanvasStage({
   scene,
   assets,
@@ -271,6 +348,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const objectNodeIdsRef = useRef(new WeakMap<FabricObject, NodeId>())
   const nodesByIdRef = useRef(new Map<NodeId, EditorNode>())
   const generationStatusesRef = useRef(new Map<NodeId, TaskStatus | undefined>())
+  const brokenImageNodesRef = useRef(new Set<NodeId>())
   const pendingMediaRef = useRef(new Map<NodeId, PendingMedia>())
   const objectAssetUrlsRef = useRef(new Map<NodeId, string>())
   const videoElementsRef = useRef(new Map<NodeId, HTMLVideoElement>())
@@ -685,6 +763,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       canvas.remove(object)
       nodeObjectsRef.current.delete(nodeId)
       generationStatusesRef.current.delete(nodeId)
+      brokenImageNodesRef.current.delete(nodeId)
       objectAssetUrlsRef.current.delete(nodeId)
       const video = videoElementsRef.current.get(nodeId)
       if (video) releaseVideo(video)
@@ -726,8 +805,102 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         return
       }
 
+      if (node.type === 'image') {
+        const asset = assets[node.assetId] as (Asset & { loadError?: string }) | undefined
+        const isBroken = !asset
+          || asset.type !== 'image'
+          || Boolean(asset.loadError)
+          || (Boolean(asset.url) && reportedLoadErrorsRef.current.has(asset.url))
+          || (asset.missing && !asset.objectKey && !asset.storage?.objectKey && !hasDisplayableUrl(asset.url))
+
+        if (isBroken) {
+          const wasBroken = brokenImageNodesRef.current.has(node.id)
+          if (existing && wasBroken) {
+            applyBrokenImageNodeToObject(existing, node)
+            return
+          }
+          if (existing) {
+            canvas.remove(existing)
+            nodeObjectsRef.current.delete(node.id)
+            objectAssetUrlsRef.current.delete(node.id)
+            brokenImageNodesRef.current.delete(node.id)
+          }
+          pendingMediaRef.current.get(node.id)?.controller.abort()
+          pendingMediaRef.current.delete(node.id)
+
+          const placeholder = createBrokenImageObject(node)
+          brokenImageNodesRef.current.add(node.id)
+          nodeObjectsRef.current.set(node.id, placeholder)
+          objectNodeIdsRef.current.set(placeholder, node.id)
+          canvas.add(placeholder)
+          if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(placeholder)
+          return
+        }
+
+        if (brokenImageNodesRef.current.has(node.id)) {
+          if (existing) canvas.remove(existing)
+          nodeObjectsRef.current.delete(node.id)
+          brokenImageNodesRef.current.delete(node.id)
+        }
+
+        if (asset.missing) {
+          if (existing) {
+            canvas.remove(existing)
+            nodeObjectsRef.current.delete(node.id)
+            objectAssetUrlsRef.current.delete(node.id)
+          }
+          pendingMediaRef.current.get(node.id)?.controller.abort()
+          pendingMediaRef.current.delete(node.id)
+          return
+        }
+
+        if (existing instanceof FabricImage && objectAssetUrlsRef.current.get(node.id) === asset.url) {
+          applyNodeToObject(existing, node)
+          return
+        }
+        if (existing) {
+          canvas.remove(existing)
+          nodeObjectsRef.current.delete(node.id)
+          objectAssetUrlsRef.current.delete(node.id)
+        }
+
+        if (reportedLoadErrorsRef.current.has(asset.url)) return
+        const pending = pendingMediaRef.current.get(node.id)
+        if (pending?.assetUrl === asset.url) return
+        pending?.controller.abort()
+
+        const controller = new AbortController()
+        pendingMediaRef.current.set(node.id, { assetUrl: asset.url, controller })
+        FabricImage.fromURL(asset.url, { crossOrigin: 'anonymous', signal: controller.signal })
+          .then((image) => {
+            if (controller.signal.aborted || pendingMediaRef.current.get(node.id)?.controller !== controller || !canvasRef.current || !wantedNodeIdsRef.current.has(node.id)) {
+              return
+            }
+            pendingMediaRef.current.delete(node.id)
+            const latestNode = nodesByIdRef.current.get(node.id)
+            if (latestNode?.type !== 'image') return
+            applyNodeToObject(image, latestNode)
+            nodeObjectsRef.current.set(node.id, image)
+            objectAssetUrlsRef.current.set(node.id, asset.url)
+            objectNodeIdsRef.current.set(image, node.id)
+            canvas.add(image)
+            reorderObjects()
+            if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(image)
+            canvas.requestRenderAll()
+          })
+          .catch((error: unknown) => {
+            if (pendingMediaRef.current.get(node.id)?.controller === controller) pendingMediaRef.current.delete(node.id)
+            if (controller.signal.aborted || reportedLoadErrorsRef.current.has(asset.url)) return
+            reportedLoadErrorsRef.current.add(asset.url)
+            setMediaLoadVersion((version) => version + 1)
+            const detail = error instanceof Error ? error.message : '未知错误'
+            callbacksRef.current.onAssetLoadError(`图片“${asset.name}”加载失败：${detail}`)
+          })
+        return
+      }
+
       const asset = assets[node.assetId]
-      if (!asset || asset.missing || (node.type === 'image' && asset.type !== 'image') || (node.type === 'video' && asset.type !== 'video')) {
+      if (!asset || asset.missing || node.type !== 'video' || asset.type !== 'video') {
         if (existing) canvas.remove(existing)
         nodeObjectsRef.current.delete(node.id)
         objectAssetUrlsRef.current.delete(node.id)
@@ -759,32 +932,29 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
 
       const controller = new AbortController()
       pendingMediaRef.current.set(node.id, { assetUrl: asset.url, controller })
-      const mediaPromise = asset.type === 'video'
-        ? loadVideo(asset.url, controller.signal).then((video) => ({ object: new FabricImage(video), video }))
-        : FabricImage.fromURL(asset.url, { crossOrigin: 'anonymous', signal: controller.signal })
-          .then((image) => ({ object: image, video: undefined }))
-      void mediaPromise
-        .then(({ object, video }) => {
+      loadVideo(asset.url, controller.signal)
+        .then((video) => {
           if (controller.signal.aborted || pendingMediaRef.current.get(node.id)?.controller !== controller || !canvasRef.current || !wantedNodeIdsRef.current.has(node.id)) {
-            if (video) releaseVideo(video)
+            releaseVideo(video)
             return
           }
           pendingMediaRef.current.delete(node.id)
           const latestNode = nodesByIdRef.current.get(node.id)
-          if (latestNode?.type !== 'image' && latestNode?.type !== 'video') {
-            if (video) releaseVideo(video)
+          if (latestNode?.type !== 'video') {
+            releaseVideo(video)
             return
           }
+          const object = new FabricImage(video)
           applyNodeToObject(object, latestNode)
           nodeObjectsRef.current.set(node.id, object)
           objectAssetUrlsRef.current.set(node.id, asset.url)
-          if (video) videoElementsRef.current.set(node.id, video)
+          videoElementsRef.current.set(node.id, video)
           objectNodeIdsRef.current.set(object, node.id)
           canvas.add(object)
           reorderObjects()
           if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(object)
           canvas.requestRenderAll()
-          if (video) setVideoUiVersion((version) => version + 1)
+          setVideoUiVersion((version) => version + 1)
         })
         .catch((error: unknown) => {
           if (pendingMediaRef.current.get(node.id)?.controller === controller) pendingMediaRef.current.delete(node.id)
@@ -792,8 +962,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           reportedLoadErrorsRef.current.add(asset.url)
           setMediaLoadVersion((version) => version + 1)
           const detail = error instanceof Error ? error.message : '未知错误'
-          const mediaLabel = asset.type === 'video' ? '视频' : '图片'
-          callbacksRef.current.onAssetLoadError(`${mediaLabel}“${asset.name}”加载失败：${detail}`)
+          callbacksRef.current.onAssetLoadError(`视频“${asset.name}”加载失败：${detail}`)
         })
     })
 
@@ -837,7 +1006,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const selectedVideo = selectedNode?.type === 'video'
     ? videoElementsRef.current.get(selectedNode.id)
     : undefined
-  const selectedImage = selectedNode?.type === 'image' ? selectedNode : undefined
+  const selectedImage = selectedNode?.type === 'image' && !brokenImageNodesRef.current.has(selectedNode.id) ? selectedNode : undefined
   const nodeActionPosition = selectedImage ? (() => {
     const bounds = calculateNodeBounds(selectedImage)
     const centerX = (bounds.left + bounds.right) / 2 * viewport.zoom + viewport.panX

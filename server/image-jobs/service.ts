@@ -732,6 +732,7 @@ function submissionReceiptMessage(code: ProviderError['code']) {
     TIMEOUT: '图片提交超时',
     UPSTREAM_UNAVAILABLE: '图片服务连接失败',
     BAD_RESPONSE: '图片服务没有返回有效响应',
+    BAD_RESULT: '结果图片损坏或无法解码',
     UNKNOWN: '图片提交状态待确认',
   }
   return messages[code]
@@ -1057,9 +1058,15 @@ function recordPollError(
   error: unknown,
   overdue: boolean,
 ) {
-  const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN', '查询图片任务失败')
+  const failure = error instanceof ProviderError
+    ? error
+    : error instanceof HttpError && error.code === 'BAD_RESULT'
+      ? new ProviderError('BAD_RESULT', error.message, false, error.status)
+      : error instanceof HttpError
+        ? new ProviderError('UNKNOWN', error.message, false, error.status)
+        : new ProviderError('UNKNOWN', '查询图片任务失败')
   runtime.log({ stage: 'advance-item', jobId: job.id, ordinal: item.ordinal, code: failure.code, message: failure.message })
-  if (!failure.retryable && overdue) {
+  if (failure.code === 'BAD_RESULT' || (!failure.retryable && overdue)) {
     outcomes.push({
       ordinal: item.ordinal,
       patch: { status: 'failed', error_code: failure.code, error_message: failure.message },

@@ -215,9 +215,43 @@ export default function FreeCanvas() {
         generation.dismissTask()
       }
     }
+    const currentDraft = usePersistenceStore.getState().drafts.derived
+    if (currentDraft && (currentDraft.sourceNode.id === nodeId || (targetNode.type === 'image' && currentDraft.sourceAssetId === targetNode.assetId))) {
+      usePersistenceStore.getState().setDrafts({ ...usePersistenceStore.getState().drafts, derived: undefined })
+    }
     state.executeCommand(new RemoveNodeCommand(state.activeSceneId, nodeId))
     void flushProject().catch(() => undefined)
   }, [generation])
+
+  const handleRemoveBrokenImages = useCallback(() => {
+    const state = useEditorStore.getState()
+    if (!state.activeSceneId) return
+    const currentScene = state.project?.document.scenes.find((item) => item.id === state.activeSceneId)
+    if (!currentScene) return
+
+    const brokenAssetIdSet = new Set(images.brokenAssetIds)
+    const brokenNodes = currentScene.nodes.filter(node =>
+      node.type === 'image' && (
+        brokenAssetIdSet.has(node.assetId) ||
+        images.assets[node.assetId]?.loadError ||
+        images.assets[node.assetId]?.missing
+      )
+    )
+
+    if (brokenNodes.length === 0) return
+
+    for (const node of brokenNodes) {
+      state.executeCommand(new RemoveNodeCommand(state.activeSceneId, node.id))
+    }
+
+    const currentDraft = usePersistenceStore.getState().drafts.derived
+    if (currentDraft && (brokenNodes.some(n => n.id === currentDraft.sourceNode.id) || brokenAssetIdSet.has(currentDraft.sourceAssetId))) {
+      usePersistenceStore.getState().setDrafts({ ...usePersistenceStore.getState().drafts, derived: undefined })
+    }
+
+    void flushProject().catch(() => undefined)
+    message.success(`已从画布移除 ${brokenNodes.length} 张损坏图片`)
+  }, [images.brokenAssetIds, images.assets, message])
 
   const handleGenerate = () => {
     if (activeSlug === 'text-to-video' && (!videoConfiguration.ready || cloudProject)) {
@@ -365,7 +399,10 @@ export default function FreeCanvas() {
         const file = event.target.files?.[0]; event.target.value = ''
         if (file) void importPicture(file)
       }} />
-      {images.error && <Alert type="warning" showIcon message="画布图片读取失败" description={images.error} action={<Button onClick={images.reload}>重试读取图片</Button>} />}
+      {images.error && <Alert type="warning" showIcon message="画布图片读取失败" description={images.error} action={<Space>
+        <Button size="small" onClick={images.reload}>重试读取图片</Button>
+        <Button size="small" danger onClick={handleRemoveBrokenImages}>移除损坏图片</Button>
+      </Space>} />}
       {videos.error && <Alert type="warning" showIcon message="画布视频读取失败" description={videos.error} action={<Button onClick={videos.reload}>重试读取视频</Button>} />}
       {cloudProject && ((activeSlug === 'text-to-video' && videoConfiguration.ready) || (derivedContext?.mode === 'image-to-video' && videoConfiguration.imageReady)) && <Alert type="info" showIcon message="视频画布暂时仅支持本地保存"
         description="另存为本地副本后即可生成视频，原云端项目继续保留。" action={<Button disabled={generation.formLocked} onClick={() => { void copyProjectLocally().catch(error => message.error(error instanceof Error ? error.message : '另存失败')) }}>另存为本地副本</Button>} />}

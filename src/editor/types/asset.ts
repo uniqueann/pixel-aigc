@@ -8,6 +8,7 @@ interface BaseAsset {
   storage?: { provider: 'r2'; objectKey: string; projectId: string }
   accessExpiresAt?: number
   missing?: boolean
+  loadError?: string
   mimeType: string
   createdAt: string
   source: 'upload' | 'generation' | 'derived'
