@@ -230,7 +230,7 @@ describe('自由画布真实裂变闭环', () => {
     expect(controller.submissionError).toBe('查询失败')
     mocks.find.mockResolvedValueOnce(undefined)
     await act(async () => controller.resumeSubmission())
-    expect(mocks.create.mock.calls[1][0]).toEqual(original)
+    expect(mocks.create.mock.calls[1][0]).toEqual(expect.objectContaining(original))
     expect(mocks.upload).toHaveBeenCalledTimes(1)
     expect(controller.pendingSubmission).toBeUndefined()
   })

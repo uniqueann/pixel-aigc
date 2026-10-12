@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { QueryClient,QueryClientProvider } from '@tanstack/react-query'
 
 import { App } from 'antd'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -31,10 +32,10 @@ vi.mock('@/editor/persistence/projectPersistence', () => ({
 
 function renderHeader() {
   return render(
-    <App>
+    <QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}})}><App>
       <CanvasProjectCrumb />
       <CanvasProjectMenu />
-    </App>,
+    </App></QueryClientProvider>,
   )
 }
 
@@ -151,7 +152,7 @@ describe('自由画布顶栏项目操作', () => {
 
   it('只有自由画布顶栏出现项目名和项目操作', () => {
     const { unmount } = render(
-      <App>
+      <QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}})}><App>
         <MemoryRouter initialEntries={['/canvas/text-to-image']}>
           <Routes>
             <Route path="/" element={<MainLayout />}>
@@ -160,7 +161,7 @@ describe('自由画布顶栏项目操作', () => {
             </Route>
           </Routes>
         </MemoryRouter>
-      </App>,
+      </App></QueryClientProvider>,
     )
     expect(screen.getByRole('button', { name: '项目操作' })).toBeTruthy()
     expect(screen.getByRole('navigation', { name: '面包屑' }).textContent).toContain('自由画布')
@@ -168,7 +169,7 @@ describe('自由画布顶栏项目操作', () => {
     unmount()
 
     render(
-      <App>
+      <QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}})}><App>
         <MemoryRouter initialEntries={['/toolbox/bg-remove']}>
           <Routes>
             <Route path="/" element={<MainLayout />}>
@@ -177,7 +178,7 @@ describe('自由画布顶栏项目操作', () => {
             </Route>
           </Routes>
         </MemoryRouter>
-      </App>,
+      </App></QueryClientProvider>,
     )
     expect(screen.queryByRole('button', { name: '项目操作' })).toBeNull()
     expect(screen.queryByRole('button', { name: /编辑项目名称/ })).toBeNull()
