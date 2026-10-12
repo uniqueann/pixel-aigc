@@ -116,4 +116,110 @@ describe('任务中心路由边界', () => {
     )
     expect(calls.read).toHaveBeenCalledTimes(2)
   })
+  it('改写注入的平台参数不影响各任务路由，未知参数仍拒绝并只记录键名', async () => {
+    const version = 'v1:' + 'a'.repeat(32)
+    await handleTaskCenterRoute(
+      user,
+      'GET',
+      ['task-center'],
+      null,
+      new URLSearchParams('__route=task-center&path=task-center&view=sidebar'),
+    )
+    expect(calls.sidebar).toHaveBeenCalledOnce()
+    await handleTaskCenterRoute(
+      user,
+      'GET',
+      ['task-center'],
+      null,
+      new URLSearchParams(
+        '__route=task-center&path=task-center&view=history&state=all&tool=variation',
+      ),
+    )
+    expect(calls.history).toHaveBeenCalledWith({
+      tool: 'variation',
+      state: 'all',
+      limit: undefined,
+      cursor: undefined,
+    })
+    calls.get.mockResolvedValue({
+      source_kind: 'image_job',
+      source_id: id,
+      request_id: id,
+      capability: 'variation',
+      state: 'queued',
+      completed_count: 0,
+      requested_count: 1,
+      billing_state: 'none',
+      credits_reserved: 0,
+      warnings: [],
+      created_at: '2026-10-12T00:00:00.000Z',
+      updated_at: '2026-10-12T00:00:00.000Z',
+    })
+    await expect(
+      handleTaskCenterRoute(
+        user,
+        'GET',
+        ['task-center', 'by-request', 'image_job', id],
+        null,
+        new URLSearchParams([
+          ['__route', `task-center/by-request/image_job/${id}`],
+          ['path', 'task-center'],
+          ['path', 'by-request'],
+          ['path', 'image_job'],
+          ['path', id],
+        ]),
+      ),
+    ).resolves.toEqual(expect.objectContaining({ sourceKind: 'image_job', sourceId: id }))
+    expect(calls.get).toHaveBeenCalledWith('image_job', id, true)
+    await handleTaskCenterRoute(
+      user,
+      'GET',
+      ['task-center', 'image_job', id],
+      null,
+      new URLSearchParams(
+        `__route=task-center/image_job/${id}&path=task-center/image_job/${id}`,
+      ),
+    )
+    expect(calls.detail).toHaveBeenCalledWith(user, 'image_job', id)
+    await handleTaskCenterRoute(
+      user,
+      'PATCH',
+      ['task-center', 'image_job', id, 'presentation'],
+      { action: 'seen', outcomeVersion: version },
+      new URLSearchParams([
+        ['__route', `task-center/image_job/${id}/presentation`],
+        ['path', 'task-center'],
+        ['path', 'image_job'],
+        ['path', id],
+        ['path', 'presentation'],
+      ]),
+    )
+    expect(calls.presentation).toHaveBeenCalledWith(user, 'image_job', id, 'seen', version)
+    await expect(
+      handleTaskCenterRoute(
+        user,
+        'GET',
+        ['task-center'],
+        null,
+        new URLSearchParams('__route=task-center&path=task-center&scope=production&view=sidebar'),
+      ),
+    ).rejects.toMatchObject({ status: 400, message: '任务环境由服务端确定' })
+    await expect(
+      handleTaskCenterRoute(
+        user,
+        'GET',
+        ['task-center', 'image_job', id],
+        null,
+        new URLSearchParams(
+          `__route=task-center/image_job/${id}&path=task-center&debug=secret-value&extra=1`,
+        ),
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'INVALID_REQUEST',
+      message: '任务查询参数无效',
+      log: { keys: ['debug', 'extra'] },
+    })
+    expect(calls.detail).toHaveBeenCalledTimes(1)
+  })
 })
