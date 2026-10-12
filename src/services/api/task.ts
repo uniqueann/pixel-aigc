@@ -1,10 +1,13 @@
 import { authEnabled, cloudEnabled, cloudRequest } from '@/cloud/client'
 import { useUserStore, type AccountContext } from '@/store/useUserStore'
 import { apiClient } from './client'
+import type { TaskOrigin } from '@shared/task-center'
+import { defaultTaskOrigin,saveReceipt,submittedReceipt,emitTaskCenter } from '@/features/task-center/receipts'
 import { Capability, type GenerationTask } from '@/types'
 import { cancelMockTask, createMockTask, getMockTask, listMockTasks } from './mockTaskGateway'
 
 export interface CreateTaskPayload<TParams = Record<string, unknown>> {
+  origin?: TaskOrigin
   capability: Capability
   params: TParams
   /** 幂等键，前端生成，防止网络重试导致重复扣积分 */
@@ -52,16 +55,20 @@ export function createTask<TParams>(payload: CreateTaskPayload<TParams>, options
   if (!canCreateLiveTask(payload.capability))
     return Promise.reject(new Error('该生成能力尚未接入真实服务'))
   if (useMockGateway) return createMockTask(payload)
-  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', payload, { timeout: payload.capability === Capability.EmailAssist ? 85000 : 55000, ...options })
+  const origin=payload.origin??defaultTaskOrigin(payload.capability,payload.params)
+  const receipt=saveReceipt(payload.capability===Capability.EmailAssist?'email_task':'image_job',payload.requestId,origin,origin?.entry!=='canvas')
+  const owner=useUserStore.getState().userId
+  return apiClient.post<unknown, GenerationTask<TParams>>('/tasks', {...payload,...(origin?{origin}:{})}, { timeout: payload.capability === Capability.EmailAssist ? 85000 : 55000, ...options })
     .then(task => {
+      if(useUserStore.getState().userId===owner){submittedReceipt(receipt,task.id);emitTaskCenter({type:'refresh'})}
       if (BILLED_TASK_CAPABILITIES.has(payload.capability)) void refreshCredits().catch(() => undefined)
       return task
     })
 }
 
-export function getTask(taskId: string) {
+export function getTask(taskId: string, options?: { signal?: AbortSignal }) {
   if (useMockGateway) return getMockTask(taskId)
-  return apiClient.get<unknown, GenerationTask<unknown>>(`/tasks/${taskId}`).then(task => {
+  return apiClient.get<unknown, GenerationTask<unknown>>(`/tasks/${taskId}`,options).then(task => {
     if (BILLED_TASK_CAPABILITIES.has(task.capability) &&
       (task.status === 'succeeded' || task.status === 'failed' || task.status === 'cancelled'))
       void refreshCredits().catch(() => undefined)
