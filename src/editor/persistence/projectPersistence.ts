@@ -391,10 +391,20 @@ function applySnapshot(snapshot: ProjectSnapshot) {
   suppressChanges = false
 }
 
+const TERMINAL_GENERATION_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired'])
+
 export function hasUnfinishedGeneration() {
   const { project } = useEditorStore.getState()
-  const unresolved = Object.values(usePersistenceStore.getState().recoveries).some((record) => !record.abandoned && !record.applied && !record.backendTaskId)
-  return unresolved || Object.values(project?.generations ?? {}).some((job) => ['pending', 'queued', 'processing'].includes(job.status) && !recoveryForTask(job.backendTaskId ?? '')?.abandoned)
+  const generations = Object.values(project?.generations ?? {})
+  const terminalTaskIds = new Set(generations.flatMap((job) => (
+    job.backendTaskId && TERMINAL_GENERATION_STATUSES.has(job.status) ? [job.backendTaskId] : []
+  )))
+  const unresolved = Object.values(usePersistenceStore.getState().recoveries).some((record) => {
+    if (record.abandoned || record.applied) return false
+    if (record.backendTaskId && terminalTaskIds.has(record.backendTaskId)) return false
+    return !record.backendTaskId
+  })
+  return unresolved || generations.some((job) => ['pending', 'queued', 'processing'].includes(job.status) && !recoveryForTask(job.backendTaskId ?? '')?.abandoned)
 }
 
 export async function replaceSnapshot(snapshot: ProjectSnapshot, options?: { signal?: AbortSignal; expectedScope?: string }) {

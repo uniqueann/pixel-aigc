@@ -16,6 +16,7 @@ import {
 import { QWEN_QUOTA_EXHAUSTED_MESSAGE, QWEN_QUEUE_FULL_MESSAGE, QWEN_THROTTLE_REFUND_MESSAGE } from '../image-providers/qwen-image/errors.js'
 import { createMemoryStore } from './memory-store.js'
 import {
+  advanceImageClaim,
   advanceJobInStore,
   createImageJobInStore,
   createImageTaskSchema,
@@ -125,6 +126,35 @@ describe('图片任务按模型供应商分发', () => {
       expect(JSON.parse(String(call[1]?.body)).n).toBe(1)
       expect(String(call[0])).toContain('/images/generations')
     }
+  })
+
+  it('DragonCode 提交 502 没有任务号时有限重试后失败退款，带任务号则受理', async () => {
+    process.env.DRAGONCODE_API_KEY = 'sk-dragon'
+    delete process.env.DASHSCOPE_API_KEY
+    delete process.env.QWEN_IMAGE_ENABLED
+    const rejected = vi.fn(async () => jsonResponse({ message: 'bad gateway' }, 502))
+    const rt = runtime(rejected)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000321', 1), rt)
+    const failed = await advanceImageClaim(created.bundle, rt, true)
+    expect(rejected).toHaveBeenCalledTimes(3)
+    expect(failed.job).toMatchObject({
+      status: 'failed', billing_state: 'released', credits_charged: 0, error_code: 'UPSTREAM_UNAVAILABLE',
+    })
+    expect(failed.items[0].provider_task_id).toBeNull()
+    expect(rt.billing.release).toHaveBeenCalledTimes(1)
+    expect(rt.billing.settle).not.toHaveBeenCalled()
+    expect(rt.billing.reserve).toHaveBeenCalledTimes(1)
+
+    const accepted = vi.fn(async () => jsonResponse({ code: 502, data: [{ task_id: 'dc-task-from-502' }] }, 502))
+    const acceptedRt = runtime(accepted)
+    const acceptedStore = createMemoryStore(user.id)
+    const acceptedJob = await createImageJobInStore(acceptedStore, user, text('00000000-0000-4000-8000-000000000322', 1), acceptedRt)
+    const submitted = await advanceImageClaim(acceptedJob.bundle, acceptedRt, true)
+    expect(accepted).toHaveBeenCalledTimes(1)
+    expect(submitted.items[0]).toMatchObject({ provider_task_id: 'dc-task-from-502', submission_state: 'accepted' })
+    expect(acceptedRt.billing.release).not.toHaveBeenCalled()
+    expect(acceptedRt.billing.reserve).toHaveBeenCalledTimes(1)
   })
 
   it('千问一次请求 n 张，少返回的张数失败并只结算成功张数', async () => {

@@ -149,7 +149,7 @@ describe('OpenRouter Nano Banana 任务', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
-  it('5xx 待确认且不重提，原截止后退款', async () => {
+  it('502 有限重试后失败退款，504 仍待确认且不重提', async () => {
     process.env.OPENROUTER_API_KEY = 'sk-test-openrouter'
     process.env.OPENROUTER_IMAGE_ENABLED = 'true'
     const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({ error: { message: 'upstream down' } }, 502))
@@ -159,11 +159,25 @@ describe('OpenRouter Nano Banana 任务', () => {
     expect(created.bundle.job.credits_reserved).toBe(28)
     const outcomes = await (await import('./service.js')).runProviderSubmits(created.bundle, provider, user.id, rt)
     const finished = await finishSubmittedImageJob(store, created.bundle, outcomes, rt, provider)
-    expect(finished.job).toMatchObject({ status: 'queued', billing_state: 'reserved', credits_charged: 0 })
-    expect(finished.items.every(item => item.submission_state === 'unknown')).toBe(true)
-    expect(billing.release).not.toHaveBeenCalled()
+    expect(finished.job).toMatchObject({
+      status: 'failed', billing_state: 'released', credits_charged: 0, error_code: 'UPSTREAM_UNAVAILABLE',
+    })
+    expect(finished.items.every(item => item.status === 'failed' && !item.provider_task_id)).toBe(true)
+    expect(billing.release).toHaveBeenCalledTimes(1)
+    expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
     expect(billing.settle).not.toHaveBeenCalled()
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(fetchImpl).toHaveBeenCalledTimes(6)
+
+    const timeoutFetch = vi.fn().mockImplementation(async () => jsonResponse({ error: { message: 'gateway timeout' } }, 504))
+    const timeoutRuntime = runtime(timeoutFetch)
+    const timeoutStore = createMemoryStore(user.id)
+    const timeoutJob = await createImageJobInStore(timeoutStore, user, text('00000000-0000-4000-8000-000000000916', 1, '1k'), timeoutRuntime.rt)
+    const timeoutOutcomes = await (await import('./service.js')).runProviderSubmits(timeoutJob.bundle, timeoutRuntime.provider, user.id, timeoutRuntime.rt)
+    const timeoutFinished = await finishSubmittedImageJob(timeoutStore, timeoutJob.bundle, timeoutOutcomes, timeoutRuntime.rt, timeoutRuntime.provider)
+    expect(timeoutFinished.job).toMatchObject({ status: 'queued', billing_state: 'reserved', credits_charged: 0 })
+    expect(timeoutFinished.items[0].submission_state).toBe('unknown')
+    expect(timeoutRuntime.billing.release).not.toHaveBeenCalled()
+    expect(timeoutFetch).toHaveBeenCalledTimes(1)
   })
 
   it('余额不足失败并退还预扣', async () => {

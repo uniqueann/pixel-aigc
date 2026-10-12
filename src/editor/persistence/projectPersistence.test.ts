@@ -9,7 +9,7 @@ import { Capability } from '@/types'
 import * as database from './database'
 import { defaultDrafts, type ProjectSnapshot } from './types'
 import { usePersistenceStore } from './persistenceStore'
-import { acquireEditLock, copyProjectLocally, currentSnapshot, flushProject, initializePersistence, newProject, replaceSnapshot, updateRuntimeAssetAccess } from './projectPersistence'
+import { acquireEditLock, copyProjectLocally, currentSnapshot, flushProject, hasUnfinishedGeneration, initializePersistence, newProject, replaceSnapshot, updateRuntimeAssetAccess } from './projectPersistence'
 
 Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: (_name: string, _options: unknown, callback: (lock: object) => Promise<void>) => callback({}) } })
 
@@ -147,6 +147,83 @@ describe('IndexedDB 项目保存与恢复', () => {
     expect(useEditorStore.getState().project?.document.scenes[0].nodes.map(item => item.id)).toEqual(['n1', 'n2'])
     expect(useEditorStore.getState().project?.assets['keep-a'].url).toBe(payload)
     expect(useEditorStore.getState().project?.assets['keep-b'].url).toBe(payload)
+  })
+
+  it('失败或超时的任务不让未完成检查卡住，进行中的任务和未确认提交仍然卡住', () => {
+    const project = useEditorStore.getState().project!
+    const sceneId = project.document.activeSceneId
+    useEditorStore.getState().registerGeneration({
+      id: 'generation:failed-task',
+      capability: Capability.TextToImage,
+      status: 'failed',
+      input: { prompt: '超时', count: 1, size: { width: 1024, height: 1024 } },
+      inputAssetIds: [],
+      outputAssetIds: [],
+      backendTaskId: 'failed-task',
+      error: '任务处理超时，请重试',
+      createdAt: '2026-10-12T00:00:00.000Z',
+      updatedAt: '2026-10-12T00:01:00.000Z',
+    })
+    usePersistenceStore.getState().setRecovery({
+      projectId: project.id,
+      sceneId,
+      request: {
+        capability: Capability.TextToImage,
+        requestId: 'req-failed',
+        modelProfileId: 'dragoncode:gpt-image-2',
+        params: { prompt: '超时', count: 1, size: { width: 1024, height: 1024 }, resolution: '2k' },
+      },
+      context: { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
+      placements: [],
+      replacedPlaceholderIds: [],
+      backendTaskId: 'failed-task',
+      applied: false,
+    })
+    expect(hasUnfinishedGeneration()).toBe(false)
+
+    usePersistenceStore.getState().setRecovery({
+      projectId: project.id,
+      sceneId,
+      request: {
+        capability: Capability.TextToImage,
+        requestId: 'req-unknown',
+        modelProfileId: 'dragoncode:gpt-image-2',
+        params: { prompt: '未确认', count: 1, size: { width: 1024, height: 1024 }, resolution: '2k' },
+      },
+      context: { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
+      placements: [],
+      replacedPlaceholderIds: [],
+      applied: false,
+    })
+    expect(hasUnfinishedGeneration()).toBe(true)
+
+    usePersistenceStore.getState().setRecovery({
+      projectId: project.id,
+      sceneId,
+      request: {
+        capability: Capability.TextToImage,
+        requestId: 'req-unknown',
+        modelProfileId: 'dragoncode:gpt-image-2',
+        params: { prompt: '未确认', count: 1, size: { width: 1024, height: 1024 }, resolution: '2k' },
+      },
+      context: { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
+      placements: [],
+      replacedPlaceholderIds: [],
+      applied: false,
+      abandoned: true,
+    })
+    useEditorStore.getState().registerGeneration({
+      id: 'generation:live',
+      capability: Capability.TextToImage,
+      status: 'processing',
+      input: { prompt: '进行中', count: 1, size: { width: 1024, height: 1024 } },
+      inputAssetIds: [],
+      outputAssetIds: [],
+      backendTaskId: 'live-task',
+      createdAt: '2026-10-12T00:02:00.000Z',
+      updatedAt: '2026-10-12T00:02:00.000Z',
+    })
+    expect(hasUnfinishedGeneration()).toBe(true)
   })
 
   it('损坏本地数据进入恢复页，不静默创建或覆盖项目', async () => {

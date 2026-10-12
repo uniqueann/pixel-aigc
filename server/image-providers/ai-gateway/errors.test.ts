@@ -49,6 +49,17 @@ describe('AI Gateway 错误映射', () => {
     })
   })
 
+  it('502/503 没有任务号视为未受理，504 与 500 保持不确定', () => {
+    expect(classifyAiGatewayFailure(502, { error: { message: 'bad gateway' } })).toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', status: 502, definiteNotAccepted: true, retryable: true,
+    })
+    expect(classifyAiGatewayFailure(503, null)).toMatchObject({ status: 503, definiteNotAccepted: true })
+    expect(classifyAiGatewayFailure(504, { error: { message: 'gateway timeout' } })).toMatchObject({
+      code: 'TIMEOUT', status: 504, definiteNotAccepted: undefined,
+    })
+    expect(classifyAiGatewayFailure(500, { error: { message: 'origin' } }).definiteNotAccepted).toBeUndefined()
+  })
+
   it('日志去掉密钥和令牌', () => {
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signaturevalue'
     const message = `denied Bearer ${jwt} sk-supersecretkey`

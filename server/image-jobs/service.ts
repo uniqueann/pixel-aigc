@@ -53,7 +53,7 @@ import {
   SOURCE_PRESIGN_TTL_SECONDS,
 } from '../image-providers/dragoncode/config.js'
 import { describeReferenceUrl } from '../image-providers/dragoncode/images.js'
-import { sleep as defaultSleep } from '../image-providers/http.js'
+import { retryBackoffMs, sleep as defaultSleep } from '../image-providers/http.js'
 import { cropToSourceAspect } from './aspect-crop.js'
 import { createSqlBilling, noopBilling, type BillingPort } from './billing.js'
 import { reserveAndCreateJob } from './lifecycle.js'
@@ -92,6 +92,11 @@ export const IMAGE_GLOBAL_CONCURRENCY = 20
 const RESULT_DOWNLOAD_PARALLEL = 4
 const VENDOR_COST_SCALE = 1_000_000
 export const IMAGE_LEASE_MS = 120_000
+/** 明确的 502/503 且响应没有任务号：同一次提交里最多再 POST 这么多次。生产未开后台补提交。 */
+export const GATEWAY_REJECTION_RETRIES = 2
+/** 无任务号、缓存也恢复不了时，不必再等满生成截止。短于各供应商默认同步超时，且发生在租约释放之后。 */
+export const UNKNOWN_SUBMISSION_GRACE_MS = 75_000
+const GATEWAY_REJECTED_MESSAGE = '图片服务暂时不可用，请稍后重试（积分已退回）'
 /** 与 GPT-Image-2 现有默认值一致。供应商未提供 jobPolicy 时使用。 */
 export const DEFAULT_IMAGE_JOB_POLICY: ImageJobPolicy = {
   taskTimeoutMs: 300_000,
@@ -753,9 +758,36 @@ function submitFailurePatch(item: ImageJobItemRow, error: unknown): ItemPatch {
   }
   if (definite) return { status: 'failed',submission_state: 'not_sent',attempts: item.attempts + 1,
     error_code: failure.code,error_message: message }
-  // 没有任务编号不等于没有受理；保留预留，等回执、缓存或原截止时间收口。
+  // 没有任务编号不等于没有受理。网络中断和 504 停在 unknown，等回执或宽限，不再补 POST。
   return { status: 'pending',submission_state: 'unknown',attempts: item.attempts + 1,
     error_code: failure.code,error_message: message }
+}
+
+function isDefiniteGatewayRejection(error: ProviderError) {
+  return error.definiteNotAccepted === true && error.retryable
+    && (error.status === 502 || error.status === 503)
+    && error.code === 'UPSTREAM_UNAVAILABLE'
+}
+
+function terminalGatewayRejection(error: ProviderError) {
+  error.retryable = false
+  error.definiteNotAccepted = true
+  error.message = GATEWAY_REJECTED_MESSAGE
+}
+
+/** 无任务号的 unknown 过了宽限仍恢复不出受理证据时，用原错误收口并退预留，不再干等到生成截止。 */
+export function staleUnknownPatch(item: ImageJobItemRow, job: ImageJobRow, now: number): ItemPatch | undefined {
+  if (item.provider_task_id || item.result_object_key) return undefined
+  if (item.submission_state !== 'unknown') return undefined
+  if (!POLLABLE_ITEM_STATUSES.has(item.status)) return undefined
+  const anchor = new Date(job.created_at).getTime()
+  if (!Number.isFinite(anchor) || now - anchor < UNKNOWN_SUBMISSION_GRACE_MS) return undefined
+  const message = item.error_message?.trim() || '图片提交状态未能确认，预留积分已退回'
+  return {
+    status: 'failed',
+    error_code: item.error_code || 'UPSTREAM_UNAVAILABLE',
+    error_message: message.includes('积分已退回') ? message : `${message}（积分已退回）`,
+  }
 }
 
 export async function runProviderSubmits(
@@ -807,9 +839,29 @@ export async function runProviderSubmits(
         error.requestSent = false
         throw error
       }
-      const submitted = await provider.submit({ model: String(bundle.job.provider_params.model ?? ''),prompt,images,
-        providerParams: bundle.job.provider_params,ordinal: group[0].ordinal },providerContext(runtime,bundle.job,attemptId))
-      if (!submitted.providerTaskId) throw new ProviderError('BAD_RESPONSE','图片服务没有返回任务编号')
+      let gatewayRetries = 0
+      let submitted: { providerTaskId: string } | undefined
+      while (!submitted) {
+        try {
+          const result = await provider.submit({ model: String(bundle.job.provider_params.model ?? ''),prompt,images,
+            providerParams: bundle.job.provider_params,ordinal: group[0].ordinal },providerContext(runtime,bundle.job,attemptId))
+          if (!result.providerTaskId) throw new ProviderError('BAD_RESPONSE','图片服务没有返回任务编号')
+          submitted = result
+        } catch (error) {
+          const failure = error instanceof ProviderError ? error : undefined
+          const canRetry = !!failure && isDefiniteGatewayRejection(failure) && gatewayRetries < GATEWAY_REJECTION_RETRIES
+            && !runtime.signal?.aborted
+            && (runtime.budgetUntil === undefined || runtime.budgetUntil - runtime.now() >= minimumBudget)
+          if (!canRetry) {
+            // 重试耗尽或这次请求里没法再等。后台补提交在生产是关的，不能把 502 留到 5 分钟截止。
+            if (failure && isDefiniteGatewayRejection(failure)) terminalGatewayRejection(failure)
+            throw error
+          }
+          gatewayRetries += 1
+          runtime.log({ stage: 'submit-gateway-retry', jobId: bundle.job.id, ordinal: group[0].ordinal, retry: gatewayRetries, status: failure.status })
+          await runtime.sleep(retryBackoffMs(gatewayRetries - 1))
+        }
+      }
       receipt = { provider_task_id: submitted.providerTaskId,outcome: 'accepted',error_code: null,error_message: null,retryable: false }
       patches = group.map(item => ({ ordinal: item.ordinal,patch: { ...submittedPatch(item,submitted.providerTaskId),
         submission_state: 'accepted',submission_attempt_id: attemptId } }))
@@ -1034,6 +1086,11 @@ export async function collectAdvancePatches(
   const grouped = new Map<string, ImageJobItemRow[]>()
   for (const item of items) {
     if (item.result_object_key) continue
+    const stale = staleUnknownPatch(item, job, now)
+    if (stale) {
+      outcomes.push({ ordinal: item.ordinal, patch: stale })
+      continue
+    }
     if (overdue && !item.provider_task_id && POLLABLE_ITEM_STATUSES.has(item.status)) {
       outcomes.push({ ordinal: item.ordinal, patch: { status: 'expired' } })
       continue

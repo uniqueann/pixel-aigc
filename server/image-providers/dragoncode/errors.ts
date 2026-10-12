@@ -161,10 +161,16 @@ export function mapDragonCodeHttpError(status: number, payload: unknown): Provid
   }
   if (status === 429) return new ProviderError('RATE_LIMIT', USER_RATE_LIMIT, true, 429)
   if (status === 408 || status === 504) {
-    return new ProviderError('TIMEOUT', '图片服务请求超时，请稍后重试', true, 504)
+    // 504 只说明网关没等到源站回包。异步提交可能已经建了任务，保持不确定。
+    return new ProviderError('TIMEOUT', '图片服务请求超时，请稍后重试', true, status)
+  }
+  if (status === 502 || status === 503) {
+    const error = new ProviderError('UPSTREAM_UNAVAILABLE', '图片服务暂时不可用，请稍后重试', true, status)
+    error.definiteNotAccepted = true
+    return error
   }
   if (status >= 500) {
-    return new ProviderError('UPSTREAM_UNAVAILABLE', '图片服务暂时不可用，请稍后重试', true, 502)
+    return new ProviderError('UPSTREAM_UNAVAILABLE', '图片服务暂时不可用，请稍后重试', true, status)
   }
   if (status === 404 || type === 'not_found_error') {
     return new ProviderError('BAD_RESPONSE', USER_NOT_FOUND, false, 404)
