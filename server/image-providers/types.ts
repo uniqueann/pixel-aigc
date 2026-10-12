@@ -125,6 +125,8 @@ export class ProviderError extends Error {
   holdPending?: boolean
   /** 适配器确证没有创建上游任务；retryable 本身不表示允许再次 POST。 */
   definiteNotAccepted?: boolean
+  /** 非 2xx 响应体。提交方用它判断网关错误里有没有任务号。 */
+  responseBody?: unknown
   constructor(
     public code: ProviderErrorCode,
     message: string,

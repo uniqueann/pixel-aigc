@@ -4,6 +4,7 @@ import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultDrafts } from '@/editor/persistence/types'
+import { hasUnfinishedGeneration } from '@/editor/persistence/projectPersistence'
 import { recoveryForTask, usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { useEditorStore } from '@/editor/store'
 import { createImageAsset } from '@/editor/services/assetService'
@@ -225,7 +226,10 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
 
     let placeholder = useEditorStore.getState().project?.document.scenes[0].nodes[0]
-    expect(currentController.formLocked).toBe(true)
+    expect(currentController.formLocked).toBe(false)
+    expect(currentController.task?.status).toBe('failed')
+    expect(currentController.pendingSubmission).toBeUndefined()
+    expect(hasUnfinishedGeneration()).toBe(false)
     expect(placeholder?.type).toBe('generation')
     await act(async () => useEditorStore.getState().updateNode(sceneId, placeholder!.id, { x: 123, y: 456 }))
 
@@ -250,6 +254,60 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     await act(async () => currentController.modifyParameters())
     expect(useEditorStore.getState().project?.document.scenes[0].nodes).toHaveLength(0)
     expect(currentController.formLocked).toBe(false)
+  })
+
+  it('失败后表单可再次生成，同一请求的未确认恢复不再卡住', async () => {
+    const params: TextToImageTaskParams = {
+      prompt: '失败后继续',
+      size: { width: 1024, height: 1024 },
+      count: 1,
+    }
+    const request = buildTextToImageRequest('失败后继续', IMAGE_SIZE_PRESETS[0], 1)
+    const processingTask: GenerationTask<TextToImageTaskParams> = {
+      id: 'task-timeout',
+      requestId: request.requestId,
+      capability: Capability.TextToImage,
+      status: 'processing',
+      params,
+      errorCode: 'TASK_TIMEOUT',
+      creditsCost: 1,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValueOnce(processingTask)
+    await act(async () => { await currentController.generate(request, { x: 320, y: 240 }) })
+    const recovery = usePersistenceStore.getState().recoveries[request.requestId]
+    await act(async () => {
+      usePersistenceStore.getState().setRecovery({ ...recovery, backendTaskId: undefined })
+      useEditorStore.getState().registerGeneration({
+        ...useEditorStore.getState().project!.generations['generation:task-timeout'],
+        status: 'processing',
+      })
+    })
+    expect(currentController.pendingSubmission).toBeDefined()
+    expect(hasUnfinishedGeneration()).toBe(true)
+
+    mocks.polling.data = {
+      ...processingTask,
+      status: 'failed',
+      errorCode: 'TASK_TIMEOUT',
+      errorMessage: '任务处理超时，请重试',
+      updatedAt: '2026-09-07T00:05:00.000Z',
+    }
+    await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
+    expect(currentController.task?.status).toBe('failed')
+    expect(currentController.pendingSubmission).toBeUndefined()
+    expect(usePersistenceStore.getState().recoveries[request.requestId].backendTaskId).toBe('task-timeout')
+    expect(useEditorStore.getState().project?.generations['generation:task-timeout'].status).toBe('failed')
+    expect(hasUnfinishedGeneration()).toBe(false)
+    expect(currentController.formLocked).toBe(false)
+
+    const next = { ...processingTask, id: 'task-next', requestId: 'next-request', status: 'processing' as const, updatedAt: '2026-09-07T00:06:00.000Z' }
+    mocks.createTask.mockResolvedValueOnce(next)
+    await act(async () => { await currentController.generate(buildTextToImageRequest('新的描述', IMAGE_SIZE_PRESETS[0], 1), { x: 400, y: 280 }) })
+    expect(mocks.createTask).toHaveBeenCalledTimes(2)
+    expect(currentController.task?.id).toBe('task-next')
+    expect(currentController.formLocked).toBe(true)
   })
 
   it('把文生视频结果作为 VideoNode 写入画布并支持历史回放', async () => {
@@ -452,7 +510,8 @@ describe('useFreeCanvasGenerationController 集成流程', () => {
     }
     await act(async () => root.render(<ControllerHarness sceneId={sceneId} />))
     expect(mocks.createTask).toHaveBeenCalledTimes(2)
-    expect(currentController.formLocked).toBe(true)
+    expect(currentController.formLocked).toBe(false)
+    expect(currentController.task?.status).toBe('failed')
     expect(currentController.autoRetrying).toBe(false)
   })
 

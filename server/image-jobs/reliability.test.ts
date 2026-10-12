@@ -105,7 +105,7 @@ describe('图片持久化执行协议',() => {
     expect(f.runtime.log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'fence-rejected' }))
   })
 
-  it.each(['TIMEOUT','UPSTREAM_UNAVAILABLE','BAD_RESPONSE'] as const)('%s 没有受理证据时保持 unknown，下一轮不会补 POST',async code => {
+  it.each(['TIMEOUT','UPSTREAM_UNAVAILABLE','BAD_RESPONSE'] as const)('%s 没有受理证据时保持 unknown，宽限内不补 POST，过后失败退款',async code => {
     const submit = vi.fn(async () => { throw new ProviderError(code,'响应不确定',true) })
     const f = await fixture(createMockImageProvider({ submit }))
     const submitted = await advanceImageClaim(f.bundle,f.runtime,true)
@@ -114,10 +114,75 @@ describe('图片持久化执行协议',() => {
     await advanceImageClaim(await f.claim(),f.runtime)
     expect(submit).toHaveBeenCalledTimes(1)
     expect(f.billing.release).not.toHaveBeenCalled()
-    f.setNow(f.now() + 300_000)
-    const expired = await advanceImageClaim(await f.claim(),f.runtime)
-    expect(expired.job.billing_state).toBe('released')
+    f.setNow(f.now() + 20_000)
+    const failed = await advanceImageClaim(await f.claim(),f.runtime)
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(failed.job.status).toBe('failed')
+    expect(failed.job.error_code).toBe(code)
+    expect(failed.job.billing_state).toBe('released')
+    expect(failed.items[0].provider_task_id).toBeNull()
     expect(f.billing.release).toHaveBeenCalledTimes(1)
+    expect(f.billing.settle).not.toHaveBeenCalled()
+    expect(f.billing.reserve).toHaveBeenCalledTimes(1)
+  })
+
+  it('明确的 502/503 在请求内退避重提，仍失败则立刻退款且不再补 POST',async () => {
+    const submit = vi.fn(async () => {
+      const error = new ProviderError('UPSTREAM_UNAVAILABLE','图片服务暂时不可用，请稍后重试',true,502)
+      error.definiteNotAccepted = true
+      throw error
+    })
+    const f = await fixture(createMockImageProvider({ submit }))
+    const sleep = vi.fn(async () => undefined)
+    f.runtime.sleep = sleep
+    const failed = await advanceImageClaim(f.bundle,f.runtime,true)
+    expect(submit).toHaveBeenCalledTimes(3)
+    expect(sleep).toHaveBeenCalledTimes(2)
+    expect(sleep).toHaveBeenNthCalledWith(1,1000)
+    expect(sleep).toHaveBeenNthCalledWith(2,2000)
+    expect(failed.job).toMatchObject({ status: 'failed',billing_state: 'released',error_code: 'UPSTREAM_UNAVAILABLE' })
+    expect(failed.items[0].provider_task_id).toBeNull()
+    expect(f.billing.release).toHaveBeenCalledTimes(1)
+    expect(f.billing.settle).not.toHaveBeenCalled()
+    expect(f.billing.reserve).toHaveBeenCalledTimes(1)
+    f.setNow(f.now() + 60_000)
+    await advanceImageClaim(await f.claim(),f.runtime)
+    expect(submit).toHaveBeenCalledTimes(3)
+    expect(f.billing.release).toHaveBeenCalledTimes(1)
+  })
+
+  it('503 重试成功只保留一次预扣，不会退款',async () => {
+    const submit = vi.fn()
+      .mockImplementationOnce(async () => {
+        const error = new ProviderError('UPSTREAM_UNAVAILABLE','unavailable',true,503)
+        error.definiteNotAccepted = true
+        throw error
+      })
+      .mockResolvedValue({ providerTaskId: 'original' })
+    const f = await fixture(createMockImageProvider({ submit }))
+    const result = await advanceImageClaim(f.bundle,f.runtime,true)
+    expect(submit).toHaveBeenCalledTimes(2)
+    expect(result.items[0].provider_task_id).toBe('original')
+    expect(result.items[0].submission_state).toBe('accepted')
+    expect(f.billing.release).not.toHaveBeenCalled()
+    expect(f.billing.settle).not.toHaveBeenCalled()
+    expect(f.billing.reserve).toHaveBeenCalledTimes(1)
+  })
+
+  it('504 与客户端超时不重提，宽限前不退款',async () => {
+    const submit = vi.fn(async () => { throw new ProviderError('TIMEOUT','图片服务请求超时，请稍后重试',true,504) })
+    const f = await fixture(createMockImageProvider({ submit }))
+    const held = await advanceImageClaim(f.bundle,f.runtime,true)
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(held.items[0].submission_state).toBe('unknown')
+    expect(held.job.billing_state).toBe('reserved')
+    expect(f.billing.release).not.toHaveBeenCalled()
+    const reset = vi.fn(async () => { throw new TypeError('fetch failed') })
+    const resetFixture = await fixture(createMockImageProvider({ submit: reset }))
+    const uncertain = await advanceImageClaim(resetFixture.bundle,resetFixture.runtime,true)
+    expect(reset).toHaveBeenCalledTimes(1)
+    expect(uncertain.items[0].submission_state).toBe('unknown')
+    expect(resetFixture.billing.release).not.toHaveBeenCalled()
   })
 
   it('确知未发送才申请新尝试，复用原任务与预扣',async () => {

@@ -58,6 +58,7 @@ async function dragonCodeJson(
       const safe = sanitizeProviderError(error)
       safe.definiteNotAccepted = error.definiteNotAccepted
       safe.requestSent = error.requestSent
+      safe.responseBody = error.responseBody
       throw safe
     }
     throw error
@@ -112,13 +113,25 @@ export function createDragonCodeProvider(
         resolution: input.providerParams.resolution,
         ...(input.images.length ? { image_urls: input.images.map(image => image.url) } : {}),
       }
-      const { payload, upstreamRequestId } = await dragonCodeJson(
-        `${config.baseUrl}/images/generations`,
-        { method: 'POST', headers: headers(config.apiKey), body: JSON.stringify(body) },
-        ctx,
-        config,
-        'dragoncode-submit',
-      )
+      let payload: unknown
+      let upstreamRequestId: string | undefined
+      try {
+        const response = await dragonCodeJson(
+          `${config.baseUrl}/images/generations`,
+          { method: 'POST', headers: headers(config.apiKey), body: JSON.stringify(body) },
+          ctx,
+          config,
+          'dragoncode-submit',
+        )
+        payload = response.payload
+        upstreamRequestId = response.upstreamRequestId
+      } catch (error) {
+        if (error instanceof ProviderError) {
+          const accepted = readSubmitTaskId(error.responseBody)
+          if (accepted) return { providerTaskId: accepted }
+        }
+        throw error
+      }
       ctx.log({
         stage: 'dragoncode-submit-body',
         host: requestHost(config.baseUrl),
@@ -127,8 +140,10 @@ export function createDragonCodeProvider(
       })
       const numericCode = readNumericCode(payload)
       if (numericCode !== undefined && numericCode !== 200) {
+        const accepted = readSubmitTaskId(payload)
+        if (accepted) return { providerTaskId: accepted }
         const failure = mapDragonCodeHttpError(numericCode,payload)
-        if ([400,401,402,403,422,429].includes(numericCode)) failure.definiteNotAccepted = true
+        if ([400,401,402,403,422,429,502,503].includes(numericCode)) failure.definiteNotAccepted = true
         throw failure
       }
       const taskId = readSubmitTaskId(payload)

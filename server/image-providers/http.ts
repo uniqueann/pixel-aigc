@@ -42,13 +42,21 @@ export function mapHttpStatus(status: number, message: string): ProviderError {
   if (status === 402) return rejected(new ProviderError('INSUFFICIENT_BALANCE', '图片服务余额不足', false, 402))
   if (status === 429) return rejected(new ProviderError('RATE_LIMIT', message || '图片服务请求过于频繁，请稍后重试', true, 429))
   if (status === 408 || status === 504) {
-    return new ProviderError('TIMEOUT', message || '图片服务请求超时，请稍后重试', true, 504)
+    // 网关或服务器超时：请求可能已经到达源站并建了任务，只是响应没回来。没有任务号也不能当成未受理。
+    return new ProviderError('TIMEOUT', message || '图片服务请求超时，请稍后重试', true, status)
   }
   if (status === 404) {
     return new ProviderError('BAD_RESPONSE', message || '图片任务不存在或已过期', false, 404)
   }
+  if (status === 502 || status === 503) {
+    // 明确的网关拒绝，且调用方会在响应体带任务号时改走受理。没有任务号才算未受理。
+    const error = new ProviderError('UPSTREAM_UNAVAILABLE', message || '图片服务暂时不可用，请稍后重试', true, status)
+    error.definiteNotAccepted = true
+    return error
+  }
   if (status >= 500) {
-    return new ProviderError('UPSTREAM_UNAVAILABLE', message || '图片服务暂时不可用，请稍后重试', true, 502)
+    // 500 等源站错误可能发生在建任务之后，保持不确定，避免再 POST 一单。
+    return new ProviderError('UPSTREAM_UNAVAILABLE', message || '图片服务暂时不可用，请稍后重试', true, status)
   }
   const error = new ProviderError('INVALID_PARAMS', message || '图片服务拒绝了当前请求', false, status >= 400 ? status : 400)
   return status === 400 || status === 422 ? rejected(error) : error
@@ -97,7 +105,11 @@ export async function fetchJson(
         await ctx.sleep(retryBackoffMs(attempt))
         continue
       }
-      if (!response.ok) throw mapHttpStatus(response.status, readMessage(payload))
+      if (!response.ok) {
+        const error = mapHttpStatus(response.status, readMessage(payload))
+        error.responseBody = payload
+        throw error
+      }
       return { status: response.status, payload, upstreamRequestId }
     } catch (error) {
       lastError = error

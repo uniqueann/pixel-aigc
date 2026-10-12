@@ -31,7 +31,18 @@ describe('供应商 HTTP', () => {
     })
     expect(mapHttpStatus(400, 'only supports n=1')).toMatchObject({ code: 'INVALID_PARAMS', retryable: false })
     expect(mapHttpStatus(429, 'busy')).toMatchObject({ code: 'RATE_LIMIT', retryable: true })
-    expect(mapHttpStatus(503, 'down')).toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', retryable: true })
+    expect(mapHttpStatus(503, 'down')).toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', retryable: true, status: 503, definiteNotAccepted: true,
+    })
+    expect(mapHttpStatus(502, 'bad gateway')).toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', status: 502, definiteNotAccepted: true,
+    })
+    expect(mapHttpStatus(504, 'gateway timeout')).toMatchObject({
+      code: 'TIMEOUT', status: 504, definiteNotAccepted: undefined,
+    })
+    expect(mapHttpStatus(500, 'origin crashed')).toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', status: 500, definiteNotAccepted: undefined,
+    })
   })
 
   it('记录上游 X-Request-Id，401 打 alert', async () => {
@@ -57,7 +68,7 @@ describe('供应商 HTTP', () => {
   it('生成 POST 的 5xx 只发送一次，GET 查询仍按有限次数退避',async () => {
     const ctx = { fetch: vi.fn().mockResolvedValue(jsonResponse({},503)),sleep: vi.fn(async () => undefined),now: () => 1,log: vi.fn() }
     await expect(fetchJson('https://provider.test/generate',{ method: 'POST' },ctx,{ timeoutMs: 1000,retryCount: 2,label: 'submit' }))
-      .rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE',definiteNotAccepted: undefined })
+      .rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE',definiteNotAccepted: true,status: 503 })
     expect(ctx.fetch).toHaveBeenCalledTimes(1)
     expect(ctx.sleep).not.toHaveBeenCalled()
     ctx.fetch.mockClear()

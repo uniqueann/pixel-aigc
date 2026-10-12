@@ -108,10 +108,16 @@ export function mapQwenFailure(status: number, code: string, message: string) {
     return error
   }
   if (status === 408 || status === 504) {
-    return new ProviderError('TIMEOUT', '图片服务请求超时，请稍后重试', true, 504)
+    // 504 可能是源站已建任务、网关先超时。没有任务号时保持不确定。
+    return new ProviderError('TIMEOUT', '图片服务请求超时，请稍后重试', true, status)
+  }
+  if (status === 502 || status === 503) {
+    const error = new ProviderError('UPSTREAM_UNAVAILABLE', text, true, status)
+    error.definiteNotAccepted = true
+    return error
   }
   if (code.startsWith('InternalError') || status >= 500) {
-    return new ProviderError('UPSTREAM_UNAVAILABLE', text, status >= 500, 502)
+    return new ProviderError('UPSTREAM_UNAVAILABLE', text, status >= 500, status >= 400 ? status : 502)
   }
   if (code.startsWith('InvalidParameter') || code === 'InvalidParameter' || status === 400) {
     return new ProviderError('INVALID_PARAMS', text, false, 400)

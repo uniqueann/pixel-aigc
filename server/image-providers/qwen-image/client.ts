@@ -205,6 +205,8 @@ async function qwenCall(
       }
       if (mapped) {
         if (response.status < 500 && ['INVALID_KEY','INSUFFICIENT_BALANCE','INVALID_PARAMS','CONTENT_REJECTED','RATE_LIMIT'].includes(mapped.code)) mapped.definiteNotAccepted = true
+        // 502/503 正文里若已经有任务号，说明上游受理了，不能再当成未受理重提。
+        if ((response.status === 502 || response.status === 503) && taskId(payload)) return payload
         throw mapped
       }
       return payload
@@ -397,11 +399,11 @@ export function createQwenImageProvider(
         'qwen-image-submit',
       )
       const status = taskStatus(payload)
-      if (status === 'FAILED' || status === 'CANCELED') {
+      const id = taskId(payload)
+      if (!id && (status === 'FAILED' || status === 'CANCELED')) {
         const failure = failedTask(payload)
         if (failure.state === 'failed') throw new ProviderError(failure.code, failure.message, false, 502)
       }
-      const id = taskId(payload)
       if (!id) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回任务编号', false, 502)
       ctx.log({
         stage: 'qwen-image-submit',

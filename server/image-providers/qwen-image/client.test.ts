@@ -326,6 +326,20 @@ describe('qwen image 客户端', () => {
     expect(selectQwenFetch(globalThis.fetch, 10_000)).not.toBe(defaultDashScopeFetch)
   })
 
+  it('HTTP 502 没有任务号视为未受理，504 和带任务号的 502 不当成可重提拒绝', async () => {
+    const rejected = vi.fn().mockResolvedValue(jsonResponse({ code: 'InternalError', message: 'bad gateway' }, 502))
+    await expect(provider.submit!(input, context(rejected))).rejects.toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', status: 502, retryable: true, definiteNotAccepted: true,
+    })
+    expect(rejected).toHaveBeenCalledTimes(1)
+    await expect(provider.submit!(input, context(vi.fn().mockResolvedValue(jsonResponse({ message: 'gateway timeout' }, 504))))).rejects.toMatchObject({
+      code: 'TIMEOUT', status: 504, definiteNotAccepted: undefined,
+    })
+    await expect(provider.submit!(input, context(vi.fn().mockResolvedValue(jsonResponse({
+      output: { task_id: QWEN_TASK_ID, task_status: 'PENDING' },
+    }, 502))))).resolves.toEqual({ providerTaskId: QWEN_TASK_ID })
+  })
+
   it('请求超时映射为可重试的 TIMEOUT', async () => {
     const timeout = Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' })
     const fetchImpl = vi.fn().mockRejectedValue(timeout)

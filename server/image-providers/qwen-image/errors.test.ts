@@ -42,6 +42,13 @@ describe('qwen image 错误映射', () => {
     })
     expect(mapQwenFailure(400, 'InvalidParameter', 'size is invalid').retryable).toBe(false)
     expect(mapQwenFailure(500, 'InternalError', 'An internal error has occurred.').retryable).toBe(true)
+    expect(mapQwenFailure(500, 'InternalError', 'An internal error has occurred.').definiteNotAccepted).toBeUndefined()
+    expect(mapQwenFailure(502, '', 'bad gateway')).toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', status: 502, retryable: true, definiteNotAccepted: true,
+    })
+    expect(mapQwenFailure(504, '', 'gateway timeout')).toMatchObject({
+      code: 'TIMEOUT', status: 504, definiteNotAccepted: undefined,
+    })
     expect(mapQwenFailure(200, 'InternalError', 'An internal error has occurred.').retryable).toBe(false)
   })
 

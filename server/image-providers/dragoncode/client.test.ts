@@ -201,6 +201,28 @@ describe('DragonCode 客户端', () => {
     expect(clientError).toHaveBeenCalledTimes(1)
   })
 
+  it('HTTP 502/503 且没有任务号视为未受理，504、断连和带任务号的 502 不重提', async () => {
+    const rejected = vi.fn().mockResolvedValue(jsonResponse({ message: 'bad gateway' }, 502))
+    await expect(provider.submit!(input, context(rejected))).rejects.toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', status: 502, retryable: true, definiteNotAccepted: true,
+    })
+    expect(rejected).toHaveBeenCalledTimes(1)
+    await expect(provider.submit!(input, context(vi.fn().mockResolvedValue(jsonResponse({ message: 'unavailable' }, 503))))).rejects.toMatchObject({
+      status: 503, definiteNotAccepted: true,
+    })
+    await expect(provider.submit!(input, context(vi.fn().mockResolvedValue(jsonResponse({ message: 'gateway timeout' }, 504))))).rejects.toMatchObject({
+      code: 'TIMEOUT', status: 504, definiteNotAccepted: undefined,
+    })
+    const timeout = Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' })
+    await expect(provider.submit!(input, context(vi.fn().mockRejectedValue(timeout)))).rejects.toMatchObject({
+      code: 'TIMEOUT', definiteNotAccepted: undefined, requestSent: undefined,
+    })
+    const accepted = await provider.submit!(input, context(vi.fn().mockResolvedValue(jsonResponse({
+      code: 502, message: 'bad gateway', data: [{ task_id: FAKE_TASK_ID }],
+    }, 502))))
+    expect(accepted).toEqual({ providerTaskId: FAKE_TASK_ID })
+  })
+
   it('超时映射为 504 TIMEOUT', async () => {
     const timeout = Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' })
     const fetchImpl = vi.fn().mockRejectedValue(timeout)

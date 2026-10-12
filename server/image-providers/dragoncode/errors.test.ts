@@ -50,6 +50,14 @@ describe('DragonCode 响应解析', () => {
     expect(mapDragonCodeHttpError(404, taskNotFound)).toMatchObject({
       code: 'BAD_RESPONSE', message: USER_NOT_FOUND, retryable: false,
     })
+    expect(mapDragonCodeHttpError(502, { message: 'bad gateway' })).toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE', status: 502, definiteNotAccepted: true, retryable: true,
+    })
+    expect(mapDragonCodeHttpError(503, {})).toMatchObject({ status: 503, definiteNotAccepted: true })
+    expect(mapDragonCodeHttpError(504, { message: 'gateway timeout' })).toMatchObject({
+      code: 'TIMEOUT', status: 504, definiteNotAccepted: undefined,
+    })
+    expect(mapDragonCodeHttpError(500, { message: 'origin' }).definiteNotAccepted).toBeUndefined()
     expect(dragonCodeFailure(pollFailedUpstream.data.error.message, pollFailedUpstream, { taskFailed: true })).toMatchObject({
       code: 'CONTENT_REJECTED', message: USER_CONTENT_REJECTED,
     })

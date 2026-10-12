@@ -39,7 +39,23 @@ import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requ
 import { modelProfileIdForRetry } from './retryModel'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
+const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired'])
 const EMPTY_RESULT_ERROR = '任务完成但未返回结果'
+
+function isTerminalStatus(status: string | undefined) {
+  return !!status && TERMINAL_STATUSES.has(status)
+}
+
+/** 终态任务不再占着“等待恢复”。失败卡片仍靠带任务号的恢复记录显示。 */
+function closeTerminalRecoveries(task: { id: string; requestId?: string; status: string }) {
+  if ((task.status !== 'failed' && task.status !== 'cancelled') || !task.requestId) return
+  const state = usePersistenceStore.getState()
+  for (const record of Object.values(state.recoveries)) {
+    if (record.abandoned || record.applied || record.backendTaskId) continue
+    if (record.request.requestId !== task.requestId) continue
+    state.setRecovery({ ...record, backendTaskId: task.id })
+  }
+}
 
 type CanvasGenerationTask = GenerationTask<CanvasGenerationTaskParams>
 type GeneratedMediaAsset = ImageAsset | VideoAsset
@@ -130,7 +146,15 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const selectNodes = useEditorStore((state) => state.selectNodes)
   const project = useEditorStore((state) => state.project)
   const recoveries = usePersistenceStore((state) => state.recoveries)
-  const pendingSubmission = Object.values(recoveries).find((record) => record.projectId === project?.id && record.sceneId === sceneId && !record.abandoned && !record.applied && (!record.backendTaskId || (!!record.ownerId && record.ownerId !== ownerId)))
+  const tasks = useTaskStore((state) => state.tasks)
+  const pendingSubmission = Object.values(recoveries).find((record) => {
+    if (record.projectId !== project?.id || record.sceneId !== sceneId || record.abandoned || record.applied) return false
+    const linked = record.backendTaskId ? project?.generations[generationIdForTask(record.backendTaskId)] : undefined
+    const linkedTask = record.backendTaskId ? tasks[record.backendTaskId] : undefined
+    if (isTerminalStatus(linked?.status) || isTerminalStatus(linkedTask?.status)) return false
+    if (!record.backendTaskId) return true
+    return !!record.ownerId && record.ownerId !== ownerId
+  })
   const epoch = usePersistenceStore((state) => state.epoch)
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -141,7 +165,6 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   const projectId = project?.id
   const isCurrent = useCallback(() => mountedRef.current && isCurrentWorkstationHistoryOwner(ownerId) && useEditorStore.getState().project?.id === projectId && usePersistenceStore.getState().epoch === epoch, [projectId, epoch, ownerId])
   const upsertTask = useTaskStore((state) => state.upsertTask)
-  const tasks = useTaskStore((state) => state.tasks)
   const [activeTaskId, setActiveTaskId] = useState<string>()
   const [task, setTask] = useState<CanvasGenerationTask>()
   const [submitting, setSubmitting] = useState(false)
@@ -492,7 +515,10 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   ])
 
   const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
-    if (!isCurrent() || !usePersistenceStore.getState().writable || pendingSubmission || recoveryForTask(nextTask.id)?.abandoned || recoveryForTask(nextTask.id)?.applied) return
+    const terminalFailure = nextTask.status === 'failed' || nextTask.status === 'cancelled'
+    if (terminalFailure) closeTerminalRecoveries(nextTask)
+    const openSubmission = Object.values(usePersistenceStore.getState().recoveries).some((record) => record.projectId === projectId && record.sceneId === sceneId && !record.abandoned && !record.applied && !record.backendTaskId && record.request.requestId !== nextTask.requestId)
+    if (!isCurrent() || !usePersistenceStore.getState().writable || (!terminalFailure && (pendingSubmission || openSubmission)) || recoveryForTask(nextTask.id)?.abandoned || recoveryForTask(nextTask.id)?.applied) return
     const taskOwner = recoveryForTask(nextTask.id)?.ownerId
     if (taskOwner && taskOwner !== ownerId) return
     if (!isCanvasGenerationCapability(nextTask.capability)
@@ -562,6 +588,8 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     contextForTask,
     isCurrent,
     pendingSubmission,
+    projectId,
+    sceneId,
     markEmptyResultFailed,
     placeholdersForTask,
     resolveTask,
@@ -573,6 +601,20 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
   ])
 
   const displayedTask = task ?? restoredTask
+  useEffect(() => {
+    const current = displayedTask
+    if (!current || (current.status !== 'failed' && current.status !== 'cancelled')) return
+    closeTerminalRecoveries(current)
+    const generation = useEditorStore.getState().project?.generations[generationIdForTask(current.id)]
+    if (generation && ACTIVE_STATUSES.has(generation.status)) {
+      useEditorStore.getState().registerGeneration({
+        ...generation,
+        status: current.status,
+        error: current.errorMessage,
+        updatedAt: current.updatedAt,
+      })
+    }
+  }, [displayedTask])
   const needsQuery = displayedTask && (ACTIVE_STATUSES.has(displayedTask.status) || (displayedTask.status === 'succeeded' && !recoveryForTask(displayedTask.id)?.applied))
   const queryTaskId = activeTaskId ?? restoredGeneration?.backendTaskId
   const taskQuery = useTaskPolling(queryTaskId, handlePolledTask, !pendingSubmission && !!needsQuery)
@@ -718,7 +760,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
     resumeSubmission,
     abandonSubmission,
     active,
-    formLocked: submitting || !!pendingSubmission || active || status === 'failed' || status === 'cancelled',
+    formLocked: submitting || !!pendingSubmission || active,
     submissionError,
     preparationPhase,
     historyError,
