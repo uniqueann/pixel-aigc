@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { RemoveNodeCommand } from '@/editor/commands'
+import { defaultDrafts } from '@/editor/persistence/types'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { useEditorStore } from '@/editor/store'
 import { createImageAsset } from '@/editor/services/assetService'
@@ -13,7 +14,7 @@ const stageSource = readFileSync(resolve(process.cwd(), 'src/features/free-canva
 describe('损坏图片在画布上的显示与移除', () => {
   beforeEach(() => {
     useEditorStore.getState().createProject('测试项目')
-    usePersistenceStore.setState({ drafts: {} })
+    usePersistenceStore.setState({ drafts: defaultDrafts() })
   })
 
   it('源码契约：FreeCanvasStage 包含图片损坏占位及删除引导，且不展示裂变/图生视频浮动条', () => {
@@ -64,6 +65,7 @@ describe('损坏图片在画布上的显示与移除', () => {
 
     // 设置引用该损坏节点的派生生成草稿
     usePersistenceStore.getState().setDrafts({
+      ...defaultDrafts(),
       derived: {
         mode: 'variation',
         sourceNode: { ...badNode },
@@ -82,8 +84,9 @@ describe('损坏图片在画布上的显示与移除', () => {
     // 执行移除损坏图片逻辑
     const brokenAssetIds = [badAsset.id]
     const brokenAssetIdSet = new Set(brokenAssetIds)
-    const currentScene = useEditorStore.getState().project?.document.scenes.find((item) => item.id === sceneId)!
-    const brokenNodes = currentScene.nodes.filter(
+    const currentScene = useEditorStore.getState().project?.document.scenes.find((item) => item.id === sceneId)
+    expect(currentScene).toBeDefined()
+    const brokenNodes = currentScene!.nodes.filter(
       (node) => node.type === 'image' && brokenAssetIdSet.has(node.assetId),
     )
     expect(brokenNodes).toHaveLength(1)

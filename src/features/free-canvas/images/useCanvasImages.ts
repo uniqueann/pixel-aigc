@@ -66,12 +66,14 @@ export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | un
       return [id, { ...runtime, missing: !runtimeImageBlob(runtime.url), loadError }]
     })) as Record<string, Asset>
   }, [assets, version, ownerId, errors, scope])
-  const visibleIds = new Set(JSON.parse(targets) as string[])
+  const visibleIds = useMemo(() => new Set(JSON.parse(targets) as string[]), [targets])
   const brokenAssetIds = useMemo(() => {
     return Object.entries(errors)
       .filter(([id, entry]) => visibleIds.has(id) && entry.scope === scope)
       .map(([id]) => id)
-  }, [errors, scope, targets])
-  const error = Object.entries(errors).filter(([id, entry]) => visibleIds.has(id) && entry.scope === scope).map(([, entry]) => entry.message).join('；') || undefined
+  }, [errors, scope, visibleIds])
+  const error = useMemo(() => {
+    return Object.entries(errors).filter(([id, entry]) => visibleIds.has(id) && entry.scope === scope).map(([, entry]) => entry.message).join('；') || undefined
+  }, [errors, scope, visibleIds])
   return { assets: renderAssets, error, brokenAssetIds, reload: () => { setAttempt(value => value + 1) } }
 }
