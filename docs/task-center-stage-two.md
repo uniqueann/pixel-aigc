@@ -5,8 +5,8 @@
 | 实现基线 | PR #152 合并后的 `main`，`a8a78b1ff981ccc9c3177396d0cda5f713a09c94` |
 | 开发范围 | 原请求即时提交；后台接续图片查询、转存、结算和同步工具超时退款 |
 | 本地验收 | 持久化协议、迁移/RLS/账本、真实 PostgreSQL 双连接竞争；供应商为 Mock，对象存储为内存替身 |
-| 预览验收 | 已在用户授权的现有业务库中完成 preview 分钟调度、实际 R2 PUT、唯一预扣/结算和两账号/三环境隔离 |
-| 生产状态 | 共享业务库已应用兼容迁移；生产应用仍是 main，未创建生产图片分钟调度、未开启生产后台开关；真实供应商与账单验收留阶段 5 |
+| 预览验收 | 已在用户授权的现有业务库中完成 preview 分钟调度、实际 R2 PUT、唯一预扣/结算和两账号/三环境隔离。2026-10-12 11:12 (UTC+8) 再用 Mock 验证通过：两轮维护完成，扣 1 积分 |
+| 生产状态 | 2026-10-12 11:19 (UTC+8) 重新部署后，生产已开启图片后台维护。Vercel 生产环境有 `IMAGE_CRON_SECRET`（sensitive）和 `IMAGE_MAINTENANCE_ENABLED=true`；`IMAGE_BACKGROUND_SUBMIT_ENABLED` 仍关闭。pg_cron `aigc-image-maintenance-production` 每分钟调用生产自定义域。同日 12:07 用 Qwen Image 3.0（百炼异步）关页验收通过。对象生命周期与上游账单核对仍待后续 |
 | 后续范围 | 阶段 3 建统一只读查询；后续阶段接任务列表和工具定位。此次不交付任务中心界面 |
 
 关联：[总计划](task-center-development-plan.md)、[任务契约](task-center-contract.md)、[故障矩阵](task-center-failure-matrix.md)。
@@ -105,9 +105,9 @@ PUT 前先登记键、类型、尺寸和 SHA-256。PUT 已成功但数据库写�
 
 | 服务端变量 | 默认值与作用 |
 | --- | --- |
-| `IMAGE_CRON_SECRET` | 独立随机密钥；三个环境分别配置，不能复用视频密钥 |
-| `IMAGE_MAINTENANCE_ENABLED` | `false`；控制内部维护入口是否接收调度 |
-| `IMAGE_BACKGROUND_SUBMIT_ENABLED` | `false`；控制后台/兼容 GET 是否允许安全补提交。关闭后仍可收已受理结果并超时收口 |
+| `IMAGE_CRON_SECRET` | 独立随机密钥；三个环境分别配置，不能复用视频密钥。生产环境已于 2026-10-12 配置，标记为 sensitive；文档不记录值 |
+| `IMAGE_MAINTENANCE_ENABLED` | 未设置为 `true` 时关闭，内部维护入口拒绝调度。生产自 2026-10-12 11:19 (UTC+8) 重新部署后为 `true` |
+| `IMAGE_BACKGROUND_SUBMIT_ENABLED` | `false`；控制后台/兼容 GET 是否允许安全补提交。关闭后仍可收已受理结果并超时收口。生产目前仍为关闭 |
 | `AIGC_IMAGE_MOCK_PROVIDER` | `false`；仅独立预览/本地验收使用；正式环境强制隐藏且拒绝执行 |
 | `IMAGE_MOCK_DELAY_MS` | `0`；Mock 最多延迟 240 秒，便于验证关页后接续 |
 
@@ -117,13 +117,13 @@ PUT 前先登记键、类型、尺寸和 SHA-256。PUT 已成功但数据库写�
 2. 发布兼容代码，两项后台开关均保持关闭。原请求继续即时提交；代码依赖新列，必须先迁移。
 3. 确认旧部署不再接收图片提交，至少等待 150 秒排空旧执行者，再检查是否有仍在执行的旧调用。新执行器接管旧项后，旧协议写回会被拒绝；等待时间本身不能代替部署排空检查。
 4. 配置稳定预览地址、分支专属开关/密钥、预览测试账号、R2 和 Vault；创建独立的图片预览分钟调度。复用桶时新对象键必须包含 preview 范围。先启用维护收取已受理结果，再按验收需要启用安全补提交。
-5. 完成下方预览验收，记录数据库、R2 与完成日志证据。共享库的兼容迁移已应用；生产应用发布、生产开关和真实小额供应商验收仍在阶段 5 单独执行。
+5. 完成下方预览验收，记录数据库、R2 与完成日志证据。共享库的兼容迁移已应用。生产维护开关、生产分钟调度和一笔 Qwen Image 3.0 小额关页验收已在 2026-10-12 完成，记录见第 6 节。对象生命周期与上游账单核对仍待做。
 
-回滚时先关闭 `IMAGE_BACKGROUND_SUBMIT_ENABLED`，保持维护收图和退款；如维护器自身故障，再关闭 `IMAGE_MAINTENANCE_ENABLED`/仅暂停图片调度，保留每日兜底。保留兼容代码、凭据列、账本与对象，不退回缺少 fencing 的旧图片执行器，不删除新列。不要暂停或改写视频、邮件及其他产品的调度。
+当前生产回滚见第 6 节：先 `select cron.unschedule('aigc-image-maintenance-production');`，再把生产 `IMAGE_MAINTENANCE_ENABLED` 设为 `false` 并重新部署。若将来打开了 `IMAGE_BACKGROUND_SUBMIT_ENABLED`，出现重复提交风险时先关闭它，保持维护收图和退款；维护器自身故障时再关闭维护开关，或只暂停对应图片调度，保留每日兜底。保留兼容代码、凭据列、账本与对象，不退回缺少 fencing 的旧图片执行器，不删除新列。不要暂停或改写视频、邮件及其他产品的调度。
 
 ## 3. Supabase 分钟调度
 
-`POST /api/internal/image-jobs-maintenance` 先校验独立 Bearer 密钥，再严格接受 `{ "scope": "preview" }` 并核对运行环境。该接口无用户登录依赖；环境不匹配返回 400，密钥无效返回 401，维护开关关闭返回 503。
+`POST /api/internal/image-jobs-maintenance` 先校验独立 Bearer 密钥，再严格接受 `{ "scope": "local" }`、`{ "scope": "preview" }` 或 `{ "scope": "production" }`，并且该值必须等于当前运行环境。预览调度发送 `{"scope":"preview"}`，生产调度发送 `{"scope":"production"}`。该接口无用户登录依赖；环境不匹配返回 400，密钥无效返回 401，维护开关关闭返回 503 `MAINTENANCE_DISABLED`。
 
 响应 `202 { received, runId, scope }` 只证明调用被接收。`waitUntil` 持续执行仍受函数时限约束，不能替代下一次分钟调用。必须查同一 `runId` 的 `image-maintenance-complete` 日志及任务/对象/账本，不能用 202 或 cron 的 SQL 成功证明收图完成。
 
@@ -133,7 +133,34 @@ PUT 前先登记键、类型、尺寸和 SHA-256。PUT 已成功但数据库写�
 - `aigc_image_maintenance_secret_preview`：与该部署的 `IMAGE_CRON_SECRET` 一致。
 - `aigc_image_maintenance_bypass_preview`：仅当部署保护需要时配置；使用授权的 Vercel bypass secret，不关闭整个站点保护。
 
-先按名称查询 Secret ID，存在时用 `vault.update_secret`，避免重复创建同名密钥。不要查询并打印 `decrypted_secret`，不要提交替换成真实值的 SQL。生产后续使用独立的 `_production` 名称、调度名、URL、密钥以及 body 中的 `production`；复用业务库时依靠显式 preview 范围和 RLS 隔离。
+先按名称查询 Secret ID，存在时用 `vault.update_secret`，避免重复创建同名密钥。不要查询并打印 `decrypted_secret`，不要提交替换成真实值的 SQL。复用业务库时依靠显式 scope 和 RLS 隔离。
+
+生产已使用独立的 `_production` 名称。Vault 中有：
+
+- `aigc_image_maintenance_url_production`：`https://aigc.contentup.cc/api/internal/image-jobs-maintenance`
+- `aigc_image_maintenance_secret_production`：与该生产部署的 `IMAGE_CRON_SECRET` 一致。文档不记录密钥值。
+
+生产自定义域不需要 Vercel 部署保护 bypass，因此没有 bypass Vault 项，请求头也不带 `x-vercel-protection-bypass`。
+
+pg_cron 任务 `aigc-image-maintenance-production` 的周期是 `* * * * *`。写法与预览任务 `aigc-image-maintenance-preview` 相同：`cron.schedule` 内用 `net.http_post` 从 Vault 读取 URL 和 Bearer，超时 10000 毫秒，请求体为 `{"scope":"production"}`。它只增加这一条图片生产调度，不改视频、邮件或其他产品的任务。
+
+```sql
+select cron.schedule(
+  'aigc-image-maintenance-production',
+  '* * * * *',
+  $cron$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name='aigc_image_maintenance_url_production'),
+    headers := jsonb_build_object(
+      'Content-Type','application/json',
+      'Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name='aigc_image_maintenance_secret_production')
+    ),
+    body := '{"scope":"production"}'::jsonb,
+    timeout_milliseconds := 10000
+  );
+  $cron$
+);
+```
 
 分钟调度属于周期推进，正常目标是上游完成后的下一至两轮完成收取；大图转存时间另测，不承诺固定秒数。接口仍保留旧业务 GET 的兼容推进，统一只读任务中心 API 在阶段 3 拆出。
 
@@ -152,7 +179,7 @@ git diff --check
 
 最终本地结果：240 个测试文件、1,576 项测试通过，无 `Unhandled Errors`；构建通过。Lint 在构建结束后独立执行，避免 Vite 临时配置文件在扫描期间被删除。
 
-2026-10-12 合并前复核修正两处问题：收尾保留数据库已写入的平台限流退避；兼容 GET 根据实际明细判断部分成功任务的截止后补收。两项回归均纳入上述全量测试，真实 PostgreSQL 双连接验收也在修复后重新通过。此前预览部署未包含这两项后续修复，提交 PR 后仍需核对该提交的 CI 和部署结果。
+2026-10-12 合并前复核修正两处问题：收尾保留数据库已写入的平台限流退避；兼容 GET 根据实际明细判断部分成功任务的截止后补收。两项回归均纳入上述全量测试，真实 PostgreSQL 双连接验收也在修复后重新通过。此前那次预览部署未包含这两项后续修复。2026-10-12 11:12 (UTC+8) 的 preview Mock 分钟维护已通过，见第 6 节；该记录只证明两轮维护完成并扣 1 积分。
 
 PGlite 执行实际迁移和应用角色权限，但不能证明两个真实 PostgreSQL 连接的并发行为。独立并发脚本是另一道门槛：
 
@@ -171,13 +198,13 @@ npm run test:image-jobs:postgres
 
 ## 5. 预览验收结果与剩余完整验收
 
-稳定地址：[阶段 2 预览](https://pixel-aigc-stage2-preview-ningnings-projects-2ed21e15.vercel.app)。六项专属环境变量仅绑定 `codex/task-center-reliable-maintenance`，生产开关保持关闭。预览受到 Vercel 部署保护，调度使用本次专用凭据。
+稳定地址：[阶段 2 预览](https://pixel-aigc-stage2-preview-ningnings-projects-2ed21e15.vercel.app)。六项专属环境变量仅绑定 `codex/task-center-reliable-maintenance`。预览受到 Vercel 部署保护，调度使用本次专用凭据。生产 `IMAGE_MAINTENANCE_ENABLED` 已在 2026-10-12 打开，见第 6 节；生产 `IMAGE_BACKGROUND_SUBMIT_ENABLED` 仍关闭。
 
 在现有预览测试账号下创建一项 Mock 任务后，不调用用户任务 GET。分钟维护依次在北京时间 08:20 提交、08:21 等待、08:22 完成转存和结算。数据库显示 succeeded/settled、收费 1；提交尝试、转存意图、reserve 和 settle 均各一条。验收账号的生产余额/流水摘要没有变化，该任务在其他环境没有账本记录。
 
 实际应用连接以 `aigc_api` 测试两个账号、三个 scope：只有本人 preview 能读到任务及两条凭据，其余组合均为零。Supabase cron 执行、pg_net 的 202/runId 与 Vercel 的 `image-maintenance-complete` 日志已交叉核对，完成轮 claimed/advanced/terminal 均为 1，failed 为 0。
 
-完整证据：[preview-maintenance.json](verification/task-center-stage-two/preview-maintenance.json)。当前验收供应商是 Mock；R2 PUT 使用部署的真实配置。没有执行真实浏览器关页操作、直接下载核验或收费供应商测试，不能把这些写成通过。
+完整证据：[preview-maintenance.json](verification/task-center-stage-two/preview-maintenance.json)。该次验收供应商是 Mock；R2 PUT 使用部署的真实配置。该次记录没有真实浏览器关页、直接下载核验或收费供应商测试。2026-10-12 11:12 的 Mock 复验和 12:07 的生产 Qwen 关页验收见第 6 节。直接下载核验仍待做。
 
 可复用的预览工具：[image-job-preview-check.ts](../scripts/image-job-preview-check.ts)。它只创建一项 preview Mock 原任务并释放发送前领取，随后由调度推进；不初始化 schema，不创建 Auth 账号。管理员先确认测试账号，再使用下面命令；check 只读取原任务，不调用推进接口。
 
@@ -196,7 +223,7 @@ npm run test:image-jobs:preview -- check
 
 | 场景 | 操作与必须保留的证据 | 当前状态 |
 | --- | --- | --- |
-| 无用户查询时完成 | 延迟 Mock 创建后停止用户查询，通过 SQL 与完成日志核对转存和唯一结算 | 远端分钟维护和实际 R2 PUT 通过；真实浏览器关页/直接下载待完整验收 |
+| 无用户查询时完成 | 延迟 Mock 创建后停止用户查询，通过 SQL 与完成日志核对转存和唯一结算 | 预览 Mock 分钟维护和实际 R2 PUT 通过，含 11:12 两轮维护、扣 1 积分。生产于 12:07 提交后立即离开页面，12:08 由分钟维护收图、转存并结算。直接下载核验仍待做 |
 | 原提交被打断 | 在供应商已受理、编号尚未发布的窗口中止执行；下一轮核对原回执/缓存，不增加生成请求 | 本地故障注入通过；预览待验 |
 | PUT 后中止 | 保留转存意图与已写对象，阻断最终数据库事务；下轮核验同一对象、发布一次 | 本地故障注入通过；真实 R2 待验 |
 | 旧租约返回 | 两执行者竞争，旧令牌尝试写 10，新令牌已写 80；检查旧写回和旧账本被拒 | 真实 PostgreSQL 双连接通过；预览待验 |
@@ -205,9 +232,35 @@ npm run test:image-jobs:preview -- check
 | 账号/环境边界 | 两账号、三 scope 的任务/凭据/超时清理隔离；正式配置误开 Mock 仍不暴露、不执行 | 本地与远端实际应用角色读取隔离通过，生产 Mock 禁用本地通过 |
 | 原业务回归 | 视频/邮件维护、画布恢复、工作站、同步工具与资产读取按原流程冒烟 | 既有自动测试通过；预览冒烟待验 |
 
-预览验收使用 preview 积分和 Mock 供应商，R2 结果写入带 preview 的新对象键，不能消耗生产积分或调用收费供应商。真实供应商、生产调度、生命周期策略与上游账单核对属于阶段 5。
+预览验收使用 preview 积分和 Mock 供应商，R2 结果写入带 preview 的新对象键。生产调度和一笔 Qwen Image 3.0 小额关页验收已在 2026-10-12 完成，见第 6 节。对象生命周期策略与上游账单核对仍待做。这一笔生产任务不覆盖其余故障场景。
 
-## 6. 观测与故障处理
+## 6. 生产分钟维护（2026-10-12）
+
+2026-10-12 11:19 (UTC+8) 重新部署 Vercel 生产环境。该次部署新增 `IMAGE_CRON_SECRET`（sensitive，值不记入文档）和 `IMAGE_MAINTENANCE_ENABLED=true`。`IMAGE_BACKGROUND_SUBMIT_ENABLED` 在生产仍为关闭：分钟维护只收取已经受理的结果，并在到期时退款，不做安全补提交。
+
+调度目标是生产自定义域 `https://aigc.contentup.cc/api/internal/image-jobs-maintenance`，保存在 Vault 名称 `aigc_image_maintenance_url_production`。配套密钥名称是 `aigc_image_maintenance_secret_production`，与生产 `IMAGE_CRON_SECRET` 一致。生产自定义域不需要 bypass。分钟任务名 `aigc-image-maintenance-production`，周期 `* * * * *`，请求体 `{"scope":"production"}`，结构见第 3 节。
+
+### 6.1 验收
+
+2026-10-12 12:07 (UTC+8) 在生产用 Qwen Image 3.0（百炼异步）提交 1 张 1K，预扣 3 积分，提交后立即离开页面。12:08 由一次生产分钟维护取回结果、转存 R2、结算 3 积分。没有退款，没有重复提交。结果尺寸 1328×1328。
+
+同一天 11:12 (UTC+8)，preview 再用 Mock 验证通过：两轮维护完成，扣 1 积分。
+
+这一笔生产任务证明维护开关、生产分钟调度、关页后的收取、R2 转存和唯一结算可以走通。直接下载核验、对象生命周期策略、上游账单核对，以及故障矩阵里尚未在生产注入的场景，仍待后续验收。安全补提交保持关闭。
+
+### 6.2 回滚
+
+只停生产图片分钟维护时，先取消调度：
+
+```sql
+select cron.unschedule('aigc-image-maintenance-production');
+```
+
+然后把生产环境的 `IMAGE_MAINTENANCE_ENABLED` 设为 `false` 并重新部署。接口返回 503，错误码 `MAINTENANCE_DISABLED`。可选再删除 Vault 项 `aigc_image_maintenance_url_production`、`aigc_image_maintenance_secret_production`，以及生产环境的 `IMAGE_CRON_SECRET`。不要在文档、日志或 SQL 输出里写下这些密钥的值。
+
+保留兼容代码、凭据列、账本与对象，不退回缺少 fencing 的旧图片执行器，不删除新列。不要暂停或改写视频、邮件及其他产品的调度，也不要取消 `aigc-image-maintenance-preview`。这次上线没有打开 `IMAGE_BACKGROUND_SUBMIT_ENABLED`。
+
+## 7. 观测与故障处理
 
 每轮完成日志包含 `runId/scope/claimed/advanced/terminal/unknown/fenceRejected/failed/imageExpired/syncExpired/orphansDeleted/budgetExhausted/durationMs`。失败日志只记录错误类别，不带提示词、图片字节或密钥。
 
@@ -231,5 +284,7 @@ where scope='preview' and submission_state='unknown' and result_object_key is nu
 select jobname, active from cron.job
 where jobname='aigc-image-maintenance-preview';
 ```
+
+生产观察把上面的 `scope='preview'` 换成 `production`，调度名改为 `aigc-image-maintenance-production`。
 
 连续失败先检查调度网络响应、稳定 URL/部署保护、密钥与 scope，再按 runId 查完成日志。待确认项增多时检查原提交回执、供应商连接和缓存写入；不能把 `unknown` 批量改成 `not_sent`。大量预算结束时检查对象下载/上传耗时与任务积压，不能增加一次预领取的任务数量。退款异常按原 task/ledger 事务定位，不人工创建第二套收费状态。
