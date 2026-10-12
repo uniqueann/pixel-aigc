@@ -1,0 +1,42 @@
+{
+  "projectId": "gnrhyahjegvcicektebh",
+  "version": "20261012231944",
+  "name": "task_center_sync_presentation_lock",
+  "applied": true,
+  "securityAdvisorUnchanged": true,
+  "previousAdvisorCounts": [
+    {
+      "name": "rls_enabled_no_policy",
+      "level": "INFO",
+      "count": 4
+    },
+    {
+      "name": "function_search_path_mutable",
+      "level": "WARN",
+      "count": 6
+    },
+    {
+      "name": "anon_security_definer_function_executable",
+      "level": "WARN",
+      "count": 2
+    },
+    {
+      "name": "authenticated_security_definer_function_executable",
+      "level": "WARN",
+      "count": 2
+    },
+    {
+      "name": "auth_leaked_password_protection",
+      "level": "WARN",
+      "count": 1
+    }
+  ],
+  "syncTableUpdate": false,
+  "anonExecute": false,
+  "authenticatedExecute": false,
+  "appExecute": true,
+  "securityDefiner": true,
+  "searchPath": "",
+  "cliFileGenerated": true,
+  "filenameAlignedToRemote": true
+}

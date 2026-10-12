@@ -11,6 +11,7 @@ import {
   taskCenterOn,
   type TaskActor,
 } from './client'
+import { saveWorkstationSession } from './workstationSession'
 
 export const TASK_CENTER_EVENT = 'pixel-task-center'
 const receiptSchema = z
@@ -119,6 +120,9 @@ export function submittedReceipt(
   sourceId: string,
 ) {
   if (!receipt || !sameTaskActor(receipt)) return
+  if(receipt.origin?.entry==='workstation'&&receipt.sourceKind!=='email_task') {
+    if(!saveWorkstationSession(receipt,receipt.origin.tool,{task:{sourceKind:receipt.sourceKind,sourceId}}))emitTaskCenter({type:'storage-error'})
+  }
   removeReceipt(receipt, receipt.sourceKind, receipt.requestId)
   emitTaskCenter({ type: 'submitted', receipt, sourceId })
 }

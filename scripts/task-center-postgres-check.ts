@@ -102,72 +102,78 @@ try {
       )
     }
   checks.push('应用角色两账号三环境读取及展示写入隔离')
-  const old = await withTaskCenterRead(user, async (repo) =>
-    taskSummary(await repo.get('image_job', image)),
-  )
-  let locked!: () => void, release!: () => void
-  const ready = new Promise<void>((resolve) => {
-      locked = resolve
-    }),
-    gate = new Promise<void>((resolve) => {
-      release = resolve
+  async function verifyPresentationRace(
+    kind: 'image_job' | 'sync_credit',
+    id: string,
+    update: (sql: Transaction) => Promise<unknown>,
+  ) {
+    const old = await withTaskCenterRead(user, async (repo) =>
+      taskSummary(await repo.get(kind, id)),
+    )
+    let locked!: () => void, release!: () => void
+    const ready = new Promise<void>((resolve) => { locked = resolve }),
+      gate = new Promise<void>((resolve) => { release = resolve })
+    const background = admin.begin(async (sql) => {
+      const table = kind === 'image_job' ? 'image_jobs' : 'sync_credit_jobs'
+      await sql`select id from aigc.${sql(table)} where id=${id} for update`
+      locked()
+      await gate
+      await update(sql)
     })
-  const background = admin.begin(async (sql) => {
-    await sql`select id from aigc.image_jobs where id=${image} for update`
-    locked()
-    await gate
-    await sql`update aigc.image_job_items set status='succeeded',result_object_key=${`generated/${user.id}/preview/${image}/1/b.png`} where job_id=${image} and ordinal=1`
-  })
-  await ready
-  const presentation = writePresentation(
-    user,
-    'image_job',
-    image,
-    'dismiss',
-    old.outcomeVersion!,
-  )
-  // 第二连接等待原任务锁，后台完成后必须按新版本拒绝旧操作。
-  const rejection = assert.rejects(
-    presentation,
-    (error) =>
-      !!error &&
-      typeof error === 'object' &&
-      'status' in error &&
-      error.status === 409,
-  )
-  let waiting = false
-  for (let i = 0; i < 100; i++) {
-    const [row] =
-      await other`select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event_type='Lock') as waiting`
-    if (row.waiting) {
-      waiting = true
-      break
+    await ready
+    const presentation = writePresentation(user, kind, id, 'dismiss', old.outcomeVersion!)
+    const rejection = assert.rejects(presentation, error =>
+      !!error && typeof error === 'object' && 'status' in error && error.status === 409)
+    let waiting = false
+    try {
+      // 实际观察原任务锁的等待；后台写回提交后，旧结果版本必须被拒绝。
+      for (let i = 0; i < 100; i++) {
+        const [row] = await other`select exists(select 1 from pg_stat_activity where datname=current_database() and wait_event_type='Lock') as waiting`
+        if (row.waiting) { waiting = true; break }
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+    } finally {
+      release()
+      await background
+      await rejection
     }
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(waiting, true, '必须实际观察到展示连接等待原任务锁')
+    const fresh = await withTaskCenterRead(user, async repo => taskSummary(await repo.get(kind, id)))
+    assert.notEqual(old.outcomeVersion, fresh.outcomeVersion)
+    assert.equal(fresh.dismissed, false)
+    await writePresentation(user, kind, id, 'seen', fresh.outcomeVersion!)
   }
-  assert.equal(waiting, true, '必须实际观察到展示连接等待原任务锁')
-  release()
-  await background
-  await rejection
-  const fresh = await withTaskCenterRead(user, async (repo) =>
-    taskSummary(await repo.get('image_job', image)),
-  )
-  assert.notEqual(old.outcomeVersion, fresh.outcomeVersion)
-  assert.equal(fresh.dismissed, false)
-  await writePresentation(
-    user,
-    'image_job',
-    image,
-    'seen',
-    fresh.outcomeVersion!,
-  )
-  checks.push('两连接后台写回与展示操作竞争，旧版本409，新结果仍可见')
-  await admin`update aigc.task_ui_state set created_at=now()-interval '31 days' where source_id=${image}`
+  await verifyPresentationRace('image_job', image, sql =>
+    sql`update aigc.image_job_items set status='succeeded',result_object_key=${`generated/${user.id}/preview/${image}/1/b.png`} where job_id=${image} and ordinal=1`)
+  checks.push('图片两连接写回与展示操作竞争，旧版本409，新结果仍可见')
+  await admin`update aigc.sync_credit_jobs set state='settled',result=${admin.json({objectKey:'temporary/first.png',width:64,height:96,mimeType:'image/png'})}::jsonb where id=${sync}`
+  const syncBefore = await admin`select to_jsonb(j) as data from aigc.sync_credit_jobs j where id=${sync}`
+  for (const [kind,id] of [['sync_credit',sync],['email_task',mail]] as const) {
+    const task = await withTaskCenterRead(user, async repo => taskSummary(await repo.get(kind,id)))
+    assert.equal((await writePresentation(user,kind,id,'seen',task.outcomeVersion!)).seen,true)
+    assert.equal((await writePresentation(user,kind,id,'dismiss',task.outcomeVersion!)).dismissed,true)
+  }
+  assert.deepEqual(await admin`select to_jsonb(j) as data from aigc.sync_credit_jobs j where id=${sync}`,syncBefore)
+  assert.equal((await admin`select count(*)::int as n from aigc.credit_ledger`)[0].n,0)
+  const [privileges] = await admin`select has_any_column_privilege('aigc_api','aigc.sync_credit_jobs','UPDATE') as sync_update,has_function_privilege('anon','aigc.lock_task_center_sync(uuid)','EXECUTE') as anon_execute,has_function_privilege('authenticated','aigc.lock_task_center_sync(uuid)','EXECUTE') as authenticated_execute`
+  assert.deepEqual({...privileges},{sync_update:false,anon_execute:false,authenticated_execute:false})
+  const syncTask = await withTaskCenterRead(user, async repo => taskSummary(await repo.get('sync_credit',sync)))
+  for (const owner of users) for (const scope of ['local','preview','production']) {
+    if (owner===user.id&&scope==='preview') continue
+    await assert.rejects(identity(owner,scope,sql=>taskRepository(queryPort(sql),owner,scope as 'preview').presentation('sync_credit',sync,'seen',syncTask.outcomeVersion!)),
+      error=>!!error&&typeof error==='object'&&'status' in error&&error.status===404)
+  }
+  checks.push('三源展示操作通过；同步原表及账本不变，原表写权限和客户端函数权限未开放')
+  await verifyPresentationRace('sync_credit',sync,sql=>
+    sql`update aigc.sync_credit_jobs set result=jsonb_set(result,'{objectKey}','"temporary/late.png"') where id=${sync}`)
+  checks.push('同步受限函数实际持有原行锁；跨账号环境拒绝，两连接迟到结果竞争返回409')
+  await admin`update aigc.task_ui_state set created_at=now()-interval '31 days' where scope='preview'`
   await admin`insert into aigc.image_jobs(id,user_id,scope,request_id,request_fingerprint,capability,model_profile_id,provider,params,provider_params,requested_count,status,credits_reserved,billing_state,deadline_at,next_poll_at)
  values(${randomUUID()},${user.id},'production',${randomUUID()},'fixture','variation','fixture','mock','{}','{}',1,'failed',0,'none',now(),now())`
   const [prod] =
     await admin`select id from aigc.image_jobs where scope='production'`
   await admin`insert into aigc.task_ui_state(user_id,scope,source_kind,source_id,created_at) values(${user.id},'production','image_job',${prod.id},now()-interval '31 days')`
+  const tasksBeforePurge = await admin`select (select jsonb_agg(to_jsonb(j) order by id) from aigc.image_jobs j) as images,(select jsonb_agg(to_jsonb(j) order by id) from aigc.sync_credit_jobs j) as syncs,(select jsonb_agg(to_jsonb(j) order by id) from aigc.email_tasks j) as emails`
   await identity('', 'preview', (sql) => sql`select aigc.purge_task_ui_state()`)
   assert.equal(
     (
@@ -185,6 +191,7 @@ try {
     (await admin`select count(*)::int as n from aigc.credit_ledger`)[0].n,
     0,
   )
+  assert.deepEqual(await admin`select (select jsonb_agg(to_jsonb(j) order by id) from aigc.image_jobs j) as images,(select jsonb_agg(to_jsonb(j) order by id) from aigc.sync_credit_jobs j) as syncs,(select jsonb_agg(to_jsonb(j) order by id) from aigc.email_tasks j) as emails`,tasksBeforePurge)
   checks.push('展示清理仅影响指定环境；任务和账本不受影响')
   console.log(JSON.stringify({ ok: true, checks }, null, 2))
 } finally {

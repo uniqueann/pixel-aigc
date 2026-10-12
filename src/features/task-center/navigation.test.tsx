@@ -25,6 +25,26 @@ beforeEach(()=>{
 })
 afterEach(()=>{cleanup();router.dispose();vi.unstubAllGlobals();useUserStore.getState().setAccount(null)})
 describe('任务导航的草稿保护',()=>{
+  it('画布保存完成后直接导航，保存过程中不离页也不要求放弃已保存内容',async()=>{
+    let complete!:(value:'saved')=>void
+    flush.mockImplementation(()=>new Promise(resolve=>{complete=resolve}))
+    fireEvent.click(screen.getByText('打开其他工具'))
+    await waitFor(()=>expect(flush).toHaveBeenCalledOnce())
+    expect(router.state.location.pathname).toBe('/draft')
+    await act(async()=>complete('saved'))
+    await screen.findByText('其他工具')
+    expect(screen.queryByText('放弃草稿并继续')).toBeNull()
+  })
+  it('自动保存期间账号切换，不执行旧会话导航',async()=>{
+    let complete!:(value:'saved')=>void
+    flush.mockImplementation(()=>new Promise(resolve=>{complete=resolve}))
+    fireEvent.click(screen.getByText('打开其他工具'))
+    await waitFor(()=>expect(flush).toHaveBeenCalledOnce())
+    await act(async()=>useUserStore.getState().setAccount({userId:'33333333-3333-4333-8333-333333333333',runtimeScope:'preview'} as AccountContext))
+    await act(async()=>complete('saved'))
+    await waitFor(()=>expect([...router.state.blockers.values()].every(blocker=>blocker.state==='unblocked')).toBe(true))
+    expect(router.state.location.pathname).toBe('/draft')
+  })
   it('取消跨页导航保留当前内容',async()=>{
     fireEvent.click(screen.getByText('打开其他工具'))
     fireEvent.click(await screen.findByText('留在当前页'))

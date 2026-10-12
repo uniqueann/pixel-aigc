@@ -29,14 +29,23 @@ function RouteDraftBlocker() {
     handling.current = true
     let active = true
     const resolve = async () => {
+      const session=useUserStore.getState(),owner=session.userId,scope=session.account?.runtimeScope
       const guards = [...context.guards.values()].map(read => read())
+      const saved = new Set<typeof guards[number]>()
       const blocked = guards.find(guard => guard.blocked)?.blocked
       let allowed = !blocked
       if (blocked) message.warning(blocked)
       if (allowed) for (const guard of guards) {
-        if (guard.beforeLeave && !await guard.beforeLeave()) { allowed = false; break }
+        if (guard.beforeLeave) {
+          const result=await guard.beforeLeave()
+          if(!result){message.error('当前内容未能保存，请先处理保存问题');allowed=false;break}
+          if(result==='saved')saved.add(guard)
+        }
       }
-      if (allowed && guards.some(guard => guard.dirty)) allowed = await context.confirmReplace(guards.filter(guard => guard.dirty).map(guard => guard.reason).join('；'))
+      const unsaved=guards.filter(guard=>guard.dirty&&!saved.has(guard))
+      if (allowed && unsaved.length) allowed = await context.confirmReplace(unsaved.map(guard => guard.reason).join('；'))
+      const current=useUserStore.getState()
+      allowed=allowed&&current.userId===owner&&current.account?.runtimeScope===scope
       if (active) { if (allowed) blocker.proceed(); else blocker.reset() }
       handling.current = false
     }

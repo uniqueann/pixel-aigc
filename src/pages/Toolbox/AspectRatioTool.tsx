@@ -402,10 +402,10 @@ export default function AspectRatioTool() {
 
   return (
     <div className="toolbox-watermark toolbox-sticky-preview">
-      <TaskRecoveryPanel tools={['aspect-ratio']} blockedReason={processing||adding||packaging?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async(result,blob,detail,context)=>{
-        await persistRecoveredResult(detail,result,context.actor,context.signal,blob)
+      <TaskRecoveryPanel tools={['aspect-ratio']} blockedReason={processing||adding||packaging?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async(result,image,detail,context)=>{
+        await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)
         assertRecoveryActor(context.actor,context.signal)
-        await addFile(new File([blob],`已有扩展-${detail.task.sourceId}.jpg`,{type:blob.type}),context)
+        await addFile(new File([image.blob],`已有扩展-${detail.task.sourceId}.jpg`,{type:image.mimeType}),context)
       }}/>
       <ToolboxImageCard
         items={items.map(item => ({

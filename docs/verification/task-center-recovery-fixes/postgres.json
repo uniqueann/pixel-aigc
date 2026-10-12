@@ -1,0 +1,28 @@
+{
+  "verifiedAt": "2026-10-12T23:26:09.033Z",
+  "database": "本机新建空白独立 PostgreSQL",
+  "roles": [
+    "aigc_api"
+  ],
+  "accounts": 2,
+  "scopes": [
+    "local",
+    "preview",
+    "production"
+  ],
+  "commands": [
+    "npm run test:task-center:postgres"
+  ],
+  "supplierRequests": 0,
+  "checks": [
+    "三源只读查询及到期预留不修改任务与账本",
+    "两账号三环境读取和展示写入隔离",
+    "图片和同步任务的原行锁均实际被另一连接等待",
+    "后台写回后旧展示版本返回 409",
+    "三源 seen/dismiss 成功，同步原表和账本不变",
+    "同步原表 UPDATE 权限为 false，anon/authenticated 无函数执行权限",
+    "当前环境展示清理不改变原任务或账本"
+  ],
+  "ok": true,
+  "version": "17.10"
+}
