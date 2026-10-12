@@ -72,6 +72,7 @@ beforeAll(async () => {
     '20260929233436_aigc_credit_adjust.sql', '20261003080118_aigc_seedance_video_jobs.sql']) {
     await db.exec(readFileSync(`supabase/migrations/${name}`, 'utf8'))
   }
+  await db.exec('alter table aigc.image_jobs add column origin jsonb')
   for (const id of users) await db.query('insert into aigc.members(user_id) values($1)', [id])
   mocks.identity.mockImplementation((id, _email, action) => identity(id, process.env.AIGC_RUNTIME_SCOPE ?? 'production', action))
   mocks.database.mockReturnValue({ begin: (action: (sql: Transaction) => Promise<unknown>) => db.transaction(tx => action(tag((text, values) => tx.query(text, values)))) })

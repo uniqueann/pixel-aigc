@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import sharp from 'sharp'
 import { env } from './config.js'
@@ -27,6 +27,17 @@ export async function signUpload(key: string, mimeType: string, size: number) {
 export async function signRead(key: string, expiresIn = 900, disposition?: string) {
   return { url: await getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket(), Key: key,
     ...(disposition ? { ResponseContentDisposition: disposition } : {}) }), { expiresIn }), expiresAt: Date.now() + expiresIn * 1000 }
+}
+
+/** 任务详情只核对对象元数据，不下载图片或视频正文。 */
+export async function headObject(key: string, signal = AbortSignal.timeout(5000)) {
+  try {
+    const object = await s3().send(new HeadObjectCommand({ Bucket: bucket(),Key: key }),{ abortSignal: signal })
+    return { bytes: object.ContentLength ?? 0,contentType: object.ContentType }
+  } catch (error) {
+    if (isMissingObject(error)) throw new HttpError(404,'对象不存在','OBJECT_NOT_FOUND')
+    throw error
+  }
 }
 
 export async function deleteObject(key: string, signal?: AbortSignal) {

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { taskOriginSchema, validTaskOrigin } from '../../shared/task-center.js'
 import sharp from 'sharp'
 import { z } from 'zod'
 import { VIDEO_PROMPT_MAX } from '../../shared/prompt-limits.js'
@@ -33,6 +34,7 @@ const common = {
 }
 export const createVideoTaskSchema = z.object({
   capability: z.literal('text_to_video'), requestId: z.uuid(),
+  origin: taskOriginSchema.optional(),
   modelProfileId: z.literal(SEEDANCE_VIDEO_MODEL.id).default(SEEDANCE_VIDEO_MODEL.id),
   priceVersion: z.string().min(1),
   params: z.discriminatedUnion('mode', [
@@ -40,7 +42,9 @@ export const createVideoTaskSchema = z.object({
     z.object({ ...common, mode: z.literal('image_to_video'), ratio: z.literal('adaptive'),
       sourceImageKey: z.string().min(1).max(512), sourceImageUrl: z.string().max(4000).optional() }).strict(),
   ]),
-}).strict()
+}).strict().superRefine((value,ctx) => {
+  if (!validTaskOrigin(value.origin,value.capability,value.params.mode)) ctx.addIssue({ code: 'custom',message: '视频任务来源无效',path: ['origin'] })
+})
 type VideoRequest = z.infer<typeof createVideoTaskSchema>
 
 export interface VideoJobRuntime extends ImageJobRuntime {
@@ -99,6 +103,7 @@ export async function createVideoJobInStore(store: ImageJobStore, user: Pick<Use
   const amount = SEEDANCE_VIDEO_MODEL.pricing.creditsPerVideo[params.durationSeconds]
   const bundle = await reserveAndCreateJob(store, runtime.billing, user.id, {
     id: randomUUID(), requestId: parsed.requestId, fingerprint: videoFingerprint(parsed),
+    origin: parsed.origin,
     capability: 'text_to_video', modelProfileId: parsed.modelProfileId, provider: 'seedance',
     params, providerParams: { model: SEEDANCE_VIDEO_MODEL.model, priceVersion: parsed.priceVersion,
       unitPrice: amount, phase: 'submitting' }, requestedCount: 1, warnings: [],
@@ -131,7 +136,7 @@ export async function toClientVideoTask(bundle: ImageJobBundle, runtime: VideoJo
   const refundedMessage = failed && bundle.job.billing_state === 'released' && bundle.job.credits_reserved > 0
     ? `${(errorMessage ?? '视频生成失败').replace('积分将退回', '积分已退回')}；本次预扣积分已退回` : errorMessage
   return {
-    id: bundle.job.id, capability: 'text_to_video', status: bundle.job.status === 'expired' ? 'failed' : bundle.job.status,
+    id: bundle.job.id, requestId: bundle.job.request_id, capability: 'text_to_video', status: bundle.job.status === 'expired' ? 'failed' : bundle.job.status,
     phase: ['queued', 'processing'].includes(bundle.job.status) ? bundle.job.provider_params.phase : undefined,
     params: bundle.job.params, modelProfileId: bundle.job.model_profile_id, resultVideos: videos,
     resultUrls: videos.map(video => video.url), warnings: bundle.job.warnings,

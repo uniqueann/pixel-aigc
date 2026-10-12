@@ -1,3 +1,4 @@
+import type {TaskOrigin} from '../../shared/task-center.js'
 import { randomUUID } from 'node:crypto'
 import { afterEach,describe,expect,it,vi } from 'vitest'
 import { createMockImageProvider,MOCK_PNG_1X1 } from '../image-providers/mock.js'
@@ -10,7 +11,7 @@ const user = { id: '00000000-0000-4000-8000-000000000001',email: 'alice@example.
 const previous = { ...process.env }
 afterEach(() => { process.env = { ...previous } })
 
-async function fixture(provider: ImageProvider = createMockImageProvider(),count = 1) {
+async function fixture(provider: ImageProvider = createMockImageProvider(),count = 1,origin?:TaskOrigin) {
   process.env.AIGC_RUNTIME_SCOPE = 'local'
   process.env.VERCEL_ENV = 'development'
   process.env.AIGC_IMAGE_MOCK_PROVIDER = 'true'
@@ -25,7 +26,7 @@ async function fixture(provider: ImageProvider = createMockImageProvider(),count
     getObject: vi.fn(async key => { const object = objects.get(key); if (!object) throw new Error('对象不存在'); return object }),
   }
   const created = await createImageJobInStore(store,user,createImageTaskSchema.parse({ capability: 'text_to_image',
-    requestId: randomUUID(),modelProfileId: 'mock:image-stage2',params: { prompt: '测试',count,resolution: '1k',size: { width: 1024,height: 1024 } } }),runtime)
+    requestId: randomUUID(),origin,modelProfileId: 'mock:image-stage2',params: { prompt: '测试',count,resolution: '1k',size: { width: 1024,height: 1024 } } }),runtime)
   const claim = async () => {
     const job = await store.tryAcquireLease(created.bundle.job.id,new Date(now + 120_000))
     if (!job) throw new Error('无法领取')
@@ -35,6 +36,17 @@ async function fixture(provider: ImageProvider = createMockImageProvider(),count
 }
 
 describe('图片持久化执行协议',() => {
+  it('来源变化不重复预扣，重入保留首次来源，生成参数变化仍冲突',async()=>{
+    const origin:TaskOrigin={entry:'canvas',tool:'text-to-image',projectId:'first',sceneId:'scene',projectSource:'local'}
+    const f=await fixture(undefined,1,origin)
+    const request={capability:'text_to_image',requestId:f.bundle.job.request_id,modelProfileId:'mock:image-stage2',
+      params:{prompt:'测试',count:1,resolution:'1k',size:{width:1024,height:1024}},origin:{...origin,projectId:'second'}}
+    const replay=await createImageJobInStore(f.store,user,createImageTaskSchema.parse(request),f.runtime)
+    expect(replay.bundle.job.origin).toEqual(origin);expect(f.billing.reserve).toHaveBeenCalledTimes(1)
+    await expect(createImageJobInStore(f.store,user,createImageTaskSchema.parse({...request,params:{...request.params,prompt:'新内容'}}),f.runtime)).rejects.toMatchObject({status:409})
+    expect(f.billing.reserve).toHaveBeenCalledTimes(1);expect(f.runtime.fetch).not.toHaveBeenCalled()
+  })
+
   it('兼容查询允许截止后的部分成功任务补收，仍遵守退避与恢复窗口',() => {
     const now = Date.now()
     const job = { status: 'succeeded',deadline_at: new Date(now - 60_000),next_poll_at: new Date(now - 1) }

@@ -1,4 +1,6 @@
+import type { TaskOrigin } from '../../shared/task-center.js'
 export interface ImageJobRow {
+  origin?: TaskOrigin | null
   id: string
   user_id: string
   scope: string
@@ -55,6 +57,7 @@ export interface ImageJobBundle {
 }
 
 export interface InsertImageJobInput {
+  origin?: TaskOrigin
   id?: string
   requestId: string
   fingerprint: string
