@@ -152,7 +152,7 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
     async sidebar() {
       const [data] = await db.query(
         `${TASK_PROJECTION}, recent as (select * from presented where ${recent}), chosen as (
-        select * from recent where state in ('queued','processing') or (not seen and not dismissed)
+        select * from recent where not dismissed
         order by (state in ('queued','processing')) desc,created_at desc,source_kind desc,source_id desc limit 5
       ) select (select count(*)::int from recent where state in ('queued','processing')) as active,
         (select count(*)::int from recent where outcome_version is not null and not seen and not dismissed) as unseen,
