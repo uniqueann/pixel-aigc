@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Segmented, Upload, message } from 'antd'
+import { Button, Segmented, Spin, Upload, message } from 'antd'
 import { InboxOutlined, UploadOutlined } from '@ant-design/icons'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { useCapabilities } from '@/hooks/useCapabilities'
@@ -36,6 +36,7 @@ interface Props {
   onMaskChange?: (hasPaint: boolean) => void
   onPreview?: (view: 'original' | 'effect') => void
   uploadHint?: string
+  activityLabel?: string
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -109,6 +110,7 @@ export default function CanvasArea({
   onMaskChange,
   onPreview,
   uploadHint,
+  activityLabel,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -140,6 +142,17 @@ export default function CanvasArea({
   const interceptUpload = (file: File) => {
     onImageUpload(file)
     return Upload.LIST_IGNORE
+  }
+
+  if (activityLabel && !imageUrl && !referenceImageUrl) {
+    return (
+      <div className={`${canvasShellClass} is-empty`}>
+        <div className="workstation-task-placeholder" role="status">
+          <Spin />
+          <p>{activityLabel}</p>
+        </div>
+      </div>
+    )
   }
 
   if (interactionMode === 'multi-source') {

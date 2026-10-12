@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { flushProject } from '@/editor/persistence/projectPersistence'
+import { canvasDraftDirty,saveAbandonedCanvasDraft } from './canvasDraftGuard'
 import { InsertGeneratedAssetCommand } from '@/editor/commands'
 import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
 import { bindRuntimeImage,releaseRuntimeImageUser } from '@/editor/runtimeImages'
@@ -24,6 +25,14 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
   const confirm=useTaskDraftGuard({dirty,reason:'当前画布尚未保存，请保存后再切换。',
     blocked:dirty&&(!writable||phase!=='ready')?'当前画布尚未保存且不可写，请先处理编辑状态':undefined,
     beforeLeave:async()=>{try{await flushProject();return usePersistenceStore.getState().status==='saved'?'saved' as const:false}catch{return false}}})
+  useTaskDraftGuard({dirty:canvasDraftDirty(drafts),navigationScope:'canvas-task',
+    reason:'当前画布的生成提示词尚未提交。切换任务后这些提示词将被清空。',
+    blocked:canvasDraftDirty(drafts)&&(!writable||phase!=='ready')?'请先取得当前项目编辑权':undefined,
+    beforeLeave:async()=>{try{await flushProject();return true}catch{return false}},
+    onAbandon:async()=>{
+      if(usePersistenceStore.getState().epoch!==epoch||useEditorStore.getState().project?.id!==project?.id)throw new Error('项目编辑状态已变化')
+      await saveAbandonedCanvasDraft(flushProject,epoch)
+    }})
   const projectId=project?.id
   const context=useCallback((input:RecoveryActionContext):CanvasRecoveryContext=>{
     if(!projectId||!sceneId)throw new Error('原画布或场景未准备好')

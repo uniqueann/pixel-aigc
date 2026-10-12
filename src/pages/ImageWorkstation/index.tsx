@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback,useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { UNSAFE_LocationContext,useNavigate, useParams } from 'react-router-dom'
 import { DownloadOutlined } from '@ant-design/icons'
 import { App, Button, Tooltip } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
@@ -56,16 +56,24 @@ import TaskRecoveryPanel,{type RecoveryActionContext} from '@/features/task-cent
 import WorkstationRecovery from '@/features/task-center/WorkstationRecovery'
 import { saveWorkstationSession } from '@/features/task-center/workstationSession'
 import { currentTaskActor } from '@/features/task-center/client'
+import { useUserStore } from '@/store/useUserStore'
 import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
 import { assertRecoveryActor,persistRecoveredResult,recoveredResultId,readRecoveryImage } from '@/features/task-center/recoveryMedia'
 import { bindRuntimeImage,releaseRuntimeImageUser,setRuntimeImageUsers,withRuntimeImage } from '@/editor/runtimeImages'
-import type { TaskTool,TaskCenterMedia,TaskCenterDetail } from '@shared/task-center'
+import {taskIsActive,type TaskTool,type TaskCenterMedia,type TaskCenterDetail,type TaskCenterSummary} from '@shared/task-center'
 import { readRelight } from '@shared/relight'
 import { readRetouchDirections } from '@shared/retouch'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
+  const location=useContext(UNSAFE_LocationContext)
+  const account=useUserStore(state=>state.account)
+  const [observedTask,setObservedTask]=useState<{task:TaskCenterSummary;owner:string;scope:string}>()
+  const observeRecoveredTask=useCallback(async(detail:TaskCenterDetail,context:RecoveryActionContext)=>{
+    assertRecoveryActor(context.actor,context.signal)
+    setObservedTask({task:detail.task,...context.actor})
+  },[])
   const { message } = App.useApp()
   const knownBalance = useKnownCreditBalance()
   const project = useEditorStore(state => state.project)
@@ -94,6 +102,9 @@ export default function ImageWorkstation() {
   const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
+  const currentActor=currentTaskActor()
+  const recoveringActive=account?.features?.taskCenter&&observedTask?.owner===currentActor?.owner&&observedTask?.scope===currentActor?.scope&&observedTask?.task.tool===activeTool.slug
+    &&observedTask.task.taskKey===new URLSearchParams(location?.location.search).get('task')&&taskIsActive(observedTask.task)
   const { parameters, update: updateParameters } = useWorkstationParameters(activeTool.slug)
   const { retouchDirections, relight: relightOptions, count: activeCount, resolution: editResolution, outpaintMode, outpaintOutputMode, presetPlatform } = parameters
   const fusionSelection = useFusionImageSelection(activeTool.slug)
@@ -282,6 +293,7 @@ export default function ImageWorkstation() {
     }
     const handoff = takeEdgeRefineHandoff()
     if (!handoff) return
+    const actor=currentTaskActor();if(actor)saveWorkstationSession(actor,'remove',{input:undefined})
     edgeRefineFinishedRef.current = false
     const url = URL.createObjectURL(handoff.file)
     const asset = createImageAsset({
@@ -432,7 +444,9 @@ export default function ImageWorkstation() {
   const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
   const hasVisibleInput = fusionTool ? Boolean(fusionProduct || fusionReference) : Boolean(showSourcePreview && controller.inputAsset)
   const { previewRef, footerRef, sticky } = useStickyPreview(hasVisibleInput && !showExample)
-  const inputDescription = fusionTool
+  const inputDescription = recoveringActive&&!controller.inputAsset&&!fusionProduct&&!fusionReference
+    ? '正在恢复任务，请等待已有任务区更新结果'
+    : fusionTool
     ? `${fusionProduct ? `商品 ${fusionProduct.width}×${fusionProduct.height}` : '请上传商品图'} · ${fusionReference ? `场景 ${fusionReference.width}×${fusionReference.height}` : '请上传场景图'}`
     : !showSourcePreview
       ? '当前工具即将上线，不会使用上一工具的图片'
@@ -460,7 +474,7 @@ export default function ImageWorkstation() {
     <div className="image-workstation-page">
       <WorkstationRecovery tool={activeTool.slug as TaskTool} nativeBusy={controller.formLocked||uploading||fusionLoading}
         hasDraft={Boolean(sourceAsset||fusionProduct||fusionReference||activePrompt.trim()||hasMaskPaint)} onRestoreInput={applyRecoveredInput}/>
-      <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} blockedReason={controller.formLocked || uploading || fusionLoading ? '当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。':undefined}
+      <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} onObserve={observeRecoveredTask} blockedReason={controller.formLocked || uploading || fusionLoading ? '当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。':undefined}
         onUseImage={async (result,image,detail,context) => {
           if (!await confirmRecovery('将原任务结果作为新输入会替换当前原图和蒙版。')) return
           await applyRecoveredInput(result,image,detail,context)
@@ -505,6 +519,7 @@ export default function ImageWorkstation() {
             <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
             <CanvasArea
               interactionMode={activeTool.interactionMode}
+              activityLabel={recoveringActive?'正在恢复进行中的任务':controller.active?'正在处理当前任务':undefined}
               imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
               imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
               referenceImageUrl={fusionTool ? fusionReference?.url : undefined}

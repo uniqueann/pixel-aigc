@@ -8,6 +8,7 @@ import { useUserStore,type AccountContext } from '@/store/useUserStore'
 import { recoveryActor,recoveryDetail,recoverySummary,recoveryOwner } from './recovery.fixture'
 import { readWorkstationSession,saveWorkstationSession } from './workstationSession'
 import WorkstationRecovery from './WorkstationRecovery'
+import {saveReceipt,rememberWorkstationSubmission,removeReceipt} from './receipts'
 const mock=vi.hoisted(()=>({request:vi.fn(),read:vi.fn()}))
 vi.mock('@/cloud/client',()=>({authEnabled:true,cloudEnabled:false,supabase:null,cloudRequest:mock.request,
   CloudError:class extends Error{constructor(public status:number,message:string,public code:string){super(message)}}}))
@@ -50,6 +51,19 @@ describe('工作站自动发现及最小输入恢复',()=>{
   it('指定任务URL不被自动发现覆盖',async()=>{
     mount(vi.fn(),false,`/image-workstation/smart-edit?task=${task.taskKey}`)
     expect(mock.request).not.toHaveBeenCalled()
+  })
+  it('响应丢失先保留待确认，统一运行层找到终态后自动接回',async()=>{
+    const receipt=saveReceipt('image_job',task.requestId,{entry:'workstation',tool:'smart-edit'})!
+    mock.request.mockResolvedValue(detail);mount()
+    await screen.findByText('提交结果待确认')
+    expect(mock.request).not.toHaveBeenCalled()
+    await act(async()=>{
+      rememberWorkstationSubmission(receipt,task.sourceId)
+      removeReceipt(recoveryActor,receipt.sourceKind,receipt.requestId)
+      await client.invalidateQueries()
+    })
+    await waitFor(()=>expect(screen.getByTestId('location').textContent).toContain('task='))
+    expect(mock.request.mock.calls.every(call=>call[1]==='GET')).toBe(true)
   })
   it('提交后已完成的原任务也能在刷新后找回，消费本机任务绑定',async()=>{
     saveWorkstationSession(recoveryActor,'smart-edit',{task:{sourceKind:task.sourceKind as 'image_job',sourceId:task.sourceId}})

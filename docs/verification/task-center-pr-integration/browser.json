@@ -1,0 +1,34 @@
+{
+  "verifiedAt": "2026-10-12T23:52:34.585Z",
+  "mode": "独立本地来源的模拟接口与真实恢复组件",
+  "generationPosts": 0,
+  "workstation": {
+    "plainEntryRecovered": true,
+    "activityLabel": "正在恢复进行中的任务",
+    "resultDeclaredDimensions": {
+      "width": 0,
+      "height": 0
+    },
+    "refreshedImage": {
+      "width": 480,
+      "height": 480,
+      "loaded": true
+    }
+  },
+  "canvas": {
+    "shell": "轻量测试页面，复用真实 CanvasTaskRecovery、导航门禁、flushProject 与 IndexedDB",
+    "taskSwitchConfirmed": true,
+    "cancelKeptPrompt": true,
+    "confirmationClearedPrompt": true,
+    "saveCompleted": true,
+    "consoleErrors": 0
+  },
+  "screenshots": [
+    "01-restoring-preview.png",
+    "02-refresh-input.png",
+    "03-canvas-task-confirm.png",
+    "04-canvas-confirmed.png"
+  ],
+  "realProviderVerified": false,
+  "productionVerified": false
+}

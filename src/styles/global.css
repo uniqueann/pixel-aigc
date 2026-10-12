@@ -1583,6 +1583,17 @@ body.sidebar-resizing * {
 
 .workstation-canvas-shell.is-empty { min-height: 280px; }
 
+.workstation-task-placeholder {
+  display: flex;
+  min-height: 220px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
 .workstation-canvas-controls {
   display: flex;
   width: 100%;
