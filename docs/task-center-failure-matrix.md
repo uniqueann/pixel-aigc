@@ -4,16 +4,16 @@
 | --- | --- |
 | 基线 | 2026-10-11，`main` / `55c36aaa59f42ab2da8c11902bbd4946ef0ffedd` |
 | 关联 | [任务契约](task-center-contract.md)、[总开发计划](task-center-development-plan.md) |
-| 状态 | 文档与现有行为验证；未实施后台、接口或 UI 修复 |
-| 验证结果 | 本次 11 个既有测试文件、134 个测试通过；F01/F02 在纯内存推进器复现风险 |
+| 状态 | 保存阶段 1 调查基线；阶段 2 修复与本地证据见[后台验收说明](task-center-stage-two.md)，统一查询和 UI 待实现 |
+| 验证结果 | 阶段 1：11 个文件/134 项既有测试通过，内存复现 F01/F02；阶段 2 已改为安全回归并通过真实 PostgreSQL 双连接门槛 |
 
 “既有测试通过”表示现状基线；“已复现风险”表示待修复行为；“待新增验收”是后续实现的门槛。不能把三者混写成新任务中心已经可用。
 
 ## 1. 提交、推进与积分竞争窗口
 
-当前图片主链：创建任务及预扣事务提交 → 事务外向供应商提交 → 返回后写明细与任务编号 → 查询领取 30 秒租约 → 事务外收取结果 → 写回并结算。
+阶段 1 调查时的图片主链：创建任务及预扣事务提交 → 事务外向供应商提交 → 返回后写明细与任务编号 → 查询领取 30 秒租约 → 事务外收取结果 → 写回并结算。阶段 2 已增加提交意图、120 秒令牌租约和独立维护，以下窗口仍作为故障验收目录。
 
-| 窗口 | 可能留下的事实 | 当前风险与后续要求 |
+| 窗口 | 可能留下的事实 | 阶段 1 风险与修复要求 |
 | --- | --- | --- |
 | W01 创建事务提交后，首次提交尚未落盘 | queued + pending，无供应商编号 | 原 POST 没有覆盖外部提交的领取保护；查询推进可能把 pending 当成可再次提交 |
 | W02 上游接受后、供应商编号落盘前 | 数据库仍是 pending，但上游可能已开始 | 无编号不等于未发送；先记录提交意图，未知时禁止盲目重提 |
@@ -43,11 +43,11 @@
 
 | 编号与触发位置 | 数据/客户端现象 | 允许动作与禁止动作 | 修复后断言及当前证据 |
 | --- | --- | --- | --- |
-| F01 原提交等待供应商响应，同时查询推进 | pending 无编号；两个执行者可能各自提交一次 | 必须共享领取与提交意图；禁止“无编号即重新提交” | 上游 submit=1，预扣=1；当前内存实测 submit=2，见下方脚本 |
-| F02 旧查询等待响应，租约失效后新执行者推进 | 旧快照晚到并覆盖新进度 | 写回校验有效领取身份；旧执行者只能丢弃结果或交给当前执行者 | 新进度 80 不应退回 10；当前内存实测退回 10，SQL 重领条件另需数据库验收 |
-| F03 上游接受后进程中止，编号未保存 | 本地待确认，服务端可能仍 pending | 查原请求；已接入幂等/对账或只读缓存探测才可补取；禁止盲目重提 | 生成请求次数不增加；未知最终按原截止规则收口；新增提交意图测试待 P1 |
+| F01 原提交等待供应商响应，同时查询推进 | pending 无编号；两个执行者可能各自提交一次 | 必须共享领取与提交意图；禁止“无编号即重新提交” | 阶段 1 内存曾复现 submit=2；阶段 2 断言 submit=1、预扣=1，内存与真实 PostgreSQL 双连接均通过 |
+| F02 旧查询等待响应，租约失效后新执行者推进 | 旧快照晚到并覆盖新进度 | 写回校验有效领取身份；旧执行者只能丢弃结果或交给当前执行者 | 阶段 1 曾复现退回 10；阶段 2 旧写回/结算被拒，进度保持 80，真实 PostgreSQL 双连接通过 |
+| F03 上游接受后进程中止，编号未保存 | 本地待确认，服务端可能仍 pending | 查原请求；已接入幂等/对账或只读缓存探测才可补取；禁止盲目重提 | 提交意图、迟到回执、缓存恢复及未知不重提本地通过；真实供应商验收留 P5 |
 | F04 未收到编号就刷新画布 | 原本地 recovery 存在，页面显示继续/放弃 | 点击继续先查原请求；找到则绑定，确认未找到的显式重放保持原幂等键；放弃不取消上游 | 原编号/请求关联不变；放弃不写取消/退款；已有恢复测试，原请求核验路径仍需补覆盖 |
-| F05 提交成功后切页、刷新或关闭浏览器 | 工作站丢失内存等待；异步图片没有独立后台 | 后台推进已接受任务，重新登录后读取；禁止依赖 Assets 打开才补收结果 | 浏览器关闭时数据库与对象已经完成，查看详情前即完成；新图片后台端到端待 P1/P5 |
+| F05 提交成功后切页、刷新或关闭浏览器 | 阶段 1 工作站丢失内存等待，异步图片缺独立后台 | 后台推进已接受任务，重新登录后读取；禁止依赖 Assets 打开才补收结果 | 本地及共享业务库 preview 无用户 GET 的推进、实际 R2 PUT/结算通过；真实浏览器关页和直接下载待完整验收 |
 | F06 图片部分成功、其余失败/超时 | 可用序号不连续，任务成功且有 PARTIAL | 按原成功数结算并展示差额；禁止重排 ordinal 或自动重跑整单 | 2/4 结果身份稳定，重复读取不再结算；现有服务/账本测试通过 |
 | F07 已超时退款后出现图片结果 | released/refunded 后出现可用对象 | 复用既有迟到结果规则；禁止再预扣或扣回已退积分 | 新结果版本重新提示；原账本不变；现有图片/视频迟到测试通过，新提示待 P3 |
 | F08 同步工具请求中途刷新/网络失败 | sync job reserved 或 settled，本地可能没来得及保存 | 查原 billing.requestId；禁止自动再发生成 POST | 查到 settled 后读原对象，超时预留最终收口；既有 billed-sync 网络恢复测试通过 |
@@ -62,128 +62,30 @@
 
 P1 指总计划中的“服务端可靠推进”，不是本次阶段 1 文档交付。F01/F02 是图片调度上线前的必修项；其余待实现项目不因清单已写完而视为已修复。
 
-## 3. 可重复执行的内存风险复现
+## 3. 修复回归与独立数据库验收
 
-以下命令仅调用现有内存仓库和 Mock 供应商，不连接数据库、不调用真实供应商、不修改业务文件。假配置只在子进程内用于通过模型选择；任何意外 fetch 都会抛错。
+阶段 1 曾用纯内存脚本复现 F01 提交两次、F02 旧进度覆盖新进度。旧脚本保留在 PR #152 的历史中，当前执行器已改造，不应继续运行以“风险仍存在”为成功条件的脚本。
 
-内存仓库用 `leases` 集合记录领取，不会自动按时间过期。F02 显式清理集合模拟 SQL 租约过期后可重新领取；它验证的是图片写回缺少保护，不是正式库并发事务已经实测。
+当前安全断言在以下测试中可重复执行，不连接业务库、不调用真实供应商：
 
 ```sh
-node --import tsx --input-type=module <<'JS'
-import assert from 'node:assert/strict'
-import { createMemoryStore } from './server/image-jobs/memory-store.ts'
-import { createMockImageProvider } from './server/image-providers/mock.ts'
-import {
-  createImageJobInStore, runProviderSubmits,
-  advanceJobInStore, collectAdvancePatches,
-} from './server/image-jobs/service.ts'
-
-process.env.DRAGONCODE_API_KEY = 'phase-one-local-fake-key'
-process.env.AIGC_RUNTIME_SCOPE = 'local'
-const user = {
-  id: '00000000-0000-4000-8000-000000000001',
-  email: 'test@example.invalid',
-}
-const payload = requestId => ({
-  capability: 'image_edit', requestId,
-  params: {
-    sourceImageKey: `temporary/task-inputs/${user.id}/fixture`,
-    prompt: '测试', count: 1, resolution: '2k',
-    sourceWidth: 1200, sourceHeight: 800,
-  },
-})
-const runtime = provider => ({
-  now: () => Date.now() + 10000,
-  sleep: async () => {}, log: () => {},
-  fetch: async () => { throw new Error('禁止真实网络') },
-  signRead: async () => ({
-    url: 'https://example.invalid/fixture', expiresAt: Date.now() + 900000,
-  }),
-  putObject: async () => {},
-  billing: {
-    reserve: async () => ({ ok: true }),
-    settle: async () => {}, release: async () => {},
-  },
-  providerFor: () => provider,
-})
-const deferred = () => {
-  let resolve
-  const promise = new Promise(done => { resolve = done })
-  return { promise, resolve }
-}
-
-// F01：原提交阻塞时，推进器看到无编号项又提交了一次。
-const started = deferred(), hold = deferred()
-let submits = 0
-const provider = createMockImageProvider({
-  submit: async () => {
-    const n = ++submits
-    if (n === 1) { started.resolve(); await hold.promise }
-    return { providerTaskId: `fixture-${n}` }
-  },
-  getStatus: async () => ({ state: 'processing', progress: 25 }),
-})
-const store = createMemoryStore(user.id), rt = runtime(provider)
-const created = await createImageJobInStore(
-  store, user, payload('00000000-0000-4000-8000-000000000201'), rt,
-)
-const original = runProviderSubmits(created.bundle, provider, user.id, rt)
-await started.promise
-const job = await store.updateJob(created.bundle.job.id, { next_poll_at: new Date(0) })
-await advanceJobInStore(store, { job, items: await store.listItems(job.id) }, rt)
-hold.resolve()
-await original
-assert.equal(submits, 2)
-console.log(JSON.stringify({ scenario: 'F01', observedSubmitCalls: submits, targetSubmitCalls: 1 }))
-
-// F02：模拟过期重领，新执行者写入 80，旧执行者返回后覆盖为 10。
-const oldStarted = deferred(), oldHold = deferred()
-let queries = 0
-const provider2 = createMockImageProvider({
-  getStatus: async () => {
-    if (++queries === 1) {
-      oldStarted.resolve(); await oldHold.promise
-      return { state: 'processing', progress: 10 }
-    }
-    return { state: 'processing', progress: 80 }
-  },
-})
-const store2 = createMemoryStore(user.id), rt2 = runtime(provider2)
-const created2 = await createImageJobInStore(
-  store2, user, payload('00000000-0000-4000-8000-000000000202'), rt2,
-)
-await store2.updateItem(created2.bundle.job.id, 0, {
-  status: 'processing', provider_task_id: 'fixture-accepted',
-})
-const oldJob = await store2.tryAcquireLease(created2.bundle.job.id, new Date(Date.now() + 30000))
-assert.ok(oldJob)
-const oldBundle = { job: oldJob, items: await store2.listItems(oldJob.id) }
-const oldOutcomes = collectAdvancePatches(oldJob, oldBundle.items, rt2)
-await oldStarted.promise
-await store2.updateJob(oldJob.id, { lease_until: new Date(Date.now() - 1000) })
-store2.leases.delete(oldJob.id)
-const newJob = await store2.tryAcquireLease(oldJob.id, new Date(Date.now() + 60000))
-assert.ok(newJob)
-const newBundle = { job: newJob, items: await store2.listItems(newJob.id) }
-await advanceJobInStore(store2, newBundle, rt2, {
-  alreadyLeased: true,
-  outcomes: await collectAdvancePatches(newJob, newBundle.items, rt2),
-})
-assert.equal((await store2.listItems(oldJob.id))[0].progress, 80)
-oldHold.resolve()
-await advanceJobInStore(store2, oldBundle, rt2, {
-  alreadyLeased: true, outcomes: await oldOutcomes,
-})
-const progress = (await store2.listItems(oldJob.id))[0].progress
-assert.equal(progress, 10)
-console.log(JSON.stringify({
-  scenario: 'F02', progressAfterNewWriter: 80,
-  progressAfterOldWriter: progress, targetProgress: 80,
-}))
-JS
+npx vitest run \
+  server/image-jobs/reliability.test.ts \
+  server/image-jobs/reliability.database.test.ts \
+  server/image-jobs/maintenance-route.test.ts
 ```
 
-当前预期输出：F01 `observedSubmitCalls=2`；F02 `progressAfterOldWriter=10`。命令的断言确认风险存在，退出码 0 不表示安全修复完成。P1 修复后改为提交次数 1、旧写回被拒绝且进度保持 80，并增加真实数据库租约/并发测试；不能长期把风险复现当作通过门槛。
+F01 断言生成请求与预扣各一次；F02 断言旧令牌不能写回和结算，进度保持 80。内存租约按注入时钟到期，数据库测试实际执行新迁移、应用角色、RLS 和账本函数。
+
+两条真实 PostgreSQL 连接的竞争需另行执行：
+
+```sh
+IMAGE_TEST_DATABASE_URL='postgres://测试账号@127.0.0.1:5432/专用空白库' \
+IMAGE_TEST_DATABASE_CONFIRM=isolated \
+npm run test:image-jobs:postgres
+```
+
+该命令要求独立空白数据库，不能填业务库；缺少真实连接时直接失败，不自动降级为内存或 PGlite。本地 PostgreSQL 17.10 的两连接验收已通过；报告和独立预览待验项目见[阶段 2 说明](task-center-stage-two.md#4-本地验证与真实并发门槛)。供应商为 Mock、对象存储为内存替身，不代表正式账单或真实 R2 已验收。
 
 ## 4. 本次既有行为验证
 
@@ -225,6 +127,6 @@ npm test -- \
 | 原接口读取副作用 | 已列出，后续只读接口必须拆开 expire/advance/hydration |
 | 保留期限与证据 | 已区分记录/对象/签名/本机字节；R2 正式桶策略待 P5 实查 |
 | 草稿、画布门禁、批量未提交项边界 | 已确定不覆盖、不自动执行的恢复规则 |
-| 基线测试与可重复验证 | 134 项既有测试通过；故障脚本可重复运行，数据库重领部分明确为模拟 |
+| 基线测试与可重复验证 | 阶段 1 的 134 项既有测试通过；当前执行第 3 节的安全回归，真实 PostgreSQL 门槛见阶段 2 报告 |
 
-下一阶段先实施图片提交意图、共享领取、有效租约写回与幂等收口，然后启用后台调度。F01/F02 未通过修复后的断言前，禁止把图片分钟工作器上线作为已完成恢复能力。后续新接口/页面的测试必须直接覆盖此矩阵，现有绿色基线不能代替新增验收。
+阶段 2 已完成提交意图、共享领取、有效令牌写回与幂等收口。F01/F02 的本地双连接断言通过；按用户授权复用业务库后，preview 分钟调度、实际 R2 PUT 和唯一结算也通过。生产应用与收费供应商完整验收仍待后续，不能把这些证据扩大为生产已上线。后续新接口/页面的测试仍须直接覆盖此矩阵。

@@ -130,6 +130,38 @@ describe('OpenRouter 图片客户端', () => {
     expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({ stage: 'openrouter-image-replay', cost: 0.04 }))
   })
 
+  it('恢复只读同一次尝试的缓存，其他账号、环境、任务或尝试均不命中', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse(imagePayload()))
+    const store = memoryStore()
+    const provider = createOpenRouterImageProvider(() => settings, store)
+    const execution = {
+      scope: 'preview',
+      userId: '00000000-0000-4000-8000-000000000001',
+      jobId: '00000000-0000-4000-8000-000000000002',
+      attemptId: '00000000-0000-4000-8000-000000000003',
+    }
+    const ctx = { ...context(fetchImpl), execution }
+    const submitted = await provider.submit!(input, ctx)
+    expect(decodeOpenRouterTask(submitted.providerTaskId)?.key).toBe(
+      `temporary/openrouter-results/preview/${execution.userId}/${execution.jobId}/${execution.attemptId}/0.img`,
+    )
+    fetchImpl.mockClear()
+    const recovered = await provider.recoverSubmission!(0, { ...ctx, requestId: '另一个 HTTP 请求' })
+    expect(recovered).toEqual(submitted)
+    for (const identity of [
+      { ...execution, scope: 'production' },
+      { ...execution, userId: '00000000-0000-4000-8000-000000000004' },
+      { ...execution, jobId: '00000000-0000-4000-8000-000000000004' },
+      { ...execution, attemptId: '00000000-0000-4000-8000-000000000004' },
+    ]) {
+      expect(await provider.recoverSubmission!(0, { ...ctx, execution: identity })).toBeUndefined()
+    }
+    expect(await provider.recoverSubmission!(1, ctx)).toBeUndefined()
+    expect(await provider.recoverSubmission!(0, context(fetchImpl))).toBeUndefined()
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(store.objects.size).toBe(2)
+  })
+
   it('失败响应不重试，没有图片时也不把空结果当成成功', async () => {
     const denied = vi.fn().mockImplementation(async () => jsonResponse({ error: { message: 'content policy violation' } }, 400))
     const provider = createOpenRouterImageProvider(() => settings, memoryStore())

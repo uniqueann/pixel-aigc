@@ -50,7 +50,7 @@ export function decodeAiGatewayTask(providerTaskId: string): StoredAiGatewayTask
   }
 }
 
-const RESULT_KEY = /^temporary\/ai-gateway-results\/[0-9a-f-]{36}\/\d+\.img$/i
+const RESULT_KEY = /^temporary\/ai-gateway-results\/(?:[0-9a-f-]{36}|(?:local|preview|production)\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36})\/[0-3]\.img$/i
 
 export function aiGatewayResultUrl(key: string) {
   return `ai-gateway-object:${key}`

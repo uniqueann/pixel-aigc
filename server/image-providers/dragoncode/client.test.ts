@@ -186,16 +186,15 @@ describe('DragonCode 客户端', () => {
     })
   })
 
-  it('408/429/5xx 会指数退避重试，4xx 不会', async () => {
+  it('生成 POST 不重试，查询 GET 可指数退避', async () => {
     const sleep = vi.fn(async () => undefined)
     const retryFetch = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ message: 'slow' }, 408))
       .mockResolvedValueOnce(jsonResponse({ message: 'busy' }, 429))
       .mockResolvedValueOnce(jsonResponse(submitSuccess))
-    await expect(provider.submit!(input, context(retryFetch, sleep))).resolves.toEqual({ providerTaskId: FAKE_TASK_ID })
-    expect(retryFetch).toHaveBeenCalledTimes(3)
-    expect(sleep).toHaveBeenNthCalledWith(1, 1000)
-    expect(sleep).toHaveBeenNthCalledWith(2, 2000)
+    await expect(provider.submit!(input, context(retryFetch,sleep))).rejects.toMatchObject({ code: 'TIMEOUT' })
+    expect(retryFetch).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
 
     const clientError = vi.fn().mockResolvedValue(jsonResponse({ error: { message: 'bad prompt', type: 'invalid_request_error' } }, 400))
     await expect(provider.submit!(input, context(clientError, sleep))).rejects.toMatchObject({ code: 'INVALID_PARAMS' })

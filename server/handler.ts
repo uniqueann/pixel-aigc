@@ -11,6 +11,7 @@ import { waitUntil } from '@vercel/functions'
 import { SEEDANCE_VIDEO_MODEL } from '../shared/video-models.js'
 import { videoGenerationAvailable } from './video-providers/seedance/config.js'
 import { maintainVideoJobs, recordVideoCallback } from './video-jobs/maintenance.js'
+import { maintainImageJobs } from './image-jobs/maintenance.js'
 import { z } from 'zod'
 import { authenticate } from './auth.js'
 import { runtimeScope, database, withIdentity } from './db.js'
@@ -139,6 +140,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (jobId) waitUntil(maintainVideoJobs(jobId).catch(() => console.error(JSON.stringify({ evt: 'video-maintenance', code: 'CALLBACK_ADVANCE_FAILED' }))))
       return
     }
+    if (path.join('/') === 'internal/image-jobs-maintenance' && method === 'POST') {
+      const secret = process.env.IMAGE_CRON_SECRET
+      const supplied = req.headers.authorization?.replace(/^Bearer /,'') ?? ''
+      if (!secret || Buffer.byteLength(supplied) !== Buffer.byteLength(secret)
+        || !timingSafeEqual(Buffer.from(supplied),Buffer.from(secret))) throw new HttpError(401,'未授权','AUTH_REQUIRED')
+      const body = z.object({ scope: z.enum(['local','preview','production']) }).strict()
+        .parse(typeof req.body === 'string' ? JSON.parse(req.body) : req.body)
+      if (body.scope !== runtimeScope()) throw new HttpError(400,'图片维护环境不匹配','INVALID_SCOPE')
+      if (process.env.IMAGE_MAINTENANCE_ENABLED !== 'true') throw new HttpError(503,'图片维护尚未启用','MAINTENANCE_DISABLED')
+      const runId = randomUUID()
+      res.status(202).json({ received: true,runId,scope: runtimeScope() })
+      waitUntil(maintainImageJobs(undefined,runId).catch(() => console.error(JSON.stringify({ evt: 'image-maintenance',runId,scope: runtimeScope(),code: 'MAINTENANCE_FAILED' }))))
+      return
+    }
     if (path.join('/') === 'internal/video-jobs-maintenance' && method === 'POST') {
       const secret = process.env.VIDEO_CRON_SECRET
       const supplied = req.headers.authorization?.replace(/^Bearer /, '') ?? ''
@@ -154,6 +169,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw new HttpError(401, '未授权', 'AUTH_REQUIRED')
       const result = await database().begin(async sql => {
         await sql`set local role aigc_api`
+        await sql`select set_config('aigc.scope',${runtimeScope()},true),set_config('aigc.user_id','',true)`
         if (path.join('/') === 'internal/image-jobs-sweep') {
           const [expired] = await sql`select aigc.expire_overdue_image_jobs() as expired`
           const [deleted] = await sql`select aigc.purge_expired_image_jobs() as deleted`
@@ -161,7 +177,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const [sync] = await sql`select aigc.expire_sync_credits() as expired`
           return { expired: Number(expired.expired), deleted: Number(deleted.deleted), limited: Number(limited.deleted), syncExpired:Number(sync.expired) }
         }
-        await sql`select set_config('aigc.scope',${runtimeScope()},true),set_config('aigc.user_id','',true)`
         const [expired] = await sql`select aigc.expire_email_tasks(${runtimeScope()}) as expired`
         if (path.join('/') === 'internal/email-maintenance') return { expired: Number(expired.expired) }
         const [row] = await sql`select aigc.purge_expired_email_tasks(${runtimeScope()}) as deleted`

@@ -5,6 +5,7 @@ const KEYS = [
   'DRAGONCODE_API_KEY', 'DASHSCOPE_API_KEY', 'QWEN_IMAGE_ENABLED', 'QWEN_IMAGE_API_KEY', 'QWEN_IMAGE_MODELS',
   'OPENROUTER_API_KEY', 'OPENROUTER_IMAGE_ENABLED', 'OPENROUTER_BASE_URL',
   'AI_GATEWAY_API_KEY', 'AI_GATEWAY_IMAGE_ENABLED', 'VERCEL', 'VERCEL_OIDC_TOKEN',
+  'AIGC_IMAGE_MOCK_PROVIDER', 'VERCEL_ENV', 'AIGC_RUNTIME_SCOPE',
 ] as const
 const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
 
@@ -16,6 +17,7 @@ beforeEach(() => {
   delete process.env.AI_GATEWAY_IMAGE_ENABLED
   delete process.env.VERCEL_OIDC_TOKEN
   delete process.env.VERCEL
+  delete process.env.AIGC_IMAGE_MOCK_PROVIDER
 })
 
 afterEach(() => {
@@ -27,6 +29,16 @@ afterEach(() => {
 })
 
 describe('图片模型目录', () => {
+  it('验收 Mock 默认隐藏，正式环境即使误开开关也隐藏', () => {
+    const base = { AIGC_RUNTIME_SCOPE: 'preview', VERCEL_ENV: 'preview' }
+    const mockIds = (env: NodeJS.ProcessEnv) => configuredImageModels('text_to_image', env)
+      .filter(model => model.provider === 'mock').map(model => model.id)
+    expect(mockIds(base)).toEqual([])
+    expect(mockIds({ ...base, AIGC_IMAGE_MOCK_PROVIDER: 'true' })).toEqual(['mock:image-stage2'])
+    expect(mockIds({ ...base, AIGC_IMAGE_MOCK_PROVIDER: 'true', VERCEL_ENV: 'production' })).toEqual([])
+    expect(mockIds({ ...base, AIGC_IMAGE_MOCK_PROVIDER: 'true', AIGC_RUNTIME_SCOPE: 'production' })).toEqual([])
+  })
+
   it('千问开关关闭时，即使有百炼 Key 也只列出 GPT Image 2', () => {
     process.env.DRAGONCODE_API_KEY = 'sk-dragon'
     process.env.DASHSCOPE_API_KEY = 'sk-dash'

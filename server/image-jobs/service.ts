@@ -59,6 +59,8 @@ import { createSqlBilling, noopBilling, type BillingPort } from './billing.js'
 import { reserveAndCreateJob } from './lifecycle.js'
 import { VIDEO_RETENTION_MS } from '../../shared/video-models.js'
 import { createSqlStore } from './repository.js'
+import { ImageLeaseLost, sqlImageExecution, type ImageExecutionPort } from './execution.js'
+import { getDeadline } from '@vercel/functions'
 import {
   ACTIVE_JOB_STATUSES,
   LATE_RESULT_WARNING,
@@ -88,7 +90,7 @@ export const IMAGE_GLOBAL_CONCURRENCY = 20
 /** 一次任务最多 4 张，下载和写 R2 同时进行，但不超过这个上限。 */
 const RESULT_DOWNLOAD_PARALLEL = 4
 const VENDOR_COST_SCALE = 1_000_000
-export const IMAGE_LEASE_MS = 30_000
+export const IMAGE_LEASE_MS = 120_000
 /** 与 GPT-Image-2 现有默认值一致。供应商未提供 jobPolicy 时使用。 */
 export const DEFAULT_IMAGE_JOB_POLICY: ImageJobPolicy = {
   taskTimeoutMs: 300_000,
@@ -258,13 +260,17 @@ export interface ImageJobRuntime {
   fetch: typeof fetch
   log: (entry: Record<string, unknown>) => void
   signRead: (key: string, expiresIn?: number) => Promise<{ url: string; expiresAt: number }>
-  putObject: (key: string, bytes: Uint8Array, contentType: string) => Promise<void>
-  getObject: (key: string) => Promise<{ bytes: Uint8Array; contentType?: string }>
+  putObject: (key: string, bytes: Uint8Array, contentType: string, signal?: AbortSignal) => Promise<void>
+  getObject: (key: string, signal?: AbortSignal) => Promise<{ bytes: Uint8Array; contentType?: string }>
   billing: BillingPort
   crop: typeof cropToSourceAspect
   providerFor: (id: string) => ImageProvider | undefined
   /** 限流退避的抖动。缺省用 Math.random。 */
   random?: () => number
+  execution?: ImageExecutionPort
+  signal?: AbortSignal
+  budgetUntil?: number
+  allowSubmit?: boolean
 }
 
 type ItemPatch = Partial<ImageJobItemRow>
@@ -378,6 +384,11 @@ export function defaultImageJobRuntime(): ImageJobRuntime {
 
 export function isSafeObjectKey(userId: string, key: string) {
   if (!key || key.includes('..') || key.includes('\\') || key.startsWith('/') || key.includes('//')) return false
+  const generatedPrefix = `generated/${userId}/`
+  if (key.startsWith(generatedPrefix)) {
+    const scoped = /^(local|preview|production)\//.exec(key.slice(generatedPrefix.length))
+    if (scoped && scoped[1] !== runtimeScope()) return false
+  }
   return [
     `temporary/task-inputs/${userId}/`,
     `temporary/erase-results/${userId}/`,
@@ -415,8 +426,19 @@ function imageModelUnavailable(operation: ImageTaskCapability) {
   return new HttpError(503, `${label}尚未配置可用的图片模型`, code)
 }
 
-function providerContext(runtime: ImageJobRuntime, requestId?: string): ProviderContext {
-  return { fetch: runtime.fetch, sleep: runtime.sleep, now: runtime.now, log: runtime.log, requestId }
+function providerContext(runtime: ImageJobRuntime, job: ImageJobRow, attemptId?: string): ProviderContext {
+  return { fetch: runtime.fetch, sleep: runtime.sleep, now: runtime.now, log: runtime.log, requestId: job.request_id,
+    signal: runtime.signal,
+    ...(attemptId ? { execution: { userId: job.user_id,scope: job.scope,jobId: job.id,attemptId } } : {}) }
+}
+
+/** 总预算与单次操作的超时分别生效，留出数据库收尾时间。 */
+export function boundedImageRuntime(runtime: ImageJobRuntime, budgetMs: number): ImageJobRuntime {
+  const platformDeadline = getDeadline()
+  const budgetUntil = Math.min(runtime.now() + budgetMs, platformDeadline ? platformDeadline.getTime() - 8_000 : Infinity,
+    runtime.budgetUntil ?? Infinity)
+  const timeout = AbortSignal.timeout(Math.max(1, Math.floor(budgetUntil - runtime.now())))
+  return { ...runtime, budgetUntil, signal: runtime.signal ? AbortSignal.any([runtime.signal,timeout]) : timeout }
 }
 
 function resolveModel(operation: ImageTaskCapability, modelProfileId: string | undefined, env = process.env) {
@@ -445,7 +467,7 @@ async function resolveInputUrl(objectKey: string, runtime: ImageJobRuntime) {
     return signed.url
   } catch (error) {
     runtime.log({ stage: 'source-sign-failed', error: error instanceof Error ? error.message : String(error) })
-    const object = await runtime.getObject(objectKey)
+    const object = await runtime.getObject(objectKey,runtime.signal)
     if (object.bytes.byteLength > DRAGONCODE_MAX_DATA_URI_BYTES) {
       throw new ProviderError('INVALID_PARAMS', '参考图超过 20MB 限制', false, 400)
     }
@@ -475,6 +497,10 @@ export async function createImageJobInStore(
   parsed: z.infer<typeof createImageTaskSchema>,
   runtime: ImageJobRuntime,
 ): Promise<{ bundle: ImageJobBundle; created: boolean; provider: ImageProvider }> {
+  if (store.kind === 'memory') {
+    (store as ImageJobStore & { setClock(clock: () => number): void }).setClock(() => runtime.now())
+    runtime.execution ??= { transaction: action => action(store,runtime.billing) }
+  }
   await store.expireUserOverdue(new Date(runtime.now()))
   const profile = resolveModel(parsed.capability, parsed.modelProfileId)
   const provider = runtime.providerFor(profile.provider)
@@ -632,6 +658,7 @@ export async function createImageJobInStore(
     billingState: 'reserved',
     deadlineAt: new Date(runtime.now() + timeoutMs),
     nextPollAt: nextPollAt(runtime.now(), policy.pollIntervalMs, true, policy.initialPollDelayMs),
+    initialLease: true,
   }
   const bundle = await reserveAndCreateJob(store, runtime.billing, user.id, input,
     { capability: parsed.capability, modelProfileId: profile.id, resolution: effectiveResolution, unitPrice })
@@ -662,35 +689,6 @@ function nextPollInterval(job: ImageJobRow, runtime: ImageJobRuntime) {
   return provider ? imageJobPolicy(provider).pollIntervalMs : DEFAULT_IMAGE_JOB_POLICY.pollIntervalMs
 }
 
-/** 一次上游请求出 n 张。只提交一次，并把同一个 task id 写到所有尚未提交的明细。 */
-async function submitBatch(
-  bundle: ImageJobBundle,
-  provider: ImageProvider,
-  prompt: string,
-  images: Array<{ url: string }>,
-  ctx: ProviderContext,
-): Promise<SubmitOutcome[]> {
-  const pending = bundle.items.some(item => item.status === 'pending')
-  if (!pending) return bundle.items.map(item => ({ ordinal: item.ordinal, patch: {} }))
-  try {
-    if (!provider.submit) throw new ProviderError('UNKNOWN', '当前模型不支持异步提交', false, 500)
-    const submitted = await provider.submit({
-      model: String(bundle.job.provider_params.model ?? ''),
-      prompt,
-      images,
-      providerParams: bundle.job.provider_params,
-      ordinal: bundle.items.find(item => item.status === 'pending')?.ordinal,
-    }, ctx)
-    return bundle.items.map(item => item.status === 'pending'
-      ? { ordinal: item.ordinal, patch: submittedPatch(item, submitted.providerTaskId) }
-      : { ordinal: item.ordinal, patch: {} })
-  } catch (error) {
-    return bundle.items.map(item => item.status === 'pending'
-      ? { ordinal: item.ordinal, patch: submitFailurePatch(item, error) }
-      : { ordinal: item.ordinal, patch: {} })
-  }
-}
-
 function submittedPatch(item: ImageJobItemRow, providerTaskId: string): ItemPatch {
   return {
     status: 'submitted',
@@ -703,9 +701,28 @@ function submittedPatch(item: ImageJobItemRow, providerTaskId: string): ItemPatc
 
 function submitFailureMessage(message: string) {
   return message
+    .replace(/data:[^,\s]*;base64,[A-Za-z0-9+/_=-]+/gi, '[图片数据已隐藏]')
     .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
     .replace(/\b(?:sk|rk)-[A-Za-z0-9_-]{8,}\b/g, '[redacted]')
+    .replace(/https?:\/\/[^\s"'<>]+/gi,'[地址已隐藏]')
     .slice(0, 300)
+}
+
+/** 私有尝试凭据只保存错误分类，避免上游原文夹带提示词、图片或凭证。 */
+function submissionReceiptMessage(code: ProviderError['code']) {
+  const messages: Record<ProviderError['code'], string> = {
+    INVALID_KEY: '图片服务鉴权失败',
+    INSUFFICIENT_BALANCE: '图片服务余额不足',
+    RATE_LIMIT: '图片服务请求频繁，请稍后重试',
+    CONTENT_REJECTED: '内容未通过审核',
+    PROVIDER_FORBIDDEN: '图片服务权限不足',
+    INVALID_PARAMS: '图片参数不被支持',
+    TIMEOUT: '图片提交超时',
+    UPSTREAM_UNAVAILABLE: '图片服务连接失败',
+    BAD_RESPONSE: '图片服务没有返回有效响应',
+    UNKNOWN: '图片提交状态待确认',
+  }
+  return messages[code]
 }
 
 function submitFailurePatch(item: ImageJobItemRow, error: unknown): ItemPatch {
@@ -721,22 +738,17 @@ function submitFailurePatch(item: ImageJobItemRow, error: unknown): ItemPatch {
     }))
   }
   const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN', '图片任务提交失败')
-  // 瞬时限流：上游没有 task id，保持 pending，截止前按退避再提交。
-  if (failure.holdPending) {
-    return {
-      attempts: item.attempts + 1,
-      error_code: failure.code,
-      error_message: failure.message,
-    }
+  const message = submitFailureMessage(failure.message)
+  const definite = failure.requestSent === false || failure.holdPending || failure.definiteNotAccepted
+  if (definite && (failure.retryable || failure.holdPending)) {
+    return { status: 'pending',submission_state: 'not_sent',attempts: item.attempts + 1,
+      error_code: failure.code,error_message: message }
   }
-  // 建连失败时请求还没送出，留下 pending，等后续轮询在截止时间前再提交。
-  if (failure.requestSent === false) return { attempts: item.attempts + 1 }
-  return {
-    status: 'failed',
-    attempts: item.attempts + 1,
-    error_code: failure.code,
-    error_message: failure.message,
-  }
+  if (definite) return { status: 'failed',submission_state: 'not_sent',attempts: item.attempts + 1,
+    error_code: failure.code,error_message: message }
+  // 没有任务编号不等于没有受理；保留预留，等回执、缓存或原截止时间收口。
+  return { status: 'pending',submission_state: 'unknown',attempts: item.attempts + 1,
+    error_code: failure.code,error_message: message }
 }
 
 export async function runProviderSubmits(
@@ -761,43 +773,72 @@ export async function runProviderSubmits(
   const referenceUrl = referenceKey ? await resolveInputUrl(referenceKey, runtime) : undefined
   const prompt = submittedPrompt(bundle.job.provider_params, params)
   const parallel = imageJobPolicy(provider).maxParallel
-  const ctx = providerContext(runtime, bundle.job.request_id)
   const images = sourceUrl ? [{ url: sourceUrl }, ...(referenceUrl ? [{ url: referenceUrl }] : [])] : []
-  if (bundle.job.provider_params.batch === true) {
-    return submitBatch(bundle, provider, prompt, images, ctx)
-  }
-  return mapPool(bundle.items.length, parallel, async (index) => {
-    const item = bundle.items[index]
-    if (item.status !== 'pending') return { ordinal: item.ordinal, patch: {} }
+  if (!runtime.execution || !bundle.job.lease_token) throw new ImageLeaseLost()
+  const execution = runtime.execution
+  const pending = bundle.items.filter(item => item.status === 'pending' && item.submission_state === 'not_sent'
+    && !item.provider_task_id && !item.result_object_key)
+  const batches = bundle.job.provider_params.batch === true ? (pending.length ? [pending] : []) : pending.map(item => [item])
+  const results = await mapPool(batches.length, parallel, async index => {
+    const group = batches[index]
+    const minimumBudget = provider.capabilities(String(bundle.job.provider_params.model ?? '')).execution === 'sync-inline' ? 75_000 : 35_000
+    if (runtime.allowSubmit === false || runtime.signal?.aborted
+      || (runtime.budgetUntil !== undefined && runtime.budgetUntil - runtime.now() < minimumBudget)) return []
+    const attemptId = randomUUID()
+    const attempt = await execution.transaction(store => store.startSubmission(bundle.job.id,bundle.job.lease_token!,group.map(item => item.ordinal),attemptId))
+    if (!attempt) return []
+    let patches: SubmitOutcome[]
+    let receipt: import('./types.js').AttemptReceipt
     try {
-      if (!provider.submit) throw new ProviderError('UNKNOWN', '当前模型不支持异步提交', false, 500)
-      const submitted = await provider.submit({
-        model: String(bundle.job.provider_params.model ?? ''),
-        prompt,
-        images,
-        providerParams: bundle.job.provider_params,
-        ordinal: item.ordinal,
-      }, ctx)
-      return {
-        ordinal: item.ordinal,
-        patch: submittedPatch(item, submitted.providerTaskId),
+      if (runtime.signal?.aborted) {
+        const error = new ProviderError('TIMEOUT','本轮提交预算已结束',true)
+        error.requestSent = false
+        throw error
       }
+      if (!provider.submit) {
+        const error = new ProviderError('INVALID_PARAMS','当前模型不支持提交',false,400)
+        error.requestSent = false
+        throw error
+      }
+      const submitted = await provider.submit({ model: String(bundle.job.provider_params.model ?? ''),prompt,images,
+        providerParams: bundle.job.provider_params,ordinal: group[0].ordinal },providerContext(runtime,bundle.job,attemptId))
+      if (!submitted.providerTaskId) throw new ProviderError('BAD_RESPONSE','图片服务没有返回任务编号')
+      receipt = { provider_task_id: submitted.providerTaskId,outcome: 'accepted',error_code: null,error_message: null,retryable: false }
+      patches = group.map(item => ({ ordinal: item.ordinal,patch: { ...submittedPatch(item,submitted.providerTaskId),
+        submission_state: 'accepted',submission_attempt_id: attemptId } }))
     } catch (error) {
-      return { ordinal: item.ordinal, patch: submitFailurePatch(item, error) }
+      const failure = error instanceof ProviderError ? error : new ProviderError('UNKNOWN','图片任务提交失败')
+      const definite = failure.requestSent === false || failure.holdPending || failure.definiteNotAccepted
+      receipt = { provider_task_id: null,outcome: failure.requestSent === false ? 'not_sent' : definite ? 'rejected' : 'unknown',
+        error_code: failure.code,error_message: submissionReceiptMessage(failure.code),retryable: !!definite && (failure.retryable || !!failure.holdPending) }
+      patches = group.map(item => ({ ordinal: item.ordinal,patch: { ...submitFailurePatch(item,error),submission_attempt_id: attemptId } }))
     }
+    // 即使租约失效，也允许记录这一次真实请求的回执，交给新持有者核对。
+    await execution.transaction(store => store.recordSubmission(attemptId,receipt))
+    return patches
   })
+  return results.flat()
 }
 
 async function applyItemPatches(store: ImageJobStore, jobId: string, items: ImageJobItemRow[], outcomes: SubmitOutcome[]) {
   const next = [...items]
   for (const outcome of outcomes) {
     if (!outcome.patch || Object.keys(outcome.patch).length === 0) continue
+    const current = next[outcome.ordinal]
+    if (current.result_object_key) continue
+    if (outcome.patch.submission_attempt_id && current.submission_attempt_id !== outcome.patch.submission_attempt_id) continue
+    if (outcome.patch.result_object_key) {
+      const attempts = await store.listAttempts(jobId)
+      if (!attempts.some(attempt => attempt.kind === 'transfer' && attempt.ordinals.includes(outcome.ordinal)
+        && attempt.object_key === outcome.patch.result_object_key && !attempt.cleanup_token && !attempt.cleaned_at)) continue
+    }
     next[outcome.ordinal] = await store.updateItem(jobId, outcome.ordinal, outcome.patch)
   }
   return next
 }
 
 export async function failImageJobBeforeSubmit(store: ImageJobStore, bundle: ImageJobBundle, runtime: ImageJobRuntime, message: string) {
+  if (!bundle.job.lease_token || !await store.assertLease(bundle.job.id,bundle.job.lease_token)) throw new ImageLeaseLost()
   const items: ImageJobItemRow[] = []
   for (const item of bundle.items) {
     items.push(await store.updateItem(bundle.job.id, item.ordinal, {
@@ -828,8 +869,9 @@ export async function finalizeJob(
   runtime: ImageJobRuntime,
   lateDelivery: boolean,
   outcomes: SubmitOutcome[] = [],
-  options?: { keepScheduledPoll?: boolean },
+  options?: { keepScheduledPoll?: boolean; keepLease?: boolean },
 ) {
+  if (job.capability !== 'text_to_video' && (!job.lease_token || !await store.assertLease(job.id,job.lease_token))) throw new ImageLeaseLost()
   const reduced = reduceJobStatus(items, runtime.now(), new Date(job.deadline_at).getTime())
   const throttledQueue = reduced.status === 'expired' && throttledWithoutUpstreamTask(items)
   const deferredPoll = deferredThrottlePollAt(job, items, runtime)
@@ -859,6 +901,10 @@ export async function finalizeJob(
   const providerParams = outcomes.some(outcome => outcome.vendor)
     ? mergeVendorUsage(job.provider_params, outcomes)
     : job.provider_params
+  const scheduledPoll = deferredPoll ?? (options?.keepScheduledPoll
+    ? job.next_poll_at : nextPollAt(runtime.now(), nextPollInterval(job, runtime)))
+  // 短事务可能刚写入平台退避；收尾不得把已持久化的下次执行时间提前。
+  const imagePoll = new Date(Math.max(new Date(scheduledPoll).getTime(),new Date(job.next_poll_at).getTime()))
   const next = await store.updateJob(job.id, {
     status: reduced.status,
     warnings,
@@ -875,11 +921,11 @@ export async function finalizeJob(
     completed_at: terminal ? new Date(runtime.now()) : job.completed_at,
     ...(job.capability === 'text_to_video' && reduced.status === 'succeeded' && job.status !== 'succeeded'
       ? { expires_at: new Date(runtime.now() + VIDEO_RETENTION_MS), error_code: null, error_message: null } : {}),
-    next_poll_at: deferredPoll
-      ?? (options?.keepScheduledPoll
-        ? job.next_poll_at
-        : nextPollAt(runtime.now(), nextPollInterval(job, runtime))),
-    lease_until: null,
+    next_poll_at: (job.capability !== 'text_to_video' && new Date(job.deadline_at).getTime() <= runtime.now())
+      ? new Date(runtime.now() + 300_000)
+      : job.capability === 'text_to_video' ? scheduledPoll : imagePoll,
+    ...(!options?.keepLease ? { lease_until: null,
+      ...(job.capability !== 'text_to_video' ? { lease_token: null,lease_owner: null } : {}) } : {}),
     provider_params: providerParams,
   })
   return { job: next, items }
@@ -905,11 +951,16 @@ async function persistDownloadedResult(
   mimeType: string,
   runtime: ImageJobRuntime,
 ) {
+  if (!runtime.execution || !job.lease_token) throw new ImageLeaseLost()
   const params = job.params as StoredImageParams
   const source = sourceDimensions(params)
   const cropped = await runtime.crop(bytes, source.width, source.height)
-  const objectKey = `generated/${job.user_id}/${job.id}/${item.ordinal}.${extensionFor(cropped.mimeType || mimeType)}`
-  await runtime.putObject(objectKey, cropped.bytes, cropped.mimeType || mimeType)
+  const attemptId = randomUUID()
+  const objectKey = `generated/${job.user_id}/${job.scope}/${job.id}/${item.ordinal}/${attemptId}.${extensionFor(cropped.mimeType || mimeType)}`
+  const descriptor = { object_key: objectKey,mime_type: cropped.mimeType || mimeType,width: cropped.width,height: cropped.height,
+    checksum: createHash('sha256').update(cropped.bytes).digest('hex') }
+  await runtime.execution.transaction(store => store.startTransfer(job.id,job.lease_token!,item.ordinal,attemptId,descriptor))
+  await runtime.putObject(objectKey,cropped.bytes,descriptor.mime_type,runtime.signal)
   return {
     status: 'succeeded',
     result_object_key: objectKey,
@@ -967,10 +1018,10 @@ export async function collectAdvancePatches(
   const now = runtime.now()
   const overdue = now >= new Date(job.deadline_at).getTime()
   const salvage = canSalvage(job, now, items)
-  const ctx = providerContext(runtime, job.request_id)
+  const ctx = providerContext(runtime, job)
   const outcomes: SubmitOutcome[] = []
   // 只重提还没有 task id 的明细。已送出的提交即使响应丢失也不再发，避免上游建两个任务。
-  if (!overdue && provider.submit && items.some(item => item.status === 'pending' && !item.provider_task_id && !item.result_object_key)) {
+  if (!overdue && provider.submit && items.some(item => item.status === 'pending' && item.submission_state === 'not_sent' && !item.provider_task_id && !item.result_object_key)) {
     outcomes.push(...await runProviderSubmits({ job, items }, provider, job.user_id, runtime))
   }
   const grouped = new Map<string, ImageJobItemRow[]>()
@@ -987,13 +1038,16 @@ export async function collectAdvancePatches(
     grouped.set(item.provider_task_id, list)
   }
   for (const [taskId, group] of grouped) {
-    const shared = group.length > 1
+    const shared = job.provider_params.batch === true || group.length > 1
     const lead = group.reduce((best, item) => item.ordinal < best.ordinal ? item : best)
     try {
       const state = await provider.getStatus(taskId, ctx)
-      const vendorFor = (item: ImageJobItemRow) => (shared && item.ordinal !== lead.ordinal ? undefined : state.vendor)
+      const batch = job.provider_params.batch === true
+      const usageOrdinal = batch ? 0 : lead.ordinal
+      const vendorFor = (item: ImageJobItemRow) => (batch || (shared && item.ordinal !== lead.ordinal) ? undefined : state.vendor)
+      if (batch && state.state !== 'succeeded' && state.vendor) outcomes.push({ ordinal: usageOrdinal,patch: {},vendor: state.vendor })
       if (state.state === 'queued' || state.state === 'processing') {
-        logProviderUsage(runtime, provider, job, lead.ordinal, state.vendor)
+        logProviderUsage(runtime, provider, job, usageOrdinal, state.vendor)
         for (const item of group) {
           outcomes.push({
             ordinal: item.ordinal,
@@ -1004,7 +1058,7 @@ export async function collectAdvancePatches(
         continue
       }
       if (state.state === 'failed') {
-        logProviderUsage(runtime, provider, job, lead.ordinal, state.vendor)
+        logProviderUsage(runtime, provider, job, usageOrdinal, state.vendor)
         for (const item of group) {
           outcomes.push({
             ordinal: item.ordinal,
@@ -1015,12 +1069,13 @@ export async function collectAdvancePatches(
         continue
       }
       if (state.state !== 'succeeded') continue
-      const returned = shared
+      const returned = batch ? state.resultUrls.slice(0,job.requested_count).filter(Boolean).length : shared
         ? group.filter(item => state.resultUrls[item.ordinal]).length
         : (state.resultUrls[0] ? 1 : 0)
       const vendor = applyCatalogVendorCost(job, state.vendor, returned)
-      const vendorForPriced = (item: ImageJobItemRow) => (shared && item.ordinal !== lead.ordinal ? undefined : vendor)
-      logProviderUsage(runtime, provider, job, lead.ordinal, vendor)
+      const vendorForPriced = (item: ImageJobItemRow) => (batch || (shared && item.ordinal !== lead.ordinal) ? undefined : vendor)
+      if (batch && vendor) outcomes.push({ ordinal: usageOrdinal,patch: {},vendor })
+      logProviderUsage(runtime,provider,job,usageOrdinal,vendor)
       if (!shared) {
         const resultUrl = state.resultUrls[0]
         if (!resultUrl) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回结果地址')
@@ -1060,27 +1115,127 @@ export async function collectAdvancePatches(
   return outcomes
 }
 
+/** 领取后重新读事实；缺少令牌时不能用 alreadyLeased 绕过写回保护。 */
 export async function advanceJobInStore(
   store: ImageJobStore,
   bundle: ImageJobBundle,
   runtime: ImageJobRuntime,
   options?: { alreadyLeased?: boolean; outcomes?: SubmitOutcome[] },
 ) {
-  const now = runtime.now()
-  const overdue = now >= new Date(bundle.job.deadline_at).getTime()
-  const salvage = canSalvage(bundle.job, now, bundle.items)
-  if (!ACTIVE_JOB_STATUSES.has(bundle.job.status) && !salvage) return bundle
   let job = bundle.job
   if (!options?.alreadyLeased) {
-    if (!shouldAdvance(job, now) && !overdue && !salvage) return bundle
-    const leased = await store.tryAcquireLease(job.id, new Date(now + IMAGE_LEASE_MS))
+    const now = runtime.now()
+    if (!shouldAdvance(job,now,bundle.items) && now < new Date(job.deadline_at).getTime()) return bundle
+    const leased = await store.tryAcquireLease(job.id,new Date(now + IMAGE_LEASE_MS))
     if (!leased) return bundle
     job = leased
   }
-  const outcomes = options?.outcomes ?? await collectAdvancePatches(job, bundle.items, runtime)
-  const items = await applyItemPatches(store, job.id, bundle.items, outcomes)
-  const late = overdue || job.status === 'expired'
-  return finalizeJob(store, job, items, runtime, late && items.some(item => item.status === 'succeeded'), outcomes)
+  const current = job.lease_token ? await store.assertLease(job.id,job.lease_token) : undefined
+  if (!current) {
+    runtime.log({ stage: 'fence-rejected',jobId: job.id })
+    return { job: (await store.findById(job.id)) ?? job,items: await store.listItems(job.id) }
+  }
+  if (store.kind === 'sql' && !options?.outcomes) throw new Error('数据库事务内禁止执行图片网络操作')
+  const outcomes = options?.outcomes ?? await collectAdvancePatches(current,await store.listItems(job.id),runtime)
+  // 网络完成后再次核对；SQL 调用持有任务行锁直到事务提交。
+  let fresh = await store.assertLease(job.id,job.lease_token!)
+  if (!fresh) {
+    runtime.log({ stage: 'fence-rejected',jobId: job.id })
+    return { job: (await store.findById(job.id)) ?? job,items: await store.listItems(job.id) }
+  }
+  if (fresh.billing_state === 'reserved' && runtime.now() >= new Date(fresh.deadline_at).getTime()) {
+    fresh = (await finalizeJob(store,fresh,await store.listItems(job.id),runtime,false,[],{ keepLease: true })).job
+  }
+  const items = await applyItemPatches(store,job.id,await store.listItems(job.id),outcomes)
+  const late = fresh.billing_state !== 'reserved' || runtime.now() >= new Date(fresh.deadline_at).getTime()
+  return finalizeJob(store,fresh,items,runtime,late,outcomes)
+}
+
+/** 回执与缓存恢复只有读取；无可靠发送协议的旧明细一律标为待确认。 */
+async function reconcileImageAttempts(bundle: ImageJobBundle,runtime: ImageJobRuntime): Promise<ImageJobBundle> {
+  if (!runtime.execution || !bundle.job.lease_token) throw new ImageLeaseLost()
+  const attempts = await runtime.execution.transaction(store => store.listAttempts(bundle.job.id))
+  const provider = runtime.providerFor(bundle.job.provider)
+  const patches: SubmitOutcome[] = []
+  for (const item of bundle.items) {
+    if (item.result_object_key) continue
+    const attempt = attempts.find(candidate => candidate.id === item.submission_attempt_id && candidate.kind === 'submit')
+    if (!item.provider_task_id && (item.submission_state !== 'not_sent' || !item.submission_state)) {
+      let receipt = attempt
+      if (attempt && !attempt.provider_task_id && provider?.recoverSubmission) {
+        const cached = await provider.recoverSubmission(item.ordinal,providerContext(runtime,bundle.job,attempt.id))
+        if (cached) {
+          await runtime.execution.transaction(store => store.recordSubmission(attempt.id,{ provider_task_id: cached.providerTaskId,
+            outcome: 'accepted',error_code: null,error_message: null,retryable: false }))
+          receipt = { ...attempt,provider_task_id: cached.providerTaskId,outcome: 'accepted' }
+        }
+      }
+      if (receipt?.provider_task_id) patches.push({ ordinal: item.ordinal,patch: { provider_task_id: receipt.provider_task_id,
+        submission_state: 'accepted',status: item.status === 'expired' ? 'expired' : 'submitted',error_code: null,error_message: null } })
+      else if (receipt && (receipt.outcome === 'not_sent' || receipt.outcome === 'rejected')) {
+        patches.push({ ordinal: item.ordinal,patch: { submission_state: 'not_sent',status: receipt.retryable ? item.status : 'failed',
+          error_code: receipt.error_code,error_message: receipt.error_message } })
+      } else patches.push({ ordinal: item.ordinal,patch: { submission_state: 'unknown' } })
+    } else if (item.provider_task_id && item.submission_state !== 'accepted') {
+      patches.push({ ordinal: item.ordinal,patch: { submission_state: 'accepted' } })
+    }
+    // 只认对象键、类型与校验和都相符的转存意图。缓存未命中不会再次生成。
+    for (const transfer of attempts.filter(candidate => candidate.kind === 'transfer' && candidate.ordinals.includes(item.ordinal)).reverse()) {
+      try {
+        const object = await runtime.getObject(transfer.object_key!,runtime.signal)
+        if (object.contentType?.split(';')[0] !== transfer.mime_type
+          || createHash('sha256').update(object.bytes).digest('hex') !== transfer.checksum) continue
+        patches.push({ ordinal: item.ordinal,patch: { status: 'succeeded',result_object_key: transfer.object_key,
+          result_mime_type: transfer.mime_type,result_width: transfer.width,result_height: transfer.height,error_code: null,error_message: null } })
+        break
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 404) continue
+        throw error
+      }
+    }
+  }
+  return runtime.execution.transaction(async store => {
+    const current = await store.assertLease(bundle.job.id,bundle.job.lease_token!)
+    if (!current) throw new ImageLeaseLost()
+    return { job: current,items: await applyItemPatches(store,current.id,await store.listItems(current.id),patches) }
+  })
+}
+
+/** 所有入口共用：短事务准备 → 外部 I/O → 带令牌的短事务收尾。 */
+export async function advanceImageClaim(bundle: ImageJobBundle,runtime: ImageJobRuntime,initial = false) {
+  if (!runtime.execution || !bundle.job.lease_token) throw new ImageLeaseLost()
+  const execution = runtime.execution
+  const prepared = await execution.transaction(async (store,billing) => {
+    const current = await store.assertLease(bundle.job.id,bundle.job.lease_token!)
+    if (!current) throw new ImageLeaseLost()
+    const items = await store.listItems(current.id)
+    if (current.billing_state === 'reserved' && runtime.now() >= new Date(current.deadline_at).getTime()) {
+      // 原截止时只按此前已经入库的成功张数结算，随后收取的结果不再收费。
+      return finalizeJob(store,current,items,{ ...runtime,billing: runtime.billing === noopBilling ? billing : runtime.billing },false,[],{ keepLease: true })
+    }
+    return { job: current,items }
+  })
+  let outcomes: SubmitOutcome[] = []
+  try {
+    const reconciled = await reconcileImageAttempts(prepared,runtime)
+    const provider = runtime.providerFor(reconciled.job.provider)
+    if (initial && provider) {
+      outcomes = await runProviderSubmits(reconciled,provider,reconciled.job.user_id,runtime)
+      if (provider.capabilities(String(reconciled.job.provider_params.model ?? '')).execution === 'sync-inline') {
+        const submitted = reconciled.items.map(item => ({ ...item,...outcomes.find(outcome => outcome.ordinal === item.ordinal)?.patch }))
+        outcomes.push(...await collectAdvancePatches(reconciled.job,submitted,{ ...runtime,allowSubmit: false }))
+      }
+    } else outcomes = await collectAdvancePatches(reconciled.job,reconciled.items,runtime)
+  } catch (error) {
+    if (error instanceof ImageLeaseLost) {
+      runtime.log({ stage: 'fence-rejected',jobId: bundle.job.id })
+    } else if (initial && error instanceof HttpError && (error.status === 400 || error.status === 404)) {
+      outcomes = prepared.items.filter(item => item.submission_state === 'not_sent').map(item => ({ ordinal: item.ordinal,
+        patch: { status: 'failed',error_code: 'INPUT_UNAVAILABLE',error_message: '图片源文件读取失败' } }))
+    } else runtime.log({ stage: 'advance-retry',jobId: bundle.job.id,code: 'IO_FAILED' })
+  }
+  return execution.transaction((store,billing) => advanceJobInStore(store,bundle,
+    { ...runtime,billing: runtime.billing === noopBilling ? billing : runtime.billing },{ alreadyLeased: true,outcomes }))
 }
 
 export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJobRuntime) {
@@ -1132,10 +1287,12 @@ export async function finishSubmittedImageJob(
   runtime: ImageJobRuntime,
   provider: ImageProvider,
 ) {
-  const items = await applyItemPatches(store, bundle.job.id, bundle.items, outcomes)
-  const finalized = await finalizeJob(store, bundle.job, items, runtime, false, outcomes, { keepScheduledPoll: true })
-  if (!SYNC_RESULT_PROVIDERS.has(provider.id) || !ACTIVE_JOB_STATUSES.has(finalized.job.status)) return finalized
-  return advanceJobInStore(store, finalized, runtime, { alreadyLeased: true })
+  if (store.kind === 'sql') throw new Error('数据库事务内禁止同步结果转存')
+  const current = bundle.job.lease_token ? await store.assertLease(bundle.job.id,bundle.job.lease_token) : undefined
+  if (!current) throw new ImageLeaseLost()
+  const items = await applyItemPatches(store,current.id,await store.listItems(current.id),outcomes)
+  const collected = SYNC_RESULT_PROVIDERS.has(provider.id) ? await collectAdvancePatches(current,items,{ ...runtime,allowSubmit: false }) : []
+  return advanceJobInStore(store,{ job: current,items },runtime,{ alreadyLeased: true,outcomes: [...outcomes,...collected] })
 }
 
 export async function submitImageTask(user: User, body: unknown, runtime = defaultImageJobRuntime()) {
@@ -1144,70 +1301,43 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
   assertRelightRequest(body)
   assertRetouchNoteLimit(body)
   const parsed = createImageTaskSchema.parse(body)
-  const created = await withIdentity(user.id, user.email, async sql => {
-    await requireActive(sql, user.id)
+  const execution = sqlImageExecution(user.id,user.email)
+  const bounded = boundedImageRuntime({ ...runtime,execution,allowSubmit: true },110_000)
+  const created = await withIdentity(user.id,user.email,async sql => {
+    await sql`select set_config('statement_timeout','8000',true),set_config('lock_timeout','5000',true)`
+    await requireActive(sql,user.id)
     await sql`select pg_advisory_xact_lock(91517002)`
-    const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
-    return createImageJobInStore(createSqlStore(sql, user.id), user, parsed, billingRuntime)
+    const billingRuntime = { ...bounded,billing: runtime.billing === noopBilling ? createSqlBilling(sql) : runtime.billing }
+    return createImageJobInStore(createSqlStore(sql,user.id),user,parsed,billingRuntime)
   })
-  if (!created.created) return toClientImageTask(created.bundle, runtime)
-  let outcomes: SubmitOutcome[]
-  try {
-    outcomes = await runProviderSubmits(created.bundle, created.provider, user.id, runtime)
-  } catch (error) {
-    runtime.log({ stage: 'submit-input', jobId: created.bundle.job.id, message: error instanceof Error ? error.message : String(error) })
-    return withIdentity(user.id, user.email, async sql => {
-      await requireActive(sql, user.id)
-      const store = createSqlStore(sql, user.id)
-      const message = error instanceof ProviderError ? error.message
-        : created.bundle.job.capability === 'text_to_image' ? '文生图任务提交失败' : '图片源文件读取失败'
-      const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
-      const finalized = await failImageJobBeforeSubmit(store, created.bundle, billingRuntime, message)
-      return toClientImageTask(finalized, runtime)
-    })
-  }
-  return withIdentity(user.id, user.email, async sql => {
-    await requireActive(sql, user.id)
-    const store = createSqlStore(sql, user.id)
-    const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
-    const finalized = await finishSubmittedImageJob(store, created.bundle, outcomes, billingRuntime, created.provider)
-    return toClientImageTask(finalized, runtime)
-  })
+  if (!created.created) return toClientImageTask(created.bundle,runtime)
+  return toClientImageTask(await advanceImageClaim(created.bundle,bounded,true),runtime)
 }
 
-export async function loadImageTask(user: User, id: string, runtime = defaultImageJobRuntime()) {
-  const prepared = await withIdentity(user.id, user.email, async sql => {
-    await requireActive(sql, user.id)
-    const store = createSqlStore(sql, user.id)
+export async function loadImageTask(user: User,id: string,runtime = defaultImageJobRuntime()) {
+  const prepared = await withIdentity(user.id,user.email,async sql => {
+    await sql`select set_config('statement_timeout','8000',true),set_config('lock_timeout','5000',true)`
+    await requireActive(sql,user.id)
+    const store = createSqlStore(sql,user.id)
     await store.expireUserOverdue(new Date(runtime.now()))
     const job = await store.findById(id)
     if (!job) return null
     const items = await store.listItems(job.id)
-    if (job.capability === 'text_to_video') return { mode: 'video' as const, job, items }
-    const now = runtime.now()
-    const overdue = now >= new Date(job.deadline_at).getTime()
-    const salvage = canSalvage(job, now, items)
-    if ((!ACTIVE_JOB_STATUSES.has(job.status) && !salvage) || (!shouldAdvance(job, now) && !overdue && !salvage)) {
-      return { mode: 'snapshot' as const, job, items }
-    }
-    const leased = await store.tryAcquireLease(job.id, new Date(now + IMAGE_LEASE_MS))
-    if (!leased) return { mode: 'snapshot' as const, job, items }
-    return { mode: 'advance' as const, job: leased, items }
+    if (job.capability === 'text_to_video') return { mode: 'video' as const,job,items }
+    if (!shouldAdvance(job,runtime.now(),items) || (!ACTIVE_JOB_STATUSES.has(job.status) && !canSalvage(job,runtime.now(),items)))
+      return { mode: 'snapshot' as const,job,items }
+    const leased = await store.tryAcquireLease(job.id,new Date(runtime.now() + IMAGE_LEASE_MS),'poll')
+    return leased ? { mode: 'advance' as const,job: leased,items } : { mode: 'snapshot' as const,job,items }
   })
   if (!prepared) return null
   if (prepared.mode === 'video') {
     const { toClientVideoTask } = await import('../video-jobs/service.js')
     return toClientVideoTask(prepared)
   }
-  if (prepared.mode === 'snapshot') return toClientImageTask(prepared, runtime)
-  const outcomes = await collectAdvancePatches(prepared.job, prepared.items, runtime)
-  return withIdentity(user.id, user.email, async sql => {
-    await requireActive(sql, user.id)
-    const store = createSqlStore(sql, user.id)
-    const billingRuntime = runtime.billing === noopBilling ? { ...runtime, billing: createSqlBilling(sql) } : runtime
-    const advanced = await advanceJobInStore(store, prepared, billingRuntime, { alreadyLeased: true, outcomes })
-    return toClientImageTask(advanced, runtime)
-  })
+  if (prepared.mode === 'snapshot') return toClientImageTask(prepared,runtime)
+  const bounded = boundedImageRuntime({ ...runtime,execution: sqlImageExecution(user.id,user.email),
+    allowSubmit: process.env.IMAGE_BACKGROUND_SUBMIT_ENABLED === 'true' },110_000)
+  return toClientImageTask(await advanceImageClaim(prepared,bounded),runtime)
 }
 
 export async function loadImageTaskByRequest(user: User, requestId: string, runtime = defaultImageJobRuntime()) {

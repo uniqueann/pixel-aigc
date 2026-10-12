@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "database": "PostgreSQL 17.10",
+  "connections": 2,
+  "mergeReadinessRecheckedOn": "2026-10-12",
+  "checks": [
+    "F01 原 POST、GET、第二连接维护互斥，提交和预扣各一次；外部等待无事务",
+    "无用户 GET 时维护独立转存 Mock 图片并结算一次",
+    "F02 两连接过期重领后拒绝旧进度与旧结算，保留进度 80",
+    "迟到回执由第二连接读取，旧执行者未改变任务或账本",
+    "双实例领取总上限四项，领取互斥",
+    "FOR UPDATE SKIP LOCKED 跳过另一真实连接持有的行锁",
+    "到期批次限定当前环境，终态与原账本互不干扰",
+    "已发布对象拥有转存凭据；终态任务无有效租约不能再次执行"
+  ],
+  "supplier": "Mock",
+  "storage": "内存对象存储",
+  "previewVerified": false
+}

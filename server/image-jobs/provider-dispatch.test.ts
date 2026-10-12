@@ -163,9 +163,9 @@ describe('图片任务按模型供应商分发', () => {
     expect(advanced.items.map(item => item.status)).toEqual(['succeeded', 'succeeded', 'succeeded', 'failed'])
     expect(advanced.items[3].error_message).toBe('图片服务返回的图片数量不足')
     expect(advanced.items.slice(0, 3).map(item => item.result_object_key)).toEqual([
-      expect.stringMatching(/\/0\.png$/),
-      expect.stringMatching(/\/1\.png$/),
-      expect.stringMatching(/\/2\.png$/),
+      expect.stringMatching(/\/0\/[0-9a-f-]{36}\.png$/),
+      expect.stringMatching(/\/1\/[0-9a-f-]{36}\.png$/),
+      expect.stringMatching(/\/2\/[0-9a-f-]{36}\.png$/),
     ])
     expect(rt.billing.settle).toHaveBeenCalledWith({ jobId: created.bundle.job.id, charged: 9 })
     expect(rt.billing.release).not.toHaveBeenCalled()
@@ -215,7 +215,7 @@ describe('图片任务按模型供应商分发', () => {
     const expired = await advanceJobInStore(slowStore, {
       job: { ...pending.bundle.job, next_poll_at: new Date(0) },
       items: pendingItems,
-    }, slow, { alreadyLeased: true })
+    }, slow)
     expect(expired.job.status).toBe('expired')
     expect(slow.billing.release).toHaveBeenCalledWith(pending.bundle.job.id)
     expect(slow.billing.settle).not.toHaveBeenCalled()
@@ -300,7 +300,7 @@ describe('图片任务按模型供应商分发', () => {
     expect(rt.billing.reserve).not.toHaveBeenCalled()
   })
 
-  it('建连失败不退款，下一轮轮询再提交；连接重置则失败退款', async () => {
+  it('建连失败可重提；连接重置保留待确认', async () => {
     process.env.QWEN_IMAGE_ENABLED = 'true'
     process.env.DASHSCOPE_API_KEY = 'sk-dash'
     process.env.QWEN_IMAGE_REQUEST_RETRY_COUNT = '0'
@@ -333,7 +333,7 @@ describe('图片任务按模型供应商分发', () => {
     const retried = await advanceJobInStore(store, {
       job: { ...held.job, next_poll_at: new Date(0) },
       items: held.items,
-    }, rt, { alreadyLeased: true })
+    }, rt)
     expect(retried.items.map(item => item.provider_task_id)).toEqual(['qwen-task-fixture-001', 'qwen-task-fixture-001'])
     expect(submits).toBe(2)
 
@@ -343,9 +343,10 @@ describe('图片任务按模型供应商分发', () => {
     const resetCreated = await createImageJobInStore(resetStore, user, text('00000000-0000-4000-8000-000000000309', 1, 'bailian:qwen-image-3.0'), resetRt)
     const failedItems = await applySubmits(resetStore, resetCreated, resetRt)
     const failed = await finalizeJob(resetStore, resetCreated.bundle.job, failedItems, resetRt, false)
-    expect(failed.job.status).toBe('failed')
+    expect(failed.job.status).toBe('queued')
+    expect(failed.items[0].submission_state).toBe('unknown')
     expect(failed.items[0].error_message).toBe('文生图服务连接失败，请稍后重试')
-    expect(resetRt.billing.release).toHaveBeenCalledWith(resetCreated.bundle.job.id)
+    expect(resetRt.billing.release).not.toHaveBeenCalled()
   })
 
   it('多张结果并行下载', async () => {
@@ -441,7 +442,7 @@ describe('图片任务按模型供应商分发', () => {
     const expired = await advanceJobInStore(store, {
       job: { ...held.job, next_poll_at: new Date(0) },
       items: held.items,
-    }, rt, { alreadyLeased: true })
+    }, rt)
     expect(submits).toBe(1)
     expect(expired.job).toMatchObject({
       status: 'expired',

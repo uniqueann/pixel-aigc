@@ -306,7 +306,7 @@ describe('qwen image 客户端', () => {
     await expect(retrying.submit!(input, ctx)).rejects.toMatchObject({
       code: 'UPSTREAM_UNAVAILABLE', retryable: true, requestSent: false,
     })
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'qwen-image-submit', error: 'fetch failed', errorCode: 'UND_ERR_CONNECT_TIMEOUT',
     }))

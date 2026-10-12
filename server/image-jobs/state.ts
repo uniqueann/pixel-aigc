@@ -8,6 +8,7 @@ export const PARTIAL_WARNING = 'PARTIAL'
 export interface JobItemSnapshot {
   status: string
   provider_task_id?: string | null
+  submission_attempt_id?: string | null
   result_object_key?: string | null
 }
 
@@ -55,8 +56,8 @@ export function toClientTaskStatus(status: string) {
   return { status, errorCode: undefined as string | undefined, errorMessage: undefined as string | undefined }
 }
 
-export function shouldAdvance(job: { status: string; next_poll_at: Date | string; deadline_at: Date | string }, now: number) {
-  if (!ACTIVE_JOB_STATUSES.has(job.status) && !canSalvage(job, now)) return false
+export function shouldAdvance(job: { status: string; next_poll_at: Date | string; deadline_at: Date | string }, now: number, items: JobItemSnapshot[] = []) {
+  if (!ACTIVE_JOB_STATUSES.has(job.status) && !canSalvage(job, now, items)) return false
   return new Date(job.next_poll_at).getTime() <= now
 }
 
@@ -64,9 +65,10 @@ export function canSalvage(job: { status: string; deadline_at: Date | string }, 
   const deadline = new Date(job.deadline_at).getTime()
   if (now > deadline + SALVAGE_WINDOW_MS) return false
   const hasRecoverable = items.some(item =>
-    item.provider_task_id && !item.result_object_key && (item.status === 'submitted' || item.status === 'processing' || item.status === 'expired'))
+    (item.provider_task_id || item.submission_attempt_id) && !item.result_object_key
+      && (item.status === 'pending' || item.status === 'submitted' || item.status === 'processing' || item.status === 'expired'))
   if (job.status === 'expired') return hasRecoverable || items.length === 0
-  return now >= deadline
+  return now >= deadline && hasRecoverable
 }
 
 export function nextPollAt(now: number, intervalMs: number, initial?: boolean, initialDelayMs = 5_000) {

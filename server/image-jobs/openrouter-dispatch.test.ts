@@ -149,7 +149,7 @@ describe('OpenRouter Nano Banana 任务', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
-  it('上游失败全额退还，不按目录价结算', async () => {
+  it('5xx 待确认且不重提，原截止后退款', async () => {
     process.env.OPENROUTER_API_KEY = 'sk-test-openrouter'
     process.env.OPENROUTER_IMAGE_ENABLED = 'true'
     const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({ error: { message: 'upstream down' } }, 502))
@@ -159,9 +159,9 @@ describe('OpenRouter Nano Banana 任务', () => {
     expect(created.bundle.job.credits_reserved).toBe(28)
     const outcomes = await (await import('./service.js')).runProviderSubmits(created.bundle, provider, user.id, rt)
     const finished = await finishSubmittedImageJob(store, created.bundle, outcomes, rt, provider)
-    expect(finished.job).toMatchObject({ status: 'failed', billing_state: 'released', credits_charged: 0 })
-    expect(finished.items.every(item => item.status === 'failed')).toBe(true)
-    expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+    expect(finished.job).toMatchObject({ status: 'queued', billing_state: 'reserved', credits_charged: 0 })
+    expect(finished.items.every(item => item.submission_state === 'unknown')).toBe(true)
+    expect(billing.release).not.toHaveBeenCalled()
     expect(billing.settle).not.toHaveBeenCalled()
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })

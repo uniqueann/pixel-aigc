@@ -35,11 +35,12 @@ function readMessage(payload: unknown) {
 }
 
 export function mapHttpStatus(status: number, message: string): ProviderError {
+  const rejected = (error: ProviderError) => { error.definiteNotAccepted = true; return error }
   if (status === 401 || status === 403) {
-    return new ProviderError('INVALID_KEY', message || '图片服务密钥无效', false, status)
+    return rejected(new ProviderError('INVALID_KEY', message || '图片服务密钥无效', false, status))
   }
-  if (status === 402) return new ProviderError('INSUFFICIENT_BALANCE', '图片服务余额不足', false, 402)
-  if (status === 429) return new ProviderError('RATE_LIMIT', message || '图片服务请求过于频繁，请稍后重试', true, 429)
+  if (status === 402) return rejected(new ProviderError('INSUFFICIENT_BALANCE', '图片服务余额不足', false, 402))
+  if (status === 429) return rejected(new ProviderError('RATE_LIMIT', message || '图片服务请求过于频繁，请稍后重试', true, 429))
   if (status === 408 || status === 504) {
     return new ProviderError('TIMEOUT', message || '图片服务请求超时，请稍后重试', true, 504)
   }
@@ -49,7 +50,13 @@ export function mapHttpStatus(status: number, message: string): ProviderError {
   if (status >= 500) {
     return new ProviderError('UPSTREAM_UNAVAILABLE', message || '图片服务暂时不可用，请稍后重试', true, 502)
   }
-  return new ProviderError('INVALID_PARAMS', message || '图片服务拒绝了当前请求', false, status >= 400 ? status : 400)
+  const error = new ProviderError('INVALID_PARAMS', message || '图片服务拒绝了当前请求', false, status >= 400 ? status : 400)
+  return status === 400 || status === 422 ? rejected(error) : error
+}
+
+export function operationSignal(ctx: ProviderContext,timeoutMs: number) {
+  const timeout = AbortSignal.timeout(timeoutMs)
+  return ctx.signal ? AbortSignal.any([ctx.signal,timeout]) : timeout
 }
 
 function headerRequestId(headers: Headers) {
@@ -63,16 +70,17 @@ export async function fetchJson(
   options: { timeoutMs: number; retryCount: number; label: string },
 ): Promise<{ status: number; payload: unknown; upstreamRequestId?: string }> {
   let lastError: unknown
-  for (let attempt = 0; attempt <= options.retryCount; attempt += 1) {
+  const retryCount = (init.method ?? 'GET').toUpperCase() === 'GET' ? options.retryCount : 0
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
     const started = ctx.now()
     try {
       const response = await ctx.fetch(url, {
         ...init,
-        signal: ctx.signal ?? AbortSignal.timeout(options.timeoutMs),
+        signal: operationSignal(ctx,options.timeoutMs),
       })
       const payload: unknown = await response.json().catch(() => null)
       const upstreamRequestId = headerRequestId(response.headers)
-      const retry = RETRYABLE_STATUS.has(response.status) && attempt < options.retryCount
+      const retry = !ctx.signal?.aborted && RETRYABLE_STATUS.has(response.status) && attempt < retryCount
       const authAlert = response.status === 401 || response.status === 403
       ctx.log({
         stage: options.label, attempt, status: response.status, retry,
@@ -94,7 +102,7 @@ export async function fetchJson(
     } catch (error) {
       lastError = error
       if (error instanceof ProviderError) {
-        if (error.retryable && attempt < options.retryCount) {
+        if (!ctx.signal?.aborted && error.retryable && attempt < retryCount) {
           await ctx.sleep(retryBackoffMs(attempt))
           continue
         }
@@ -102,11 +110,11 @@ export async function fetchJson(
       }
       const timeout = isAbortOrTimeout(error)
       ctx.log({
-        stage: options.label, attempt, retry: timeout && attempt < options.retryCount,
+        stage: options.label, attempt, retry: !ctx.signal?.aborted && timeout && attempt < retryCount,
         host: requestHost(url), ms: ctx.now() - started, requestId: ctx.requestId,
         error: error instanceof Error ? error.message : String(error),
       })
-      if (timeout && attempt < options.retryCount) {
+      if (!ctx.signal?.aborted && timeout && attempt < retryCount) {
         await ctx.sleep(retryBackoffMs(attempt))
         continue
       }
@@ -132,7 +140,7 @@ export async function fetchImageBytes(
   let response: Response
   try {
     // DragonCode media: token 必填；HEAD 返回 404；Range 被忽略。只用普通 GET。
-    response = await ctx.fetch(url, { signal: ctx.signal ?? AbortSignal.timeout(timeoutMs) })
+    response = await ctx.fetch(url, { signal: operationSignal(ctx,timeoutMs) })
   } catch (error) {
     const timeout = isAbortOrTimeout(error)
     throw new ProviderError(

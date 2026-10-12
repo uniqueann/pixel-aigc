@@ -153,7 +153,7 @@ export function decodeOpenRouterTask(providerTaskId: string): StoredOpenRouterTa
   }
 }
 
-const RESULT_KEY = /^temporary\/openrouter-results\/[0-9a-f-]{36}\/\d+\.img$/i
+const RESULT_KEY = /^temporary\/openrouter-results\/(?:[0-9a-f-]{36}|(?:local|preview|production)\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36})\/[0-3]\.img$/i
 
 export function openRouterResultUrl(key: string) {
   return `openrouter-object:${key}`

@@ -6,7 +6,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
   GetObjectCommand: class { constructor(public input: unknown) {} },
   PutObjectCommand: class { constructor(public input: unknown) {} },
 }))
-import { getObject, getObjectLimited, verifyAndPromote } from './storage'
+import { getObject, getObjectLimited, putObject, verifyAndPromote } from './storage'
 beforeEach(() => {
   send.mockReset()
   process.env.R2_ACCOUNT_ID = 'test'; process.env.R2_ACCESS_KEY_ID = 'test'; process.env.R2_SECRET_ACCESS_KEY = 'test'; process.env.R2_BUCKET = 'test'
@@ -38,6 +38,30 @@ describe('R2 对象读取', () => {
     const bytes = new Uint8Array([1, 2, 3])
     send.mockResolvedValue({ Body: { transformToByteArray: async () => bytes }, ContentType: 'image/png' })
     await expect(getObject('generated/u/job/0.png')).resolves.toEqual({ bytes, contentType: 'image/png' })
+  })
+
+  it('收到响应头后，后台预算中止仍会停止正文读取', async () => {
+    const controller = new AbortController()
+    let reject!: (error: unknown) => void
+    let entered!: () => void
+    const started = new Promise<void>(resolve => { entered = resolve })
+    const body = {
+      transformToByteArray: () => new Promise<Uint8Array>((_, fail) => { reject = fail; entered() }),
+      destroy: vi.fn((error: unknown) => reject(error)),
+    }
+    send.mockResolvedValue({ Body: body, ContentType: 'image/png' })
+    const reading = getObject('generated/u/job/0.png', controller.signal)
+    const assertion = expect(reading).rejects.toThrow('预算结束')
+    await started
+    controller.abort(new Error('预算结束'))
+    await assertion
+    expect(body.destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('预算已经结束时不发送对象写入', async () => {
+    await expect(putObject('generated/u/job/0.png', new Uint8Array([1]), 'image/png', AbortSignal.abort(new Error('预算结束'))))
+      .rejects.toThrow('预算结束')
+    expect(send).not.toHaveBeenCalled()
   })
 })
 

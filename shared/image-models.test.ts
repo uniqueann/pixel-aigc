@@ -130,6 +130,7 @@ describe('nearestRatio / mapDragonCodeSize', () => {
       ['bailian:qwen-image-3.0-pro', 'qwen'],
       ['bailian:qwen-image-2.1-pro', 'qwen'],
       [OPENROUTER_NANO_BANANA_PROFILE_ID, 'google'],
+      ['mock:image-stage2','openai'],
     ])
     for (const profile of IMAGE_MODEL_PROFILES) {
       expect(publicImageModel(profile).vendor).toBe(profile.vendor)

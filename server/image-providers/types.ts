@@ -29,6 +29,8 @@ export interface ProviderContext {
   log: (entry: Record<string, unknown>) => void
   requestId?: string
   signal?: AbortSignal
+  /** 服务端执行身份，不能由客户端传入；用于隔离结果缓存和恢复同一次尝试。 */
+  execution?: { userId: string; scope: string; jobId: string; attemptId: string }
 }
 
 export interface ProviderSubmitInput {
@@ -106,6 +108,8 @@ export interface ImageProvider {
   mapRequest(req: NormalizedImageRequest, model: string): MappedImageRequest
   jobPolicy?(env?: NodeJS.ProcessEnv): ImageJobPolicy
   submit?(input: ProviderSubmitInput, ctx: ProviderContext): Promise<{ providerTaskId: string }>
+  /** 纯读取已有缓存，缓存未命中必须返回 undefined，不能发生成请求。 */
+  recoverSubmission?(ordinal: number, ctx: ProviderContext): Promise<{ providerTaskId: string } | undefined>
   getStatus?(providerTaskId: string, ctx: ProviderContext): Promise<ProviderTaskState>
   run?(input: ProviderSubmitInput, ctx: ProviderContext & { deadline: number }): Promise<Uint8Array[]>
   fetchResult(url: string, ctx: ProviderContext): Promise<{ bytes: Uint8Array; mimeType: string }>
@@ -119,6 +123,8 @@ export class ProviderError extends Error {
    * 任务层保持 pending，在截止时间前重新提交，避免当成已送出的请求再发一单。
    */
   holdPending?: boolean
+  /** 适配器确证没有创建上游任务；retryable 本身不表示允许再次 POST。 */
+  definiteNotAccepted?: boolean
   constructor(
     public code: ProviderErrorCode,
     message: string,

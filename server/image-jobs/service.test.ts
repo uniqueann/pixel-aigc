@@ -204,7 +204,7 @@ describe('图片任务存储状态机', () => {
     expect(billing.release).not.toHaveBeenCalled()
   })
 
-  it('可重试限流若没有 holdPending 仍立即失败', async () => {
+  it('没有明确拒绝证据的限流保持待确认', async () => {
     const store = createMemoryStore(user.id)
     const billing = billingSpy()
     const { ProviderError } = await import('../image-providers/types.js')
@@ -216,9 +216,9 @@ describe('图片任务存储状态机', () => {
     const items = []
     for (const outcome of outcomes) items.push(await store.updateItem(created.bundle.job.id, outcome.ordinal, outcome.patch))
     const finalized = await finalizeJob(store, created.bundle.job, items, rt, false)
-    expect(finalized.items[0].status).toBe('failed')
-    expect(finalized.job.status).toBe('failed')
-    expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+    expect(finalized.items[0].status).toBe('pending')
+    expect(finalized.job.status).toBe('queued')
+    expect(billing.release).not.toHaveBeenCalled()
   })
 
   it('提交时的非供应商异常记成结构化日志并标为 UNKNOWN', async () => {
@@ -235,7 +235,7 @@ describe('图片任务存储状态机', () => {
       const created = await createImageJobInStore(store, user, params({ count: 1 }), rt)
       const outcomes = await runProviderSubmits(created.bundle, rt.providerFor('mock')!, user.id, rt)
       expect(outcomes[0]?.patch).toMatchObject({
-        status: 'failed', error_code: 'UNKNOWN', error_message: '图片任务提交失败',
+        status: 'pending', submission_state: 'unknown', error_code: 'UNKNOWN', error_message: '图片任务提交失败',
       })
       expect(spy).toHaveBeenCalledTimes(1)
       const logged = JSON.parse(String(spy.mock.calls[0]?.[0]))
@@ -251,8 +251,8 @@ describe('图片任务存储状态机', () => {
       const items = []
       for (const outcome of outcomes) items.push(await store.updateItem(created.bundle.job.id, outcome.ordinal, outcome.patch))
       const finalized = await finalizeJob(store, created.bundle.job, items, rt, false)
-      expect(finalized.job.status).toBe('failed')
-      expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
+      expect(finalized.job.status).toBe('queued')
+      expect(billing.release).not.toHaveBeenCalled()
     } finally {
       spy.mockRestore()
     }
@@ -263,7 +263,7 @@ describe('图片任务存储状态机', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { ProviderError } = await import('../image-providers/types.js')
     const rt = runtime(createMockImageProvider({
-      async submit() { throw new ProviderError('INVALID_PARAMS', '图片尺寸不被支持', false, 400) },
+      async submit() { const error = new ProviderError('INVALID_PARAMS','图片尺寸不被支持',false,400); error.requestSent = false; throw error },
     }))
     try {
       const created = await createImageJobInStore(store, user, params(), rt)
@@ -280,7 +280,7 @@ describe('图片任务存储状态机', () => {
     const billing = billingSpy()
     const { ProviderError } = await import('../image-providers/types.js')
     const rt = runtime(createMockImageProvider({
-      async submit() { throw new ProviderError('UNKNOWN', '失败') },
+      async submit() { const error = new ProviderError('UNKNOWN','明确拒绝'); error.definiteNotAccepted = true; throw error },
     }), billing)
     const created = await createImageJobInStore(store, user, params({ count: 2 }), rt)
     const outcomes = await runProviderSubmits(created.bundle, rt.providerFor('mock')!, user.id, rt)
@@ -305,7 +305,7 @@ describe('图片任务存储状态机', () => {
     const advanced = await advanceJobInStore(store, {
       job: { ...created.bundle.job, deadline_at: new Date('2026-09-28T00:01:00.000Z'), next_poll_at: new Date(0) },
       items,
-    }, rt, { alreadyLeased: true })
+    }, rt)
     expect(advanced.job.status).toBe('expired')
     expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
   })
@@ -325,7 +325,7 @@ describe('图片任务存储状态机', () => {
     const advanced = await advanceJobInStore(store, {
       job: expired,
       items: await store.listItems(created.bundle.job.id),
-    }, rt, { alreadyLeased: true })
+    }, rt)
     expect(advanced.job.status).toBe('succeeded')
     expect(advanced.job.warnings).toContain(LATE_RESULT_WARNING)
     expect(advanced.items[0].result_object_key).toMatch(/^generated\//)
@@ -343,13 +343,14 @@ describe('图片任务存储状态机', () => {
     await store.updateItem(created.bundle.job.id, 0, { status: 'submitted', provider_task_id: 't-1' })
     const job = { ...created.bundle.job, next_poll_at: new Date(0) }
     const items = await store.listItems(job.id)
+    await store.updateJob(job.id,{ lease_until: null,lease_token: null })
     const first = advanceJobInStore(store, { job, items }, rt)
     const second = advanceJobInStore(store, { job, items }, rt)
     const [a, b] = await Promise.all([first, second])
     const winners = [a, b].filter(bundle => bundle.items[0]?.result_object_key)
     expect(winners).toHaveLength(1)
     expect(fetchResult).toHaveBeenCalledTimes(1)
-    expect(IMAGE_LEASE_MS).toBe(30_000)
+    expect(IMAGE_LEASE_MS).toBe(120_000)
   })
 
   it('没有币种的目录价不补进任务，千问按返回张数乘单价', () => {
@@ -433,7 +434,7 @@ describe('图片任务存储状态机', () => {
     const advanced = await advanceJobInStore(store, {
       job: { ...created.bundle.job, next_poll_at: new Date(0) },
       items: await store.listItems(created.bundle.job.id),
-    }, rt)
+    }, rt, { alreadyLeased: true })
     const client = await toClientImageTask(advanced, rt)
     expect(client.resultImages?.[0]?.objectKey).toMatch(/^generated\//)
     expect(client.resultImages?.[0]?.objectKey).toBe(advanced.items[0].result_object_key)
