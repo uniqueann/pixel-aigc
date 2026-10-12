@@ -27,6 +27,7 @@ export type TaskStatus =
 
 export interface GenerationTask<TParams = Record<string, unknown>> {
   id: string
+  requestId?: string
   capability: Capability
   status: TaskStatus
   params: TParams

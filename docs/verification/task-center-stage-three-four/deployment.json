@@ -1,0 +1,24 @@
+{
+  "environment": "preview",
+  "state": "READY",
+  "deploymentId": "dpl_EDBApFPRNsuTx8YkouPHQkYCtpj7",
+  "url": "https://pixel-aigc-jrtoafm2o-ningnings-projects-2ed21e15.vercel.app",
+  "source": "CLI 上传工作树",
+  "branch": "codex/task-center-query-and-ui",
+  "metadataBaseSha": "5bbc57a870926c18632510f7d3b3554c9d9eb4ad",
+  "committedImplementation": false,
+  "scope": "preview",
+  "taskCenterEnabled": true,
+  "productionChanged": false,
+  "buildVerifiedBy": "Vercel MCP get_deployment READY",
+  "cliFollowup": "CLI 构建跟踪出现 Not authorized，MCP 已独立确认 READY",
+  "authenticatedHTTP": false,
+  "httpBlocker": "浏览器与 CLI 对预览域名连接被关闭",
+  "connectorFetch": {
+    "status": 401,
+    "code": "deployment_authentication_required",
+    "stage": "fetch_deployment"
+  },
+  "cliIdentityVerified": true,
+  "finalHttpRetry": "使用现有 CLI 身份仍在 TLS 阶段失败，curl exit 35"
+}

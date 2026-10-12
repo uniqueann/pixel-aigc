@@ -3149,3 +3149,51 @@ body.sidebar-resizing * {
     top: 0;
   }
 }
+
+/* 任务区独立滚动，导航与账号始终保留自己的空间。 */
+.app-sidebar-menu { min-height: 0; overflow-y: auto; }
+.task-sidebar { flex: 0 1 auto; min-height: 44px; max-height: min(280px, 35vh); border-top: 1px solid var(--color-border); margin-top: 8px; display: flex; flex-direction: column; }
+.task-sidebar-heading { display: flex; flex: 0 0 40px; align-items: center; gap: 10px; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.task-sidebar-heading:hover, .task-sidebar-row:hover, .task-history-row:hover { background: var(--color-bg-container, #28282c); }
+.task-sidebar-body { min-height: 0; overflow-y: auto; }
+.task-sidebar-row { display: flex; gap: 8px; width: 100%; align-items: center; padding: 7px 10px; min-height: 44px; background: transparent; border: 0; border-radius: 7px; text-align: left; color: inherit; cursor: pointer; }
+.task-sidebar-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.task-sidebar-copy strong { display: flex; gap: 6px; font-size: 12px; }
+.task-sidebar-copy > span { font-size: 11px; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-status-dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.task-status-dot.is-yellow { background: #e9ba47; }
+.task-status-dot.is-green { background: #21cfa0; }
+.task-status-dot.is-red { background: #ff6b75; }
+.task-status-dot.is-gray { background: #909095; }
+.task-sidebar.is-compact .task-sidebar-expanded { display: none; }
+.task-sidebar.is-compact .task-sidebar-heading { justify-content: center; padding-inline: 8px; }
+.task-read-warning, .task-empty { color: var(--color-text-secondary); font-size: 11px; margin: 8px 10px; }
+.task-read-warning { color: #aaa7a7; }
+.task-drawer-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 16px; }
+.task-drawer-toolbar > span { color: var(--color-text-secondary); font-size: 12px; }
+.task-history-filters { display: flex; gap: 8px; margin-bottom: 14px; }
+.task-history-filters .ant-select { min-width: 0; flex: 1; }
+.task-history-row { display: flex; width: 100%; gap: 12px; align-items: center; text-align: left; padding: 14px 8px; border: 0; border-bottom: 1px solid var(--color-border); color: inherit; background: transparent; cursor: pointer; }
+.task-history-row > span:last-child { display: flex; flex-direction: column; gap: 5px; }
+.task-history-row small, .task-history-row > span > span { color: var(--color-text-secondary); }
+.task-pending-row { display: flex; gap: 10px; align-items: center; padding: 12px 0; }
+.task-pending-row > div { flex: 1; min-width: 0; }
+.task-pending-row p { font-size: 12px; color: var(--color-text-secondary); }
+.task-pending-row small { word-break: break-all; }
+.task-detail-heading { display: flex; gap: 10px; align-items: center; }
+.task-result-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.task-result-card { display: flex; flex-direction: column; gap: 8px; }
+.task-result-card .ant-image { cursor: pointer; }
+.task-text-result pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; padding: 12px; background: #18181b; border-radius: 8px; }
+.task-center-drawer .ant-alert { margin-block: 12px; }
+@media (max-height: 640px) { .task-sidebar-expanded { display: none; } .task-sidebar-heading { justify-content: center; } }
+@media (max-width: 480px) { .task-result-list { grid-template-columns: 1fr; } .task-drawer-toolbar { align-items: flex-start; flex-direction: column; } }
+
+@container app-header (max-width: 560px) {
+  .task-tool-entry .task-tool-entry-label { display: none; }
+  .task-tool-entry { width: 28px; padding-inline: 6px; gap: 0; flex: 0 0 28px; }
+}
+@container app-header (max-width: 400px) {
+  .app-header-leading .ant-breadcrumb li:not(:last-child) { display: none; }
+  .app-header-leading .ant-breadcrumb li { white-space: nowrap; }
+}

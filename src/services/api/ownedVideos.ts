@@ -25,12 +25,12 @@ export async function readOwnedVideoUrl(reference: OwnedVideoReference, options:
   return result
 }
 
-export async function downloadOwnedVideo(reference: OwnedVideoReference, filename = '视频.mp4', ownerId = currentWorkstationHistoryOwner()) {
-  if (!isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('账号已切换，无法下载视频')
+export async function downloadOwnedVideo(reference: OwnedVideoReference, filename = '视频.mp4', ownerId = currentWorkstationHistoryOwner(), options: {signal?:AbortSignal;isCurrent?:()=>boolean} = {}) {
+  if (options.signal?.aborted || options.isCurrent?.()===false || !isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('账号或环境已切换，无法下载视频')
   assertVideoRetention(reference)
-  const signed = reference.objectKey ? await signedOwnedObject(reference.objectKey, undefined, filename)
-    : await readOwnedVideoUrl(reference, { ownerId })
-  if (!isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('账号已切换，停止下载')
+  const signed = reference.objectKey ? await signedOwnedObject(reference.objectKey, options.signal, filename)
+    : await readOwnedVideoUrl(reference, { ownerId,signal:options.signal })
+  if (options.signal?.aborted || options.isCurrent?.()===false || !isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('账号或环境已切换，停止下载')
   const link = document.createElement('a')
   link.href = signed.url
   link.download = filename

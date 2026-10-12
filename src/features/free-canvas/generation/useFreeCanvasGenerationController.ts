@@ -339,6 +339,15 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined) 
       context: SubmissionContext,
     ): Promise<void> => {
       context = mockGateway ? context : { ...context, autoRetryRemaining: 0, automaticRetry: false }
+      if (!confirmedTask && !request.origin) {
+        const tool = request.capability === Capability.Variation ? 'variation'
+          : request.capability === Capability.TextToVideo
+            ? ('mode' in request.params && request.params.mode === 'image_to_video' ? 'image-to-video' : 'text-to-video')
+            : 'text-to-image'
+        // 来源与原请求一起保存到现有恢复记录，提交和恢复使用相同参数。
+        request = { ...request, origin: { entry: 'canvas', tool, projectId: projectId!, sceneId: sceneId!,
+          projectSource: usePersistenceStore.getState().cloud ? 'cloud' : 'local' } }
+      }
       const recovery: GenerationRecovery = {
         projectId: projectId!, sceneId, request, context, placements,
         ...(!mockGateway ? { ownerId } : {}),

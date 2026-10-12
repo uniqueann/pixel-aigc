@@ -8,6 +8,7 @@ import { CopyOutlined, RedoOutlined } from '@ant-design/icons'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import { buildEmailAssistRequest } from '@/features/email-assistant/requestBuilder'
 import type { useEmailAssistantController } from '@/features/email-assistant/useEmailAssistantController'
+import { taskCenterOn } from '@/features/task-center/client'
 import { authEnabled } from '@/cloud/client'
 import type { EmailGenerationGate } from '@/features/email-assistant/useEmailGenerationGate'
 import type { EmailModelConfiguration } from '@/features/email-assistant/useEmailModelConfiguration'
@@ -118,10 +119,10 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
       const request = buildEmailAssistRequest(currentParams)
       const task = await controller.generate(request.params, selectedModelProfileId, selectedProfile?.priceVersion)
       waiting = ['pending', 'queued', 'processing'].includes(task.status)
-      if (task.status === 'succeeded') message.success('邮件内容已生成')
+      if (task.status === 'succeeded') { if(!taskCenterOn())message.success('邮件内容已生成') }
       else if (task.status === 'failed') {
         if (['PROVIDER_AUTH', 'MODEL_UNAVAILABLE'].includes(task.errorCode ?? '')) window.dispatchEvent(new Event('pixel:model-settings-changed'))
-        message.error(task.errorMessage ?? '邮件生成失败')
+        if(!taskCenterOn())message.error(task.errorMessage ?? '邮件生成失败')
       }
     } catch (error) {
       message.error(error instanceof Error ? error.message : '邮件任务提交失败')
@@ -144,8 +145,8 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
     try {
       const task = controller.task ? await controller.generate(controller.task.params, selectedModelProfileId, selectedProfile?.priceVersion) : undefined
       waiting = !!task && ['pending', 'queued', 'processing'].includes(task.status)
-      if (task?.status === 'succeeded') message.success('邮件内容已重新生成')
-      else if (task?.status === 'failed') message.error(task.errorMessage ?? '重试失败')
+      if (task?.status === 'succeeded') { if(!taskCenterOn())message.success('邮件内容已重新生成') }
+      else if (task?.status === 'failed'&&!taskCenterOn()) message.error(task.errorMessage ?? '重试失败')
     } catch (error) {
       message.error(error instanceof Error ? error.message : '任务重试失败')
     } finally { if (!waiting) gate.release('single') }
