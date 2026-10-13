@@ -1985,28 +1985,43 @@ body.sidebar-resizing * {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
+}
+
+.image-workstation-footer-info {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .image-workstation-input-description {
   min-width: 0;
-  max-width: 100%;
-  flex: 1 1 200px;
+  flex-shrink: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .image-workstation-footer-hints {
-  display: flex;
+  display: inline-flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .image-workstation-footer-hints:empty {
   display: none;
+}
+
+.image-workstation-footer-hints::before {
+  content: "·";
+  color: var(--color-text-muted);
+  font-weight: bold;
 }
 
 .image-workstation-footer-hints .credit-quote-notice {
@@ -3178,6 +3193,14 @@ body.sidebar-resizing * {
   .image-workstation-footer {
     margin: 0 -12px;
     padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .image-workstation-footer-info {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    width: 100%;
+  }
+  .image-workstation-footer-hints::before {
+    display: none;
   }
   .image-workstation-footer-actions { width: 100%; }
   .image-workstation-footer-actions > .ant-btn,
