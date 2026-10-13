@@ -128,12 +128,12 @@ function TaskDrawerPanel({
         if (sameTaskActor(actor)) center.refresh()
       })
       .catch((error) => {
-        seen.current.delete(key)
         if (
           error instanceof CloudError &&
           error.status === 409 &&
           sameTaskActor(actor)
         ) {
+          seen.current.delete(key)
           void detail.refetch()
           center.refresh()
         }

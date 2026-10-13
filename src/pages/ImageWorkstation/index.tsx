@@ -454,9 +454,10 @@ export default function ImageWorkstation() {
         ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
         : '请先上传需要处理的图片'
   const recoveryRuntime = useRef({})
-  useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) },[])
-  const confirmRecovery = useTaskDraftGuard({ dirty: Boolean(sourceAsset || fusionProduct || fusionReference || activePrompt.trim() || hasMaskPaint),
-    reason:'当前工作站的原图、蒙版和输入内容尚未保存。切换后这些草稿将被放弃。',
+  useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) }, [])
+  const isDraftDirty = Boolean(activePrompt.trim() || hasMaskPaint)
+  const confirmRecovery = useTaskDraftGuard({ dirty: isDraftDirty,
+    reason:'当前工作站的输入提示词和蒙版尚未保存。切换后这些草稿将被放弃。',
     blocked:uploading || fusionLoading ? '正在读取输入图片，请完成后再切换' : undefined })
 
   const applyRecoveredInput=async(result:TaskCenterMedia,image:Awaited<ReturnType<typeof readRecoveryImage>>,detail:TaskCenterDetail,context:RecoveryActionContext)=>{
@@ -473,7 +474,7 @@ export default function ImageWorkstation() {
   return (
     <div className="image-workstation-page">
       <WorkstationRecovery tool={activeTool.slug as TaskTool} nativeBusy={controller.formLocked||uploading||fusionLoading}
-        hasDraft={Boolean(sourceAsset||fusionProduct||fusionReference||activePrompt.trim()||hasMaskPaint)} onRestoreInput={applyRecoveredInput}/>
+        hasDraft={isDraftDirty} onRestoreInput={applyRecoveredInput}/>
       <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} onObserve={observeRecoveredTask} blockedReason={controller.formLocked || uploading || fusionLoading ? '当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。':undefined}
         onUseImage={async (result,image,detail,context) => {
           if (!await confirmRecovery('将原任务结果作为新输入会替换当前原图和蒙版。')) return
