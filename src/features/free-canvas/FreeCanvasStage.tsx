@@ -1063,6 +1063,21 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
               onClick={() => onNodeGenerationAction('image-to-video', selectedImage.id)}
             >图生视频{imageToVideoState === 'ready' ? '' : ` · ${capabilityAvailabilityLabel(imageToVideoState)}`}</Button></span>
           </Tooltip>
+          <span className="free-canvas-node-actions-divider" />
+          <Tooltip title="删除图片（Delete / Backspace）">
+            <span>
+              <Button
+                size="small"
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={generationActive || !canDeleteSelected}
+                onClick={onDelete}
+              >
+                删除
+              </Button>
+            </span>
+          </Tooltip>
         </div>
       )}
       <div className="free-canvas-toolbar" aria-label="画布工具栏">
