@@ -22,8 +22,8 @@ describe('失败生成占位卡片删除与清理', () => {
   it('源码契约：FreeCanvasStage 允许删除失败或已取消的占位，生成中占位保持锁定', () => {
     expect(stageSource).toContain("(selectedGenerationStatus === 'failed' || selectedGenerationStatus === 'cancelled')")
     expect(stageSource).toContain('canDeleteSelected = !!selectedNode && (selectedNode.type !== \'generation\' || isSelectedTerminalGeneration)')
-    expect(stageSource).toContain('删除失败的生成占位')
-    expect(stageSource).toContain('生成中的占位不能单独删除')
+    expect(stageSource).toContain('删除占位框')
+    expect(stageSource).toContain('生成中的占位框暂不支持删除')
   })
 
   it('源码契约：FreeCanvas/index.tsx handleDelete 允许删除终态生成节点并收敛 recovery 和 task', () => {

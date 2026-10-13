@@ -169,7 +169,7 @@ describe('共用只读任务抽屉', () => {
   it('移除只修改展示版本，不删除任务、退款或重新生成', async () => {
     const context = mount()
     await screen.findByText('原生成结果正文')
-    fireEvent.click(screen.getByRole('button', { name: '从近期移除' }))
+    fireEvent.click(screen.getByRole('button', { name: '移出列表' }))
     await waitFor(() =>
       expect(
         mocks.request.mock.calls.some(

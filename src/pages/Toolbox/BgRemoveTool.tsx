@@ -93,7 +93,7 @@ export default function BgRemoveTool() {
   const outputBytes = downloadable.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
   const busy = processing || adding || packaging
   const controlsLocked = processing || packaging
-  useTaskDraftGuard({dirty:items.some(item=>item.status==='pending'||item.status==='failed'),reason:'抠图队列还有未提交或未保存的内容，切换后将放弃当前队列。',blocked:adding||packaging?'正在读取或打包图片，请完成后再切换':undefined})
+  useTaskDraftGuard({dirty:items.some(item=>item.status==='pending'||item.status==='failed'),reason:'当前队列中有未处理或未保存的图片，离开后将清空列表，是否继续？',blocked:adding||packaging?'正在读取或打包图片，请完成后再切换':undefined})
   const quoteFor = (ids?: string[]) => bgRemoveBatchQuote(items, billing.data, { ids, mock: mockGateway, loading: billing.isPending && billing.fetchStatus === 'fetching' })
   const generateQuote = quoteFor()
   const creditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: generateQuote, balance: knownBalance })

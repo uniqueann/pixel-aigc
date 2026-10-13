@@ -22,12 +22,12 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
   const runtime=useRef({})
   useEffect(()=>{const user=runtime.current;return()=>releaseRuntimeImageUser(user)},[])
   const dirty=saveStatus==='dirty'||saveStatus==='saving'
-  const confirm=useTaskDraftGuard({dirty,reason:'当前画布尚未保存，请保存后再切换。',
+  const confirm=useTaskDraftGuard({dirty,reason:'当前画板有未保存的修改，是否确定离开？',
     blocked:dirty&&(!writable||phase!=='ready')?'当前画布尚未保存且不可写，请先处理编辑状态':undefined,
     beforeLeave:async()=>{try{await flushProject();return usePersistenceStore.getState().status==='saved'?'saved' as const:true}catch{return true}}})
   useTaskDraftGuard({dirty:canvasDraftDirty(drafts),navigationScope:'canvas-task',
-    reason:'当前画布的生成提示词尚未提交。切换任务后这些提示词将被清空。',
-    blocked:canvasDraftDirty(drafts)&&(!writable||phase!=='ready')?'请先取得当前项目编辑权':undefined,
+    reason:'当前画板有未提交的提示词，切换任务将清空现有输入，是否继续？',
+    blocked:canvasDraftDirty(drafts)&&(!writable||phase!=='ready')?'当前项目处于只读状态，无法编辑':undefined,
     onAbandon:async()=>{
       if(usePersistenceStore.getState().epoch!==epoch||useEditorStore.getState().project?.id!==project?.id)throw new Error('项目编辑状态已变化')
       await saveAbandonedCanvasDraft(flushProject,epoch)
@@ -48,7 +48,7 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
     assertRecoveryActor(input.actor,input.signal)
   },[context,writable,phase,sceneId,onTaskObserved])
   return <TaskRecoveryPanel tools={tools} projectId={project?.id} onObserve={observe}
-    blockedReason={!writable||phase!=='ready'?'请先取得当前项目编辑权':undefined}
+    blockedReason={!writable||phase!=='ready'?'当前项目处于只读状态，无法编辑':undefined}
     onAddResult={async(result,detail,input)=>{await applyRecoveredCanvasTask(detail,context(input),result)}}
     onLoadParameters={async(prepared,detail,input)=>{
       assertRecoveryActor(input.actor,input.signal)
@@ -57,7 +57,7 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
       const values=prepared.params
       if(typeof values.prompt!=='string'||typeof values.count!=='number')throw new Error('原生成参数不完整')
       if(drafts['text-to-image'].prompt||drafts['text-to-video'].prompt||drafts.derived?.prompt){
-        if(!await confirm('载入原任务参数会替换当前生成参数；派生任务的原输入不在画布时会添加原输入图。',true))return false
+        if(!await confirm('载入原参数将替换当前生成参数，是否继续？',true))return false
       }
       assertRecoveryActor(input.actor,input.signal)
       if(!usePersistenceStore.getState().writable||usePersistenceStore.getState().epoch!==epoch)throw new Error('项目编辑状态已变化')
