@@ -7,7 +7,7 @@ const models = [
   { id: 'dragoncode:gpt-image-2', label: 'GPT Image 2', vendor: 'openai' },
   { id: 'bailian:qwen-image-3.0', label: 'Qwen Image 3.0', vendor: 'qwen' },
   { id: 'bailian:qwen-image-3.0-pro', label: 'Qwen Image 3.0 Pro' },
-  { id: 'openrouter:gemini-nano-banana-2.1', label: 'Google Nano Banana 2.1' },
+  { id: 'gemini-nano-banana-2.1', label: 'Nano Banana 2.1' },
   { id: 'unknown:用户默认模型', label: '用户默认模型', vendor: 'dragoncode' },
 ]
 

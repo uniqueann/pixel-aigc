@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { canonicalizeImageModelProfileId } from './image-models.js'
 
 export const identifier = z.string().min(1).max(150)
 const finite = z.number().finite()
@@ -39,6 +40,25 @@ export const projectWriteSchema = z.object({ name: z.string().trim().min(1).max(
 export const uploadSchema = z.object({ projectId: identifier, assetId: identifier, name: z.string().min(1).max(300),
   mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']), size: z.number().int().positive().max(20 * 1024 * 1024) }).strict()
 export type ProjectWrite = z.infer<typeof projectWriteSchema>
+
+/** 读出或写回画布草稿时，把旧 Nano Banana id 收成渠道无关 id。没有变化时保持原对象。 */
+export function canonicalizeDraftModelIds<T>(drafts: T): T {
+  if (!drafts || typeof drafts !== 'object') return drafts
+  const source = drafts as Record<string, unknown>
+  const next: Record<string, unknown> = { ...source }
+  let changed = false
+  for (const key of ['text-to-image', 'text-to-video', 'derived']) {
+    const draft = source[key]
+    if (!draft || typeof draft !== 'object' || Array.isArray(draft)) continue
+    const record = draft as Record<string, unknown>
+    if (typeof record.modelProfileId !== 'string') continue
+    const modelProfileId = canonicalizeImageModelProfileId(record.modelProfileId)
+    if (modelProfileId === record.modelProfileId) continue
+    next[key] = { ...record, modelProfileId }
+    changed = true
+  }
+  return (changed ? next : drafts) as T
+}
 export interface CloudAsset {
   id: string; name: string; mimeType: string; width: number; height: number; size: number;
   objectKey: string; createdAt: string; type: 'image'; source: 'upload';

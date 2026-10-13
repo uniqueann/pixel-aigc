@@ -1,6 +1,7 @@
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
 import { syncCreditPrice } from '@shared/billing'
+import { matchImageModel } from '@shared/image-models'
 import { creditQuote, imageCreditAmount, outpaintCreditAmount, type CreditQuote, type OutpaintQuoteGeometry } from '@/features/credits/quotes'
 
 interface Request {
@@ -22,6 +23,6 @@ export function workstationRequestQuote(request: Request | undefined, models: Pu
     }
   }
   const params = request.params as { count?: number; resolution?: string }
-  const model = models.find(model => model.id === request.modelProfileId)
+  const model = matchImageModel(models, request.modelProfileId)
   return creditQuote(imageCreditAmount(model, params.count ?? 1, params.resolution ?? '2k'), options)
 }

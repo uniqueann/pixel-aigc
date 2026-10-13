@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { projectWriteSchema, uploadSchema } from './cloud'
+import { canonicalizeDraftModelIds, projectWriteSchema, uploadSchema } from './cloud'
 const draft = { prompt: '', presetKey: '1:1', count: 1, durationSeconds: 5 }
 const project = { name: '测试', schemaVersion: 1, document: { version: 1, activeSceneId: 's', scenes: [{ id: 's', name: '场景', width: 100, height: 100, viewport: { zoom: 1, panX: 0, panY: 0 }, nodes: [] }] }, drafts: { 'text-to-image': draft, 'text-to-video': draft } }
 describe('云端写入边界', () => {
@@ -27,6 +27,18 @@ describe('云端写入边界', () => {
   it('拒绝重复场景和不存在的活动场景', () => {
     expect(projectWriteSchema.safeParse({ ...project, document: { ...project.document, activeSceneId: 'missing' } }).success).toBe(false)
     expect(projectWriteSchema.safeParse({ ...project, document: { ...project.document, scenes: [...project.document.scenes,...project.document.scenes] } }).success).toBe(false)
+  })
+  it('画布草稿里的旧 Nano Banana id 收成渠道无关 id，再次执行不变', () => {
+    const drafts = {
+      'text-to-image': { ...draft, modelProfileId: 'openrouter:gemini-nano-banana-2.1' },
+      'text-to-video': { ...draft, modelProfileId: 'seedance-2-0-fast' },
+      derived: { modelProfileId: 'openrouter:gemini-nano-banana-2.1', prompt: '' },
+    }
+    const once = canonicalizeDraftModelIds(drafts)
+    expect(once['text-to-image'].modelProfileId).toBe('gemini-nano-banana-2.1')
+    expect(once['text-to-video'].modelProfileId).toBe('seedance-2-0-fast')
+    expect(once.derived.modelProfileId).toBe('gemini-nano-banana-2.1')
+    expect(canonicalizeDraftModelIds(once)).toBe(once)
   })
   it('拒绝超限和非图片上传', () => {
     const input = { projectId: 'p', assetId: 'a', name: '图', mimeType: 'image/png', size: 100 }

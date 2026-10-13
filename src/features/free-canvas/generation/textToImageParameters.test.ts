@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IMAGE_MODEL_PROFILES, OPENROUTER_NANO_BANANA_PROFILE_ID, defaultImageModel, publicImageModel } from '@shared/image-models'
+import { IMAGE_MODEL_PROFILES, NANO_BANANA_PROFILE_ID, defaultImageModel, publicImageModel } from '@shared/image-models'
 import { availableTextToImagePresets, resolveCanvasTextToImageParameters } from './textToImageParameters'
 
 const original = publicImageModel(defaultImageModel('text_to_image')!)
@@ -50,7 +50,7 @@ describe('自由画布文生图有效参数', () => {
   })
 
   it('Nano Banana 2.1 的 1K/2K/4K 报价是 4/6/14，且 4K 正方形不降级', () => {
-    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)!)
     expect(resolveCanvasTextToImageParameters({ ...draft, modelProfileId: nano.id, resolution: '1k' }, '2k', [original, nano]).estimatedCredits).toBe(4)
     expect(resolveCanvasTextToImageParameters({ ...draft, modelProfileId: nano.id, resolution: '2k' }, '1k', [original, nano]).estimatedCredits).toBe(6)
     expect(resolveCanvasTextToImageParameters({ ...draft, count: 1, modelProfileId: nano.id, resolution: '4k' }, '2k', [original, nano])).toMatchObject({

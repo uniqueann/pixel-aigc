@@ -11,7 +11,7 @@
 - 模型页：https://openrouter.ai/google/gemini-nano-banana-2.1
 - 图片生成（chat completions，`modalities: ["image","text"]`）：https://openrouter.ai/docs/guides/overview/multimodal/image-generation
 
-本次没有数据库迁移。`image_jobs.provider` 与 `model_profile_id` 已经是文本字段。
+目录 id 是与渠道无关的 `gemini-nano-banana-2.1`。`image_jobs.provider` 与 `model_profile_id` 已经是文本字段。历史 `openrouter:gemini-nano-banana-2.1` 由 `supabase/migrations/20261013084551_nano_banana_channel_agnostic_id.sql` 改写；部署顺序见 `docs/ai-gateway-nano-banana.md`。
 
 ## 行为
 
@@ -40,10 +40,10 @@
 
 ## 上线
 
-1. 不需要跑数据库迁移。
+1. 目录 id 迁移与部署顺序见 `docs/ai-gateway-nano-banana.md`：先部署代码，再在正式库执行迁移。
 2. 在 Vercel Preview 先设置 `OPENROUTER_API_KEY`，再设置 `OPENROUTER_IMAGE_ENABLED=true`。Production 等 Preview 冒烟后再开。
 3. 重新部署。
-4. 登录后看 `GET /api/image-models?operation=text_to_image`（工作站看 `image_edit` 或 `variation`）。应出现 `openrouter:gemini-nano-banana-2.1`，积分 1K/2K/4K 为 4/6/14，响应里没有 `vendorCost`。不传 `modelProfileId` 的文生图仍走 GPT Image 2。
+4. 登录后看 `GET /api/image-models?operation=text_to_image`（工作站看 `image_edit` 或 `variation`）。应出现 `gemini-nano-banana-2.1`，展示名「Nano Banana 2.1」，积分 1K/2K/4K 为 4/6/14，响应里没有 `vendorCost`。不传 `modelProfileId` 的文生图仍走 GPT Image 2。旧 id `openrouter:gemini-nano-banana-2.1` 仍可提交，并记成新 id。
 5. 自由画布和工作站选中该模型后，预扣应显示 4 / 6 / 14。用一张 1K 做冒烟，确认结果进了画布和 R2。
 6. 核对日志 `openrouter-image-submit`、`openrouter-usage` 和任务上的 `provider_params.vendor`（token 数；有上游成本则用上游成本，否则用目录价）。
 7. 不要开启 web search。参考图不另加积分。失败应退回预扣。

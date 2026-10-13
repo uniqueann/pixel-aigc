@@ -4,8 +4,11 @@ import {
   DRAGONCODE_RATIOS,
   DRAGONCODE_SIZES,
   IMAGE_MODEL_PROFILES,
-  OPENROUTER_NANO_BANANA_MODEL,
-  OPENROUTER_NANO_BANANA_PROFILE_ID,
+  LEGACY_NANO_BANANA_PROFILE_ID,
+  NANO_BANANA_MODEL,
+  NANO_BANANA_PROFILE_ID,
+  canonicalizeImageModelProfileId,
+  findImageModel,
   RESOLUTION_DOWNGRADED_4K,
   defaultImageModel,
   imageModelHint,
@@ -88,11 +91,11 @@ describe('nearestRatio / mapDragonCodeSize', () => {
   })
 
   it('Nano Banana 2.1 按 1K/2K/4K 报价，公开接口不含供应商成本', () => {
-    const profile = IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)
+    const profile = IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)
     expect(profile).toMatchObject({
       provider: 'openrouter',
-      model: OPENROUTER_NANO_BANANA_MODEL,
-      label: 'Google Nano Banana 2.1',
+      model: NANO_BANANA_MODEL,
+      label: 'Nano Banana 2.1',
       enabled: false,
       operations: ['text_to_image', 'image_edit', 'variation'],
       pricing: {
@@ -114,7 +117,7 @@ describe('nearestRatio / mapDragonCodeSize', () => {
 
   it('GPT Image 2 积分与 Nano Banana 2.1 相同，供应商成本保持原值', () => {
     const gpt = IMAGE_MODEL_PROFILES.find(item => item.id === 'dragoncode:gpt-image-2')
-    const nano = IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)
+    const nano = IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)
     expect(gpt?.pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
     expect(gpt?.pricing.creditsPerImage).toEqual(nano?.pricing.creditsPerImage)
     expect(gpt?.pricing.vendorCost).toEqual({ '1k': '0.0085', '2k': '0.014', '4k': '0.021' })
@@ -129,7 +132,7 @@ describe('nearestRatio / mapDragonCodeSize', () => {
       ['bailian:qwen-image-3.0', 'qwen'],
       ['bailian:qwen-image-3.0-pro', 'qwen'],
       ['bailian:qwen-image-2.1-pro', 'qwen'],
-      [OPENROUTER_NANO_BANANA_PROFILE_ID, 'google'],
+      [NANO_BANANA_PROFILE_ID, 'google'],
       ['mock:image-stage2','openai'],
     ])
     for (const profile of IMAGE_MODEL_PROFILES) {
@@ -137,6 +140,12 @@ describe('nearestRatio / mapDragonCodeSize', () => {
       expect(imageModelVendor(profile.id)).toBe(profile.vendor)
     }
     expect(imageModelVendor('ai-gateway:google/gemini-nano-banana-2.1')).toBe('google')
+    expect(imageModelVendor(LEGACY_NANO_BANANA_PROFILE_ID)).toBe('google')
+    expect(canonicalizeImageModelProfileId(LEGACY_NANO_BANANA_PROFILE_ID)).toBe(NANO_BANANA_PROFILE_ID)
+    expect(canonicalizeImageModelProfileId(NANO_BANANA_PROFILE_ID)).toBe(NANO_BANANA_PROFILE_ID)
+    expect(canonicalizeImageModelProfileId('dragoncode:gpt-image-2')).toBe('dragoncode:gpt-image-2')
+    expect(findImageModel(LEGACY_NANO_BANANA_PROFILE_ID)?.id).toBe(NANO_BANANA_PROFILE_ID)
+    expect(findImageModel(LEGACY_NANO_BANANA_PROFILE_ID)?.label).toBe('Nano Banana 2.1')
     expect(imageModelVendor('dragoncode:not-a-model')).toBeUndefined()
     expect(imageModelVendor('ai-gateway:some-other')).toBeUndefined()
     expect(imageModelVendor('deepseek:用户默认模型')).toBeUndefined()
@@ -161,8 +170,8 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(hint('bailian:qwen-image-2.1-pro', 'text_to_image')).toBe('2K 同价')
     expect(hint('bailian:qwen-image-2.1-pro', 'single_image')).toBe('2K 同价')
     expect(hint('bailian:qwen-image-2.1-pro', 'image_input')).toBe('最多 10 张参考图')
-    expect(hint(OPENROUTER_NANO_BANANA_PROFILE_ID, 'text_to_image')).toBe('支持 4K')
-    expect(hint(OPENROUTER_NANO_BANANA_PROFILE_ID, 'image_input')).toBe('支持 4K')
+    expect(hint(NANO_BANANA_PROFILE_ID, 'text_to_image')).toBe('支持 4K')
+    expect(hint(NANO_BANANA_PROFILE_ID, 'image_input')).toBe('支持 4K')
     for (const profile of IMAGE_MODEL_PROFILES) {
       for (const text of Object.values(profile.hints ?? {})) {
         const chinese = [...text].filter(char => /\p{Script=Han}/u.test(char)).length

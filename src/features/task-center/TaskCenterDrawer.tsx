@@ -24,6 +24,7 @@ import VideoPlayer from '@/components/VideoPlayer'
 import { readOwnedImage } from '@/services/api/ownedImages'
 import { downloadOwnedVideo } from '@/services/api/ownedVideos'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import { modelDisplayName } from '@shared/model-display'
 import {
   taskBillingLabel,
   taskStateLabel,
@@ -398,7 +399,7 @@ function TaskDrawerPanel({
                     {
                       key: 'model',
                       label: '模型',
-                      children: task.modelProfileId ?? '不适用',
+                      children: modelDisplayName(task.modelProfileId),
                     },
                     {
                       key: 'billing',

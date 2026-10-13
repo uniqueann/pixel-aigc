@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { OPENROUTER_NANO_BANANA_MODEL } from '../../../shared/image-models.js'
+import { NANO_BANANA_MODEL } from '../../../shared/image-models.js'
 import { MOCK_PNG_1X1 } from '../mock.js'
 import type { AiGatewayResultStore } from './client.js'
 import { createAiGatewayImageProvider } from './client.js'
@@ -18,7 +18,7 @@ vi.mock('@vercel/oidc', () => ({ getVercelOidcToken: vi.fn(async () => 'unused-o
 const settings: AiGatewayImageSettings = {
   apiKey: 'gw-test-key',
   baseUrl: 'https://ai-gateway.vercel.sh/v1',
-  model: OPENROUTER_NANO_BANANA_MODEL,
+  model: NANO_BANANA_MODEL,
   requestTimeoutMs: 1_000,
   taskTimeoutMs: 300_000,
   pollIntervalMs: 2_000,
@@ -64,7 +64,7 @@ function context(fetchImpl: typeof fetch) {
 }
 
 const input = {
-  model: OPENROUTER_NANO_BANANA_MODEL,
+  model: NANO_BANANA_MODEL,
   prompt: '橙色香水瓶',
   images: [] as Array<{ url: string }>,
   providerParams: { aspectRatio: '1:1', imageSize: '1K', resolution: '1k', n: 1 },

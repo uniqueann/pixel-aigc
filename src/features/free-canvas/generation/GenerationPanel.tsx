@@ -1,6 +1,7 @@
 import { Input, Radio, Segmented, Switch, Tooltip } from 'antd'
 import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
+import { matchImageModel } from '@shared/image-models'
 import { PROMPT_MAX_LENGTH, VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewResultStrip from '@/components/PreviewResultStrip'
@@ -108,7 +109,7 @@ export default function GenerationPanel({
   const textToVideo = mode === 'text-to-video'
   const balance = useUserStore(state => state.credits)
   const knownBalance = useKnownCreditBalance()
-  const model = models.find(item => item.id === modelProfileId)
+  const model = matchImageModel(models, modelProfileId)
   const supportedPresets = availableTextToImagePresets(model)
   const taskIsVideo = task?.capability === Capability.TextToVideo
   const taskDuration = task?.params && 'durationSeconds' in task.params
@@ -133,7 +134,7 @@ export default function GenerationPanel({
       thumbSrc: taskIsVideo ? '' : src, fullSrc: src, title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
   })
   const originalModelId = task ? modelProfileIdForRetry(task) : undefined
-  const originalModel = task ? models.find(item => item.id === originalModelId) : model
+  const originalModel = task ? matchImageModel(models, originalModelId) : model
   const imagePromptMax = model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
   const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, originalResolution ?? resolution) : estimatedCredits
@@ -198,7 +199,7 @@ export default function GenerationPanel({
       )}
 
       {!textToVideo && <>
-        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="文生图模型" hintScope="text_to_image" models={models} value={modelProfileId} disabled={formLocked || modelsLoading} onChange={onModelChange} />
+        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="文生图模型" hintScope="text_to_image" models={models} value={model?.id} disabled={formLocked || modelsLoading} onChange={onModelChange} />
         <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="文生图分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
           {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
         </Radio.Group></label>

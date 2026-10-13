@@ -1,4 +1,4 @@
-import { IMAGE_MODEL_PROFILES, OPENROUTER_NANO_BANANA_PROFILE_ID, publicImageModel } from '../../shared/image-models.js'
+import { IMAGE_MODEL_PROFILES, NANO_BANANA_PROFILE_ID, publicImageModel } from '../../shared/image-models.js'
 import type { ImageOperation } from '../../shared/image-generation.js'
 import { aiGatewayImageAvailable, aiGatewayImageProvider } from './ai-gateway/index.js'
 import { dragonCodeProvider } from './dragoncode/index.js'
@@ -25,7 +25,7 @@ export function configuredImageModels(
 ) {
   return IMAGE_MODEL_PROFILES.flatMap(profile => {
     if (operation && !profile.operations.includes(operation)) return []
-    const active = profile.id === OPENROUTER_NANO_BANANA_PROFILE_ID && aiGatewayImageAvailable(env)
+    const active = profile.id === NANO_BANANA_PROFILE_ID && aiGatewayImageAvailable(env)
       ? { ...profile, provider: 'ai-gateway' as const }
       : profile
     const provider = imageProviderById(active.provider)

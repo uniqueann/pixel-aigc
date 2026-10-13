@@ -36,6 +36,7 @@ import { calculateDerivedPlacements, calculateGenerationPlacements, calculateNod
 import { canSubmitFreeCanvasTextToImage, canSubmitFreeCanvasVariation, canSubmitFreeCanvasVideo, useCanvasVideoConfiguration, isCanvasMockGateway } from './availability'
 import { saveCanvasTaskHistory } from './history'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
+import { canonicalizeImageModelProfileId } from '@shared/image-models'
 import { modelProfileIdForRetry } from './retryModel'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
@@ -127,7 +128,7 @@ function requestForRetry(task: CanvasGenerationTask): CanvasGenerationRequest {
     capability: task.capability as CanvasGenerationRequest['capability'],
     params: task.params,
     requestId: crypto.randomUUID(),
-    modelProfileId: modelProfileIdForRetry(task),
+    modelProfileId: canonicalizeImageModelProfileId(modelProfileIdForRetry(task)),
     priceVersion: task.capability === Capability.TextToVideo ? useCanvasVideoConfiguration.getState().models[0]?.pricing.version ?? recoveryForTask(task.id)?.request.priceVersion : undefined,
   }
 }
@@ -627,7 +628,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
     const images=detail.results.flatMap(result=>result.kind==='image'&&result.availability==='available'?[{url:result.url,objectKey:result.objectKey,ordinal:result.ordinal,width:result.width,height:result.height,mimeType:result.mimeType,expiresAt:Date.parse(result.urlExpiresAt)}]:[])
     const videos=detail.results.flatMap(result=>result.kind==='video'&&result.video&&result.availability==='available'?[{...result.video,url:result.url,objectKey:result.objectKey,ordinal:result.ordinal,width:result.width,height:result.height,mimeType:'video/mp4' as const,expiresAt:Date.parse(result.urlExpiresAt)}]:[])
     const next:CanvasGenerationTask={id:summary.sourceId,requestId:summary.requestId,capability:summary.capability as Capability,status:nextStatus,params:detail.params as unknown as CanvasGenerationTaskParams,
-      resultImages:images,resultVideos:videos,resultUrls:[...images,...videos].map(result=>result.url),modelProfileId:summary.modelProfileId??undefined,
+      resultImages:images,resultVideos:videos,resultUrls:[...images,...videos].map(result=>result.url),modelProfileId:canonicalizeImageModelProfileId(summary.modelProfileId??undefined),
       errorCode:summary.errorCode??undefined,errorMessage:detail.errorMessage??undefined,warnings:summary.warnings,creditsCost:summary.creditsCharged??summary.creditsReserved,
       createdAt:summary.createdAt,updatedAt:summary.updatedAt}
     setTask(next);upsertTask(next)

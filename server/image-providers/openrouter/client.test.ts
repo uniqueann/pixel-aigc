@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { OPENROUTER_NANO_BANANA_MODEL } from '../../../shared/image-models.js'
+import { NANO_BANANA_MODEL } from '../../../shared/image-models.js'
 import { MOCK_PNG_1X1 } from '../mock.js'
 import type { OpenRouterResultStore } from './client.js'
 import { createOpenRouterImageProvider } from './client.js'
@@ -17,7 +17,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
 const settings: OpenRouterImageSettings = {
   apiKey: 'sk-test-openrouter',
   baseUrl: 'https://openrouter.ai/api/v1',
-  model: OPENROUTER_NANO_BANANA_MODEL,
+  model: NANO_BANANA_MODEL,
   requestTimeoutMs: 1_000,
   taskTimeoutMs: 300_000,
   pollIntervalMs: 2_000,
@@ -65,7 +65,7 @@ function context(fetchImpl: typeof fetch) {
 }
 
 const input = {
-  model: OPENROUTER_NANO_BANANA_MODEL,
+  model: NANO_BANANA_MODEL,
   prompt: '橙色香水瓶',
   images: [] as Array<{ url: string }>,
   providerParams: { aspectRatio: '16:9', imageSize: '2K', resolution: '2k', n: 1 },

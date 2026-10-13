@@ -19,7 +19,7 @@ import { z } from 'zod'
 import { authenticate } from './auth.js'
 import { runtimeScope, database, withIdentity } from './db.js'
 import { describeError, HttpError } from './errors.js'
-import { identifier, projectWriteSchema, uploadSchema } from '../shared/cloud.js'
+import { canonicalizeDraftModelIds, identifier, projectWriteSchema, uploadSchema } from '../shared/cloud.js'
 import { readProject, requireProject, toAsset, validateReferences } from './projects.js'
 import { putObject, signRead, signUpload, verifyAndPromote } from './storage.js'
 import { handleModelRoute } from './model-settings.js'
@@ -687,7 +687,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return { items: rows }
         }
         if (path.length === 1 && method === 'POST') {
-          const { id, ...input } = projectWriteSchema.extend({ id: identifier }).parse(body)
+          const { id, ...parsed } = projectWriteSchema.extend({ id: identifier }).parse(body)
+          const input = { ...parsed, drafts: canonicalizeDraftModelIds(parsed.drafts) }
           // 创建接口只接收空素材文档；随后上传素材，再进行版本化保存。
           if (input.document.scenes.some(s => s.nodes.some(n => ['image','video','generation'].includes(n.type))) || input.drafts.derived)
             throw new HttpError(400, '请先创建项目，再上传关联素材')
@@ -704,7 +705,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const id = identifier.parse(path[1])
           if (method === 'GET') return readProject(sql, id)
           if (method === 'PUT') {
-            const { baseRevision, ...input } = projectWriteSchema.extend({ baseRevision: z.number().int().positive() }).parse(body)
+            const { baseRevision, ...parsed } = projectWriteSchema.extend({ baseRevision: z.number().int().positive() }).parse(body)
+            const input = { ...parsed, drafts: canonicalizeDraftModelIds(parsed.drafts) }
             const current = await requireProject(sql, id, true)
             if (current.revision !== baseRevision) throw new HttpError(409, '云端项目已更新，请处理版本冲突')
             await validateReferences(sql, id, input)
