@@ -52,6 +52,7 @@ import { isCanvasMockGateway } from '@/features/free-canvas/generation/availabil
 import { syncCreditPrice } from '@shared/billing'
 import { COUNT_TOOLS, type CountTool } from '@shared/preferences'
 import { useStickyPreview } from './utils/useStickyPreview'
+import { useWorkstationPromptHeight } from './utils/useWorkstationPromptHeight'
 import TaskRecoveryPanel,{type RecoveryActionContext} from '@/features/task-center/TaskRecoveryPanel'
 import WorkstationRecovery from '@/features/task-center/WorkstationRecovery'
 import { saveWorkstationSession } from '@/features/task-center/workstationSession'
@@ -161,6 +162,13 @@ export default function ImageWorkstation() {
   })
   const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
   const replaceSourceAsset = controller.replaceSourceAsset
+  const previewPanelRef = useRef<HTMLElement>(null)
+  const settingsPanelRef = useRef<HTMLElement>(null)
+  const promptMinHeight = useWorkstationPromptHeight({
+    previewPanelRef,
+    settingsPanelRef,
+    activeToolSlug: activeTool.slug,
+  })
 
   const inpaintMode = activeTool.slug === 'repaint' ? 'repaint' : activeTool.slug === 'remove' ? 'remove' : undefined
   const selectedPreset = PLATFORM_SIZE_PRESETS.find((preset) => preset.platform === presetPlatform)
@@ -515,7 +523,7 @@ export default function ImageWorkstation() {
       />
       <div className="image-workstation-main">
         <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
-          <section className="workstation-panel image-workstation-preview-panel" aria-labelledby="workstation-preview-heading">
+          <section ref={previewPanelRef} className="workstation-panel image-workstation-preview-panel" aria-labelledby="workstation-preview-heading">
             <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
             <CanvasArea
               interactionMode={activeTool.interactionMode}
@@ -558,7 +566,7 @@ export default function ImageWorkstation() {
           </section>
           {showExample && example ? <ToolExampleStrip example={example} /> : null}
         </div>
-        <aside className="workstation-panel image-workstation-settings" aria-labelledby="workstation-settings-heading">
+        <aside ref={settingsPanelRef} className="workstation-panel image-workstation-settings" aria-labelledby="workstation-settings-heading">
           <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>
           <CapabilityStatus
             ready={configurationReady}
@@ -602,6 +610,7 @@ export default function ImageWorkstation() {
               outpaintTargetSize={predictedOutpaintSize}
               presetPlatform={presetPlatform}
               onPresetPlatformChange={presetPlatform => updateParameters({ presetPlatform })}
+              promptMinHeight={promptMinHeight}
             />
           ) : null}
           {fusionTool ? <FusionInputStatus state={controller.inputPreparation} retryQuote={inputRetryQuote} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}

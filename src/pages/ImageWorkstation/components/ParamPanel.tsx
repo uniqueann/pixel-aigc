@@ -50,6 +50,7 @@ interface Props {
   onRetouchDirectionsChange?: (directions: RetouchDirection[]) => void
   relight?: RelightOptions
   onRelightChange?: (relight: RelightOptions) => void
+  promptMinHeight?: number
 }
 
 const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
@@ -105,6 +106,7 @@ export default function ParamPanel({
   onRetouchDirectionsChange,
   relight = RELIGHT_DEFAULT,
   onRelightChange,
+  promptMinHeight,
 }: Props) {
   const intro = title ? (
     <header className="param-panel-intro">
@@ -170,6 +172,8 @@ export default function ParamPanel({
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
             placeholder={fusion ? '例如：把商品放在桌面中央' : retouch ? '例如：保留吊牌文字' : variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
             autoSize={retouch ? { minRows: 3, maxRows: 6 } : { minRows: 4, maxRows: 8 }}
+            styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
+            style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
             maxLength={fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH}
             showCount
           />
@@ -278,6 +282,8 @@ export default function ParamPanel({
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
             placeholder="例如：略微提亮背景"
             autoSize={{ minRows: 3, maxRows: 6 }}
+            styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
+            style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
             maxLength={noteMax}
             showCount
           />
@@ -322,6 +328,8 @@ export default function ParamPanel({
             onChange={(event) => onRepaintPromptChange(event.target.value)}
             placeholder="描述选区里要出现的内容，例如：桌面上的透明玻璃花瓶"
             autoSize={tallPromptSize}
+            styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
+            style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
             maxLength={MAX_ERASE_PROMPT_LENGTH}
             showCount
           />
@@ -343,6 +351,8 @@ export default function ParamPanel({
             onChange={(event) => onErasePromptChange(event.target.value)}
             placeholder="消除小物体可留空；大面积消除建议描述期望补充的背景（请勿输入「删除某某」）"
             autoSize={tallPromptSize}
+            styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
+            style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
             maxLength={MAX_ERASE_PROMPT_LENGTH}
             showCount
           />

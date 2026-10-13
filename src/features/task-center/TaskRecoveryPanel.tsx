@@ -63,21 +63,37 @@ function RecoveryPanelContent({tools,projectId,onUseImage,onLoadParameters,onAdd
     {recovery.loading?<Spin/>:null}
     {recovery.error?<Alert type="warning" showIcon message="任务详情加载失败，请重试" description={recovery.error instanceof Error?recovery.error.message:undefined} action={<Button size="small" onClick={recovery.refresh}>重新读取</Button>}/>:null}
     {detail?<>
-      <p>{taskStateLabel(detail.task)} · {detail.task.completedCount}/{detail.task.requestedCount} · {taskBillingLabel(detail.task)}</p>
+      <div className="task-recovery-header-row">
+        <div className="task-recovery-meta">
+          <strong>{taskStateLabel(detail.task)}</strong>
+          <span>{detail.task.completedCount}/{detail.task.requestedCount}</span>
+          <span>{taskBillingLabel(detail.task)}</span>
+          {detail.task.origin?.entry==='canvas' && detail.task.origin.sceneId!==undefined?<small>原场景：{detail.task.origin.sceneId}</small>:null}
+        </div>
+        <Space wrap size="small">
+          <Button size="small" onClick={recovery.refresh}>重新读取</Button>
+          <Button size="small" onClick={()=>center?.show(detail.task)}>查看完整详情及下载</Button>
+          {onLoadParameters?<><Button size="small" disabled={!detail.params||!!blockedReason} loading={busy} onClick={()=>loadParameters()}>填入原参数</Button><Button size="small" disabled={!detail.params||!!blockedReason} loading={busy} onClick={()=>loadParameters(true)}>使用原参数再次生成</Button></>:null}
+        </Space>
+      </div>
       {detail.errorMessage?<Alert type="warning" showIcon message={detail.errorMessage}/>:null}
-      {detail.task.origin?.entry==='canvas' && detail.task.origin.sceneId!==undefined?<small>原任务场景：{detail.task.origin.sceneId}</small>:null}
-      <Space wrap><Button size="small" onClick={recovery.refresh}>重新读取</Button><Button size="small" onClick={()=>center?.show(detail.task)}>查看完整详情及下载</Button>
-        {onLoadParameters?<><Button size="small" disabled={!detail.params||!!blockedReason} loading={busy} onClick={()=>loadParameters()}>填入原参数</Button><Button size="small" disabled={!detail.params||!!blockedReason} loading={busy} onClick={()=>loadParameters(true)}>使用原参数再次生成</Button></>:null}</Space>
-      {!detail.params?<p>此任务未保存参数记录，可直接查看结果或作为新图片继续编辑。</p>:null}
+      {!detail.params?<p className="task-recovery-hint">此任务未保存参数记录，可直接查看结果或作为新图片继续编辑。</p>:null}
       {blockedReason?<Alert type="info" message={blockedReason}/>:null}
       {actionError?<Alert type="warning" message={actionError}/>:null}
-      <div className="task-recovery-results">{medias.map(result=><div key={`${result.ordinal}:${result.objectKey}`}>
-        {result.availability!=='available'?<p>结果 {result.ordinal+1}：{result.availability==='expired'?'已过期':'暂不可读取'}</p>:<>
-          {result.kind==='video'?<VideoPlayer reference={{objectKey:result.objectKey,url:result.url,expiresAt:Date.parse(result.urlExpiresAt),retentionExpiresAt:detail.task.resultExpiresAt??undefined}} ownerId={recovery.actor?.owner}/>:<Image src={result.url} alt={`原任务结果 ${result.ordinal+1}`} width={160}/>}
-          <Space wrap>{onUseImage&&result.kind==='image'?<Button size="small" disabled={!!blockedReason} loading={busy} onClick={()=>void run(async context=>{
-            const measured=await readRecoveryImage(result,context.actor,context.signal);await onUseImage(result,measured,detail,context)
-          })}>基于此图继续编辑</Button>:null}
-          {onAddResult?<Button size="small" disabled={!!blockedReason} loading={busy} onClick={()=>void run(async context=>{await onAddResult(result,detail,context)})}>添加到画板</Button>:null}</Space>
+      <div className="task-recovery-results">{medias.map(result=><div key={`${result.ordinal}:${result.objectKey}`} className="task-recovery-result-item">
+        {result.availability!=='available'?<p className="task-recovery-result-unavailable">结果 {result.ordinal+1}：{result.availability==='expired'?'已过期':'暂不可读取'}</p>:<>
+          <div className="task-recovery-result-media">
+            {result.kind==='video'?<VideoPlayer reference={{objectKey:result.objectKey,url:result.url,expiresAt:Date.parse(result.urlExpiresAt),retentionExpiresAt:detail.task.resultExpiresAt??undefined}} ownerId={recovery.actor?.owner}/>:<Image src={result.url} alt={`原任务结果 ${result.ordinal+1}`} width={72} height={72} style={{ objectFit: 'cover', borderRadius: 6 }}/>}
+          </div>
+          <div className="task-recovery-result-actions">
+            <span className="task-recovery-result-label">结果 {result.ordinal+1}</span>
+            <Space wrap size="small">
+              {onUseImage&&result.kind==='image'?<Button size="small" disabled={!!blockedReason} loading={busy} onClick={()=>void run(async context=>{
+                const measured=await readRecoveryImage(result,context.actor,context.signal);await onUseImage(result,measured,detail,context)
+              })}>基于此图继续编辑</Button>:null}
+              {onAddResult?<Button size="small" disabled={!!blockedReason} loading={busy} onClick={()=>void run(async context=>{await onAddResult(result,detail,context)})}>添加到画板</Button>:null}
+            </Space>
+          </div>
         </>}
       </div>)}</div>
       {detail.results.map((result,index)=>result.kind==='text'?<div key={index} className="task-recovery-text"><p>生成结果</p><pre>{result.text}</pre>{result.editedText!==null?<><p>修改草稿</p><pre>{result.editedText}</pre></>:null}<Button size="small" onClick={()=>void run(async context=>{assertRecoveryActor(context.actor,context.signal);await navigator.clipboard.writeText(result.editedText??result.text);message.success('结果已复制')})}>复制结果</Button></div>:null)}
