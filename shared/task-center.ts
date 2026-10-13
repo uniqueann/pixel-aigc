@@ -33,8 +33,8 @@ export const taskToolLabels: Record<TaskTool, string> = {
   remove: '消除',
   repaint: '重绘',
   outpaint: '扩图',
-  'bg-remove': '抠图',
-  'aspect-ratio': '智能扩展',
+  'bg-remove': '智能抠图',
+  'aspect-ratio': '转比例',
   'text-to-image': '文生图',
   'text-to-video': '文生视频',
   'image-to-video': '图生视频',
@@ -217,15 +217,15 @@ export function taskBillingLabel(
     'billingState' | 'creditsReserved' | 'creditsCharged' | 'creditsReturned'
   >,
 ) {
-  if (task.billingState === 'none') return '无需扣分'
+  if (task.billingState === 'none') return '免费'
   if (task.billingState === 'reserved')
     return task.creditsReserved === 0
       ? '免费额度处理中'
-      : `预留 ${task.creditsReserved} 积分`
-  if (task.billingState === 'unknown') return '积分状态待核对'
+      : `预计消耗 ${task.creditsReserved} 积分`
+  if (task.billingState === 'unknown') return '结算中'
   if (task.billingState === 'refunded')
     return task.creditsReturned
-      ? `已退回 ${task.creditsReturned} 积分`
-      : '未扣积分'
-  return `${task.creditsCharged === 0 ? '免费' : `已扣 ${task.creditsCharged} 积分`}${task.creditsReturned ? `，退回 ${task.creditsReturned} 积分` : ''}`
+      ? `已退还 ${task.creditsReturned} 积分`
+      : '未扣费'
+  return `${task.creditsCharged === 0 ? '免费' : `已扣 ${task.creditsCharged} 积分`}${task.creditsReturned ? `，退还 ${task.creditsReturned} 积分` : ''}`
 }

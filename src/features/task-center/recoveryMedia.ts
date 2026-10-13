@@ -50,7 +50,7 @@ export interface PreparedRecoveryParameters { params: Record<string,unknown>; so
 /** 参数载入先读取所有原输入；任一输入失败时不改变当前表单。 */
 export async function prepareRecoveryParameters(detail: TaskCenterDetail, actor: TaskActor, signal: AbortSignal): Promise<PreparedRecoveryParameters> {
   assertRecoveryActor(actor,signal)
-  if (!detail.params) throw new Error('原任务未保存完整参数，请仅查看结果或将结果作为新输入')
+  if (!detail.params) throw new Error('此任务未保存参数记录，可直接查看结果或作为新图片继续编辑')
   const params = {...detail.params}
   const prepared: PreparedRecoveryParameters = {params}
   const needsSource = ['image_edit','variation'].includes(detail.task.capability) || (detail.task.capability === 'text_to_video' && params.mode === 'image_to_video')

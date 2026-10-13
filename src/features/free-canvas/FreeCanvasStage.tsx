@@ -1072,7 +1072,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <Tooltip
           title={
             selectedNode?.type === 'generation'
-              ? (isSelectedTerminalGeneration ? '删除失败的生成占位' : '生成中的占位不能单独删除')
+              ? (isSelectedTerminalGeneration ? '删除占位框' : '生成中的占位框暂不支持删除')
               : '删除所选节点'
           }
         >

@@ -253,7 +253,7 @@ function TaskDrawerPanel({
               刷新
             </Button>
           </Space>
-          <span>近期 30 天内仍保留的任务</span>
+          <span>展示近 30 天内的任务记录</span>
         </div>
         {!selected ? (
           <>
@@ -298,12 +298,12 @@ function TaskDrawerPanel({
                 >
                   <span className="task-status-dot is-gray" />
                   <div>
-                    <strong>提交结果待确认</strong>
-                    <p>正在查询原请求，不会自动重新生成。</p>
+                    <strong>任务确认中</strong>
+                    <p>正在同步任务状态，请稍候...</p>
                     <small>操作编号 {receipt.requestId}</small>
                   </div>
                   <Button size="small" onClick={() => center.forget(receipt)}>
-                    移除此提示
+                    忽略此提示
                   </Button>
                 </div>
               ))}
@@ -312,7 +312,7 @@ function TaskDrawerPanel({
               <Alert
                 type="warning"
                 showIcon
-                message="任务状态暂不可获取，保留上次快照"
+                message="无法获取最新状态，已显示上次记录"
                 action={
                   <Button size="small" onClick={reload}>
                     重试
@@ -340,7 +340,7 @@ function TaskDrawerPanel({
                     </span>
                     <small>
                       {taskBillingLabel(row)}
-                      {row.dismissed ? ' · 已从近期移除' : ''}
+                      {row.dismissed ? ' · 已移出列表' : ''}
                     </small>
                   </span>
                 </button>
@@ -349,7 +349,7 @@ function TaskDrawerPanel({
             !history.error &&
             !history.data?.pages.some((page) => page.items.length) &&
             !center.receipts.length ? (
-              <Empty description="暂无近期在线任务" />
+              <Empty description="暂无近期任务" />
             ) : null}
             {history.hasNextPage ? (
               <Button
@@ -368,7 +368,7 @@ function TaskDrawerPanel({
               <Alert
                 type="warning"
                 showIcon
-                message="任务详情暂不可读取，任务不会因此失败"
+                message="任务详情加载失败，请稍后重试"
                 action={
                   <Button size="small" onClick={reload}>
                     重新读取
@@ -385,7 +385,7 @@ function TaskDrawerPanel({
                     {taskStateLabel(task)}
                   </h3>
                 </div>
-                {taskDestination(task) ? <Button onClick={() => { navigate(taskDestination(task)!); center.close() }}>在工具中查看</Button> : <p>原工具或画布来源不足，可在此查看已有结果。</p>}
+                {taskDestination(task) ? <Button onClick={() => { navigate(taskDestination(task)!); center.close() }}>在工具中查看</Button> : <p>该任务不支持跳转至原页面，可在下方查看生成结果。</p>}
                 <Descriptions
                   size="small"
                   column={1}
@@ -427,14 +427,14 @@ function TaskDrawerPanel({
                   <Alert
                     type="info"
                     showIcon
-                    message={`部分结果可用：${task.completedCount}/${task.requestedCount}，积分以已结算金额为准`}
+                    message={`部分生成成功（${task.completedCount}/${task.requestedCount} 张），仅按实际成功张数扣费`}
                   />
                 ) : null}
                 {value?.errorMessage && task.state !== 'succeeded' ? (
                   <Alert type="warning" showIcon message={value.errorMessage} />
                 ) : null}
                 {task.warnings.includes('LATE_RESULT_NO_CHARGE') ? (
-                  <Alert type="info" message="已找回迟到结果，不追加扣费" />
+                  <Alert type="info" message="已同步最新生成结果，不额外扣费" />
                 ) : null}
                 {task.resultAvailability === 'expired' ||
                 task.resultAvailability === 'unavailable' ? (
@@ -443,8 +443,8 @@ function TaskDrawerPanel({
                     showIcon
                     message={
                       task.resultAvailability === 'expired'
-                        ? '结果已过期，原成功和积分记录保留'
-                        : '结果已失效、暂不可读取或尚无可用结果'
+                        ? '生成文件已过期（扣费记录不受影响）'
+                        : '生成结果暂不可用或已失效'
                     }
                   />
                 ) : null}
@@ -482,7 +482,7 @@ function TaskDrawerPanel({
                         icon={<DownloadOutlined />}
                         onClick={() => void download(item)}
                       >
-                        下载已有结果
+                        下载结果
                       </Button>
                     </div>
                   ))}
@@ -490,7 +490,7 @@ function TaskDrawerPanel({
                 {value?.results.map((result, index) =>
                   result.kind === 'text' ? (
                     <div key={index} className="task-text-result">
-                      <h4>原生成结果</h4>
+                      <h4>生成结果</h4>
                       <pre>{result.text}</pre>
                       <Button
                         onClick={() =>
@@ -506,7 +506,7 @@ function TaskDrawerPanel({
                       </Button>
                       {result.editedText ? (
                         <>
-                          <h4>已有修改稿</h4>
+                          <h4>修改草稿</h4>
                           <pre>{result.editedText}</pre>
                           <Button
                             onClick={() =>
@@ -532,7 +532,7 @@ function TaskDrawerPanel({
                       loading={actionBusy}
                       onClick={() => void dismiss(task)}
                     >
-                      从近期移除
+                      移出列表
                     </Button>
                   ) : null}
                 </Space>

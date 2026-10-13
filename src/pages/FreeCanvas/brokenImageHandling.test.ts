@@ -25,14 +25,14 @@ describe('损坏图片在画布上的显示与移除', () => {
     expect(stageSource).toContain("const selectedImage = selectedNode?.type === 'image' && !brokenImageNodesRef.current.has(selectedNode.id) ? selectedNode : undefined")
   })
 
-  it('源码契约：FreeCanvas/index.tsx 提供移除损坏图片按钮及清除派生草稿引用', () => {
-    expect(pageSource).toContain('移除损坏图片')
+  it('源码契约：FreeCanvas/index.tsx 提供清理损坏图片按钮及清除派生草稿引用', () => {
+    expect(pageSource).toContain('清理损坏图片')
     expect(pageSource).toContain('handleRemoveBrokenImages')
     expect(pageSource).toContain('images.brokenAssetIds')
     expect(pageSource).toContain("currentDraft.sourceAssetId === targetNode.assetId")
   })
 
-  it('移除损坏图片能够清理画布节点并重置引用它的派生草稿', () => {
+  it('清理损坏图片能够清理画布节点并重置引用它的派生草稿', () => {
     const store = useEditorStore.getState()
     const sceneId = store.activeSceneId!
 

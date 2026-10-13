@@ -253,7 +253,7 @@ export default function FreeCanvas() {
     }
 
     void flushProject().catch(() => undefined)
-    message.success(`已从画布移除 ${brokenNodes.length} 张损坏图片`)
+    message.success(`已移除 ${brokenNodes.length} 张损坏图片`)
   }, [images.brokenAssetIds, images.assets, message])
 
   const handleGenerate = () => {
@@ -404,8 +404,8 @@ export default function FreeCanvas() {
         if (file) void importPicture(file)
       }} />
       {images.error && <Alert type="warning" showIcon message="画布图片读取失败" description={images.error} action={<Space>
-        <Button size="small" onClick={images.reload}>重试读取图片</Button>
-        <Button size="small" danger onClick={handleRemoveBrokenImages}>移除损坏图片</Button>
+        <Button size="small" onClick={images.reload}>重新加载</Button>
+        <Button size="small" danger onClick={handleRemoveBrokenImages}>清理损坏图片</Button>
       </Space>} />}
       {videos.error && <Alert type="warning" showIcon message="画布视频读取失败" description={videos.error} action={<Button onClick={videos.reload}>重试读取视频</Button>} />}
       {cloudProject && ((activeSlug === 'text-to-video' && videoConfiguration.ready) || (derivedContext?.mode === 'image-to-video' && videoConfiguration.imageReady)) && <Alert type="info" showIcon message="视频画布暂时仅支持本地保存"

@@ -159,7 +159,7 @@ function TaskCenterSession({
               task.state === 'succeeded'
                 ? `${title}${task.partial ? '部分完成' : '已完成'}`
                 : `${title}${task.state === 'expired' ? '已超时' : '失败'}`,
-            description: '可在任务详情中查看结果和积分状态',
+            description: '点击查看生成结果与详情',
             onClick: () => {
               if (current()) {
                 setSelected(task)

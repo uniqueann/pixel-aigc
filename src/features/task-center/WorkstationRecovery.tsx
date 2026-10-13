@@ -85,9 +85,9 @@ function RecoverySession({tool,nativeBusy,hasDraft,onRestoreInput,actor:inputAct
     return()=>abort.abort()
   },[actor,tool,retry])
   return <>
-    {query.data?.pending&&!params.has('task')?<Alert type="info" message="提交结果待确认" description="正在按原请求查找任务，确认前不会重复生成。"/>:null}
-    {query.error&&!params.has('task')?<Alert type="warning" message="进行中任务暂不可读取" action={<Button onClick={()=>void query.refetch()}>重新查询</Button>}/>:null}
-    {!query.isFetching&&!params.has('task')&&query.data&&query.data.items.length>1?<Alert type="info" message="有多项进行中的任务，请选择要查看的一项" action={<Space wrap>{query.data.items.map(task=><Button key={task.taskKey} onClick={()=>{discoveryDone.current=true;const next=new URLSearchParams(params);next.set('task',task.taskKey);setParams(next,{replace:true})}}>{new Date(task.createdAt).toLocaleTimeString()} · {task.completedCount}/{task.requestedCount}</Button>)}<Button onClick={()=>{center?.show(undefined,tool);center?.filter(tool,'active')}}>查看本工具任务</Button></Space>}/>:null}
-    {inputError&&!hasDraft?<Alert type="warning" message="上次输入暂不可恢复，请重新读取或选择图片" description={inputError} action={<Button onClick={()=>setRetry(value=>value+1)}>重新读取</Button>}/>:null}
+    {query.data?.pending&&!params.has('task')?<Alert type="info" message="任务确认中" description="正在同步任务状态，请稍候..."/>:null}
+    {query.error&&!params.has('task')?<Alert type="warning" message="进行中的任务加载失败" action={<Button onClick={()=>void query.refetch()}>重新查询</Button>}/>:null}
+    {!query.isFetching&&!params.has('task')&&query.data&&query.data.items.length>1?<Alert type="info" message="有多项进行中的任务，请选择查看" action={<Space wrap>{query.data.items.map(task=><Button key={task.taskKey} onClick={()=>{discoveryDone.current=true;const next=new URLSearchParams(params);next.set('task',task.taskKey);setParams(next,{replace:true})}}>{new Date(task.createdAt).toLocaleTimeString()} · {task.completedCount}/{task.requestedCount}</Button>)}<Button onClick={()=>{center?.show(undefined,tool);center?.filter(tool,'active')}}>查看当前工具任务</Button></Space>}/>:null}
+    {inputError&&!hasDraft?<Alert type="warning" message="上次编辑的图片恢复失败，请重新选择图片" description={inputError} action={<Button onClick={()=>setRetry(value=>value+1)}>重新读取</Button>}/>:null}
   </>
 }

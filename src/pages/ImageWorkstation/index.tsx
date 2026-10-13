@@ -445,7 +445,7 @@ export default function ImageWorkstation() {
   const hasVisibleInput = fusionTool ? Boolean(fusionProduct || fusionReference) : Boolean(showSourcePreview && controller.inputAsset)
   const { previewRef, footerRef, sticky } = useStickyPreview(hasVisibleInput && !showExample)
   const inputDescription = recoveringActive&&!controller.inputAsset&&!fusionProduct&&!fusionReference
-    ? '正在恢复任务，请等待已有任务区更新结果'
+    ? '正在同步任务，请稍候...'
     : fusionTool
     ? `${fusionProduct ? `商品 ${fusionProduct.width}×${fusionProduct.height}` : '请上传商品图'} · ${fusionReference ? `场景 ${fusionReference.width}×${fusionReference.height}` : '请上传场景图'}`
     : !showSourcePreview
@@ -457,12 +457,12 @@ export default function ImageWorkstation() {
   useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) }, [])
   const isDraftDirty = Boolean(activePrompt.trim() || hasMaskPaint)
   const confirmRecovery = useTaskDraftGuard({ dirty: isDraftDirty,
-    reason:'当前工作站的输入提示词和蒙版尚未保存。切换后这些草稿将被放弃。',
+    reason:'当前包含未保存的提示词或涂抹蒙版，切换后将放弃草稿，是否继续？',
     blocked:uploading || fusionLoading ? '正在读取输入图片，请完成后再切换' : undefined })
 
   const applyRecoveredInput=async(result:TaskCenterMedia,image:Awaited<ReturnType<typeof readRecoveryImage>>,detail:TaskCenterDetail,context:RecoveryActionContext)=>{
     assertRecoveryActor(context.actor,context.signal)
-    const asset=createImageAsset({id:'asset:'+recoveredResultId(detail,result),name:'已有任务结果',url:result.url,objectKey:result.objectKey,width:image.width,height:image.height,mimeType:image.mimeType,source:'generation'})
+    const asset=createImageAsset({id:'asset:'+recoveredResultId(detail,result),name:'生成结果',url:result.url,objectKey:result.objectKey,width:image.width,height:image.height,mimeType:image.mimeType,source:'generation'})
     bindRuntimeImage(context.actor.owner,asset,image.blob,recoveryRuntime.current)
     useEditorStore.getState().registerAsset(asset)
     setRuntimeImageUsers(recoveryRuntime.current,[asset.id,...(fusionReference ? [fusionReference.id] : [])])
@@ -477,9 +477,9 @@ export default function ImageWorkstation() {
         hasDraft={isDraftDirty} onRestoreInput={applyRecoveredInput}/>
       <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} onObserve={observeRecoveredTask} blockedReason={controller.formLocked || uploading || fusionLoading ? '当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。':undefined}
         onUseImage={async (result,image,detail,context) => {
-          if (!await confirmRecovery('将原任务结果作为新输入会替换当前原图和蒙版。')) return
+          if (!await confirmRecovery('基于此图继续编辑将替换当前原图和蒙版，是否继续？')) return
           await applyRecoveredInput(result,image,detail,context)
-          if(detail.task.sourceKind!=='email_task'&&!saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:{sourceKind:detail.task.sourceKind,sourceId:detail.task.sourceId,ordinal:result.ordinal}}))message.warning('图片已载入，但本机未能保存输入引用，刷新后请从原任务重新载入')
+          if(detail.task.sourceKind!=='email_task'&&!saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:{sourceKind:detail.task.sourceKind,sourceId:detail.task.sourceId,ordinal:result.ordinal}}))message.warning('图片已载入，但未同步本地缓存，刷新后可从历史任务中重新载入')
           await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)
         }}
         onLoadParameters={['smart-edit','relight','fusion','retouch','variation'].includes(activeTool.slug)?async (prepared,detail,context) => {
@@ -487,7 +487,7 @@ export default function ImageWorkstation() {
           if(!prepared.source || (fusionTool&&!prepared.reference))throw new Error('原输入或参考图缺失，不能完整载入')
           if(typeof params.count!=='number'||!Number.isInteger(params.count)||params.count<1||!['1k','2k','4k'].includes(String(params.resolution)))throw new Error('原生成参数不完整')
           if(params.prompt!==undefined&&typeof params.prompt!=='string')throw new Error('原提示词参数无效')
-          if(!await confirmRecovery('载入原任务参数会替换当前原图、蒙版和表单。'))return false
+          if(!await confirmRecovery('载入原参数将替换当前原图、蒙版和表单，是否继续？'))return false
           assertRecoveryActor(context.actor,context.signal)
           saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:undefined})
           const source=prepared.source
@@ -520,7 +520,7 @@ export default function ImageWorkstation() {
             <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
             <CanvasArea
               interactionMode={activeTool.interactionMode}
-              activityLabel={recoveringActive?'正在恢复进行中的任务':controller.active?'正在处理当前任务':undefined}
+              activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
               imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
               imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
               referenceImageUrl={fusionTool ? fusionReference?.url : undefined}

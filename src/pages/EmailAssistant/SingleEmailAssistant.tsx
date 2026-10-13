@@ -51,7 +51,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
   const { acquire, release } = gate
   const handledEntry = useRef(entryOperation ? entryKey : undefined)
   const { newTask, formLocked } = controller
-  const confirmRecovery = useTaskDraftGuard({dirty:Boolean(sourceText.trim()||instruction.trim()||controller.resultText),reason:'当前邮件输入尚未保存，切换后将放弃当前草稿。',beforeLeave:controller.flushEdit})
+  const confirmRecovery = useTaskDraftGuard({dirty:Boolean(sourceText.trim()||instruction.trim()||controller.resultText),reason:'当前邮件内容尚未保存，离开后将清空草稿，是否继续？',beforeLeave:controller.flushEdit})
 
   useEffect(() => {
     if (!entryOperation || !entryKey) return
@@ -170,7 +170,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
       const params=prepared.params
       if(typeof params.sourceText!=='string'||!TASK_TYPES.some(item=>item.value===params.operation)||!EMAIL_LANGUAGE_OPTIONS.some(item=>item.value===params.language))throw new Error('原邮件参数不完整')
       if(params.instruction!==undefined&&typeof params.instruction!=='string')throw new Error('原邮件说明参数无效')
-      if(!await confirmRecovery('载入原邮件参数会替换当前输入；已有修改稿需先保存。'))return false
+      if(!await confirmRecovery('载入原参数将覆盖当前邮件内容，建议先保存草稿，是否继续？'))return false
       if(!await controller.flushEdit())throw new Error('修改稿保存失败，请重试后再载入')
       assertRecoveryActor(context.actor,context.signal)
       await controller.newTask()

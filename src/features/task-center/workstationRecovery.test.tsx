@@ -43,7 +43,7 @@ describe('工作站自动发现及最小输入恢复',()=>{
   it('多项进行中由用户选择，排除同名画布任务',async()=>{
     const second={...task,sourceId:recoveryOwner,taskKey:`image_job:${recoveryOwner}`}
     mock.request.mockResolvedValue(history([task,second,{...task,origin:{entry:'canvas',tool:'variation',projectId:'其他项目',sceneId:'其他场景',projectSource:'local'}} as never]))
-    mount();await screen.findByText('有多项进行中的任务，请选择要查看的一项')
+    mount();await screen.findByText('有多项进行中的任务，请选择查看')
     expect(screen.getByTestId('location').textContent).toBe('')
     fireEvent.click(screen.getAllByText(/· \d+\/\d+/)[0])
     await waitFor(()=>expect(screen.getByTestId('location').textContent).toContain('task='))
@@ -55,7 +55,7 @@ describe('工作站自动发现及最小输入恢复',()=>{
   it('响应丢失先保留待确认，统一运行层找到终态后自动接回',async()=>{
     const receipt=saveReceipt('image_job',task.requestId,{entry:'workstation',tool:'smart-edit'})!
     mock.request.mockResolvedValue(detail);mount()
-    await screen.findByText('提交结果待确认')
+    await screen.findByText('任务确认中')
     expect(mock.request).not.toHaveBeenCalled()
     await act(async()=>{
       rememberWorkstationSubmission(receipt,task.sourceId)

@@ -36,12 +36,12 @@ export function TaskCenterEntry({ tool }: { tool: TaskTool }) {
     <Button
       size="small"
       className="task-tool-entry"
-      aria-label="本工具任务"
-      title="本工具任务"
+      aria-label="当前工具任务"
+      title="当前工具任务"
       icon={<ClockCircleOutlined />}
       onClick={() => center.show(undefined, tool)}
     >
-      <span className="task-tool-entry-label">本工具任务</span>
+      <span className="task-tool-entry-label">当前工具任务</span>
     </Button>
   ) : null
 }
@@ -84,7 +84,7 @@ export function TaskCenterSidebar({ compact }: { compact: boolean }) {
       <div className="task-sidebar-expanded task-sidebar-body">
         {center.error ? (
           <p className="task-read-warning">
-            状态暂不可获取{items.length ? '，保留上次快照' : ''}
+            无法获取最新状态{items.length ? '，已显示上次记录' : ''}
           </p>
         ) : null}
         {center.loading && !items.length ? (
@@ -113,7 +113,7 @@ export function TaskCenterSidebar({ compact }: { compact: boolean }) {
                     ? taskToolLabels[receipt.origin.tool]
                     : '生成任务'}
                 </strong>
-                <span>提交结果待确认</span>
+                <span>任务确认中</span>
               </span>
             </button>
           ))}
@@ -134,7 +134,7 @@ export function TaskCenterSidebar({ compact }: { compact: boolean }) {
         !center.error &&
         !items.length &&
         !pending.length ? (
-          <p className="task-empty">暂无在线任务</p>
+          <p className="task-empty">暂无近期任务</p>
         ) : null}
         <Button size="small" type="text" onClick={() => center.show()}>
           查看全部

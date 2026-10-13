@@ -10,7 +10,7 @@ export function TaskNavigationProvider({ children }: { children: ReactNode }) {
   const [guards] = useState(() => new Map<object, () => DraftGuard>())
   const confirmReplace = useCallback((reason: string) => new Promise<boolean>(resolve => {
     const state = useUserStore.getState(), owner = state.userId, scope = state.account?.runtimeScope
-    modal.confirm({ title: '当前内容尚未保存', content: reason, okText: '放弃草稿并继续', cancelText: '留在当前页',
+    modal.confirm({ title: '未保存的修改', content: reason, okText: '放弃并离开', cancelText: '留在此页',
       onOk: () => { const now = useUserStore.getState(); resolve(now.userId === owner && now.account?.runtimeScope === scope) }, onCancel: () => resolve(false) })
   }), [modal])
   const value = useMemo(() => ({ guards, confirmReplace }),[guards,confirmReplace])

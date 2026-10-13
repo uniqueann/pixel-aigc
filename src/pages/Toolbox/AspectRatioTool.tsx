@@ -83,7 +83,7 @@ export default function AspectRatioTool() {
   const pendingBytesRef = useRef(0)
   const [adding, setAdding] = useState(false)
   const [packaging, setPackaging] = useState(false)
-  useTaskDraftGuard({dirty:items.length>0,reason:'转比例队列只保存在当前页面。切换后将放弃当前图片队列。',blocked:adding||packaging?'正在读取或打包图片，请完成后再切换':undefined})
+  useTaskDraftGuard({dirty:items.length>0,reason:'当前队列中有待处理的图片，离开后将清空列表，是否继续？',blocked:adding||packaging?'正在读取或打包图片，请完成后再切换':undefined})
   const { capabilities: { outpaint: outpaintReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
   const [presets, setPresets] = useState<AspectRatioPreset[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)

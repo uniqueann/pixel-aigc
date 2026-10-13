@@ -48,9 +48,9 @@ describe('任务定位与只读工具绑定',()=>{
   it('打开结果保持草稿，参数只有点击后才载入，查询没有生成 POST',async()=>{
     const detail=recoveryDetail({task:recoverySummary({tool:'smart-edit',capability:'image_edit'}),params:{sourceImageKey:'owned-input',prompt:'原参数',count:1,resolution:'1k'}})
     const load=mount(detail)
-    await screen.findByText('载入原参数')
+    await screen.findByText('填入原参数')
     expect(load).not.toHaveBeenCalled();expect((screen.getByLabelText('当前草稿') as HTMLTextAreaElement).value).toBe('保持当前输入')
-    fireEvent.click(screen.getByText('载入原参数'))
+    fireEvent.click(screen.getByText('填入原参数'))
     await waitFor(()=>expect(load).toHaveBeenCalledOnce())
     expect(mocks.read).toHaveBeenCalledWith({objectKey:'owned-input'},expect.objectContaining({ownerId:recoveryOwner,signal:expect.any(AbortSignal)}))
     expect(mocks.request.mock.calls.every(call=>!['POST','DELETE'].includes(call[1]))).toBe(true)
@@ -58,7 +58,7 @@ describe('任务定位与只读工具绑定',()=>{
   it('源输入读取失败时不执行参数写入；保留当前草稿',async()=>{
     mocks.read.mockRejectedValue(new Error('原图已不可用'))
     const load=mount(recoveryDetail({task:recoverySummary({tool:'smart-edit',capability:'image_edit'}),params:{sourceImageKey:'missing'}}))
-    fireEvent.click(await screen.findByText('载入原参数'))
+    fireEvent.click(await screen.findByText('填入原参数'))
     await waitFor(()=>expect(screen.getAllByText('原图已不可用').length).toBeGreaterThan(0))
     expect(load).not.toHaveBeenCalled();expect((screen.getByLabelText('当前草稿') as HTMLTextAreaElement).value).toBe('保持当前输入')
   })
@@ -66,7 +66,7 @@ describe('任务定位与只读工具绑定',()=>{
     let finish!:(value:Blob)=>void
     mocks.read.mockReturnValue(new Promise(resolve=>{finish=resolve}))
     const load=mount(recoveryDetail({task:recoverySummary({tool:'smart-edit',capability:'image_edit'}),params:{sourceImageKey:'delayed'}}))
-    fireEvent.click(await screen.findByText('载入原参数'));await waitFor(()=>expect(mocks.read).toHaveBeenCalledOnce())
+    fireEvent.click(await screen.findByText('填入原参数'));await waitFor(()=>expect(mocks.read).toHaveBeenCalledOnce())
     fireEvent.click(screen.getByText('切换另一任务'))
     await act(async()=>finish(new Blob(['fixture'],{type:'image/png'})))
     expect(load).not.toHaveBeenCalled()
@@ -75,20 +75,20 @@ describe('任务定位与只读工具绑定',()=>{
     let finish!:(value:Blob)=>void
     mocks.read.mockReturnValue(new Promise(resolve=>{finish=resolve}))
     const load=mount(recoveryDetail({task:recoverySummary({tool:'smart-edit',capability:'image_edit'}),params:{sourceImageKey:'delayed'}}))
-    fireEvent.click(await screen.findByText('载入原参数'));await waitFor(()=>expect(mocks.read).toHaveBeenCalledOnce())
+    fireEvent.click(await screen.findByText('填入原参数'));await waitFor(()=>expect(mocks.read).toHaveBeenCalledOnce())
     await act(async()=>account(recoveryActor.owner,'production'))
     await act(async()=>finish(new Blob(['fixture'],{type:'image/png'})))
     expect(load).not.toHaveBeenCalled()
   })
   it('同步记录没有原参数时禁用载入，不用结果推测蒙版',async()=>{
     const load=mount(recoveryDetail({task:recoverySummary({tool:'smart-edit',capability:'image_edit'}),params:null}))
-    expect((await screen.findByText('载入原参数')).closest('button')?.disabled).toBe(true)
+    expect((await screen.findByText('填入原参数')).closest('button')?.disabled).toBe(true)
     expect(load).not.toHaveBeenCalled()
   })
   it('准备重新生成只载入参数，不替用户点击生成按钮',async()=>{
     vi.stubGlobal('requestAnimationFrame',(callback:FrameRequestCallback)=>{callback(0);return 1})
     const load=mount(recoveryDetail({task:recoverySummary({tool:'smart-edit',capability:'image_edit'}),params:{sourceImageKey:'owned-input'}}))
-    fireEvent.click(await screen.findByText('准备重新生成'))
+    fireEvent.click(await screen.findByText('使用原参数再次生成'))
     await waitFor(()=>expect(load).toHaveBeenCalledOnce())
     expect(mocks.request.mock.calls.some(call=>call[1]==='POST')).toBe(false)
   })
