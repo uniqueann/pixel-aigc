@@ -6,7 +6,10 @@
     <meta name="google-site-verification" content="XI55njDX2gu9wrLq5PrFZczEwzv1jG_eaftykFcm1Zs" />
     <meta name="description" content="ContentUp Pixel AIGC 是 ContentUp 的 AI 创作工作台，提供电商图片创作、邮件文案、图片工具与自由画布。" />
     <title>ContentUp Pixel AIGC · AI 创作工作台</title>
-    <link rel="icon" href="/brand/pixel-oauth-logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/brand/pixel-aigc-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="canonical" href="https://aigc.contentup.cc/about" />
     <link rel="stylesheet" href="/brand/pages.css" />
   </head>
@@ -14,8 +17,35 @@
     <div class="wrap">
       <header>
         <a class="brand" href="/about" aria-label="ContentUp Pixel AIGC 产品介绍">
-          <img src="/brand/pixel-oauth-logo.svg" alt="Pixel P 标识" width="40" height="40" />
-          <span>ContentUp Pixel AIGC</span>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 48" width="176" height="48" role="img" aria-label="Pixel AIGC">
+  <defs>
+    <linearGradient id="pa-side-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3CE8BA"/>
+      <stop offset="1" stop-color="#12A67F"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 图标 -->
+  <rect width="48" height="48" rx="11" fill="url(#pa-side-bg)"/>
+  <g fill="#0E1A16">
+    <rect x="11" y="7"  width="5.5" height="5.5" rx="1.2"/>
+    <rect x="18" y="7"  width="5.5" height="5.5" rx="1.2"/>
+    <rect x="25" y="7"  width="5.5" height="5.5" rx="1.2"/>
+    <rect x="11" y="14" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="32" y="14" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="11" y="21" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="18" y="21" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="25" y="21" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="11" y="28" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="11" y="35" width="5.5" height="5.5" rx="1.2"/>
+  </g>
+  <rect x="32" y="35" width="5.5" height="5.5" rx="1.2" fill="#FFFFFF"/>
+
+  <!-- 字标：Pixel 跟随主题文字色（可用 CSS 变量 pa-logo-text 覆盖），AIGC 使用品牌色 -->
+  <text x="60" y="32" font-family="Inter, -apple-system, 'Segoe UI', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="23" font-weight="700" letter-spacing="-0.4">
+    <tspan style="fill: var(--pa-logo-text, #F3F4F6)">Pixel</tspan><tspan dx="5" fill="#21CFA0" font-weight="600" letter-spacing="0.6">AIGC</tspan>
+  </text>
+</svg>
         </a>
         <a class="parent" href="https://contentup.cc/">ContentUp 官网 ↗</a>
       </header>

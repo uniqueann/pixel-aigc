@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="Pixel AIGC 加载中">
+  <defs>
+    <linearGradient id="pa-load-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3CE8BA"/>
+      <stop offset="1" stop-color="#12A67F"/>
+    </linearGradient>
+    <linearGradient id="pa-load-shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="pa-load-clip"><rect width="48" height="48" rx="11"/></clipPath>
+  </defs>
+
+  <style>
+    .px     { opacity: 0; transform-box: fill-box; transform-origin: center; animation: pa-pop 3s ease-out infinite both; }
+    .spark  { opacity: 0; transform-box: fill-box; transform-origin: center; animation: pa-spark 3s ease-in-out infinite both; animation-delay: 0.75s; }
+    .sweep  { animation: pa-sweep 3s ease-in-out infinite; }
+    .label  { opacity: 0; animation: pa-label 3s ease-out infinite both; animation-delay: 0.3s; }
+    .dot    { animation: pa-blink 1.2s ease-in-out infinite; }
+    .txt    { fill: var(--pa-logo-text, #E5E7EB); }
+
+    @keyframes pa-pop {
+      0%   { opacity: 0; transform: scale(0.2); }
+      10%  { opacity: 1; transform: scale(1.15); }
+      15%  { opacity: 1; transform: scale(1); }
+      80%  { opacity: 1; transform: scale(1); }
+      94%, 100% { opacity: 0; transform: scale(0.6); }
+    }
+    @keyframes pa-spark {
+      0%   { opacity: 0; transform: scale(0.2); }
+      10%  { opacity: 1; transform: scale(1.25); }
+      15%  { opacity: 1; transform: scale(1); }
+      32%  { transform: scale(1.4); }
+      46%  { transform: scale(1); }
+      62%  { transform: scale(1.4); }
+      76%  { opacity: 1; transform: scale(1); }
+      94%, 100% { opacity: 0; transform: scale(0.6); }
+    }
+    @keyframes pa-sweep {
+      0%, 30%   { transform: translateX(0);    opacity: 0; }
+      40%       { opacity: 1; }
+      70%       { transform: translateX(80px); opacity: 1; }
+      78%, 100% { transform: translateX(80px); opacity: 0; }
+    }
+    @keyframes pa-label {
+      0%   { opacity: 0; }
+      20%, 80% { opacity: 1; }
+      94%, 100% { opacity: 0; }
+    }
+    @keyframes pa-blink {
+      0%, 100% { opacity: 0.25; }
+      50%      { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .px, .spark, .label { animation: none; opacity: 1; }
+      .sweep { animation: none; opacity: 0; }
+      .dot { animation: none; opacity: 0.6; }
+    }
+  </style>
+
+  <!-- 图标（放大 2.5 倍，居中） -->
+  <g transform="translate(60 30) scale(2.5)">
+    <rect width="48" height="48" rx="11" fill="url(#pa-load-bg)"/>
+
+    <!-- 像素依次"生成"出来，拼成 P -->
+    <g fill="#0E1A16">
+      <rect class="px" style="animation-delay:0.00s" x="11" y="7"  width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.07s" x="18" y="7"  width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.14s" x="25" y="7"  width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.21s" x="11" y="14" width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.28s" x="32" y="14" width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.35s" x="11" y="21" width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.42s" x="18" y="21" width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.49s" x="25" y="21" width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.56s" x="11" y="28" width="5.5" height="5.5" rx="1.2"/>
+      <rect class="px" style="animation-delay:0.63s" x="11" y="35" width="5.5" height="5.5" rx="1.2"/>
+    </g>
+    <!-- 最后一颗白色像素：AI 的"灵感闪烁" -->
+    <rect class="spark" x="32" y="35" width="5.5" height="5.5" rx="1.2" fill="#FFFFFF"/>
+
+    <!-- 扫光 -->
+    <g clip-path="url(#pa-load-clip)">
+      <g class="sweep">
+        <rect x="-24" y="-4" width="16" height="56" fill="url(#pa-load-shine)" transform="skewX(-20)"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- 字标 + 加载点 -->
+  <text class="label txt" x="120" y="188" text-anchor="middle" font-family="Inter, -apple-system, 'Segoe UI', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="-0.3">Pixel <tspan fill="#21CFA0" font-weight="600" letter-spacing="0.6">AIGC</tspan></text>
+  <g fill="#21CFA0">
+    <circle class="dot" style="animation-delay:0s"   cx="110" cy="212" r="2.6"/>
+    <circle class="dot" style="animation-delay:0.2s" cx="120" cy="212" r="2.6"/>
+    <circle class="dot" style="animation-delay:0.4s" cx="130" cy="212" r="2.6"/>
+  </g>
+</svg>

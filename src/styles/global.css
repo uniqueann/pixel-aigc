@@ -27,6 +27,13 @@
 
   /* 顶部 Segmented 页签底边到本页第一个内容块。只加在页签行上，内容块不再另加 margin-top。 */
   --page-tab-gap: 16px;
+
+  /* 横版字标里「Pixel」的填充。深色底用浅色；亮色主题见下方覆盖。 */
+  --pa-logo-text: #F3F4F6;
+}
+
+html[data-theme='light'] {
+  --pa-logo-text: #111827;
 }
 
 .page-tab-row {
@@ -147,21 +154,31 @@ a {
   font-weight: 600;
 }
 
-.app-brand-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.app-brand-wordmark {
+  display: block;
+  width: min(117px, 100%);
+  min-width: 0;
+  line-height: 0;
+}
+
+.app-brand-wordmark svg,
+.auth-wordmark svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .app-brand-mark {
-  display: grid;
+  display: block;
   width: 28px;
   height: 28px;
-  place-items: center;
-  border-radius: 9px;
-  background: var(--color-accent);
-  color: #06251d;
-  font-weight: 800;
+  line-height: 0;
+}
+
+.app-brand-mark svg {
+  display: block;
+  width: 28px;
+  height: 28px;
 }
 
 .sidebar-icon-button {
@@ -2517,6 +2534,24 @@ body.sidebar-resizing * {
 .project-save-status.saved .project-save-status-icon { color: var(--color-accent); }
 .project-save-status.error { color: #ff7875; }
 .project-recovery-screen { max-width: 720px; margin: 15vh auto; padding: 24px; display: grid; gap: 24px; }
+.auth-screen { justify-items: center; }
+.auth-screen > form,
+.auth-screen > .ant-alert,
+.auth-screen > .ant-space { width: 100%; }
+.auth-screen h2 { margin: 0; }
+.auth-wordmark { width: 176px; line-height: 0; }
+.post-login-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  padding: 24px;
+  background: var(--color-bg);
+}
+.post-login-loading-mark { width: min(240px, 72vw); line-height: 0; }
+.post-login-loading-mark svg { display: block; width: 100%; height: auto; }
+.post-login-loading p { margin: 0; color: var(--color-text-secondary); text-align: center; }
 .free-canvas-media-error { position: absolute; bottom: 70px; left: 16px; z-index: 3; display: flex; align-items: center; gap: 12px; padding: 10px; background: #292421; border-radius: 8px; color: #ffd591; font-size: 12px; }
 
 .toolbox-watermark {

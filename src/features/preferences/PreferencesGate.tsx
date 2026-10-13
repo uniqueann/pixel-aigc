@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { authEnabled } from '@/cloud/client'
 import { useUserStore } from '@/store/useUserStore'
 import { usePreferencesStore } from './store'
+import PostLoginLoading from '@/components/brand/PostLoginLoading'
 
 export default function PreferencesGate({ children }: { children: ReactNode }) {
   const userId = useUserStore(state => state.userId)
@@ -20,6 +21,6 @@ export default function PreferencesGate({ children }: { children: ReactNode }) {
       window.removeEventListener('pagehide', save)
     }
   }, [])
-  if (!ready) return <div className="project-recovery-screen" role="status"><h2>Pixel AIGC</h2><p>正在加载个性化设置…</p></div>
+  if (!ready) return <PostLoginLoading label="正在加载个性化设置…" />
   return <>{children}</>
 }
