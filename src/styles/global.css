@@ -1845,6 +1845,10 @@ body.sidebar-resizing * {
   flex: 0 0 auto;
 }
 
+.image-workstation-tool-switcher.page-tab-row {
+  margin-bottom: 0;
+}
+
 .image-workstation-main {
   display: grid;
   min-width: 0;
@@ -1943,9 +1947,9 @@ body.sidebar-resizing * {
 .image-workstation-footer {
   display: flex;
   min-width: 0;
-  padding: 12px 0;
+  padding: 10px 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   background: var(--color-bg);
   border-top: 1px solid var(--color-border);
   color: var(--color-text-muted);
@@ -1968,6 +1972,17 @@ body.sidebar-resizing * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.image-workstation-footer-hints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+
+.image-workstation-footer-hints:empty {
+  display: none;
 }
 
 .image-workstation-footer .credit-quote-notice { margin: 0; }
@@ -2863,6 +2878,8 @@ body.sidebar-resizing * {
   .app-main-content:has(.image-workstation-page) { padding-top: 0; padding-bottom: 0; }
   .image-workstation-page { padding-top: 20px; }
 
+  .workstation-canvas-shell.is-empty { min-height: 360px; }
+
   .image-workstation-canvas-column.is-sticky {
     position: sticky;
     top: 0;
@@ -2873,11 +2890,13 @@ body.sidebar-resizing * {
     bottom: 0;
     z-index: 5;
     margin: 0 -20px;
-    padding: 10px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 10px 20px calc(14px + env(safe-area-inset-bottom, 0px));
   }
 }
 
 @media (max-width: 900px) {
+  .app-main-content:has(.image-workstation-page) { padding-bottom: 0; }
+
   .workstation-fusion-sources {
     flex-direction: column;
   }
@@ -2890,6 +2909,14 @@ body.sidebar-resizing * {
   }
 
   .workstation-preview-image { max-height: 280px; }
+
+  .image-workstation-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 0 -20px;
+    padding: 10px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .dashboard-entry {
@@ -3115,6 +3142,10 @@ body.sidebar-resizing * {
   .toolbox-settings-panel,
   .toolbox-image-card,
   .workstation-panel { padding: 12px; }
+  .image-workstation-footer {
+    margin: 0 -12px;
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
   .image-workstation-footer-actions { width: 100%; }
   .image-workstation-footer-actions > .ant-btn,
   .image-workstation-footer-actions > span { flex: 1; }

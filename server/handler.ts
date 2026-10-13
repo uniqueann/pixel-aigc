@@ -28,7 +28,7 @@ import { handleEmailTaskRoute } from './email-tasks.js'
 import { handleImageTaskRoute, peekImageTask } from './image-jobs/route.js'
 import { IMAGE_TASK_CAPABILITIES } from './image-jobs/service.js'
 import { imageModelsAvailable, publicConfiguredImageModels } from './image-providers/registry.js'
-import { handleTaskInputs } from './task-inputs.js'
+import { handleTaskInputs, handleTaskInputFallback } from './task-inputs.js'
 import { loadOwnedObject, objectContentDisposition, signOwnedObjectRead } from './objects.js'
 import { detectGoodsSubject, tencentCiConfig } from './tencent-ci.js'
 import { removeBackground } from './bg-remove.js'
@@ -398,7 +398,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         prompt: z.string().max(BAILIAN_IMAGEEDIT_PROMPT_MAX).optional(),
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
-      const input = z.union([objectInput, inlineInput]).parse(body)
+      const hybridInput = z.object({
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
+        sourceImageKey: z.string().min(1).max(512),
+        maskBase64: z.string().min(1),
+        prompt: z.string().max(BAILIAN_IMAGEEDIT_PROMPT_MAX).optional(),
+        clientTimingMs: clientTimingSchema.optional(),
+      }).strict()
+      const input = z.union([objectInput, hybridInput, inlineInput]).parse(body)
       const objectTransport = 'sourceImageKey' in input
       const metrics: SyncRequestMetrics = {
         route: 'erase', requestId, transport: objectTransport ? 'object' : 'inline',
@@ -414,16 +421,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let mask: Buffer
         if (objectTransport) {
           const readStarted = Date.now()
-          const [source, painted] = await Promise.all([
-            loadEraseStoredImage(user.id, input.sourceImageKey, 'source'),
-            loadEraseStoredImage(user.id, input.maskImageKey, 'mask'),
-          ])
-          metrics.stageMs.objectRead = Date.now() - readStarted
-          if (source.width !== painted.width || source.height !== painted.height) {
-            throw new HttpError(400, '蒙版尺寸与原图不一致', 'INVALID_MASK')
+          if ('maskBase64' in input) {
+            const source = await loadEraseStoredImage(user.id, input.sourceImageKey, 'source')
+            metrics.stageMs.objectRead = Date.now() - readStarted
+            image = source.bytes
+            mask = Buffer.from(input.maskBase64, 'base64')
+          } else {
+            const [source, painted] = await Promise.all([
+              loadEraseStoredImage(user.id, input.sourceImageKey, 'source'),
+              loadEraseStoredImage(user.id, input.maskImageKey, 'mask'),
+            ])
+            metrics.stageMs.objectRead = Date.now() - readStarted
+            if (source.width !== painted.width || source.height !== painted.height) {
+              throw new HttpError(400, '蒙版尺寸与原图不一致', 'INVALID_MASK')
+            }
+            image = source.bytes
+            mask = painted.bytes
           }
-          image = source.bytes
-          mask = painted.bytes
         } else {
           image = Buffer.from(input.dataBase64, 'base64')
           mask = Buffer.from(input.maskBase64, 'base64')
@@ -468,7 +482,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         prompt: z.string().min(1).max(BAILIAN_IMAGEEDIT_PROMPT_MAX),
         clientTimingMs: clientTimingSchema.optional(),
       }).strict()
-      const input = z.union([objectInput, inlineInput]).parse(body)
+      const hybridInput = z.object({
+        billing: syncQuoteSchema, origin: taskOriginSchema.optional(),
+        sourceImageKey: z.string().min(1).max(512),
+        maskBase64: z.string().min(1),
+        prompt: z.string().min(1).max(BAILIAN_IMAGEEDIT_PROMPT_MAX),
+        clientTimingMs: clientTimingSchema.optional(),
+      }).strict()
+      const input = z.union([objectInput, hybridInput, inlineInput]).parse(body)
       const objectTransport = 'sourceImageKey' in input
       const metrics: SyncRequestMetrics = {
         route: 'repaint', requestId, transport: objectTransport ? 'object' : 'inline',
@@ -485,13 +506,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (objectTransport) {
           const readStarted = Date.now()
           const signal = AbortSignal.timeout(Math.max(1, start + SYNC_PROVIDER_DEADLINE_MS - readStarted))
-          const [source, painted] = await Promise.all([
-            loadStoredSyncImage(user.id, input.sourceImageKey, 'source', signal),
-            loadStoredSyncImage(user.id, input.maskImageKey, 'mask', signal),
-          ])
-          metrics.stageMs.objectRead = Date.now() - readStarted
-          image = source.bytes
-          mask = painted.bytes
+          if ('maskBase64' in input) {
+            const source = await loadStoredSyncImage(user.id, input.sourceImageKey, 'source', signal)
+            metrics.stageMs.objectRead = Date.now() - readStarted
+            image = source.bytes
+            mask = Buffer.from(input.maskBase64, 'base64')
+          } else {
+            const [source, painted] = await Promise.all([
+              loadStoredSyncImage(user.id, input.sourceImageKey, 'source', signal),
+              loadStoredSyncImage(user.id, input.maskImageKey, 'mask', signal),
+            ])
+            metrics.stageMs.objectRead = Date.now() - readStarted
+            image = source.bytes
+            mask = painted.bytes
+          }
         } else {
           image = Buffer.from(input.dataBase64, 'base64')
           mask = Buffer.from(input.maskBase64, 'base64')
@@ -564,9 +592,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json(await handleModelRoute(user, method, path, body))
       return
     }
-    if (path[0] === 'task-inputs' && path.length === 1) {
-      res.status(200).json(await handleTaskInputs(user, method, body))
-      return
+    if (path[0] === 'task-inputs') {
+      if (path.length === 1) {
+        res.status(200).json(await handleTaskInputs(user, method, body))
+        return
+      }
+      if (path.length === 2 && path[1] === 'fallback') {
+        res.status(200).json(await handleTaskInputFallback(user, method, body))
+        return
+      }
     }
     if (path[0] === 'objects' && path.length === 1 && method === 'GET') {
       const key = query.get('key') ?? ''

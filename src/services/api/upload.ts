@@ -4,6 +4,7 @@ import { authEnabled, cloudEnabled } from '@/cloud/client'
 import { apiClient } from './client'
 import { useUserStore } from '@/store/useUserStore'
 import { trackFirstUpload, uploadToolForPath } from '@/features/activation/client'
+import { fileToBase64 } from './image-transfer'
 
 const ACCEPTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
@@ -57,11 +58,24 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
     }, ...(signal ? [{ signal }] : [])))
     check()
     if (!signed.uploadUrl || !signed.objectKey) throw new Error('未获得原图上传地址')
-    const uploaded = await stage('uploading', () => fetch(signed.uploadUrl, {
-      method: 'PUT', headers: { 'Content-Type': mimeType }, body: file, signal, credentials: 'omit',
-    }))
-    check()
-    if (!uploaded.ok) throw new Error('原图上传失败，请重试')
+    let uploaded: Response | undefined
+    try {
+      uploaded = await stage('uploading', () => fetch(signed.uploadUrl, {
+        method: 'PUT', headers: { 'Content-Type': mimeType }, body: file, signal, credentials: 'omit',
+      }))
+      check()
+    } catch (fetchErr) {
+      if (signal?.aborted) throw fetchErr
+    }
+    if (uploaded) {
+      if (!uploaded.ok) throw new Error('原图上传失败，请重试')
+    } else {
+      const dataBase64 = await fileToBase64(file)
+      check()
+      await stage('uploading', () => apiClient.post('/task-inputs/fallback', {
+        objectKey: signed.objectKey, mimeType, dataBase64,
+      }, ...(signal ? [{ signal }] : [])))
+    }
     metrics.outcome = 'success'
     metrics.uploadedBytes = file.size
     return signed.objectKey

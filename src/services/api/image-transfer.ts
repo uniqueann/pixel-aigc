@@ -12,12 +12,25 @@ export async function imageAuthHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-export function fileToBase64(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
-    reader.onerror = () => reject(new Error('读取图片失败'))
-    reader.readAsDataURL(blob)
+export function fileToBase64(blob: Blob): Promise<string> {
+  if (typeof FileReader !== 'undefined') {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
+      reader.onerror = () => reject(new Error('读取图片失败'))
+      reader.readAsDataURL(blob)
+    })
+  }
+  return blob.arrayBuffer().then(buffer => {
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(buffer).toString('base64')
+    }
+    let binary = ''
+    const bytes = new Uint8Array(buffer)
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    return btoa(binary)
   })
 }
 

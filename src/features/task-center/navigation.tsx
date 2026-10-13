@@ -20,7 +20,8 @@ export function TaskNavigationProvider({ children }: { children: ReactNode }) {
 }
 function guardApplies(guard:DraftGuard,current:{pathname:string;search:string},next:{pathname:string;search:string}) {
   if(guard.navigationScope!=='canvas-task')return current.pathname!==next.pathname
-  if(!current.pathname.startsWith('/canvas/')||!next.pathname.startsWith('/canvas/'))return false
+  if(!current.pathname.startsWith('/canvas/'))return false
+  if(!next.pathname.startsWith('/canvas/'))return true
   const from=new URLSearchParams(current.search),to=new URLSearchParams(next.search)
   return to.has('task')&&(['task','projectId','sceneId'].some(key=>from.get(key)!==to.get(key)))
 }

@@ -21,6 +21,15 @@ describe('uploadTaskInput', () => {
     expect(new Uint8Array(await (init.body as Blob).arrayBuffer())).toEqual(new Uint8Array(await png.arrayBuffer()))
     expect(metrics).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'success', uploadedBytes: png.size }))
   })
+  it('直传 R2 失败时自动降级通过后端 fallback 上传', async () => {
+    mocks.sign.mockResolvedValueOnce({ uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' })
+    mocks.sign.mockResolvedValueOnce({ ok: true })
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    expect(await uploadTaskInput(png, 'image/jpeg')).toBe('input-key')
+    expect(mocks.sign).toHaveBeenNthCalledWith(2, '/task-inputs/fallback', expect.objectContaining({
+      objectKey: 'input-key', mimeType: 'image/png', dataBase64: expect.any(String),
+    }))
+  })
   it('签名等待期间取消，迟到签名不能发起 PUT', async () => {
     let finish!: (value: unknown) => void
     mocks.sign.mockImplementation(() => new Promise(resolve => { finish = resolve }))

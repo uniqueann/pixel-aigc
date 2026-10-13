@@ -365,6 +365,76 @@ describe('API 认证、版本和写入边界', () => {
     else process.env.DASHSCOPE_API_KEY = previous
   })
 
+  it('重绘支持混合输入（sourceImageKey + maskBase64）无需将蒙版上传 R2', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    process.env.DASHSCOPE_API_KEY = 'sk-test'
+    mocks.loadStoredSyncImage.mockResolvedValueOnce({ bytes: Buffer.from('source'), width: 10, height: 10 })
+    mocks.repaintWithBailian.mockResolvedValue(Buffer.from('result'))
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/repaint', body: {
+      sourceImageKey: 'generated/owner/job/0.png', maskBase64: Buffer.from('mask-bytes').toString('base64'),
+      prompt: '陶瓷杯',
+    } } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(mocks.loadStoredSyncImage).toHaveBeenCalledTimes(1)
+    expect(mocks.loadStoredSyncImage).toHaveBeenCalledWith('owner', 'generated/owner/job/0.png', 'source', expect.any(AbortSignal))
+    expect(mocks.repaintWithBailian).toHaveBeenCalledWith(Buffer.from('source'), Buffer.from('mask-bytes'), '陶瓷杯', expect.any(Object))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ bytes: 6 }))
+    if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
+    else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('消除支持混合输入（sourceImageKey + maskBase64）无需将蒙版上传 R2', async () => {
+    const previous = process.env.DASHSCOPE_API_KEY
+    process.env.DASHSCOPE_API_KEY = 'sk-test'
+    mocks.loadEraseStoredImage.mockResolvedValueOnce({ bytes: Buffer.from('source'), width: 10, height: 10 })
+    mocks.eraseWithBailian.mockResolvedValue(Buffer.from('result'))
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/erase', body: {
+      sourceImageKey: 'generated/owner/job/0.png', maskBase64: Buffer.from('mask-bytes').toString('base64'),
+      prompt: '消除水印',
+    } } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(mocks.loadEraseStoredImage).toHaveBeenCalledTimes(1)
+    expect(mocks.loadEraseStoredImage).toHaveBeenCalledWith('owner', 'generated/owner/job/0.png', 'source')
+    expect(mocks.eraseWithBailian).toHaveBeenCalledWith(Buffer.from('source'), Buffer.from('mask-bytes'), '消除水印', expect.any(Object))
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ bytes: 6 }))
+    if (previous === undefined) delete process.env.DASHSCOPE_API_KEY
+    else process.env.DASHSCOPE_API_KEY = previous
+  })
+
+  it('任务输入 fallback 接口允许用户写入自己的临时路径', async () => {
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/task-inputs/fallback', body: {
+      objectKey: 'temporary/task-inputs/owner/file-1.png',
+      mimeType: 'image/png',
+      dataBase64: Buffer.from('png-content').toString('base64'),
+    } } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(mocks.putObject).toHaveBeenCalledWith(
+      'temporary/task-inputs/owner/file-1.png',
+      Buffer.from('png-content'),
+      'image/png',
+    )
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith({ objectKey: 'temporary/task-inputs/owner/file-1.png', ok: true })
+  })
+
+  it('任务输入 fallback 接口拒绝非自身路径', async () => {
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/task-inputs/fallback', body: {
+      objectKey: 'temporary/task-inputs/other-user/file-1.png',
+      mimeType: 'image/png',
+      dataBase64: Buffer.from('png-content').toString('base64'),
+    } } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(res.status).toHaveBeenCalledWith(403)
+  })
+
   it('扩图对象请求读取原图，小结果保存为可恢复对象', async () => {
     const previous = process.env.DASHSCOPE_API_KEY
     process.env.DASHSCOPE_API_KEY = 'sk-test'

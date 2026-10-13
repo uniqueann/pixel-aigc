@@ -11,7 +11,8 @@ const users = [
   '00000000-0000-4000-8000-000000000072',
 ]
 const recentSecond = new Date(Date.now() - 3600000).toISOString().slice(0, 20)
-const recentInstant = (micros: string) => `${recentSecond}${micros}Z`
+let fixtureCounter = 100000
+const recentInstant = (micros: string) => `${recentSecond}${micros.padStart(6, '0')}Z`
 let db: PGlite
 const port: TaskQuery = {
   query: async (text, values = []) =>
@@ -47,7 +48,7 @@ async function actor<T>(
 async function fixture(
   owner = users[0],
   scope: TaskScope = 'local',
-  created = recentInstant('123456'),
+  created = recentInstant(String(++fixtureCounter)),
 ) {
   const image = randomUUID(),
     sync = randomUUID(),
