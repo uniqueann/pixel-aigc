@@ -2,6 +2,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons'
 import { Button, Input, Radio, Spin, Tooltip } from 'antd'
 import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
+import { matchImageModel } from '@shared/image-models'
 import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewResultStrip from '@/components/PreviewResultStrip'
@@ -130,9 +131,9 @@ export default function DerivedGenerationPanel({
       posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
       thumbSrc: imageToVideo ? '' : src, fullSrc: src, originalSrc: imageToVideo || sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `${imageToVideo ? '视频' : '裂变'}结果 ${(image?.ordinal ?? index) + 1}` }
   })
-  const model = models.find(item => item.id === modelProfileId)
+  const model = matchImageModel(models, modelProfileId)
   const originalModelId = task ? modelProfileIdForRetry(task) : undefined
-  const originalModel = task ? models.find(item => item.id === originalModelId) : model
+  const originalModel = task ? matchImageModel(models, originalModelId) : model
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
   const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, originalResolution ?? resolution) : estimatedCredits
   const retryVideoDuration = task && 'durationSeconds' in task.params ? task.params.durationSeconds : durationSeconds
@@ -207,7 +208,7 @@ export default function DerivedGenerationPanel({
       )}
 
       {!imageToVideo && <>
-        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="裂变模型" hintScope="single_image" models={models} value={modelProfileId} disabled={formLocked} onChange={onModelChange} />
+        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="裂变模型" hintScope="single_image" models={models} value={model?.id} disabled={formLocked} onChange={onModelChange} />
         <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="裂变分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
           {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
         </Radio.Group></label>

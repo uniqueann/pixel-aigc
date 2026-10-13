@@ -2,9 +2,9 @@
 
 更新时间：2026-10-07。
 
-OpenRouter 对 Google 模型会因地区限制返回 403。`AI_GATEWAY_IMAGE_ENABLED=true` 且凭证就绪时，同一个模型 `openrouter:gemini-nano-banana-2.1` 改走 Vercel AI Gateway。OpenRouter 适配器保留，Gateway 关闭后仍可按原开关启用。
+OpenRouter 对 Google 模型会因地区限制返回 403。`AI_GATEWAY_IMAGE_ENABLED=true` 且凭证就绪时，目录 id `gemini-nano-banana-2.1` 改走 Vercel AI Gateway。OpenRouter 适配器保留，Gateway 关闭后仍可按原开关启用。展示名是「Nano Banana 2.1」，不带渠道。
 
-没有数据库迁移。`aigc.image_jobs.provider` 是没有检查约束的 `text`。新任务的 `provider` 写成 `ai-gateway`。TypeScript 里的供应商联合类型增加了这个值。
+`aigc.image_jobs.provider` 仍是没有检查约束的 `text`。新任务的 `provider` 写成 `ai-gateway`。profile id 不再使用 `openrouter:` 前缀；历史数据由迁移 `20261013084551_nano_banana_channel_agnostic_id.sql` 改写。旧客户端提交旧 id 时，请求入口会映射成新 id。
 
 ## 请求
 
@@ -55,8 +55,8 @@ OpenRouter 对 Google 模型会因地区限制返回 403。`AI_GATEWAY_IMAGE_ENA
 
 ## 上线
 
-1. 不需要跑数据库迁移。
+1. 先部署包含兼容映射的代码，再在正式库执行 `supabase/migrations/20261013084551_nano_banana_channel_agnostic_id.sql`。旧代码按精确 id 查目录，遇到 `gemini-nano-banana-2.1` 时提交会报「尚未配置可用的图片模型」，任务详情也会原样显示这段 id。因此不能先迁移再部署。
 2. 在 Vercel 设置 `AI_GATEWAY_API_KEY`（或确认项目已启用 OIDC，从而有 `VERCEL_OIDC_TOKEN`），再设置 `AI_GATEWAY_IMAGE_ENABLED=true`。不要同时把流量留在 OpenRouter：两个开关都开时只走 Gateway。
-3. 重新部署。登录后看 `GET /api/image-models?operation=text_to_image`。模型 id 仍是 `openrouter:gemini-nano-banana-2.1`，积分 4/6/14，响应里没有 `vendorCost`。
+3. 登录后看 `GET /api/image-models?operation=text_to_image`。模型 id 是 `gemini-nano-banana-2.1`，展示名是「Nano Banana 2.1」，积分 4/6/14，响应里没有 `vendorCost`。
 4. 用一张 1:1 的 1K 做冒烟，确认结果是约 1024x1024，任务上的 `provider` 为 `ai-gateway`，`provider_params.vendor.cost` 接近 `0.0393585`。再各抽一张 2K 和 4K，确认比例和尺寸。
 5. 失败应退回全部预扣。日志里的 `ai-gateway-image-submit` 不应出现密钥。

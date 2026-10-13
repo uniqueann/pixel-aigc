@@ -1,5 +1,5 @@
 import type { Transaction } from './db.js'
-import type { CloudAsset, CloudProject, ProjectWrite } from '../shared/cloud.js'
+import { canonicalizeDraftModelIds, type CloudAsset, type CloudProject, type ProjectWrite } from '../shared/cloud.js'
 import { HttpError } from './errors.js'
 
 export async function requireProject(sql: Transaction, id: string, lock = false) {
@@ -36,6 +36,6 @@ export async function validateReferences(sql: Transaction, projectId: string, in
 export async function readProject(sql: Transaction, id: string): Promise<CloudProject> {
   const row = await requireProject(sql, id)
   const assets = await sql`select * from aigc.assets where project_id=${id} and status='ready'`
-  return { id, name: row.name, document: row.document, drafts: row.drafts, schemaVersion: row.schema_version,
+  return { id, name: row.name, document: row.document, drafts: canonicalizeDraftModelIds(row.drafts), schemaVersion: row.schema_version,
     revision: row.revision, createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(), assets: assets.map(toAsset) }
 }

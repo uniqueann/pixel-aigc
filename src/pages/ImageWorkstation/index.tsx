@@ -27,7 +27,7 @@ import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pag
 import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
 import { liveCapabilityReady } from '@/services/api/task'
-import { defaultImageModel } from '@shared/image-models'
+import { canonicalizeImageModelProfileId, defaultImageModel } from '@shared/image-models'
 import { normalizeRetouchDirections } from '@shared/retouch'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
@@ -501,7 +501,7 @@ export default function ImageWorkstation() {
           const note=typeof params.prompt==='string'?params.prompt:''
           if(relightTool)setRelightNote(note);else if(fusionTool)setFusionNote(note);else if(retouchTool)setRetouchNote(note);else if(variationTool)setVariationPrompt(note);else setSmartEditPrompt(note)
           updateParameters({count:params.count,resolution:params.resolution as '1k'|'2k'|'4k',...(retouchTool?{retouchDirections:readRetouchDirections(params)}:{}),...(relightTool&&readRelight(params)?{relight:readRelight(params)}:{})},false)
-          if(detail.task.modelProfileId){if(variationTool)setVariationModelId(detail.task.modelProfileId);else if(relightTool)setRelightModelId(detail.task.modelProfileId);else setModelProfileId(detail.task.modelProfileId)}
+          if(detail.task.modelProfileId){const storedModelId=canonicalizeImageModelProfileId(detail.task.modelProfileId);if(variationTool)setVariationModelId(storedModelId);else if(relightTool)setRelightModelId(storedModelId);else setModelProfileId(storedModelId)}
           setHasMaskPaint(false)
         }:undefined}/>
       <ToolSwitcher

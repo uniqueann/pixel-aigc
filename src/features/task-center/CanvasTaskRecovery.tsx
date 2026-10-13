@@ -7,6 +7,7 @@ import { InsertGeneratedAssetCommand } from '@/editor/commands'
 import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
 import { bindRuntimeImage,releaseRuntimeImageUser } from '@/editor/runtimeImages'
 import { useEffect,useRef } from 'react'
+import { canonicalizeImageModelProfileId } from '@shared/image-models'
 import type { TaskCenterDetail } from '@shared/task-center'
 import { useTaskDraftGuard } from './useTaskDraftGuard'
 import { applyRecoveredCanvasTask,type CanvasRecoveryContext } from './canvasRecovery'
@@ -78,13 +79,13 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
         // 显式载入派生参数时复用原输入节点；缺失时添加输入图，不启动生成。
         state.setDrafts({...state.drafts,derived:{mode:origin.tool,sourceAssetId:source.id,
           sourceNode,
-          prompt:values.prompt,count:values.count,durationSeconds:values.durationSeconds===10?10:5,modelProfileId:detail.task.modelProfileId??undefined,
+          prompt:values.prompt,count:values.count,durationSeconds:values.durationSeconds===10?10:5,modelProfileId:canonicalizeImageModelProfileId(detail.task.modelProfileId??undefined),
           resolution:values.resolution as '1k'|'2k'|'4k'|'720p'|undefined,generateAudio:values.generateAudio===true}})
       } else {
         const tool=origin.tool
         state.setDrafts({...state.drafts,[tool]:{...state.drafts[tool],prompt:values.prompt,count:values.count,presetKey:preset??state.drafts[tool].presetKey,
           durationSeconds:values.durationSeconds===10?10:5,resolution:values.resolution as '1k'|'2k'|'4k'|'720p'|undefined,
-          modelProfileId:detail.task.modelProfileId??undefined,generateAudio:values.generateAudio===true,enableThinking:values.enableThinking===true}})
+          modelProfileId:canonicalizeImageModelProfileId(detail.task.modelProfileId??undefined),generateAudio:values.generateAudio===true,enableThinking:values.enableThinking===true}})
       }
     }}/>
 }

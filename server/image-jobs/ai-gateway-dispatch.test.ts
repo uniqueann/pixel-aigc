@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { OPENROUTER_NANO_BANANA_PROFILE_ID } from '../../shared/image-models.js'
+import { createHash } from 'node:crypto'
+import { LEGACY_NANO_BANANA_PROFILE_ID, NANO_BANANA_PROFILE_ID } from '../../shared/image-models.js'
 import { createAiGatewayImageProvider, type AiGatewayResultStore } from '../image-providers/ai-gateway/client.js'
 import { aiGatewayImageSettings } from '../image-providers/ai-gateway/config.js'
 import { MOCK_PNG_1X1 } from '../image-providers/mock.js'
@@ -74,7 +75,7 @@ function text(requestId: string, count: number, resolution: '1k' | '2k' | '4k') 
   return createImageTaskSchema.parse({
     capability: 'text_to_image',
     requestId,
-    modelProfileId: OPENROUTER_NANO_BANANA_PROFILE_ID,
+    modelProfileId: NANO_BANANA_PROFILE_ID,
     params: {
       prompt: '橙色香水瓶置于浅色木桌',
       size: { width: 1024, height: 1024 },
@@ -104,7 +105,7 @@ describe('AI Gateway Nano Banana 任务', () => {
     const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000921', 1, '1k'), rt)
     expect(created.bundle.job).toMatchObject({
       provider: 'ai-gateway',
-      model_profile_id: OPENROUTER_NANO_BANANA_PROFILE_ID,
+      model_profile_id: NANO_BANANA_PROFILE_ID,
       credits_reserved: 4,
     })
     const outcomes = await (await import('./service.js')).runProviderSubmits(created.bundle, provider, user.id, rt)
@@ -126,6 +127,33 @@ describe('AI Gateway Nano Banana 任务', () => {
     expect(body.providerOptions.google.imageConfig).toEqual({ aspectRatio: '1:1', imageSize: '1K' })
     expect(body.providerOptions.vertex.imageConfig).toEqual({ aspectRatio: '1:1', imageSize: '1K' })
     expect(String(fetchImpl.mock.calls[0][0])).toBe('https://ai-gateway.vercel.sh/v1/chat/completions')
+  })
+
+  it('旧 profile id 在入口映射为渠道无关 id，并接受迁移前的请求指纹', async () => {
+    process.env.AI_GATEWAY_API_KEY = 'gw-test-key'
+    process.env.AI_GATEWAY_IMAGE_ENABLED = 'true'
+    const requestId = '00000000-0000-4000-8000-000000000922'
+    const { rt } = runtime(vi.fn())
+    const store = createMemoryStore(user.id)
+    const parsed = createImageTaskSchema.parse({
+      capability: 'text_to_image',
+      requestId,
+      modelProfileId: LEGACY_NANO_BANANA_PROFILE_ID,
+      params: { prompt: '橙色香水瓶置于浅色木桌', size: { width: 1024, height: 1024 }, count: 1, resolution: '1k' },
+    })
+    expect(parsed.modelProfileId).toBe(NANO_BANANA_PROFILE_ID)
+    const created = await createImageJobInStore(store, user, parsed, rt)
+    expect(created.bundle.job.model_profile_id).toBe(NANO_BANANA_PROFILE_ID)
+    created.bundle.job.request_fingerprint = createHash('sha256').update(JSON.stringify({
+      params: created.bundle.job.params, modelProfileId: LEGACY_NANO_BANANA_PROFILE_ID,
+    })).digest('hex')
+    const replay = await createImageJobInStore(store, user, parsed, rt)
+    expect(replay.created).toBe(false)
+    expect(replay.bundle.job.id).toBe(created.bundle.job.id)
+    await expect(createImageJobInStore(store, user, createImageTaskSchema.parse({
+      ...parsed,
+      params: { ...parsed.params, prompt: '另一句' },
+    }), rt)).rejects.toMatchObject({ status: 409 })
   })
 
   it('没有上游成本时用目录价，失败时全额退还', async () => {

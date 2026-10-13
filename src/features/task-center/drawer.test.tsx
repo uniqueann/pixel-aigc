@@ -140,9 +140,30 @@ function mount(overrides: Partial<TaskCenterContextValue> = {}) {
   return context
 }
 describe('共用只读任务抽屉', () => {
+  it('模型只显示目录名称，不显示原始 id 或渠道', async () => {
+    mocks.request.mockImplementation(async (_path: string, method: string) => {
+      const named = { ...task, modelProfileId: 'openrouter:gemini-nano-banana-2.1' }
+      return method === 'PATCH' ? named : {
+        task: named,
+        params: { sourceText: '私有输入' },
+        errorMessage: null,
+        results: [{ kind: 'text', text: '原生成结果正文', editedText: null }],
+      }
+    })
+    mount({ selected: { ...task, modelProfileId: 'openrouter:gemini-nano-banana-2.1' } })
+    expect(await screen.findByText('Nano Banana 2.1')).toBeTruthy()
+    expect(screen.queryByText('openrouter:gemini-nano-banana-2.1')).toBeNull()
+    expect(screen.queryByText('gemini-nano-banana-2.1')).toBeNull()
+    expect(screen.queryByText(/OpenRouter|Google/)).toBeNull()
+  })
+
   it('原结果和修改稿可复制；草稿不被覆盖，仅发送 GET 和展示 PATCH', async () => {
     mount()
     expect(await screen.findByText('原生成结果正文')).toBeTruthy()
+    expect(screen.getByText('历史模型')).toBeTruthy()
+    expect(screen.queryByText('fixture')).toBeNull()
+    expect(screen.getByText('历史模型')).toBeTruthy()
+    expect(screen.queryByText('fixture')).toBeNull()
     expect(screen.getByText('已有修改稿正文')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '复制结果' }))
     await waitFor(() =>

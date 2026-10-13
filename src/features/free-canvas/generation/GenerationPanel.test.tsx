@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultImageModel, IMAGE_MODEL_PROFILES, OPENROUTER_NANO_BANANA_PROFILE_ID, publicImageModel } from '@shared/image-models'
+import { defaultImageModel, IMAGE_MODEL_PROFILES, NANO_BANANA_PROFILE_ID, publicImageModel } from '@shared/image-models'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
@@ -200,10 +200,10 @@ describe('自由画布文生图侧栏', () => {
   })
 
   it('选中 Nano Banana 2.1 时按 4/6/14 显示积分', () => {
-    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)!)
     renderPanel({ models: [model, nano], modelProfileId: nano.id, resolution: '1k', estimatedCredits: 4 })
     expect(screen.getByRole('combobox', { name: '文生图模型' })).toBeTruthy()
-    expect(screen.getByText('Google Nano Banana 2.1')).toBeTruthy()
+    expect(screen.getByText('Nano Banana 2.1')).toBeTruthy()
     expect(screen.getByText('本次预计消耗 4 积分，按实际成功张数结算。')).toBeTruthy()
     cleanup()
     renderPanel({ models: [model, nano], modelProfileId: nano.id, resolution: '2k', estimatedCredits: 6 })

@@ -34,7 +34,13 @@ import {
   composeVariationPrompt,
   variationPromptLimitMessage,
 } from '../../shared/variation.js'
-import { findImageModel, referenceImageLimitMessage } from '../../shared/image-models.js'
+import {
+  LEGACY_NANO_BANANA_PROFILE_ID,
+  NANO_BANANA_PROFILE_ID,
+  canonicalizeImageModelProfileId,
+  findImageModel,
+  referenceImageLimitMessage,
+} from '../../shared/image-models.js'
 import { qwenImageConcurrencyLimits, qwenThrottleBackoffMs, qwenUsesTightRpm } from '../image-providers/qwen-image/config.js'
 import {
   QWEN_QUEUE_FULL_MESSAGE,
@@ -191,21 +197,21 @@ export const createImageTaskSchema = z.discriminatedUnion('capability', [
     origin: taskOriginSchema.optional(),
     requestId: uuid,
     params: imageEditParams,
-    modelProfileId: z.string().optional(),
+    modelProfileId: z.string().transform(value => canonicalizeImageModelProfileId(value)).optional(),
   }).strict(),
   z.object({
     capability: z.literal('variation'),
     origin: taskOriginSchema.optional(),
     requestId: uuid,
     params: variationParams,
-    modelProfileId: z.string().optional(),
+    modelProfileId: z.string().transform(value => canonicalizeImageModelProfileId(value)).optional(),
   }).strict(),
   z.object({
     capability: z.literal('text_to_image'),
     origin: taskOriginSchema.optional(),
     requestId: uuid,
     params: textToImageParams,
-    modelProfileId: z.string().optional(),
+    modelProfileId: z.string().transform(value => canonicalizeImageModelProfileId(value)).optional(),
   }).strict(),
 ]).superRefine((value,ctx) => {
   if (!validTaskOrigin(value.origin,value.capability)) ctx.addIssue({ code: 'custom',message: '任务来源与生成能力不匹配',path: ['origin'] })
@@ -454,11 +460,16 @@ export function boundedImageRuntime(runtime: ImageJobRuntime, budgetMs: number):
 
 function resolveModel(operation: ImageTaskCapability, modelProfileId: string | undefined, env = process.env) {
   const available = configuredImageModels(operation, env)
-  const profile = modelProfileId
-    ? available.find(item => item.id === modelProfileId)
+  const requested = canonicalizeImageModelProfileId(modelProfileId)
+  const profile = requested
+    ? available.find(item => item.id === requested)
     : available.find(item => item.defaultFor?.includes(operation)) ?? available[0]
   if (!profile) throw imageModelUnavailable(operation)
   return profile
+}
+
+function imageRequestFingerprint(params: StoredImageParams, modelProfileId: string) {
+  return createHash('sha256').update(JSON.stringify({ params, modelProfileId })).digest('hex')
 }
 
 function submittedPrompt(providerParams: Record<string, unknown>, params: StoredImageParams) {
@@ -620,12 +631,14 @@ export async function createImageJobInStore(
   if (parsed.capability === 'variation' || isRetouch || isFusion || isRelight) {
     mapped.providerParams = { ...mapped.providerParams, prompt }
   }
-  const fingerprint = createHash('sha256').update(JSON.stringify({
-    params: storedParams, modelProfileId: profile.id,
-  })).digest('hex')
+  const fingerprint = imageRequestFingerprint(storedParams, profile.id)
+  const acceptedFingerprints = new Set([fingerprint])
+  if (profile.id === NANO_BANANA_PROFILE_ID) {
+    acceptedFingerprints.add(imageRequestFingerprint(storedParams, LEGACY_NANO_BANANA_PROFILE_ID))
+  }
   const existing = await store.findByRequestId(parsed.requestId)
   if (existing) {
-    if (existing.capability !== parsed.capability || existing.request_fingerprint !== fingerprint) {
+    if (existing.capability !== parsed.capability || !acceptedFingerprints.has(existing.request_fingerprint)) {
       throw new HttpError(409, '请求标识已用于其他图片任务', 'REQUEST_CONFLICT')
     }
     return { bundle: { job: existing, items: await store.listItems(existing.id) }, created: false, provider }

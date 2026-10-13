@@ -29,8 +29,30 @@ export interface ImageModelUi {
   promptMaxLength?: number
 }
 
-export const OPENROUTER_NANO_BANANA_PROFILE_ID = 'openrouter:gemini-nano-banana-2.1'
-export const OPENROUTER_NANO_BANANA_MODEL = 'google/gemini-nano-banana-2.1'
+/**
+ * 与渠道无关的目录 id。图片模型其它条目习惯写成 `渠道:模型`，但那不是库约束：
+ * `aigc.image_jobs.model_profile_id` 是无检查的 text，视频模型 `seedance-2-0-fast` 也没有渠道前缀。
+ * 这个模型会在 AI Gateway 与 OpenRouter 之间切换，id 不再带供应商。
+ */
+export const NANO_BANANA_PROFILE_ID = 'gemini-nano-banana-2.1'
+/** 旧客户端、本地草稿和迁移前的历史任务仍会提交这个 id。 */
+export const LEGACY_NANO_BANANA_PROFILE_ID = 'openrouter:gemini-nano-banana-2.1'
+/** 上游模型名。Gateway 与 OpenRouter 都使用它，不是任务里的 profile id。 */
+export const NANO_BANANA_MODEL = 'google/gemini-nano-banana-2.1'
+
+export function canonicalizeImageModelProfileId<T extends string | null | undefined>(id: T): T {
+  if (id === LEGACY_NANO_BANANA_PROFILE_ID) return NANO_BANANA_PROFILE_ID as T
+  return id
+}
+
+export function sameImageModelProfile(left: string | null | undefined, right: string | null | undefined) {
+  if (!left || !right) return left === right
+  return canonicalizeImageModelProfileId(left) === canonicalizeImageModelProfileId(right)
+}
+
+export function matchImageModel<T extends { id: string }>(models: readonly T[], id: string | null | undefined) {
+  return models.find(model => sameImageModelProfile(model.id, id))
+}
 
 /** 模型厂商。dragoncode / bailian / openrouter / ai-gateway 是接入渠道，不是厂商。 */
 export const IMAGE_MODEL_VENDORS = ['openai', 'qwen', 'google', 'deepseek'] as const
@@ -190,11 +212,11 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
   // vendorCost：1K 来自 AI Gateway 实测 usage.cost 0.0393585（1:1、1K、1024x1024，含推理 token），
   // 按 6 位小数四舍五入。2K、4K 还没有实测，按积分比 6/4、14/4 从该实测值估算。
   {
-    id: OPENROUTER_NANO_BANANA_PROFILE_ID,
+    id: NANO_BANANA_PROFILE_ID,
     provider: 'openrouter',
     vendor: 'google',
-    model: OPENROUTER_NANO_BANANA_MODEL,
-    label: 'Google Nano Banana 2.1',
+    model: NANO_BANANA_MODEL,
+    label: 'Nano Banana 2.1',
     operations: ['text_to_image', 'image_edit', 'variation'],
     ui: {
       supportsMask: false,
@@ -246,16 +268,18 @@ export function referenceImageLimitMessage(max: number) {
 
 export function imageModelVendor(id: string | null | undefined): ImageModelVendor | undefined {
   if (!id) return undefined
-  const listed = IMAGE_MODEL_PROFILES.find(profile => profile.id === id)
+  const canonical = canonicalizeImageModelProfileId(id)
+  const listed = IMAGE_MODEL_PROFILES.find(profile => profile.id === canonical)
   if (listed) return listed.vendor
-  if (id === 'dragoncode:gpt-image-2' || /(?:^|:)gpt-image-2$/.test(id)) return 'openai'
-  if (id.startsWith('bailian:qwen-image') || id.startsWith('qwen:')) return 'qwen'
-  if (id.includes('gemini-nano-banana')) return 'google'
+  if (canonical === 'dragoncode:gpt-image-2' || /(?:^|:)gpt-image-2$/.test(canonical)) return 'openai'
+  if (canonical.startsWith('bailian:qwen-image') || canonical.startsWith('qwen:')) return 'qwen'
+  if (canonical.includes('gemini-nano-banana')) return 'google'
   return undefined
 }
 
 export function findImageModel(id: string) {
-  return IMAGE_MODEL_PROFILES.find(profile => profile.id === id)
+  const canonical = canonicalizeImageModelProfileId(id)
+  return IMAGE_MODEL_PROFILES.find(profile => profile.id === canonical)
 }
 
 export function defaultImageModel(operation: ImageOperation) {

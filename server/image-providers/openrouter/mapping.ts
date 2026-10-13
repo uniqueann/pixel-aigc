@@ -1,6 +1,6 @@
 import type { ImageResolution, NormalizedImageRequest } from '../../../shared/image-generation.js'
 import {
-  OPENROUTER_NANO_BANANA_MODEL,
+  NANO_BANANA_MODEL,
   nearestRatio,
   ratioValue,
 } from '../../../shared/image-models.js'
@@ -94,7 +94,7 @@ export function buildOpenRouterChatBody(input: {
   }
 }
 
-export function mapOpenRouterImageRequest(req: NormalizedImageRequest, model: string = OPENROUTER_NANO_BANANA_MODEL): MappedImageRequest {
+export function mapOpenRouterImageRequest(req: NormalizedImageRequest, model: string = NANO_BANANA_MODEL): MappedImageRequest {
   const count = Math.min(4, Math.max(1, Math.round(req.count || 1)))
   const pixels = requestPixels(req)
   const aspectRatio = req.target.aspectRatio && isOpenRouterRatio(req.target.aspectRatio)

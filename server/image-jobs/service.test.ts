@@ -375,6 +375,11 @@ describe('图片任务存储状态机', () => {
     const gpt = { model_profile_id: 'dragoncode:gpt-image-2', provider_params: { resolution: '1k' } }
     expect(applyCatalogVendorCost(gpt, undefined, 1)).toBeUndefined()
     expect(applyCatalogVendorCost(gpt, { cost: 0.0085, creditsCost: 1 }, 1)).toEqual({ cost: 0.0085, creditsCost: 1 })
+    expect(applyCatalogVendorCost(
+      { model_profile_id: 'openrouter:gemini-nano-banana-2.1', provider_params: { resolution: '1k' } },
+      undefined,
+      1,
+    )).toEqual({ cost: 0.039359, currency: 'USD' })
   })
 
   it('把上游 cost / credits_cost 写入已有 provider_params JSON', async () => {
@@ -460,6 +465,16 @@ describe('裂变任务', () => {
   it('智能编辑仍拒绝空提示词，裂变允许省略提示词', () => {
     expect(() => createImageTaskSchema.parse(params({ prompt: '  ' }))).toThrow()
     expect(createImageTaskSchema.parse(variationParams()).capability).toBe('variation')
+  })
+
+  it('请求入口把旧 Nano Banana id 映射成渠道无关 id', () => {
+    expect(createImageTaskSchema.parse({
+      capability: 'text_to_image',
+      requestId: '00000000-0000-4000-8000-000000000203',
+      modelProfileId: 'openrouter:gemini-nano-banana-2.1',
+      params: { prompt: '香水瓶', size: { width: 1024, height: 1024 }, count: 1, resolution: '1k' },
+    }).modelProfileId).toBe('gemini-nano-banana-2.1')
+    expect(createImageTaskSchema.parse({ ...variationParams(), modelProfileId: 'dragoncode:gpt-image-2' }).modelProfileId).toBe('dragoncode:gpt-image-2')
   })
 
   it('空补充要求使用固定句，用户原文仍留在任务参数里', async () => {

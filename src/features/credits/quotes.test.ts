@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IMAGE_MODEL_PROFILES, OPENROUTER_NANO_BANANA_PROFILE_ID, defaultImageModel, publicImageModel } from '@shared/image-models'
+import { IMAGE_MODEL_PROFILES, NANO_BANANA_PROFILE_ID, defaultImageModel, publicImageModel } from '@shared/image-models'
 import type { BillingCatalog } from '@shared/billing'
 import { Capability } from '@/types'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
@@ -23,7 +23,7 @@ describe('操作报价与实际提交参数', () => {
   })
 
   it('Nano Banana 2.1 按 1K/2K/4K 显示 4/6/14，正方形 4K 不降级', () => {
-    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)!)
     expect(imageCreditAmount(nano, 1, '1k')).toBe(4)
     expect(imageCreditAmount(nano, 1, '2k')).toBe(6)
     expect(imageCreditAmount(nano, 1, '4k')).toBe(14)

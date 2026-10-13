@@ -1,6 +1,6 @@
 import { Select } from 'antd'
 import type { CSSProperties, ReactNode } from 'react'
-import { imageModelHint, imageModelVendor, isImageModelVendor, type ImageModelHintScope, type ImageModelVendor } from '@shared/image-models'
+import { imageModelHint, imageModelVendor, isImageModelVendor, sameImageModelProfile, type ImageModelHintScope, type ImageModelVendor } from '@shared/image-models'
 import { emailModelVendor } from '@shared/email-models'
 import ModelVendorMark from './ModelVendorMark'
 
@@ -62,7 +62,8 @@ export default function ModelChoice({
   selectStyle,
   hintScope = 'text_to_image',
 }: Props) {
-  const selected = models.find(item => item.id === value) ?? models[0]
+  const matched = models.find(item => sameImageModelProfile(item.id, value))
+  const selected = matched ?? models[0]
   const named = Boolean(className || label)
   if (models.length === 1 && selected) {
     const name = <span className="model-choice-static"><ModelName option={selected} /></span>
@@ -73,7 +74,7 @@ export default function ModelChoice({
     <Select
       aria-label={ariaLabel}
       style={selectStyle ?? { width: '100%' }}
-      value={models.length ? value : undefined}
+      value={models.length ? matched?.id : undefined}
       placeholder={placeholder}
       loading={loading}
       disabled={disabled}

@@ -32,6 +32,7 @@ import { importCanvasFile, importCanvasHistory, type CanvasImageImportContext } 
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import type { WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
 import { usePreferencesStore } from '@/features/preferences/store'
+import { matchImageModel } from '@shared/image-models'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
 import {
@@ -115,7 +116,7 @@ export default function FreeCanvas() {
   const previewAssetIds = Array.from({ length: taskResultCount }, (_, index) => resultAssetForTask(generation.task, index, project?.assets ?? EMPTY_ASSETS)?.id).filter((id): id is string => !!id)
   const images = useCanvasImages(project?.assets ?? EMPTY_ASSETS, scene, derivedDraft?.sourceAssetId, previewAssetIds)
   const videos = useCanvasVideos(images.assets, scene)
-  const model = configuration.models.find(item => item.id === derivedDraft?.modelProfileId)
+  const model = matchImageModel(configuration.models, derivedDraft?.modelProfileId)
     ?? configuration.models.find(item => item.defaultFor?.includes('variation')) ?? configuration.models[0]
   const requestedResolution = derivedDraft?.resolution && derivedDraft.resolution !== '720p' ? derivedDraft.resolution : preferences.image.resolution
   const effective = effectiveImageParameters(variationCount, requestedResolution, derivedAsset?.type === 'image' ? derivedAsset : undefined, model?.ui)

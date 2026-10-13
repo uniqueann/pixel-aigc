@@ -4,7 +4,7 @@ import ModelChoice from '@/components/ModelChoice'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
-import { mapDragonCodeSize, nearestRatio } from '@shared/image-models'
+import { mapDragonCodeSize, matchImageModel, nearestRatio } from '@shared/image-models'
 import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
@@ -127,7 +127,7 @@ export default function ParamPanel({
     const variation = capability === Capability.Variation
     const retouch = capability === Capability.Retouch
     const fusion = capability === Capability.Fusion
-    const model = models.find(item => item.id === modelProfileId) ?? models[0]
+    const model = matchImageModel(models, modelProfileId) ?? models[0]
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
     const mapped = outputPreview(model, sourceSize, resolution)
@@ -203,7 +203,7 @@ export default function ParamPanel({
   }
 
   if (capability === Capability.Relight) {
-    const model = models.find(item => item.id === modelProfileId) ?? models[0]
+    const model = matchImageModel(models, modelProfileId) ?? models[0]
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
     const mapped = outputPreview(model, sourceSize, resolution)

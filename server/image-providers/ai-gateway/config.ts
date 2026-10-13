@@ -1,4 +1,4 @@
-import { OPENROUTER_NANO_BANANA_MODEL } from '../../../shared/image-models.js'
+import { NANO_BANANA_MODEL } from '../../../shared/image-models.js'
 
 export const DEFAULT_AI_GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1'
 export const DEFAULT_AI_GATEWAY_REQUEST_TIMEOUT_MS = 70_000
@@ -61,7 +61,7 @@ export function aiGatewayImageSettings(env: NodeJS.ProcessEnv = process.env): Ai
   return {
     ...(apiKey ? { apiKey } : {}),
     baseUrl: httpsBase(env.AI_GATEWAY_BASE_URL) ?? DEFAULT_AI_GATEWAY_BASE_URL,
-    model: OPENROUTER_NANO_BANANA_MODEL,
+    model: NANO_BANANA_MODEL,
     requestTimeoutMs: readNumber(env, 'AI_GATEWAY_IMAGE_REQUEST_TIMEOUT_MS', DEFAULT_AI_GATEWAY_REQUEST_TIMEOUT_MS, 5_000, 110_000),
     taskTimeoutMs: readNumber(env, 'AI_GATEWAY_IMAGE_TASK_TIMEOUT_MS', DEFAULT_AI_GATEWAY_TASK_TIMEOUT_MS, 30_000, 900_000),
     pollIntervalMs: Math.max(1_000, readNumber(env, 'AI_GATEWAY_IMAGE_POLL_INTERVAL_MS', DEFAULT_AI_GATEWAY_POLL_INTERVAL_MS, 1_000, 30_000)),

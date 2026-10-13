@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { OPENROUTER_NANO_BANANA_PROFILE_ID } from '../../shared/image-models.js'
+import { NANO_BANANA_PROFILE_ID } from '../../shared/image-models.js'
 import { createOpenRouterImageProvider, type OpenRouterResultStore } from '../image-providers/openrouter/client.js'
 import { openRouterImageSettings } from '../image-providers/openrouter/config.js'
 import { MOCK_PNG_1X1 } from '../image-providers/mock.js'
@@ -70,7 +70,7 @@ function text(requestId: string, count: number, resolution: '1k' | '2k' | '4k') 
   return createImageTaskSchema.parse({
     capability: 'text_to_image',
     requestId,
-    modelProfileId: OPENROUTER_NANO_BANANA_PROFILE_ID,
+    modelProfileId: NANO_BANANA_PROFILE_ID,
     params: {
       prompt: '橙色香水瓶置于浅色木桌',
       size: { width: 1024, height: 1024 },
@@ -109,7 +109,7 @@ describe('OpenRouter Nano Banana 任务', () => {
     const created = await createImageJobInStore(store, user, text('00000000-0000-4000-8000-000000000912', 1, '1k'), rt)
     expect(created.bundle.job).toMatchObject({
       provider: 'openrouter',
-      model_profile_id: OPENROUTER_NANO_BANANA_PROFILE_ID,
+      model_profile_id: NANO_BANANA_PROFILE_ID,
       credits_reserved: 4,
       requested_count: 1,
     })
@@ -211,7 +211,7 @@ describe('OpenRouter Nano Banana 任务', () => {
     const created = await createImageJobInStore(store, user, createImageTaskSchema.parse({
       capability: 'image_edit',
       requestId: '00000000-0000-4000-8000-000000000914',
-      modelProfileId: OPENROUTER_NANO_BANANA_PROFILE_ID,
+      modelProfileId: NANO_BANANA_PROFILE_ID,
       params: {
         sourceImageKey: `temporary/task-inputs/${user.id}/source-1`,
         prompt: '换成白底',

@@ -36,4 +36,4 @@
 
 千问图像 3.0、3.0 Pro 和 2.1 Pro 的后端适配在 `docs/qwen-image-integration.md`。`QWEN_IMAGE_ENABLED` 默认关闭，关闭时模型列表和能力开关与只接 GPT Image 2 时相同。打开后这三个模型也可用于智能编辑、裂变和融合。
 
-Google Nano Banana 2.1 经 OpenRouter 接入，说明在 `docs/openrouter-nano-banana-integration.md`。`OPENROUTER_IMAGE_ENABLED` 默认关闭；开关与 `OPENROUTER_API_KEY` 都就绪后，文生图和裂变模型列表才会出现它，报价为 1K 4 / 2K 6 / 4K 14 积分。GPT Image 2 的每张积分与它相同。已创建任务仍按当时写入的预扣金额结算和退款。
+Nano Banana 2.1 的目录 id 是 `gemini-nano-banana-2.1`。历史 `openrouter:gemini-nano-banana-2.1` 由 `supabase/migrations/20261013084551_nano_banana_channel_agnostic_id.sql` 改写，须先部署代码再迁移。`AI_GATEWAY_IMAGE_ENABLED` 打开后走 Vercel AI Gateway，否则在 `OPENROUTER_IMAGE_ENABLED` 与 `OPENROUTER_API_KEY` 都就绪时走 OpenRouter，说明见 `docs/ai-gateway-nano-banana.md`。两个开关都关闭时模型列表不会出现它。报价为 1K 4 / 2K 6 / 4K 14 积分。GPT Image 2 的每张积分与它相同。已创建任务仍按当时写入的预扣金额结算和退款。

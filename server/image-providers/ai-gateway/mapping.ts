@@ -1,5 +1,5 @@
 import type { NormalizedImageRequest } from '../../../shared/image-generation.js'
-import { OPENROUTER_NANO_BANANA_MODEL } from '../../../shared/image-models.js'
+import { NANO_BANANA_MODEL } from '../../../shared/image-models.js'
 import {
   OPENROUTER_IMAGE_CAPABILITIES,
   OPENROUTER_IMAGE_RATIOS,
@@ -70,6 +70,6 @@ export function buildAiGatewayChatBody(input: {
   }
 }
 
-export function mapAiGatewayImageRequest(req: NormalizedImageRequest, model: string = OPENROUTER_NANO_BANANA_MODEL) {
+export function mapAiGatewayImageRequest(req: NormalizedImageRequest, model: string = NANO_BANANA_MODEL) {
   return mapOpenRouterImageRequest(req, model)
 }

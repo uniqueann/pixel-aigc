@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
-import { publicImageModel, IMAGE_MODEL_PROFILES, OPENROUTER_NANO_BANANA_PROFILE_ID } from '@shared/image-models'
+import { publicImageModel, IMAGE_MODEL_PROFILES, NANO_BANANA_PROFILE_ID } from '@shared/image-models'
 import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
@@ -202,7 +202,7 @@ describe('智能编辑参数面板', () => {
 
   it('重新打光多个模型时显示下拉，并按模型限制分辨率', () => {
     const qwen = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0')!)
-    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)!)
     render(
       <ParamPanel
         capability={Capability.Relight}
@@ -216,7 +216,7 @@ describe('智能编辑参数面板', () => {
     expect(document.querySelector('.ant-select-selection-item [data-vendor="qwen"]')).toBeTruthy()
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
     const optionTitles = [...document.querySelectorAll('.ant-select-item-option')].map(item => item.getAttribute('title'))
-    expect(optionTitles).toEqual(['GPT Image 2', 'Qwen Image 3.0', 'Google Nano Banana 2.1'])
+    expect(optionTitles).toEqual(['GPT Image 2', 'Qwen Image 3.0', 'Nano Banana 2.1'])
     expect(document.querySelectorAll('.ant-select-item-option-content [data-vendor="qwen"]')).toHaveLength(1)
     expect(document.querySelector('.ant-select-item-option-content [data-vendor="openai"]')).toBeTruthy()
     expect(document.querySelector('.ant-select-item-option-content [data-vendor="google"]')).toBeTruthy()
@@ -293,7 +293,7 @@ describe('智能编辑参数面板', () => {
   })
 
   it('工作站可选 Nano Banana 2.1，4K 正方形仍显示 4K', () => {
-    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)!)
     render(
       <ParamPanel
         capability={Capability.ImageEdit}
@@ -304,7 +304,7 @@ describe('智能编辑参数面板', () => {
         sourceSize={{ width: 1000, height: 1000 }}
       />,
     )
-    expect(screen.getByText('Google Nano Banana 2.1')).toBeTruthy()
+    expect(screen.getByText('Nano Banana 2.1')).toBeTruthy()
     expect(document.querySelector('[data-vendor="google"]')).toBeTruthy()
     expect(screen.getByText(/预计输出比例 1:1 · 4K/)).toBeTruthy()
     expect(screen.queryByText(/当前比例不支持 4K/)).toBeNull()
@@ -314,7 +314,7 @@ describe('智能编辑参数面板', () => {
     const qwen = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0')!)
     const pro = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0-pro')!)
     const wide = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-2.1-pro')!)
-    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === OPENROUTER_NANO_BANANA_PROFILE_ID)!)
+    const nano = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)!)
     const models = [model, qwen, pro, wide, nano]
     const optionHints = () => [...document.querySelectorAll('.ant-select-item-option .model-choice-hint')].map(item => item.textContent)
 

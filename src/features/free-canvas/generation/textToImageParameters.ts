@@ -1,4 +1,5 @@
 import type { PublicImageModel } from '@/services/api/imageModels'
+import { matchImageModel } from '@shared/image-models'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import { IMAGE_SIZE_PRESETS } from './config'
 
@@ -18,7 +19,7 @@ export function availableTextToImagePresets(model?: PublicImageModel) {
 
 /** 保留草稿期望值，只为本次请求推导模型支持的比例、数量、分辨率和报价。 */
 export function resolveCanvasTextToImageParameters(draft: TextToImageDraftInput, defaultResolution: Resolution, models: PublicImageModel[]) {
-  const model = models.find(item => item.id === draft.modelProfileId)
+  const model = matchImageModel(models, draft.modelProfileId)
     ?? models.find(item => item.defaultFor?.includes('text_to_image')) ?? models[0]
   const presets = availableTextToImagePresets(model)
   const preset = presets.find(item => item.key === draft.presetKey) ?? presets[0] ?? IMAGE_SIZE_PRESETS[0]

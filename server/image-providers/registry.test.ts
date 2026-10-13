@@ -109,13 +109,13 @@ describe('图片模型目录', () => {
     process.env.OPENROUTER_API_KEY = 'sk-openrouter'
     process.env.OPENROUTER_IMAGE_ENABLED = 'true'
     const models = publicConfiguredImageModels('text_to_image')
-    expect(models.map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
+    expect(models.map(model => model.id)).toEqual(['gemini-nano-banana-2.1'])
     expect(models[0].pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
-    expect(models[0].label).toBe('Google Nano Banana 2.1')
+    expect(models[0].label).toBe('Nano Banana 2.1')
     expect(JSON.stringify(models)).not.toContain('vendorCost')
     expect(JSON.stringify(models)).not.toContain('0.039359')
-    expect(publicConfiguredImageModels('image_edit').map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
-    expect(publicConfiguredImageModels('variation').map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
+    expect(publicConfiguredImageModels('image_edit').map(model => model.id)).toEqual(['gemini-nano-banana-2.1'])
+    expect(publicConfiguredImageModels('variation').map(model => model.id)).toEqual(['gemini-nano-banana-2.1'])
     expect(configuredImageModels('text_to_image')[0].provider).toBe('openrouter')
   })
 
@@ -126,7 +126,7 @@ describe('图片模型目录', () => {
     process.env.OPENROUTER_API_KEY = 'sk-openrouter'
     process.env.OPENROUTER_IMAGE_ENABLED = 'true'
     const models = publicConfiguredImageModels('text_to_image')
-    expect(models.map(model => model.id)).toEqual(['openrouter:gemini-nano-banana-2.1'])
+    expect(models.map(model => model.id)).toEqual(['gemini-nano-banana-2.1'])
     expect(models[0].pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
     expect(configuredImageModels('text_to_image')[0].provider).toBe('ai-gateway')
     expect(JSON.stringify(models)).not.toContain('vendorCost')
