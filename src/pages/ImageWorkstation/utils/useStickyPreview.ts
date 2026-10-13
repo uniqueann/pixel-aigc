@@ -9,7 +9,7 @@ export function workstationPreviewFits(viewportHeight: number, previewHeight: nu
     && previewHeight <= viewportHeight - footerHeight - PREVIEW_FOOTER_GAP
 }
 
-export function useStickyPreview(hasVisibleInput: boolean) {
+export function useStickyPreview(enabled = true) {
   const previewRef = useRef<HTMLDivElement>(null)
   const footerRef = useRef<HTMLDivElement>(null)
   const [fits, setFits] = useState(false)
@@ -18,7 +18,7 @@ export function useStickyPreview(hasVisibleInput: boolean) {
     const preview = previewRef.current
     const footer = footerRef.current
     const viewport = preview?.closest<HTMLElement>('.app-main-content')
-    if (!hasVisibleInput || !preview || !footer || !viewport) return
+    if (!enabled || !preview || !footer || !viewport) return
 
     const desktop = window.matchMedia('(min-width: 901px)')
     const update = () => setFits(desktop.matches && workstationPreviewFits(
@@ -34,7 +34,7 @@ export function useStickyPreview(hasVisibleInput: boolean) {
       observer.disconnect()
       desktop.removeEventListener('change', update)
     }
-  }, [hasVisibleInput])
+  }, [enabled])
 
-  return { previewRef, footerRef, sticky: hasVisibleInput && fits }
+  return { previewRef, footerRef, sticky: enabled && fits }
 }

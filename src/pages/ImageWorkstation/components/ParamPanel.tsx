@@ -53,7 +53,7 @@ interface Props {
 }
 
 const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
-const tallPromptSize = { minRows: 6, maxRows: 10 }
+const tallPromptSize = { minRows: 10, maxRows: 16 }
 
 function outputPreview(
   model: PublicImageModel | undefined,
@@ -169,7 +169,7 @@ export default function ParamPanel({
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
             placeholder={fusion ? '例如：把商品放在桌面中央' : retouch ? '例如：保留吊牌文字' : variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
-            autoSize={variation || retouch || fusion ? tallPromptSize : { minRows: 5, maxRows: 10 }}
+            autoSize={retouch ? { minRows: 3, maxRows: 6 } : { minRows: 4, maxRows: 8 }}
             maxLength={fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH}
             showCount
           />
@@ -277,7 +277,7 @@ export default function ParamPanel({
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
             placeholder="例如：略微提亮背景"
-            autoSize={{ minRows: 3, maxRows: 8 }}
+            autoSize={{ minRows: 3, maxRows: 6 }}
             maxLength={noteMax}
             showCount
           />
