@@ -387,7 +387,7 @@ export default function BgRemoveTool() {
   const backgroundMode = settings.background === 'transparent' ? 'transparent' : 'color'
 
   return (
-    <div className="toolbox-watermark">
+    <div className="toolbox-watermark toolbox-sticky-preview">
       <TaskRecoveryPanel tools={['bg-remove']} blockedReason={busy?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async (result,image,detail,context)=>{
         assertRecoveryActor(context.actor,context.signal)
         await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)

@@ -666,7 +666,12 @@ export default function ImageWorkstation() {
             )}
           </div>
         </div>
-        {!edgeRefine && <><CreditBalanceNotice quote={generateQuote} /><CreditSettlementHint quote={generateQuote} /></>}
+        {!edgeRefine && (
+          <div className="image-workstation-footer-hints">
+            <CreditBalanceNotice quote={generateQuote} />
+            <CreditSettlementHint quote={generateQuote} />
+          </div>
+        )}
       </div>
       <PreviewGallery {...galleryProps} onDownload={item => {
         const index = controller.outputAssets.findIndex(asset => asset.id === item.id)
