@@ -94,7 +94,7 @@ describe('任务导航的草稿保护',()=>{
     expect(router.state.location.pathname).toBe('/draft')
     expect(screen.queryByText('放弃草稿并继续')).toBeNull()
   })
-  it('离开画布页面时保留已保存的未提交提示词',async()=>{
+  it('离开画布页面时未提交提示词需确认，取消留在当前页，确认后放弃草稿并继续',async()=>{
     cleanup();router.dispose()
     const abandon=vi.fn()
     function CanvasDraft(){
@@ -105,9 +105,14 @@ describe('任务导航的草稿保护',()=>{
     router=createMemoryRouter([{path:'/',element:<TaskNavigationProvider><Outlet/></TaskNavigationProvider>,children:[{path:'canvas/:mode',element:<CanvasDraft/>},{path:'other',element:<p>其他工具</p>}]}],{initialEntries:['/canvas/text-to-image']})
     render(<App><RouterProvider router={router}/></App>)
     fireEvent.click(screen.getByText('离开画布'))
-    await screen.findByText('其他工具')
+    expect(await screen.findByText('未提交提示词')).toBeTruthy()
+    fireEvent.click(screen.getByText('留在当前页'))
+    await waitFor(()=>expect(router.state.location.pathname).toBe('/canvas/text-to-image'))
     expect(abandon).not.toHaveBeenCalled()
-    expect(screen.queryByText('放弃草稿并继续')).toBeNull()
+    fireEvent.click(screen.getByText('离开画布'))
+    fireEvent.click(await screen.findByText('放弃草稿并继续'))
+    await screen.findByText('其他工具')
+    expect(abandon).toHaveBeenCalledOnce()
   })
   it('画布确认期间换账号，不能清空旧提示词或继续原导航',async()=>{
     cleanup();router.dispose()
