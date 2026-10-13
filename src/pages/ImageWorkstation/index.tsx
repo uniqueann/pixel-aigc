@@ -633,7 +633,15 @@ export default function ImageWorkstation() {
       <div ref={footerRef} className="image-workstation-footer">
         {!edgeRefine && configurationReady === true && <CreditQuoteNotice quote={generateQuote} onRetry={() => void activeConfiguration.refetch()} />}
         <div className="image-workstation-footer-row">
-          <span className="image-workstation-input-description" title={inputDescription}>{inputDescription}</span>
+          <div className="image-workstation-footer-info">
+            <span className="image-workstation-input-description" title={inputDescription}>{inputDescription}</span>
+            {!edgeRefine && (
+              <div className="image-workstation-footer-hints">
+                <CreditBalanceNotice quote={generateQuote} />
+                <CreditSettlementHint quote={generateQuote} />
+              </div>
+            )}
+          </div>
           <div className="image-workstation-footer-actions">
             {edgeRefine ? (
               <>
@@ -667,12 +675,6 @@ export default function ImageWorkstation() {
             )}
           </div>
         </div>
-        {!edgeRefine && (
-          <div className="image-workstation-footer-hints">
-            <CreditBalanceNotice quote={generateQuote} />
-            <CreditSettlementHint quote={generateQuote} />
-          </div>
-        )}
       </div>
       <PreviewGallery {...galleryProps} onDownload={item => {
         const index = controller.outputAssets.findIndex(asset => asset.id === item.id)
