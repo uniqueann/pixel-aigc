@@ -188,8 +188,6 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       if (params.sourceImageUrl !== undefined) mediaUrl(params.sourceImageUrl)
       if ((typeof record.context.autoRetryRemaining !== 'number' || ![0, 1].includes(record.context.autoRetryRemaining)) || typeof record.context.automaticRetry !== 'boolean' || typeof record.applied !== 'boolean') throw new Error('重试恢复状态无效')
       array(record.context.inputAssetIds)
-      for (const assetId of record.context.inputAssetIds) if (!project.assets[String(assetId)]) throw new Error('任务恢复源素材不存在')
-      for (const key of ['parentGenerationId', 'retryOfGenerationId']) if (record.context[key] !== undefined && !project.generations[String(record.context[key])]) throw new Error('任务恢复关联不存在')
       if (record.abandoned !== undefined && typeof record.abandoned !== 'boolean') throw new Error('恢复记录状态无效')
       if (record.backendTaskId !== undefined) string(record.backendTaskId)
       array(record.placements); array(record.replacedPlaceholderIds)
@@ -197,7 +195,16 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       for (const placement of record.placements) {
         object(placement); finite(placement.x); finite(placement.y); finite(placement.width, true); finite(placement.height, true)
       }
-      if (record.backendTaskId !== undefined && !project.generations[`generation:${record.backendTaskId}`]) throw new Error('恢复任务对应的 Generation 不存在')
+      if (!record.abandoned) {
+        const missingGeneration = record.backendTaskId !== undefined && !project.generations[`generation:${record.backendTaskId}`]
+        const context = record.context as { inputAssetIds: unknown[]; parentGenerationId?: unknown; retryOfGenerationId?: unknown }
+        const missingAsset = context.inputAssetIds.some((assetId) => !project.assets[String(assetId)])
+        const missingParent = (context.parentGenerationId !== undefined && !project.generations[String(context.parentGenerationId)])
+          || (context.retryOfGenerationId !== undefined && !project.generations[String(context.retryOfGenerationId)])
+        if (missingGeneration || missingAsset || missingParent) {
+          record.abandoned = true
+        }
+      }
     }
     snapshot.drafts = value.drafts as unknown as ProjectSnapshot['drafts']
     snapshot.recoveries = value.recoveries as unknown as ProjectSnapshot['recoveries']
@@ -391,7 +398,11 @@ function compactSnapshot(snapshot: ProjectSnapshot) {
   }
   for (const command of [...undo, ...redo]) collectCommandRefs(command, keepAssets, keepGenerations, embedded)
   if (snapshot.drafts.derived) keepAssets.add(snapshot.drafts.derived.sourceAssetId)
-  for (const recovery of Object.values(snapshot.recoveries)) {
+  for (const [id, recovery] of Object.entries(snapshot.recoveries)) {
+    if (recovery.abandoned || (recovery.backendTaskId && !project.generations[`generation:${recovery.backendTaskId}`])) {
+      delete snapshot.recoveries[id]
+      continue
+    }
     for (const assetId of recovery.context.inputAssetIds) keepAssets.add(assetId)
     if (recovery.context.parentGenerationId) keepGenerations.add(recovery.context.parentGenerationId)
     if (recovery.context.retryOfGenerationId) keepGenerations.add(recovery.context.retryOfGenerationId)

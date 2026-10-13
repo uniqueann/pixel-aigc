@@ -143,8 +143,17 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
     },
     async native(kind: TaskSourceKind, id: string, lock = false) {
       if (lock && kind === 'sync_credit') {
-        const [row] = await db.query('select aigc.lock_task_center_sync($1::uuid) as owned', [id])
-        if (!row?.owned) throw new HttpError(404,'任务不存在','TASK_NOT_FOUND')
+        try {
+          const [row] = await db.query('select aigc.lock_task_center_sync($1::uuid) as owned', [id])
+          if (!row?.owned) throw new HttpError(404,'任务不存在','TASK_NOT_FOUND')
+        } catch (error) {
+          if (error instanceof HttpError) throw error
+          const pg = error as { code?: string }
+          if (pg.code === '42501' || pg.code === '42883') {
+            throw new HttpError(404, '任务不存在或无权访问', 'TASK_NOT_FOUND', { cause: error })
+          }
+          throw error
+        }
       }
       return (
         await db.query(
@@ -245,22 +254,31 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
       action: 'seen' | 'dismiss',
       version: string,
     ) {
-      if (!(await this.native(kind, id, true))) await get(kind, id)
-      const row = await get(kind, id)
-      if (!row.outcome_version || row.outcome_version !== version)
-        throw new HttpError(
-          409,
-          '任务结果已变化，请重新查看',
-          'TASK_PRESENTATION_CONFLICT',
+      try {
+        if (!(await this.native(kind, id, true))) await get(kind, id)
+        const row = await get(kind, id)
+        if (!row.outcome_version || row.outcome_version !== version)
+          throw new HttpError(
+            409,
+            '任务结果已变化，请重新查看',
+            'TASK_PRESENTATION_CONFLICT',
+          )
+        const column = action === 'seen' ? 'seen' : 'dismissed'
+        await db.query(
+          `insert into aigc.task_ui_state(user_id,scope,source_kind,source_id,${column}_version,${column}_at)
+          values($1::uuid,$2,$3,$4::uuid,$5,now()) on conflict(user_id,scope,source_kind,source_id)
+          do update set ${column}_version=excluded.${column}_version,${column}_at=excluded.${column}_at,updated_at=now()`,
+          [...base, kind, id, version],
         )
-      const column = action === 'seen' ? 'seen' : 'dismissed'
-      await db.query(
-        `insert into aigc.task_ui_state(user_id,scope,source_kind,source_id,${column}_version,${column}_at)
-        values($1::uuid,$2,$3,$4::uuid,$5,now()) on conflict(user_id,scope,source_kind,source_id)
-        do update set ${column}_version=excluded.${column}_version,${column}_at=excluded.${column}_at,updated_at=now()`,
-        [...base, kind, id, version],
-      )
-      return taskSummary(await get(kind, id))
+        return taskSummary(await get(kind, id))
+      } catch (error) {
+        if (error instanceof HttpError) throw error
+        const pg = error as { code?: string }
+        if (pg.code === '42501' || pg.code === '23503' || pg.code === '23514') {
+          throw new HttpError(404, '任务不存在或无权访问', 'TASK_NOT_FOUND', { cause: error })
+        }
+        throw error
+      }
     },
   }
 }

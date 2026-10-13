@@ -1547,6 +1547,7 @@ body.sidebar-resizing * {
   width: 100%;
   min-width: 0;
   max-width: 1440px;
+  min-height: 100%;
   height: auto;
   margin: 0 auto;
   flex-direction: column;
@@ -1581,7 +1582,24 @@ body.sidebar-resizing * {
   background: var(--color-canvas);
 }
 
-.workstation-canvas-shell.is-empty { min-height: 280px; }
+.workstation-canvas-shell.is-empty { min-height: 360px; }
+
+.workstation-canvas-shell.is-empty .workstation-upload {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  min-height: 320px;
+}
+
+.workstation-canvas-shell.is-empty .workstation-upload .ant-upload.ant-upload-drag {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  min-height: 320px;
+}
 
 .workstation-task-placeholder {
   display: flex;
@@ -1852,6 +1870,7 @@ body.sidebar-resizing * {
 .image-workstation-main {
   display: grid;
   min-width: 0;
+  flex: 1;
   grid-template-columns: minmax(0, 1fr) 310px;
   align-items: start;
   gap: 18px;
@@ -1945,9 +1964,13 @@ body.sidebar-resizing * {
 .image-workstation-settings .generation-task-status-stack:empty { display: none; }
 
 .image-workstation-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   display: flex;
   min-width: 0;
-  padding: 10px 0;
+  margin: 0 -20px;
+  padding: 10px 20px calc(14px + env(safe-area-inset-bottom, 0px));
   flex-direction: column;
   gap: 6px;
   background: var(--color-bg);
@@ -1976,13 +1999,21 @@ body.sidebar-resizing * {
 
 .image-workstation-footer-hints {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 4px 16px;
+  gap: 16px;
+  min-width: 0;
 }
 
 .image-workstation-footer-hints:empty {
   display: none;
+}
+
+.image-workstation-footer-hints .credit-quote-notice {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  margin: 0;
 }
 
 .image-workstation-footer .credit-quote-notice { margin: 0; }
@@ -2456,18 +2487,27 @@ body.sidebar-resizing * {
   display: flex;
   min-width: 0;
   max-width: 1440px;
+  min-height: 100%;
   margin: 0 auto;
+  padding-top: 20px;
   flex-direction: column;
   gap: 18px;
 }
 
 .app-main-content { padding: 20px; overflow: auto; }
-/* 工具箱操作条 sticky 贴底时，滚动容器的 padding-bottom 会把约束矩形抬离视口，
-   条下露出等宽透明缝。工具箱页去掉这块底内边距，让操作条贴住滚动视口底边。 */
-.app-main-content:has(.toolbox-watermark) { padding-bottom: 0; }
+/* 工具箱操作条 sticky 贴底、预览 sticky 贴顶时，滚动容器的 padding 会破坏吸顶/贴底边界。
+   工具箱页去掉滚动容器上下内边距，统一由页面内部内边距承载。 */
+.app-main-content:has(.toolbox-watermark) {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0;
+  padding-bottom: 0;
+}
 
 .toolbox-watermark-main {
   display: grid;
+  min-width: 0;
+  flex: 1;
   grid-template-columns: minmax(0, 1fr) 310px;
   gap: 18px;
 }
@@ -2875,7 +2915,12 @@ body.sidebar-resizing * {
 
 @media (min-width: 901px) {
   /* 顶部留白放到页面内，滚动容器的内边距不会改变吸顶边界。 */
-  .app-main-content:has(.image-workstation-page) { padding-top: 0; padding-bottom: 0; }
+  .app-main-content:has(.image-workstation-page) {
+    display: flex;
+    flex-direction: column;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
   .image-workstation-page { padding-top: 20px; }
 
   .workstation-canvas-shell.is-empty { min-height: 360px; }
@@ -2884,18 +2929,14 @@ body.sidebar-resizing * {
     position: sticky;
     top: 0;
   }
-
-  .image-workstation-footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    margin: 0 -20px;
-    padding: 10px 20px calc(14px + env(safe-area-inset-bottom, 0px));
-  }
 }
 
 @media (max-width: 900px) {
-  .app-main-content:has(.image-workstation-page) { padding-bottom: 0; }
+  .app-main-content:has(.image-workstation-page) {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+  }
 
   .workstation-fusion-sources {
     flex-direction: column;
@@ -2909,14 +2950,6 @@ body.sidebar-resizing * {
   }
 
   .workstation-preview-image { max-height: 280px; }
-
-  .image-workstation-footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    margin: 0 -20px;
-    padding: 10px 20px calc(12px + env(safe-area-inset-bottom, 0px));
-  }
 }
 
 .dashboard-entry {
@@ -3186,6 +3219,10 @@ body.sidebar-resizing * {
 }
 
 @media (min-width: 901px) {
+  .toolbox-sticky-preview > .toolbox-watermark-main {
+    min-height: calc(100vh - 120px);
+  }
+
   .toolbox-sticky-preview > .toolbox-watermark-main > .toolbox-preview-panel {
     position: sticky;
     top: 0;
