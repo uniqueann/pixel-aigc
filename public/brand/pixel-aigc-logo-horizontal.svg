@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 48" width="176" height="48" role="img" aria-label="Pixel AIGC">
+  <defs>
+    <linearGradient id="pa-side-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3CE8BA"/>
+      <stop offset="1" stop-color="#12A67F"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 图标 -->
+  <rect width="48" height="48" rx="11" fill="url(#pa-side-bg)"/>
+  <g fill="#0E1A16">
+    <rect x="11" y="7"  width="5.5" height="5.5" rx="1.2"/>
+    <rect x="18" y="7"  width="5.5" height="5.5" rx="1.2"/>
+    <rect x="25" y="7"  width="5.5" height="5.5" rx="1.2"/>
+    <rect x="11" y="14" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="32" y="14" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="11" y="21" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="18" y="21" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="25" y="21" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="11" y="28" width="5.5" height="5.5" rx="1.2"/>
+    <rect x="11" y="35" width="5.5" height="5.5" rx="1.2"/>
+  </g>
+  <rect x="32" y="35" width="5.5" height="5.5" rx="1.2" fill="#FFFFFF"/>
+
+  <!-- 字标：Pixel 跟随主题文字色（可用 CSS 变量 pa-logo-text 覆盖），AIGC 使用品牌色 -->
+  <text x="60" y="32" font-family="Inter, -apple-system, 'Segoe UI', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="23" font-weight="700" letter-spacing="-0.4">
+    <tspan style="fill: var(--pa-logo-text, #F3F4F6)">Pixel</tspan><tspan dx="5" fill="#21CFA0" font-weight="600" letter-spacing="0.6">AIGC</tspan>
+  </text>
+</svg>

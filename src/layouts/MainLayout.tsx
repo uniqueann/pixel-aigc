@@ -40,6 +40,7 @@ import { rememberTool, seedRecentTool } from '@/features/dashboard/recentWork'
 import ToolHelpLink from '@/components/ToolHelpLink'
 import CreditRulesNotice from '@/features/activation/CreditRulesNotice'
 import { syncActivation } from '@/features/activation/client'
+import { PixelIcon, PixelWordmark } from '@/components/brand/PixelLogo'
 
 const { Sider, Content, Header } = Layout
 
@@ -196,8 +197,7 @@ function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: 
   const accountName = account?.displayName ?? '个人账号'
   const brandButton = (
     <button className="app-brand" type="button" onClick={() => navigate('/')} aria-label="返回工作台首页">
-      <span className="app-brand-mark">P</span>
-      {iconOnly ? null : <span className="app-brand-name">Pixel AIGC</span>}
+      {iconOnly ? <PixelIcon className="app-brand-mark" /> : <PixelWordmark className="app-brand-wordmark" />}
     </button>
   )
   return (
@@ -222,7 +222,7 @@ function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: 
           </>
         ) : (
           <button className="collapsed-brand-toggle" type="button" onClick={() => toggleSidebar(true)} aria-label="展开侧边栏">
-            <span className="app-brand-mark collapsed-brand-mark">P</span>
+            <PixelIcon className="app-brand-mark collapsed-brand-mark" />
             <MenuUnfoldOutlined className="collapsed-brand-icon" />
           </button>
         )}

@@ -4,6 +4,7 @@ import { Alert, App, Button, Space } from 'antd'
 import { isCanvasRoute } from '@/layouts/projectActions'
 import { acquireEditLock, downloadJson, initializePersistence, reclaimEditAccess, releaseEditLock, restartAfterLoadError } from './projectPersistence'
 import { usePersistenceStore } from './persistenceStore'
+import PostLoginLoading from '@/components/brand/PostLoginLoading'
 
 function RecoveryScreen({ mode }: { mode: 'error' | 'readonly' }) {
   const error = usePersistenceStore((state) => state.error)
@@ -57,7 +58,7 @@ export default function PersistenceGate({ children }: { children: ReactNode }) {
     if (onCanvas) return
     void releaseEditLock()
   }, [onCanvas])
-  if (phase === 'idle' || phase === 'loading') return <div className="free-canvas-loading">正在恢复本地项目…</div>
+  if (phase === 'idle' || phase === 'loading') return <PostLoginLoading label="正在恢复本地项目…" />
   if (phase === 'error') return <RecoveryScreen mode="error" />
   if (onCanvas && !writable && lockPhase === 'blocked') return <RecoveryScreen mode="readonly" />
   if (onCanvas && !writable) return <div className="free-canvas-loading">正在取得项目编辑权…</div>

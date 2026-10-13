@@ -3,6 +3,7 @@ import { Alert, Button, Input, Space } from 'antd'
 import { authEnabled, cloudConfigurationError, supabase } from './client'
 import { callbackHasLink, exchangeCodeOnce, verifyEmailLink } from './authCallback'
 import { safeNext } from './authPaths'
+import { PixelWordmark } from '@/components/brand/PixelLogo'
 
 const callbackUrl = () => `${window.location.origin}/auth/callback`
 const validPassword = (value: string) => value.length >= 8 && value.length <= 128
@@ -95,8 +96,9 @@ export default function AuthPages() {
     <p>当前账号暂时无法使用 Pixel AIGC，请联系管理员。</p>
     <Button onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>退出并切换账号</Button></div>
   const labels: Record<string,string> = { '/login': '登录', '/register': '注册', '/verify-email': '验证邮箱', '/forgot-password': '找回密码', '/reset-password': '设置新密码', '/auth/callback': '正在完成验证' }
-  return <div className="project-recovery-screen" style={{ maxWidth: 420, margin: '10vh auto', gap: 16 }}>
-    <h2>Pixel AIGC · {labels[path] ?? '账号'}</h2>
+  return <div className="project-recovery-screen auth-screen" style={{ maxWidth: 420, margin: '10vh auto', gap: 16 }}>
+    <PixelWordmark className="auth-wordmark" />
+    <h2>{labels[path] ?? '账号'}</h2>
     {path === '/verify-email' && <p>注册邮件已发送，如需重发请输入邮箱。</p>}
     {path === '/reset-password' && <p>设置新密码后，请使用新密码重新登录。</p>}
     {error && <Alert type="error" showIcon message={error} />}
