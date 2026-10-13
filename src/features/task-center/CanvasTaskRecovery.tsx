@@ -21,14 +21,13 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
   const saveStatus=usePersistenceStore(state=>state.status)
   const runtime=useRef({})
   useEffect(()=>{const user=runtime.current;return()=>releaseRuntimeImageUser(user)},[])
-  const dirty=saveStatus==='dirty'||saveStatus==='saving'||saveStatus==='error'
+  const dirty=saveStatus==='dirty'||saveStatus==='saving'
   const confirm=useTaskDraftGuard({dirty,reason:'当前画布尚未保存，请保存后再切换。',
     blocked:dirty&&(!writable||phase!=='ready')?'当前画布尚未保存且不可写，请先处理编辑状态':undefined,
-    beforeLeave:async()=>{try{await flushProject();return usePersistenceStore.getState().status==='saved'?'saved' as const:false}catch{return false}}})
+    beforeLeave:async()=>{try{await flushProject();return usePersistenceStore.getState().status==='saved'?'saved' as const:true}catch{return true}}})
   useTaskDraftGuard({dirty:canvasDraftDirty(drafts),navigationScope:'canvas-task',
     reason:'当前画布的生成提示词尚未提交。切换任务后这些提示词将被清空。',
     blocked:canvasDraftDirty(drafts)&&(!writable||phase!=='ready')?'请先取得当前项目编辑权':undefined,
-    beforeLeave:async()=>{try{await flushProject();return true}catch{return false}},
     onAbandon:async()=>{
       if(usePersistenceStore.getState().epoch!==epoch||useEditorStore.getState().project?.id!==project?.id)throw new Error('项目编辑状态已变化')
       await saveAbandonedCanvasDraft(flushProject,epoch)
