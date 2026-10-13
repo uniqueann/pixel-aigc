@@ -142,9 +142,13 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
         : []
     },
     async native(kind: TaskSourceKind, id: string, lock = false) {
+      if (lock && kind === 'sync_credit') {
+        const [row] = await db.query('select aigc.lock_task_center_sync($1::uuid) as owned', [id])
+        if (!row?.owned) throw new HttpError(404,'任务不存在','TASK_NOT_FOUND')
+      }
       return (
         await db.query(
-          `select * from aigc.${tables[kind]} where user_id=$1::uuid and scope=$2 and id=$3::uuid${lock ? ' for update' : ''}`,
+          `select * from aigc.${tables[kind]} where user_id=$1::uuid and scope=$2 and id=$3::uuid${lock && kind !== 'sync_credit' ? ' for update' : ''}`,
           [...base, id],
         )
       )[0]

@@ -20,6 +20,7 @@ import { TaskCenterProvider } from './TaskCenterRuntime'
 import { useTaskCenter } from './context'
 import { emitTaskCenter, readReceipts, saveReceipt } from './receipts'
 import { taskCenterKeys } from './client'
+import {readWorkstationSession} from './workstationSession'
 import type { TaskCenterSummary } from '@shared/task-center'
 import type { ReactNode } from 'react'
 
@@ -147,6 +148,15 @@ afterEach(() => {
 })
 
 describe('全局任务运行层', () => {
+  it('提交响应丢失后原请求查询写回工作站绑定，完成任务也可自动找回',async()=>{
+    const task={...row(10,'succeeded'),origin:{entry:'workstation' as const,tool:'variation' as const}}
+    saveReceipt('image_job',task.requestId,task.origin)
+    api.request.mockImplementation(async(path:string)=>path.includes('by-request')?task:{items:[],activeCount:0,unseenCount:0,snapshotAt:new Date().toISOString()})
+    mount()
+    await waitFor(()=>expect(readWorkstationSession(actor,'variation')?.task).toEqual({sourceKind:'image_job',sourceId:task.sourceId}))
+    expect(readReceipts(actor)).toEqual([])
+    expect(api.request.mock.calls.every(call=>call[1]==='GET')).toBe(true)
+  })
   it('初次加载不通知历史；本会话终态和迟到版本只各通知一次', async () => {
     let task = row(1, 'succeeded')
     api.request.mockImplementation(async () => ({

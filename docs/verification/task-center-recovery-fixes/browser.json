@@ -1,0 +1,38 @@
+{
+  "verifiedAt": "2026-10-12T23:17:09.547Z",
+  "mode": "本地真实组件和模拟只读接口",
+  "serverScope": "preview",
+  "generationPosts": 0,
+  "declaredDimensions": {
+    "width": 0,
+    "height": 0
+  },
+  "decodedDimensions": {
+    "width": 480,
+    "height": 480
+  },
+  "refreshedImage": {
+    "loaded": true,
+    "width": 480,
+    "height": 480
+  },
+  "steps": [
+    {
+      "screenshot": "01-auto-processing.png",
+      "check": "普通工作站入口无 task 参数，自动接回唯一进行中任务；原编辑内容仍为空"
+    },
+    {
+      "screenshot": "02-measured-input.png",
+      "check": "模拟完成后显式作为新输入，显示真实 480×480"
+    },
+    {
+      "screenshot": "03-refresh-retained-input.png",
+      "check": "刷新后按最小结果引用读取原图，保持 480×480"
+    }
+  ],
+  "observations": [
+    "热更新阶段出现临时测试页重复 createRoot 和 textarea 高度警告；完整刷新后的最后观察仅有既有 React Router 升级提示"
+  ],
+  "realProviderVerified": false,
+  "productionVerified": false
+}

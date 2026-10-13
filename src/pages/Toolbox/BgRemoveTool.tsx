@@ -388,11 +388,11 @@ export default function BgRemoveTool() {
 
   return (
     <div className="toolbox-watermark">
-      <TaskRecoveryPanel tools={['bg-remove']} blockedReason={busy?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async (result,blob,detail,context)=>{
+      <TaskRecoveryPanel tools={['bg-remove']} blockedReason={busy?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async (result,image,detail,context)=>{
         assertRecoveryActor(context.actor,context.signal)
-        await persistRecoveredResult(detail,result,context.actor,context.signal,blob)
+        await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)
         assertRecoveryActor(context.actor,context.signal)
-        await addFile(new File([blob],`已有抠图-${detail.task.sourceId}.png`,{type:blob.type}),context)
+        await addFile(new File([image.blob],`已有抠图-${detail.task.sourceId}.png`,{type:image.mimeType}),context)
       }}/>
       <ToolboxImageCard
         items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, status: item.status, error: item.error }))}

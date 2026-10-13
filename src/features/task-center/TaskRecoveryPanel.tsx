@@ -14,7 +14,7 @@ export interface RecoveryActionContext { actor: TaskActor; signal: AbortSignal }
 interface Props {
   tools: readonly TaskTool[]
   projectId?: string
-  onUseImage?: (result: TaskCenterMedia, blob: Blob, detail: TaskCenterDetail, context: RecoveryActionContext) => Promise<void> | void
+  onUseImage?: (result: TaskCenterMedia, image: Awaited<ReturnType<typeof readRecoveryImage>>, detail: TaskCenterDetail, context: RecoveryActionContext) => Promise<void> | void
   onLoadParameters?: (prepared: PreparedRecoveryParameters, detail: TaskCenterDetail, context: RecoveryActionContext) => Promise<void | boolean> | void | boolean
   onAddResult?: (result: TaskCenterMedia, detail: TaskCenterDetail, context: RecoveryActionContext) => Promise<void> | void
   blockedReason?: string
@@ -75,7 +75,7 @@ function RecoveryPanelContent({tools,projectId,onUseImage,onLoadParameters,onAdd
         {result.availability!=='available'?<p>结果 {result.ordinal+1}：{result.availability==='expired'?'已过期':'暂不可读取'}</p>:<>
           {result.kind==='video'?<VideoPlayer reference={{objectKey:result.objectKey,url:result.url,expiresAt:Date.parse(result.urlExpiresAt),retentionExpiresAt:detail.task.resultExpiresAt??undefined}} ownerId={recovery.actor?.owner}/>:<Image src={result.url} alt={`原任务结果 ${result.ordinal+1}`} width={160}/>}
           <Space wrap>{onUseImage&&result.kind==='image'?<Button size="small" disabled={!!blockedReason} loading={busy} onClick={()=>void run(async context=>{
-            const measured=await readRecoveryImage(result,context.actor,context.signal);await onUseImage(result,measured.blob,detail,context)
+            const measured=await readRecoveryImage(result,context.actor,context.signal);await onUseImage(result,measured,detail,context)
           })}>将结果作为新输入</Button>:null}
           {onAddResult?<Button size="small" disabled={!!blockedReason} loading={busy} onClick={()=>void run(async context=>{await onAddResult(result,detail,context)})}>添加已有结果</Button>:null}</Space>
         </>}

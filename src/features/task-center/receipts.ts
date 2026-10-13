@@ -11,6 +11,7 @@ import {
   taskCenterOn,
   type TaskActor,
 } from './client'
+import { readWorkstationSession,saveWorkstationSession } from './workstationSession'
 
 export const TASK_CENTER_EVENT = 'pixel-task-center'
 const receiptSchema = z
@@ -92,6 +93,7 @@ export function saveReceipt(
   } catch {
     emitTaskCenter({ type: 'storage-error' })
   }
+  if(receipt.data.origin?.entry==='workstation'&&kind!=='email_task'&&!saveWorkstationSession(actor,receipt.data.origin.tool,{task:undefined,lastRequestAt:receipt.data.createdAt}))emitTaskCenter({type:'storage-error'})
   emitTaskCenter({ type: 'start', receipt: receipt.data })
   return receipt.data
 }
@@ -119,8 +121,18 @@ export function submittedReceipt(
   sourceId: string,
 ) {
   if (!receipt || !sameTaskActor(receipt)) return
+  rememberWorkstationSubmission(receipt,sourceId)
   removeReceipt(receipt, receipt.sourceKind, receipt.requestId)
   emitTaskCenter({ type: 'submitted', receipt, sourceId })
+}
+
+/** 提交响应或全局原请求查询均写入同一任务绑定，不另存第二份待确认凭据。 */
+export function rememberWorkstationSubmission(receipt:TaskReceipt,sourceId:string) {
+  if(!sameTaskActor(receipt)||receipt.origin?.entry!=='workstation'||receipt.sourceKind==='email_task')return
+  const tool=receipt.origin.tool
+  if((readWorkstationSession(receipt,tool)?.lastRequestAt??0)>receipt.createdAt)return
+  if(readReceipts(receipt).some(other=>other.origin?.entry==='workstation'&&other.origin.tool===tool&&other.createdAt>receipt.createdAt))return
+  if(!saveWorkstationSession(receipt,tool,{task:{sourceKind:receipt.sourceKind,sourceId}}))emitTaskCenter({type:'storage-error'})
 }
 
 /** 同步入口按实际调用工具分类；单纯本地处理不会调用该函数。 */

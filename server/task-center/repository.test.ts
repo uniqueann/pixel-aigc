@@ -115,6 +115,33 @@ async function fixture(
 }
 
 describe('统一任务只读查询、展示权限和分页', () => {
+  it('三源已查看与移除均成功，同步原表和账本不被修改', async () => {
+    const f = await fixture()
+    const before = (await db.query('select to_jsonb(j) as data from aigc.sync_credit_jobs j where id=$1',[f.sync])).rows
+    const ledger = (await db.query('select count(*)::int as n from aigc.credit_ledger')).rows
+    for (const [kind,id] of [['image_job',f.image],['sync_credit',f.sync],['email_task',f.email]] as const) {
+      await actor(users[0],'local',async r=>{
+        const task = taskSummary(await r.get(kind,id))
+        expect((await r.presentation(kind,id,'seen',task.outcomeVersion!)).seen).toBe(true)
+        expect((await r.presentation(kind,id,'dismiss',task.outcomeVersion!)).dismissed).toBe(true)
+      })
+    }
+    expect((await db.query('select to_jsonb(j) as data from aigc.sync_credit_jobs j where id=$1',[f.sync])).rows).toEqual(before)
+    expect((await db.query('select count(*)::int as n from aigc.credit_ledger')).rows).toEqual(ledger)
+    expect((await db.query<{permitted:boolean}>("select has_any_column_privilege('aigc_api','aigc.sync_credit_jobs','UPDATE') as permitted")).rows[0].permitted).toBe(false)
+  })
+  it('同步锁函数拒绝跨账号、跨环境及直接客户端调用，旧版本返回409', async () => {
+    const f = await fixture()
+    const original = await actor(users[0],'local',async r=>taskSummary(await r.get('sync_credit',f.sync)))
+    for(const [owner,scope] of [[users[1],'local'],[users[0],'preview'],[users[0],'production']] as const) {
+      await expect(actor(owner,scope,r=>r.presentation('sync_credit',f.sync,'seen',original.outcomeVersion!))).rejects.toMatchObject({status:404})
+    }
+    await db.query("update aigc.sync_credit_jobs set result=jsonb_set(result,'{objectKey}','\"temporary/new.png\"') where id=$1",[f.sync])
+    await expect(actor(users[0],'local',r=>r.presentation('sync_credit',f.sync,'seen',original.outcomeVersion!))).rejects.toMatchObject({status:409})
+    for(const role of ['anon','authenticated']) {
+      expect((await db.query<{permitted:boolean}>('select has_function_privilege($1,\'aigc.lock_task_center_sync(uuid)\',\'EXECUTE\') as permitted',[role])).rows[0].permitted).toBe(false)
+    }
+  })
   it('三源状态与费用分开投影，免费记录可发现，摘要不带正文或对象键', async () => {
     const f = await fixture()
     const data = await actor(

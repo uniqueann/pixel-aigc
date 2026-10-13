@@ -31,6 +31,7 @@ import {
 } from './client'
 import {
   readReceipts,
+  rememberWorkstationSubmission,
   removeReceipt,
   TASK_CENTER_EVENT,
   type TaskCenterEvent,
@@ -183,6 +184,11 @@ function TaskCenterSession({
     }
     if (actor) {
       client.setQueryData(taskCenterKeys.summary(actor, task.sourceKind, task.requestId), task)
+      const receipt=readReceipts(actor).find(receipt=>receipt.sourceKind===task.sourceKind&&receipt.requestId===task.requestId)
+      if(receipt?.origin?.entry==='workstation') {
+        rememberWorkstationSubmission(receipt,task.sourceId)
+        void client.invalidateQueries({queryKey:[...taskCenterKeys.root(actor),'workstation-discovery',receipt.origin.tool]})
+      }
       removeReceipt(actor, task.sourceKind, task.requestId)
       setReceipts(readReceipts(actor))
     }

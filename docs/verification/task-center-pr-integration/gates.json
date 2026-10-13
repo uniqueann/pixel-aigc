@@ -1,0 +1,32 @@
+{
+  "verifiedAt": "2026-10-12T23:52:34.585Z",
+  "baseline164": "7eaa4563aebfc510c0682cf8883850b26cc2f68c",
+  "integrated163": "fb9faf2623a6081f6f9f47958285525c283423a7",
+  "destinationPullRequest": 164,
+  "testFiles": 260,
+  "tests": 1699,
+  "unhandledErrors": 0,
+  "commands": [
+    {
+      "command": "npm test",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "backendAndMigrationsUnchangedFrom164": true,
+  "reusedDatabaseEvidence": "../task-center-recovery-fixes/",
+  "supplierRequests": 0,
+  "creditsReserved": 0,
+  "realHttpVerified": false
+}

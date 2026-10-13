@@ -1,0 +1,33 @@
+{
+  "verifiedAt": "2026-10-12T23:25:25.615Z",
+  "database": "已授权现有业务库",
+  "scope": "preview",
+  "role": "aigc_api",
+  "presentationSources": [
+    "image_job",
+    "sync_credit"
+  ],
+  "missingSources": [
+    "email_task"
+  ],
+  "actions": [
+    "seen",
+    "dismiss"
+  ],
+  "rolledBack": true,
+  "selectedTasksUnchangedWithinLockedTransactions": true,
+  "ledgerUnchanged": true,
+  "presentationUnchanged": true,
+  "backgroundMaintenanceChangedOtherTasks": false,
+  "oldDirectLockError": "42501",
+  "isolationRejections": 5,
+  "permissions": {
+    "sync_update": false,
+    "app_execute": true,
+    "anon_execute": false,
+    "authenticated_execute": false
+  },
+  "supplierRequests": 0,
+  "creditsReserved": 0,
+  "httpVerified": false
+}

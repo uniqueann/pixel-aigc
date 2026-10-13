@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { useUserStore, type AccountContext } from '@/store/useUserStore'
+import {readWorkstationSession,saveWorkstationSession} from './workstationSession'
 import {
   readReceipts,
   saveReceipt,
@@ -86,5 +87,22 @@ describe('最小提交凭据', () => {
     saveReceipt('sync_credit', id(2))
     submittedReceipt(receipt, id(3))
     expect(readReceipts({ owner: id(99), scope: 'preview' })).toHaveLength(1)
+  })
+  it('工作站新提交清除旧任务绑定，响应按原请求写回单一会话',()=>{
+    saveWorkstationSession(actor,'smart-edit',{task:{sourceKind:'image_job',sourceId:id(1)}})
+    const receipt=saveReceipt('image_job',id(2),{entry:'workstation',tool:'smart-edit'})
+    expect(readWorkstationSession(actor,'smart-edit')?.task).toBeUndefined()
+    submittedReceipt(receipt,id(3))
+    expect(readWorkstationSession(actor,'smart-edit')?.task).toEqual({sourceKind:'image_job',sourceId:id(3)})
+    expect(readReceipts(actor)).toEqual([])
+  })
+  it('较早请求迟到时，不覆盖已确认的新任务绑定',()=>{
+    const start=Date.now();vi.spyOn(Date,'now').mockReturnValue(start)
+    const older=saveReceipt('image_job',id(1),{entry:'workstation',tool:'smart-edit'})
+    vi.mocked(Date.now).mockReturnValue(start+10)
+    const newer=saveReceipt('image_job',id(2),{entry:'workstation',tool:'smart-edit'})
+    submittedReceipt(newer,id(4));submittedReceipt(older,id(3))
+    expect(readWorkstationSession(actor,'smart-edit')?.task).toEqual({sourceKind:'image_job',sourceId:id(4)})
+    expect(readReceipts(actor)).toEqual([])
   })
 })

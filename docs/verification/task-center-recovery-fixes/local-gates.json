@@ -1,0 +1,42 @@
+{
+  "verifiedAt": "2026-10-12T23:27:46.412Z",
+  "baseCommit": "47ae52c",
+  "branch": "fix/task-center-recovery-regressions",
+  "commands": [
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "testFiles": 258,
+      "tests": 1685,
+      "unhandledErrors": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "serverTypes": true,
+      "frontendTypes": true,
+      "nodeTypes": true
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0,
+      "warnings": 0
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run test:task-center:postgres",
+      "exitCode": 0,
+      "isolated": true
+    }
+  ],
+  "existingWarnings": [
+    "Vite 包体积提示",
+    "React Router v7 升级提示"
+  ],
+  "realSupplierRequests": 0,
+  "creditsReserved": 0,
+  "scope": "修复实现；完整真实链路和生产灰度未验收"
+}
