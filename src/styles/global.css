@@ -1542,7 +1542,8 @@ body.sidebar-resizing * {
   color: var(--color-error, #ff7875);
 }
 
-.image-workstation-page {
+.image-workstation-page,
+.toolbox-page {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -1859,11 +1860,13 @@ body.sidebar-resizing * {
   font-weight: 600;
 }
 
-.image-workstation-tool-switcher {
+.image-workstation-tool-switcher,
+.toolbox-tool-switcher {
   flex: 0 0 auto;
 }
 
-.image-workstation-tool-switcher.page-tab-row {
+.image-workstation-tool-switcher.page-tab-row,
+.toolbox-tool-switcher.page-tab-row {
   margin-bottom: 0;
 }
 
@@ -2501,23 +2504,13 @@ body.sidebar-resizing * {
 .toolbox-watermark {
   display: flex;
   min-width: 0;
-  max-width: 1440px;
-  min-height: 100%;
-  margin: 0 auto;
-  padding-top: 20px;
+  width: 100%;
+  flex: 1;
   flex-direction: column;
   gap: 18px;
 }
 
 .app-main-content { padding: 20px; overflow: auto; }
-/* 工具箱操作条 sticky 贴底、预览 sticky 贴顶时，滚动容器的 padding 会破坏吸顶/贴底边界。
-   工具箱页去掉滚动容器上下内边距，统一由页面内部内边距承载。 */
-.app-main-content:has(.toolbox-watermark) {
-  display: flex;
-  flex-direction: column;
-  padding-top: 0;
-  padding-bottom: 0;
-}
 
 .toolbox-watermark-main {
   display: grid;
@@ -2930,24 +2923,29 @@ body.sidebar-resizing * {
 
 @media (min-width: 901px) {
   /* 顶部留白放到页面内，滚动容器的内边距不会改变吸顶边界。 */
-  .app-main-content:has(.image-workstation-page) {
+  .app-main-content:has(.image-workstation-page),
+  .app-main-content:has(.toolbox-page),
+  .app-main-content:has(.toolbox-watermark) {
     display: flex;
     flex-direction: column;
     padding-top: 0;
     padding-bottom: 0;
   }
-  .image-workstation-page { padding-top: 20px; }
+  .image-workstation-page,
+  .toolbox-page { padding-top: 20px; }
 
   .workstation-canvas-shell.is-empty { min-height: 360px; }
 
   .image-workstation-canvas-column.is-sticky {
     position: sticky;
-    top: 0;
+    top: 16px;
   }
 }
 
 @media (max-width: 900px) {
-  .app-main-content:has(.image-workstation-page) {
+  .app-main-content:has(.image-workstation-page),
+  .app-main-content:has(.toolbox-page),
+  .app-main-content:has(.toolbox-watermark) {
     display: flex;
     flex-direction: column;
     padding-bottom: 0;
@@ -3242,13 +3240,9 @@ body.sidebar-resizing * {
 }
 
 @media (min-width: 901px) {
-  .toolbox-sticky-preview > .toolbox-watermark-main {
-    min-height: calc(100vh - 120px);
-  }
-
   .toolbox-sticky-preview > .toolbox-watermark-main > .toolbox-preview-panel {
     position: sticky;
-    top: 0;
+    top: 16px;
   }
 }
 

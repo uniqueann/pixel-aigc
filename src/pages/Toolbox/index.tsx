@@ -17,9 +17,9 @@ export default function Toolbox() {
   const { capabilities: { bgRemove: bgRemoveReady } } = useCapabilities()
 
   return (
-    <div>
+    <div className="toolbox-page">
       <ToolSwitcher
-        className="page-tab-row"
+        className="toolbox-tool-switcher page-tab-row"
         options={TOOLBOX_TOOLS.map((t) => ({
           value: t.slug,
           label: t.label,

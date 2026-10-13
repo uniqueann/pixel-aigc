@@ -442,8 +442,7 @@ export default function ImageWorkstation() {
   const blockReason = generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
   const example = toolExample(activeTool.slug)
   const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
-  const hasVisibleInput = fusionTool ? Boolean(fusionProduct || fusionReference) : Boolean(showSourcePreview && controller.inputAsset)
-  const { previewRef, footerRef, sticky } = useStickyPreview(hasVisibleInput && !showExample)
+  const { previewRef, footerRef, sticky } = useStickyPreview(true)
   const inputDescription = recoveringActive&&!controller.inputAsset&&!fusionProduct&&!fusionReference
     ? '正在同步任务，请稍候...'
     : fusionTool
