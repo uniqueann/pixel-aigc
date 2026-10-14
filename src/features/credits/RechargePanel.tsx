@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, Button, Input, Modal, Select, Space } from 'antd'
+import { Alert, Button, Input, Modal, Select, Space, Tag } from 'antd'
 import { useUserStore } from '@/store/useUserStore'
 import { BILLING_REFRESH_EVENT, checkoutCredits, getBillingCatalog, getCreditOrder, listCreditOrders, refreshBillingBalance, requestCashRefund } from '@/services/api/billing'
 import { formatCreditPrice, type BillingCatalog, type CreditOrder, type PaymentProvider } from '@shared/billing'
@@ -9,6 +9,12 @@ import type { CreditDiscount } from '@shared/credit-discounts'
 
 const STATUS_LABELS = {pending:'等待支付确认',paid:'已到账',failed:'支付失败',refunded:'已退款',review:'待人工核对'}
 const PROVIDER_LABELS: Record<PaymentProvider, string> = { dodo: 'Dodo Payments', creem: 'Creem' }
+const ORDER_EXPIRY_MS = 30 * 60 * 1000
+
+function isOrderExpired(createdAt: string) {
+  const age = Date.now() - new Date(createdAt).getTime()
+  return !Number.isNaN(age) && age > ORDER_EXPIRY_MS
+}
 export default function RechargePanel({open,onPaid}:{open:boolean;onPaid:()=>void}) {
   const owner=useUserStore(state=>state.userId)
   // 账号变更时重建整个充值面板，目录、订单、付款方式和退款表单都不跨账号保留。
@@ -23,6 +29,37 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
   const [error,setError]=useState<string>()
   const [refundOrder,setRefundOrder]=useState<CreditOrder>()
   const [refundReason,setRefundReason]=useState('')
+  const [dismissedOrderIds, setDismissedOrderIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(`pixel:dismissed-orders:${owner}`)
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>()
+    } catch {
+      return new Set<string>()
+    }
+  })
+  const [showDismissed, setShowDismissed] = useState(false)
+
+  const dismissOrder = (id: string) => {
+    setDismissedOrderIds(prev => {
+      const next = new Set(prev)
+      next.add(id)
+      try {
+        localStorage.setItem(`pixel:dismissed-orders:${owner}`, JSON.stringify([...next]))
+      } catch { /* ignore */ }
+      return next
+    })
+  }
+
+  const restoreOrder = (id: string) => {
+    setDismissedOrderIds(prev => {
+      const next = new Set(prev)
+      next.delete(id)
+      try {
+        localStorage.setItem(`pixel:dismissed-orders:${owner}`, JSON.stringify([...next]))
+      } catch { /* ignore */ }
+      return next
+    })
+  }
   // 展开状态和已输入代码跨通道保留。已验证报价由购买组件在通道变化时清空。
   const [discountExpanded,setDiscountExpanded]=useState(false)
   const [trackedOpen,setTrackedOpen]=useState(open)
@@ -103,13 +140,54 @@ function AccountRechargePanel({owner,open,onPaid}:{owner:string;open:boolean;onP
       <BillingExplanation freeBgRemoveRemaining={catalog.freeBgRemoveRemaining} freeBgRemoveMonth={catalog.freeBgRemoveMonth} />
       <small>现金退款仅支持未消费的充值积分，审核通过后原路退回；赠送积分不支持折现。生成失败系统秒级退积分。</small>
     </>}
-    {orders.length ? <><strong>充值订单</strong>{orders.map(order=><div key={order.id} style={{padding:'8px 0',borderBottom:'1px solid var(--color-border)'}}>
-      <span>{order.paidAmount == null && order.quotedDiscount ? '预计 ' : ''}{formatCreditPrice(order.paidAmount ?? order.quotedAmount ?? order.amount,order.currency)} · {order.credits} 分 · {STATUS_LABELS[order.status]}</span>
-      {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount) ? <small style={{display:'block'}}>原价 {formatCreditPrice(order.amount,order.currency)} · 折扣代码 {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount)?.code}</small> : null}
-      <small style={{display:'block'}}>{new Date(order.createdAt).toLocaleString('zh-CN')} · {PROVIDER_LABELS[order.provider]}</small>
-      <Space>{order.status === 'pending' ? <><Button size="small" loading={busy===order.id} onClick={()=>void checkOrder(order.id)}>查询到账</Button>{order.checkoutUrl ? <Button size="small" onClick={()=>window.location.assign(order.checkoutUrl!)}>继续支付</Button> : null}</> : null}
-        {order.status === 'paid' ? <Button size="small" disabled={order.refundRequested} onClick={()=>{setRefundOrder(order);setRefundReason('')}}>{order.refundRequested ? '退款申请已提交' : '申请退款'}</Button> : null}</Space>
-    </div>)}</> : null}
+    {orders.length ? <><strong>充值订单</strong>{orders.filter(o => !dismissedOrderIds.has(o.id)).map(order => {
+      const isExpired = order.status === 'pending' && isOrderExpired(order.createdAt)
+      return (
+        <div key={order.id} style={{padding:'8px 0',borderBottom:'1px solid var(--color-border)'}}>
+          <div>
+            <span>{order.paidAmount == null && order.quotedDiscount ? '预计 ' : ''}{formatCreditPrice(order.paidAmount ?? order.quotedAmount ?? order.amount,order.currency)} · {order.credits} 分 · {STATUS_LABELS[order.status]}</span>
+            {isExpired ? <Tag style={{ marginLeft: 6, fontSize: 11 }}>已超时</Tag> : null}
+            {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount) ? <small style={{display:'block'}}>原价 {formatCreditPrice(order.amount,order.currency)} · 折扣代码 {(order.paidAmount != null ? order.paidDiscount : order.quotedDiscount)?.code}</small> : null}
+            <small style={{display:'block',color:'var(--color-text-secondary)'}}>{new Date(order.createdAt).toLocaleString('zh-CN')} · {PROVIDER_LABELS[order.provider]}</small>
+          </div>
+          <Space style={{marginTop: 6}}>
+            {order.status === 'pending' ? (
+              <>
+                <Button size="small" loading={busy===order.id} onClick={()=>void checkOrder(order.id)}>查询到账</Button>
+                {order.checkoutUrl && !isExpired ? (
+                  <Button size="small" onClick={()=>window.location.assign(order.checkoutUrl!)}>继续支付</Button>
+                ) : null}
+                <Button size="small" type="text" onClick={()=>dismissOrder(order.id)}>放弃</Button>
+              </>
+            ) : null}
+            {order.status === 'paid' ? (
+              <Button size="small" disabled={order.refundRequested} onClick={()=>{setRefundOrder(order);setRefundReason('')}}>
+                {order.refundRequested ? '退款申请已提交' : '申请退款'}
+              </Button>
+            ) : null}
+          </Space>
+        </div>
+      )
+    })}
+    {orders.some(o => dismissedOrderIds.has(o.id)) ? (
+      <div style={{marginTop: 8}}>
+        <Button size="small" type="link" onClick={() => setShowDismissed(s => !s)} style={{padding: 0, fontSize: 12}}>
+          {showDismissed ? '收起已忽略订单 ▴' : `已忽略 ${orders.filter(o => dismissedOrderIds.has(o.id)).length} 笔未完成订单 ▾`}
+        </Button>
+        {showDismissed ? (
+          <div style={{marginTop: 8, paddingLeft: 8, borderLeft: '2px solid var(--color-border)'}}>
+            {orders.filter(o => dismissedOrderIds.has(o.id)).map(order => (
+              <div key={order.id} style={{padding: '6px 0', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                <span style={{color: 'var(--color-text-secondary)'}}>
+                  {formatCreditPrice(order.paidAmount ?? order.quotedAmount ?? order.amount,order.currency)} · {order.credits} 分 · {STATUS_LABELS[order.status]}
+                </span>
+                <Button size="small" type="text" onClick={() => restoreOrder(order.id)}>恢复显示</Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    ) : null}</> : null}
     <Modal open={Boolean(refundOrder)} title="申请现金退款" okText="提交人工审核" cancelText="取消" okButtonProps={{disabled:!refundReason.trim()}} confirmLoading={busy==='refund'} onCancel={()=>setRefundOrder(undefined)}
       onOk={()=>void(async()=>{
         if(!refundOrder || !isCurrentOwner() || !refundReason.trim()) return

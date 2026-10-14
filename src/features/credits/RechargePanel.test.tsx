@@ -330,3 +330,56 @@ describe('验证折扣代码', () => {
     expect(screen.queryByText('预计 $2.69')).toBeNull()
   })
 })
+
+describe('充值订单生命周期与管理', () => {
+  it('超过 30 分钟的待支付订单显示已超时，并隐藏继续支付按钮', async () => {
+    const freshOrder = order({
+      id: 'fresh-1',
+      status: 'pending',
+      checkoutUrl: 'https://checkout.example.com/fresh',
+      createdAt: new Date().toISOString(),
+    })
+    const expiredOrder = order({
+      id: 'expired-1',
+      status: 'pending',
+      checkoutUrl: 'https://checkout.example.com/expired',
+      createdAt: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+    })
+    api.orders.mockResolvedValue({ items: [freshOrder, expiredOrder] })
+    render(<RechargePanel open onPaid={() => undefined} />)
+    expect(await screen.findByText('充值订单')).toBeTruthy()
+    expect(screen.getByText('已超时')).toBeTruthy()
+    // 只有未超时的待支付订单展示继续支付按钮
+    const continueButtons = screen.getAllByRole('button', { name: '继续支付' })
+    expect(continueButtons).toHaveLength(1)
+  })
+
+  it('点击放弃后将订单折叠到已忽略列表，且支持恢复显示', async () => {
+    const pendingOrder = order({
+      id: 'order-to-dismiss',
+      status: 'pending',
+      checkoutUrl: null,
+      createdAt: new Date().toISOString(),
+    })
+    api.orders.mockResolvedValue({ items: [pendingOrder] })
+    render(<RechargePanel open onPaid={() => undefined} />)
+    expect(await screen.findByText('充值订单')).toBeTruthy()
+    const dismissBtn = screen.getByRole('button', { name: '放弃' })
+    fireEvent.click(dismissBtn)
+
+    // 订单从主列表移入已忽略列表
+    expect(screen.queryByRole('button', { name: '查询到账' })).toBeNull()
+    expect(screen.getByText('已忽略 1 笔未完成订单 ▾')).toBeTruthy()
+
+    // 展开并恢复
+    fireEvent.click(screen.getByText('已忽略 1 笔未完成订单 ▾'))
+    expect(screen.getByText('收起已忽略订单 ▴')).toBeTruthy()
+    const restoreBtn = screen.getByRole('button', { name: '恢复显示' })
+    fireEvent.click(restoreBtn)
+
+    // 恢复后回到主列表
+    expect(await screen.findByRole('button', { name: '查询到账' })).toBeTruthy()
+    expect(screen.queryByText(/已忽略/)).toBeNull()
+  })
+})
+

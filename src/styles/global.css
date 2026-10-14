@@ -699,6 +699,90 @@ body.sidebar-resizing * {
   color: var(--color-text-secondary);
 }
 
+.credits-ledger-row-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.credits-ledger-summary {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.credits-ledger-reason {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.credits-ledger-recovery-action {
+  margin: 6px 0 4px;
+}
+
+.credits-recovery-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  background: var(--color-surface-2, #202024);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.credits-recovery-thumbnail {
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  flex: 0 0 52px;
+}
+
+.credits-recovery-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.credits-recovery-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-success, #21cfa0);
+}
+
+.credits-recovery-tip {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.credits-recovery-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.credits-recovery-external-link {
+  font-size: 12px;
+  color: var(--color-primary, #10b981);
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.credits-recovery-external-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.credits-recovery-status {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: 4px 0;
+  display: block;
+}
+
 .credits-ledger-row-amounts {
   display: flex;
   flex-direction: column;
@@ -722,6 +806,65 @@ body.sidebar-resizing * {
 
 .credits-ledger-drawer .ant-drawer-body {
   overflow-x: hidden;
+}
+
+.credits-drawer-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: var(--color-surface-2, #202024);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.credits-drawer-balance-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.credits-drawer-balance-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.credits-drawer-balance-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.credits-drawer-balance-num {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.credits-drawer-balance-unit {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.credits-ledger-tabs .ant-tabs-nav {
+  margin-bottom: 14px;
+}
+
+.credits-tab-label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+}
+
+.credits-ledger-filter-bar {
+  margin-bottom: 12px;
+}
+
+.credits-recharge-tab-pane {
+  padding-top: 4px;
 }
 
 .billing-explanation {
