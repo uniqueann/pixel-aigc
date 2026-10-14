@@ -199,6 +199,14 @@ describe('侧边栏拖拽', () => {
     expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeTruthy()
     fireEvent.click(screen.getByText('工作台首页'))
     expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
+
+    // 5. 再次展开并通过事件收起抽屉
+    fireEvent.click(screen.getByRole('button', { name: '展开侧边栏' }))
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeTruthy()
+    act(() => {
+      window.dispatchEvent(new CustomEvent('pixel-sidebar-collapse'))
+    })
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
   })
 })
 

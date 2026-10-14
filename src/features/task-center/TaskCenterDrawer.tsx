@@ -1,21 +1,24 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import {
   Alert,
   App,
   Button,
-  Descriptions,
   Drawer,
   Empty,
   Image,
   Select,
   Space,
   Spin,
+  Tag,
+  Tooltip,
 } from 'antd'
 import { CloudError } from '@/cloud/client'
 import {
   ArrowLeftOutlined,
+  ArrowRightOutlined,
+  CopyOutlined,
   DownloadOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
@@ -236,6 +239,45 @@ function TaskDrawerPanel({
         }}
         className="task-center-drawer"
         destroyOnClose
+        footer={
+          selected && task ? (
+            <div className="task-drawer-footer">
+              <Space wrap>
+                <Button onClick={center.credits}>查看积分明细</Button>
+                {!taskIsActive(task) && task.outcomeVersion ? (
+                  <Button
+                    loading={actionBusy}
+                    onClick={() => void dismiss(task)}
+                  >
+                    移出列表
+                  </Button>
+                ) : null}
+              </Space>
+              <div>
+                {taskDestination(task) ? (
+                  <Button
+                    type="primary"
+                    icon={<ArrowRightOutlined aria-hidden="true" />}
+                    aria-label="在工具中查看"
+                    onClick={() => {
+                      window.dispatchEvent(
+                        new CustomEvent('pixel-sidebar-collapse'),
+                      )
+                      navigate(taskDestination(task)!)
+                      center.close()
+                    }}
+                  >
+                    在工具中查看
+                  </Button>
+                ) : (
+                  <Tooltip title="该任务不支持跳转至原页面，可在当前页面查看生成结果">
+                    <Button disabled aria-label="在工具中查看">在工具中查看</Button>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+          ) : null
+        }
       >
         <div className="task-drawer-toolbar">
           <Space>
@@ -254,7 +296,13 @@ function TaskDrawerPanel({
               刷新
             </Button>
           </Space>
-          <span>展示近 30 天内的任务记录</span>
+          <span>
+            {selected
+              ? task
+                ? `提交于 ${relativeTime(task.createdAt)}`
+                : ''
+              : '展示近 30 天内的任务记录'}
+          </span>
         </div>
         {!selected ? (
           <>
@@ -380,50 +428,20 @@ function TaskDrawerPanel({
             {task ? (
               <>
                 <div className="task-detail-heading">
-                  <TaskStatusDot task={task} />
-                  <h3>
-                    {task.tool ? taskToolLabels[task.tool] : '生成任务'} ·{' '}
-                    {taskStateLabel(task)}
-                  </h3>
+                  <div className="task-detail-heading-main">
+                    <TaskStatusDot task={task} />
+                    <h3 className="task-detail-title">
+                      {task.tool ? taskToolLabels[task.tool] : '生成任务'}
+                    </h3>
+                    <Tag className={`task-state-tag is-${task.state}`}>
+                      {taskStateLabel(task)}
+                    </Tag>
+                  </div>
+                  <span className="task-detail-time">
+                    {relativeTime(task.createdAt)}
+                  </span>
                 </div>
-                {taskDestination(task) ? <Button onClick={() => { navigate(taskDestination(task)!); center.close() }}>在工具中查看</Button> : <p>该任务不支持跳转至原页面，可在下方查看生成结果。</p>}
-                <Descriptions
-                  size="small"
-                  column={1}
-                  items={[
-                    {
-                      key: 'count',
-                      label: '完成数量',
-                      children: `${task.completedCount}/${task.requestedCount}`,
-                    },
-                    {
-                      key: 'model',
-                      label: '模型',
-                      children: modelDisplayName(task.modelProfileId),
-                    },
-                    {
-                      key: 'billing',
-                      label: '积分',
-                      children: taskBillingLabel(task),
-                    },
-                    {
-                      key: 'created',
-                      label: '提交时间',
-                      children: new Date(task.createdAt).toLocaleString(),
-                    },
-                    ...(task.resultExpiresAt
-                      ? [
-                          {
-                            key: 'expires',
-                            label: '结果有效期',
-                            children: new Date(
-                              task.resultExpiresAt,
-                            ).toLocaleString(),
-                          },
-                        ]
-                      : []),
-                  ]}
-                />
+
                 {task.partial ? (
                   <Alert
                     type="info"
@@ -456,95 +474,165 @@ function TaskDrawerPanel({
                     action={<Button onClick={reload}>重新读取</Button>}
                   />
                 ) : null}
-                <div className="task-result-list">
-                  {preview.map((item, index) => (
-                    <div key={item.id} className="task-result-card">
-                      {item.mediaType === 'video' ? (
-                        <VideoPlayer
-                          reference={{
-                            objectKey: item.objectKey,
-                            url: item.fullSrc,
-                            expiresAt: item.expiresAt,
-                            retentionExpiresAt: item.retentionExpiresAt,
-                          }}
-                          ownerId={item.ownerId}
-                        />
-                      ) : (
-                        <Image
-                          width="100%"
-                          src={item.thumbSrc}
-                          alt={`生成结果 ${index + 1}`}
-                          preview={false}
-                          onClick={() => setGallery(index)}
-                          onError={() => setReadingError(true)}
-                        />
-                      )}
-                      <Button
-                        icon={<DownloadOutlined />}
-                        onClick={() => void download(item)}
-                      >
-                        下载结果
-                      </Button>
+
+                {preview.length > 0 ? (
+                  <div className="task-detail-section">
+                    <div className="task-detail-section-title">
+                      <span>生成成果</span>
+                      <span className="task-detail-count">
+                        共 {preview.length} 项
+                      </span>
                     </div>
-                  ))}
-                </div>
-                {value?.results.map((result, index) =>
-                  result.kind === 'text' ? (
-                    <div key={index} className="task-text-result">
-                      <h4>生成结果</h4>
-                      <pre>{result.text}</pre>
-                      {result.editedText ? (
-                        <>
-                          <h4>修改草稿</h4>
-                          <pre>{result.editedText}</pre>
-                        </>
-                      ) : null}
-                    </div>
-                  ) : null,
-                )}
-                <Space wrap>
-                  {value?.results.map((result, index) =>
-                    result.kind === 'text' ? (
-                      <Fragment key={index}>
-                        <Button
-                          onClick={() =>
-                            void navigator.clipboard
-                              .writeText(result.text)
-                              .then(() => message.success('已复制'))
-                              .catch(() =>
-                                message.error('复制失败，请手动选择文本'),
-                              )
-                          }
-                        >
-                          复制结果
-                        </Button>
-                        {result.editedText ? (
-                          <Button
-                            onClick={() =>
-                              void navigator.clipboard
-                                .writeText(result.editedText!)
-                                .then(() => message.success('已复制'))
-                                .catch(() =>
-                                  message.error('复制失败，请手动选择文本'),
-                                )
-                            }
-                          >
-                            复制修改稿
-                          </Button>
-                        ) : null}
-                      </Fragment>
-                    ) : null,
-                  )}
-                  <Button onClick={center.credits}>查看积分明细</Button>
-                  {!taskIsActive(task) && task.outcomeVersion ? (
-                    <Button
-                      loading={actionBusy}
-                      onClick={() => void dismiss(task)}
+                    <div
+                      className={`task-result-list${preview.length === 1 ? ' is-single' : ''}`}
                     >
-                      移出列表
-                    </Button>
+                      {preview.map((item, index) => (
+                        <div key={item.id} className="task-result-card">
+                          {item.mediaType === 'video' ? (
+                            <VideoPlayer
+                              reference={{
+                                objectKey: item.objectKey,
+                                url: item.fullSrc,
+                                expiresAt: item.expiresAt,
+                                retentionExpiresAt: item.retentionExpiresAt,
+                              }}
+                              ownerId={item.ownerId}
+                            />
+                          ) : (
+                            <Image
+                              width="100%"
+                              src={item.thumbSrc}
+                              alt={`生成结果 ${index + 1}`}
+                              preview={false}
+                              onClick={() => setGallery(index)}
+                              onError={() => setReadingError(true)}
+                            />
+                          )}
+                          <Button
+                            icon={<DownloadOutlined />}
+                            onClick={() => void download(item)}
+                          >
+                            下载结果
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {value?.results.some((r) => r.kind === 'text') ? (
+                  <div className="task-detail-section">
+                    <div className="task-detail-section-title">
+                      <span>生成文本</span>
+                    </div>
+                    {value?.results.map((result, index) =>
+                      result.kind === 'text' ? (
+                        <div key={index} className="task-text-result-card">
+                          <div className="task-text-result-block">
+                            <div className="task-text-result-header">
+                              <h4>生成结果</h4>
+                              <Button
+                                size="small"
+                                icon={<CopyOutlined aria-hidden="true" />}
+                                aria-label="复制结果"
+                                onClick={() =>
+                                  void navigator.clipboard
+                                    .writeText(result.text)
+                                    .then(() => message.success('已复制'))
+                                    .catch(() =>
+                                      message.error('复制失败，请手动选择文本'),
+                                    )
+                                }
+                              >
+                                复制结果
+                              </Button>
+                            </div>
+                            <pre>{result.text}</pre>
+                          </div>
+                          {result.editedText ? (
+                            <div className="task-text-result-block">
+                              <div className="task-text-result-header">
+                                <h4>修改草稿</h4>
+                                <Button
+                                  size="small"
+                                  icon={<CopyOutlined aria-hidden="true" />}
+                                  aria-label="复制修改稿"
+                                  onClick={() =>
+                                    void navigator.clipboard
+                                      .writeText(result.editedText!)
+                                      .then(() => message.success('已复制'))
+                                      .catch(() =>
+                                        message.error(
+                                          '复制失败，请手动选择文本',
+                                        ),
+                                      )
+                                  }
+                                >
+                                  复制修改稿
+                                </Button>
+                              </div>
+                              <pre>{result.editedText}</pre>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null,
+                    )}
+                  </div>
+                ) : null}
+
+                {taskIsActive(task) &&
+                !preview.length &&
+                !value?.results.length ? (
+                  <div className="task-detail-active-banner">
+                    <Spin size="small" />
+                    <span>任务正在处理中，生成成果将在此实时呈现…</span>
+                  </div>
+                ) : null}
+
+                <div className="task-detail-section">
+                  <div className="task-detail-section-title">
+                    <span>任务信息</span>
+                  </div>
+                  <div className="task-detail-meta-grid">
+                    <div className="task-meta-item">
+                      <span className="task-meta-label">模型</span>
+                      <span className="task-meta-value">
+                        {modelDisplayName(task.modelProfileId)}
+                      </span>
+                    </div>
+                    <div className="task-meta-item">
+                      <span className="task-meta-label">完成数量</span>
+                      <span className="task-meta-value">
+                        {task.completedCount}/{task.requestedCount}
+                      </span>
+                    </div>
+                    <div className="task-meta-item">
+                      <span className="task-meta-label">积分消耗</span>
+                      <span className="task-meta-value">
+                        {taskBillingLabel(task)}
+                      </span>
+                    </div>
+                    <div className="task-meta-item">
+                      <span className="task-meta-label">提交时间</span>
+                      <span className="task-meta-value">
+                        {new Date(task.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    {task.resultExpiresAt ? (
+                      <div className="task-meta-item">
+                        <span className="task-meta-label">结果有效期</span>
+                        <span className="task-meta-value">
+                          {new Date(task.resultExpiresAt).toLocaleString()}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                  {!taskDestination(task) ? (
+                    <p className="task-detail-notice">
+                      该任务不支持跳转至原页面，可在当前页面查看生成结果。
+                    </p>
                   ) : null}
-                </Space>
+                </div>
               </>
             ) : null}
           </>
