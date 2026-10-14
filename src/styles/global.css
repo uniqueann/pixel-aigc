@@ -3506,9 +3506,9 @@ body.sidebar-resizing * {
   text-align: left;
   transition: background 0.15s ease;
 }
-.task-sidebar-heading:hover, .task-sidebar-row:hover, .task-history-row:hover { background: var(--color-bg-container, #28282c); }
+.task-sidebar-heading:hover, .task-sidebar-row:hover, .task-history-row:hover { background: var(--color-surface-2); }
 .task-sidebar-heading:hover .task-sidebar-heading-all {
-  color: var(--color-primary, #10b981);
+  color: var(--color-accent);
 }
 .task-sidebar-heading-leading {
   display: inline-flex;
@@ -3564,7 +3564,7 @@ body.sidebar-resizing * {
     max-width: 82vw !important;
     flex: 0 0 280px !important;
     z-index: 1000 !important;
-    background: #171719 !important;
+    background: var(--color-sidebar-bg) !important;
     border-right: 1px solid var(--color-border);
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.6);
     animation: appSidebarSlideIn 0.22s cubic-bezier(0, 0, 0.2, 1);
@@ -3616,8 +3616,8 @@ body.sidebar-resizing * {
   transition: background 0.15s ease, color 0.15s ease;
 }
 .mobile-sidebar-toggle:hover {
-  background: var(--color-surface-2, rgba(255, 255, 255, 0.08));
-  color: var(--color-primary, #10b981);
+  background: var(--color-surface-2);
+  color: var(--color-accent);
 }
 
 .app-sidebar-backdrop {

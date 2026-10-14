@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Help from '@/pages/Help'
 import { HELP_ARTICLES } from '@/pages/Help/articles'
+import { useThemeStore } from '@/store/useThemeStore'
 
 vi.stubGlobal('matchMedia', (query: string) => ({
   matches: false,
@@ -26,7 +29,10 @@ function renderHelp(path: string) {
 }
 
 describe('帮助中心', () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    useThemeStore.getState().setMode('system')
+  })
 
   it('左侧目录列出全部文章', () => {
     renderHelp('/help/quickstart')
@@ -53,5 +59,30 @@ describe('帮助中心', () => {
     expect(document.querySelector('.help-article table')).toBeTruthy()
     renderHelp('/help/quickstart')
     expect(document.querySelector('.help-article pre')).toBeTruthy()
+  })
+
+  it('侧边栏与菜单跟随主题模式适配', () => {
+    act(() => {
+      useThemeStore.getState().setMode('light')
+    })
+    const { unmount } = renderHelp('/help/quickstart')
+    expect(document.querySelector('.help-sider.ant-layout-sider-light')).toBeTruthy()
+    expect(document.querySelector('.help-menu.ant-menu-light')).toBeTruthy()
+    unmount()
+
+    act(() => {
+      useThemeStore.getState().setMode('dark')
+    })
+    renderHelp('/help/quickstart')
+    expect(document.querySelector('.help-sider.ant-layout-sider-dark')).toBeTruthy()
+    expect(document.querySelector('.help-menu.ant-menu-dark')).toBeTruthy()
+  })
+
+  it('样式表包含折叠触发按钮样式与主题变量定义', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/pages/Help/help.css'), 'utf8')
+    expect(css).toContain('.help-sider .ant-layout-sider-zero-width-trigger')
+    expect(css).toContain('var(--color-surface)')
+    expect(css).toContain('var(--color-text-primary)')
+    expect(css).toContain('var(--color-border)')
   })
 })

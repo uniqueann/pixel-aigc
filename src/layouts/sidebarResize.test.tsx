@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import MainLayout from '@/layouts/MainLayout'
+import { useThemeStore } from '@/store/useThemeStore'
 import { readSidebarState, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, writeSidebarState, writeSidebarWidth } from '@/features/preferences/storage'
 
 function installMatchMedia(desktop: boolean) {
@@ -207,6 +208,24 @@ describe('侧边栏拖拽', () => {
       window.dispatchEvent(new CustomEvent('pixel-sidebar-collapse'))
     })
     expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
+  })
+
+  it('左侧边栏与导航菜单跟随主题模式设置 theme', () => {
+    installMatchMedia(true)
+    act(() => {
+      useThemeStore.getState().setMode('light')
+    })
+    const { unmount } = renderLayout()
+    expect(document.querySelector('.app-sidebar.ant-layout-sider-light')).toBeTruthy()
+    expect(document.querySelector('.app-sidebar-menu.ant-menu-light')).toBeTruthy()
+    unmount()
+
+    act(() => {
+      useThemeStore.getState().setMode('dark')
+    })
+    renderLayout()
+    expect(document.querySelector('.app-sidebar.ant-layout-sider-dark')).toBeTruthy()
+    expect(document.querySelector('.app-sidebar-menu.ant-menu-dark')).toBeTruthy()
   })
 })
 
