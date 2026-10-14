@@ -49,10 +49,10 @@ export default function BrushToolbar({
 }: Props) {
   return (
     <Space
-      size={6}
+      size={4}
       wrap
       style={{
-        padding: '8px 10px',
+        padding: '4px 8px',
         borderRadius: 8,
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
@@ -61,6 +61,7 @@ export default function BrushToolbar({
     >
       <Tooltip title="画笔">
         <Button
+          size="small"
           aria-label="画笔"
           type={tool === 'brush' && !smartSelectEnabled ? 'primary' : 'text'}
           icon={<EditOutlined />}
@@ -69,6 +70,7 @@ export default function BrushToolbar({
       </Tooltip>
       <Tooltip title="橡皮擦">
         <Button
+          size="small"
           aria-label="橡皮擦"
           type={tool === 'eraser' && !smartSelectEnabled ? 'primary' : 'text'}
           icon={<DeleteOutlined />}
@@ -80,6 +82,7 @@ export default function BrushToolbar({
         : smartSelectError ? '智能选区配置加载失败，请重试' : '正在加载智能选区配置…'}>
         <span>
           <Button
+            size="small"
             aria-label={SMART_SELECT_LABEL}
             type={smartSelectEnabled ? 'primary' : 'text'}
             icon={<AimOutlined />}
@@ -91,6 +94,7 @@ export default function BrushToolbar({
       <Tooltip title={refineMode ? '边缘精修请用画笔' : '反选商品以外的区域'}>
         <span>
           <Button
+            size="small"
             aria-label="反选"
             type="text"
             icon={<SwapOutlined />}
@@ -110,13 +114,13 @@ export default function BrushToolbar({
         />
       </span>
       <Tooltip title="撤销">
-        <Button aria-label="撤销" type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} />
+        <Button size="small" aria-label="撤销" type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} />
       </Tooltip>
       <Tooltip title="重做">
-        <Button aria-label="重做" type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} />
+        <Button size="small" aria-label="重做" type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} />
       </Tooltip>
       <Tooltip title="清空蒙版">
-        <Button aria-label="清空蒙版" type="text" danger icon={<ClearOutlined />} onClick={onClear} />
+        <Button size="small" aria-label="清空蒙版" type="text" danger icon={<ClearOutlined />} onClick={onClear} />
       </Tooltip>
     </Space>
   )

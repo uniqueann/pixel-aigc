@@ -1781,23 +1781,31 @@ body.sidebar-resizing * {
   width: 100%;
   min-width: 0;
   min-height: 0;
+  height: 480px;
+  box-sizing: border-box;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 12px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
   border-radius: 9px;
   background: var(--color-canvas);
+  overflow: hidden;
 }
 
-.workstation-canvas-shell.is-empty { min-height: 360px; }
+.workstation-canvas-shell.is-empty {
+  height: 480px;
+  min-height: 480px;
+  justify-content: center;
+}
 
 .workstation-canvas-shell.is-empty .workstation-upload {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  width: 100%;
   height: 100%;
-  min-height: 320px;
+  min-height: 0;
 }
 
 .workstation-canvas-shell.is-empty .workstation-upload .ant-upload.ant-upload-drag {
@@ -1805,13 +1813,17 @@ body.sidebar-resizing * {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  width: 100%;
   height: 100%;
-  min-height: 320px;
+  min-height: 0;
 }
 
 .workstation-task-placeholder {
   display: flex;
-  min-height: 220px;
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -1827,7 +1839,7 @@ body.sidebar-resizing * {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
 }
 
 .workstation-canvas-toolbar {
@@ -1847,8 +1859,11 @@ body.sidebar-resizing * {
 .workstation-preview-image {
   display: block;
   max-width: min(100%, 640px);
-  max-height: 420px;
+  max-height: 100%;
+  flex: 1;
+  min-height: 0;
   object-fit: contain;
+  margin: auto;
 }
 
 .workstation-preview-image.is-previewable { cursor: zoom-in; }
@@ -1856,6 +1871,7 @@ body.sidebar-resizing * {
 .workstation-fusion-sources {
   display: flex;
   width: 100%;
+  height: 100%;
   min-height: 0;
   flex: 1;
   gap: 12px;
@@ -1864,6 +1880,7 @@ body.sidebar-resizing * {
 .workstation-fusion-slot {
   display: flex;
   min-width: 0;
+  height: 100%;
   flex: 1;
   flex-direction: column;
   align-items: center;
@@ -1876,9 +1893,30 @@ body.sidebar-resizing * {
   color: var(--color-text-secondary);
 }
 
+.workstation-fusion-slot .workstation-upload {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.workstation-fusion-slot .workstation-upload .ant-upload.ant-upload-drag {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
 .workstation-fusion-slot img {
   max-width: 100%;
-  max-height: 280px;
+  max-height: calc(100% - 48px);
+  flex: 1;
+  min-height: 0;
   object-fit: contain;
 }
 
@@ -1920,11 +1958,30 @@ body.sidebar-resizing * {
   align-self: flex-start;
   color: var(--color-text-muted);
   font-size: 12px;
+  line-height: 1.4;
+}
+
+.workstation-canvas-shell:has(.workstation-paint-host) .workstation-canvas-footnote {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  margin: 0;
+  pointer-events: none;
+  font-size: 11px;
+  background: var(--color-bg-elevated, rgba(0, 0, 0, 0.6));
+  padding: 2px 8px;
+  border-radius: 4px;
+  z-index: 3;
 }
 
 .workstation-paint-host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   max-width: 640px;
+  flex: 1;
+  min-height: 0;
 }
 
 .workstation-paint-frame {
@@ -3169,7 +3226,8 @@ body.sidebar-resizing * {
   .image-workstation-page,
   .toolbox-page { padding-top: 20px; }
 
-  .workstation-canvas-shell.is-empty { min-height: 360px; }
+  .workstation-canvas-shell { height: 480px; }
+  .workstation-canvas-shell.is-empty { height: 480px; min-height: 480px; }
 
   .image-workstation-canvas-column.is-sticky {
     position: sticky;
@@ -3186,8 +3244,27 @@ body.sidebar-resizing * {
     padding-bottom: 0;
   }
 
+  .workstation-canvas-shell {
+    height: auto;
+    min-height: 300px;
+  }
+  .workstation-canvas-shell.is-empty {
+    height: auto;
+    min-height: 280px;
+  }
+
   .workstation-fusion-sources {
     flex-direction: column;
+    height: auto;
+  }
+
+  .workstation-fusion-slot {
+    height: auto;
+    min-height: 180px;
+  }
+
+  .workstation-fusion-slot img {
+    max-height: 220px;
   }
 
   .toolbox-watermark-main { grid-template-columns: 1fr; }
