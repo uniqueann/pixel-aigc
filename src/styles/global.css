@@ -21,6 +21,8 @@
   --color-danger: #f2685c;
   --color-danger-soft: #3a201d;
 
+  --color-sidebar-bg: #171719;
+
   --radius-sm: 6px;
   --radius-md: 10px;
 
@@ -35,6 +37,29 @@
 
 html[data-theme='light'] {
   color-scheme: light;
+
+  /* 亮色创作工具风：中性浅灰底 + 纯白容器 + 墨绿主色 */
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f2f5;
+  --color-canvas: #e5e7eb;
+
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #64748b;
+  --color-text-muted: #94a3b8;
+
+  --color-accent: #12a67f;
+  --color-accent-soft: #ecfdf5;
+
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #ef4444;
+  --color-danger-soft: #fee2e2;
+
+  --color-sidebar-bg: #ffffff;
   --pa-logo-text: #111827;
 }
 
@@ -67,7 +92,7 @@ a {
 }
 
 .app-sidebar {
-  background: #171719 !important;
+  background: var(--color-sidebar-bg) !important;
   border-right: 1px solid var(--color-border);
   overflow: hidden;
 }

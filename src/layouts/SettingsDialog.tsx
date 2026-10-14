@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { App, Button, Input, Menu, Modal, Space, Switch } from 'antd'
+import { App, Button, Input, Menu, Modal, Segmented, Space, Switch } from 'antd'
+import { DesktopOutlined, MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { cloudRequest } from '@/cloud/client'
 import ModelSettingsPanel from '@/features/model-settings/ModelSettingsPanel'
 import PersonalizationPanel from '@/features/preferences/PersonalizationPanel'
 import PreferencesSyncAlert from '@/features/preferences/PreferencesSyncAlert'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { useUserStore } from '@/store/useUserStore'
+import { useThemeStore, type ThemeMode } from '@/store/useThemeStore'
 import { saveWelcomeState } from '@/features/activation/client'
 
 const SETTINGS_ITEMS = [
@@ -85,9 +87,60 @@ function SettingsContent({ section }: { section: string }) {
   if (section === 'account') return <AccountSettings />
   return (
     <SettingsPanel title="通用" description="调整界面显示和常用体验。">
-      <SettingRow label="外观" detail="跟随当前工作台主题"><span>深色</span></SettingRow>
+      <AppearanceSetting />
       <SettingRow label="语言" detail="界面显示语言"><span>简体中文</span></SettingRow>
     </SettingsPanel>
+  )
+}
+
+function AppearanceSetting() {
+  const mode = useThemeStore(state => state.mode)
+  const resolvedTheme = useThemeStore(state => state.resolvedTheme)
+  const setMode = useThemeStore(state => state.setMode)
+
+  const detailText = mode === 'system'
+    ? `跟随系统设置（当前为${resolvedTheme === 'dark' ? '深色' : '浅色'}模式）`
+    : mode === 'dark'
+      ? '始终使用深色外观'
+      : '始终使用浅色外观'
+
+  return (
+    <SettingRow label="外观" detail={detailText}>
+      <Segmented<ThemeMode>
+        aria-label="选择外观模式"
+        value={mode}
+        onChange={val => setMode(val)}
+        options={[
+          {
+            value: 'light',
+            label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <SunOutlined />
+                <span>浅色</span>
+              </span>
+            ),
+          },
+          {
+            value: 'dark',
+            label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <MoonOutlined />
+                <span>深色</span>
+              </span>
+            ),
+          },
+          {
+            value: 'system',
+            label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <DesktopOutlined />
+                <span>跟随系统</span>
+              </span>
+            ),
+          },
+        ]}
+      />
+    </SettingRow>
   )
 }
 
