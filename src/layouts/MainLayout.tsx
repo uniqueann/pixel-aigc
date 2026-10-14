@@ -131,9 +131,18 @@ function readPreferredSidebarOpen() {
   return state.preferences.workbench.rememberSidebar ? readSidebarState(state.owner) ?? true : true
 }
 
-function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: (key: string) => void }) {
-  const navigate = useNavigate()
-  const account = useUserStore(state => state.account)
+export interface SidebarController {
+  sidebarOpen: boolean
+  toggleSidebar: (open: boolean) => void
+  sidebarWidth: number
+  canResizeSidebar: boolean
+  narrowLocked: boolean
+  sidebarResizing: boolean
+  changeSidebarWidth: (width: number, commit: boolean) => void
+  setSidebarResizing: (resizing: boolean) => void
+}
+
+function useSidebarState(): SidebarController {
   // 宽屏下的展开偏好。窄屏自动收起不能改它，也不能把收起写进 localStorage。
   const [preferredOpen, setPreferredOpen] = useState(readPreferredSidebarOpen)
   const [narrowLocked, setNarrowLocked] = useState(() => window.matchMedia('(max-width: 720px)').matches)
@@ -192,84 +201,146 @@ function AppSidebar({ topKey, onAccountMenu }: { topKey: string; onAccountMenu: 
     }
   }, [])
   useEffect(() => () => { document.body.classList.remove('sidebar-resizing') }, [])
-  const iconOnly = !sidebarOpen || (canResizeSidebar && sidebarWidth < SIDEBAR_WIDTH_COMPACT)
-  const showFold = sidebarOpen && (!canResizeSidebar || sidebarWidth >= SIDEBAR_FOLD_MIN)
+
+  return {
+    sidebarOpen,
+    toggleSidebar,
+    sidebarWidth,
+    canResizeSidebar,
+    narrowLocked,
+    sidebarResizing,
+    setSidebarResizing,
+    changeSidebarWidth,
+  }
+}
+
+function AppSidebar({
+  topKey,
+  onAccountMenu,
+  sidebar,
+}: {
+  topKey: string
+  onAccountMenu: (key: string) => void
+  sidebar: SidebarController
+}) {
+  const navigate = useNavigate()
+  const account = useUserStore(state => state.account)
+  const isMobile = sidebar.narrowLocked
+  const iconOnly = !isMobile && (!sidebar.sidebarOpen || (sidebar.canResizeSidebar && sidebar.sidebarWidth < SIDEBAR_WIDTH_COMPACT))
+  const showFold = sidebar.sidebarOpen && (!sidebar.canResizeSidebar || sidebar.sidebarWidth >= SIDEBAR_FOLD_MIN || isMobile)
   const accountName = account?.displayName ?? '个人账号'
+
+  const { toggleSidebar, sidebarOpen } = sidebar
+  useEffect(() => {
+    if (!isMobile || !sidebarOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') toggleSidebar(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isMobile, sidebarOpen, toggleSidebar])
+
   const brandButton = (
-    <button className="app-brand" type="button" onClick={() => navigate('/')} aria-label="返回工作台首页">
+    <button
+      className="app-brand"
+      type="button"
+      onClick={() => {
+        navigate('/')
+        if (isMobile) sidebar.toggleSidebar(false)
+      }}
+      aria-label="返回工作台首页"
+    >
       {iconOnly ? <PixelIcon className="app-brand-mark" /> : <PixelWordmark className="app-brand-wordmark" />}
     </button>
   )
+  const collapsedWidth = isMobile ? 0 : SIDEBAR_WIDTH_MIN
   return (
-    <Sider
-      width={canResizeSidebar && sidebarOpen ? sidebarWidth : SIDEBAR_WIDTH_MAX}
-      collapsedWidth={SIDEBAR_WIDTH_MIN}
-      collapsible
-      collapsed={!sidebarOpen}
-      trigger={null}
-      style={sidebarResizing ? { transition: 'none' } : undefined}
-      className={`app-sidebar${sidebarResizing ? ' is-resizing' : ''}${sidebarOpen && iconOnly ? ' is-compact' : ''}`}
-    >
-      <div className={`app-sidebar-header${sidebarOpen ? '' : ' is-collapsed'}`}>
-        {sidebarOpen ? (
-          <>
-            {iconOnly ? <Tooltip title="返回工作台首页" placement="right">{brandButton}</Tooltip> : brandButton}
-            {showFold ? (
-              <button className="sidebar-icon-button" type="button" onClick={() => toggleSidebar(false)} aria-label="收起侧边栏">
-                <MenuFoldOutlined />
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <button className="collapsed-brand-toggle" type="button" onClick={() => toggleSidebar(true)} aria-label="展开侧边栏">
-            <PixelIcon className="app-brand-mark collapsed-brand-mark" />
-            <MenuUnfoldOutlined className="collapsed-brand-icon" />
-          </button>
-        )}
-      </div>
-      <Menu
-        mode="inline"
-        inlineCollapsed={iconOnly}
-        selectedKeys={[topKey]}
-        items={NAV_ITEMS}
-        onClick={({ key }) => navigate(key)}
-        className="app-sidebar-menu"
-      />
-      <TaskCenterSidebar compact={iconOnly} />
-      <div className="app-sidebar-account">
-        <Dropdown
-          trigger={['click']}
-          placement="topLeft"
-          align={sidebarOpen && !iconOnly ? undefined : { offset: [sidebarOpen ? 12 : 52, 0] }}
-          overlayClassName="account-dropdown"
-          menu={{
-            onClick: ({ key }) => onAccountMenu(key),
-            items: accountMenuItems(),
-          }}
-        >
-          <button className="account-trigger" type="button" aria-label={iconOnly ? accountName : undefined} title={iconOnly ? accountName : undefined}>
-            <Avatar size={34} src={account?.avatarUrl ?? undefined} icon={account ? undefined : <UserOutlined />}>{account && !account.avatarUrl ? account.displayName.slice(0, 1) : null}</Avatar>
-            {iconOnly ? null : (
-              <span className="account-trigger-copy">
-                <span className="account-name">{accountName}</span>
-                <span className="account-meta">{account?.email ?? '本地模式'}</span>
-              </span>
-            )}
-          </button>
-        </Dropdown>
-      </div>
-      {canResizeSidebar && sidebarOpen ? (
-        <SidebarResizeHandle
-          width={sidebarWidth}
-          onChange={(next, commit) => {
-            setSidebarResizing(!commit)
-            if (!commit) document.body.classList.add('sidebar-resizing')
-            else document.body.classList.remove('sidebar-resizing')
-            changeSidebarWidth(next, commit)
-          }}
+    <>
+      {isMobile && sidebar.sidebarOpen ? (
+        <div
+          className="app-sidebar-backdrop"
+          onClick={() => sidebar.toggleSidebar(false)}
+          aria-hidden="true"
         />
       ) : null}
-    </Sider>
+      <Sider
+        width={isMobile ? 280 : (sidebar.canResizeSidebar && sidebar.sidebarOpen ? sidebar.sidebarWidth : SIDEBAR_WIDTH_MAX)}
+        collapsedWidth={collapsedWidth}
+        collapsible
+        collapsed={!sidebar.sidebarOpen}
+        trigger={null}
+        style={sidebar.sidebarResizing ? { transition: 'none' } : undefined}
+        className={`app-sidebar${sidebar.sidebarResizing ? ' is-resizing' : ''}${sidebar.sidebarOpen && iconOnly ? ' is-compact' : ''}${isMobile && sidebar.sidebarOpen ? ' is-mobile-open' : ''}`}
+      >
+        <div className={`app-sidebar-header${sidebar.sidebarOpen ? '' : ' is-collapsed'}`}>
+          {sidebar.sidebarOpen ? (
+            <>
+              {iconOnly ? <Tooltip title="返回工作台首页" placement="right">{brandButton}</Tooltip> : brandButton}
+              {showFold ? (
+                <button className="sidebar-icon-button" type="button" onClick={() => sidebar.toggleSidebar(false)} aria-label="收起侧边栏">
+                  <MenuFoldOutlined />
+                </button>
+              ) : null}
+            </>
+          ) : (
+            !isMobile ? (
+              <button className="collapsed-brand-toggle" type="button" onClick={() => sidebar.toggleSidebar(true)} aria-label="展开侧边栏">
+                <PixelIcon className="app-brand-mark collapsed-brand-mark" />
+                <MenuUnfoldOutlined className="collapsed-brand-icon" />
+              </button>
+            ) : null
+          )}
+        </div>
+        <Menu
+          mode="inline"
+          inlineCollapsed={iconOnly}
+          selectedKeys={[topKey]}
+          items={NAV_ITEMS}
+          onClick={({ key }) => {
+            navigate(key)
+            if (isMobile) sidebar.toggleSidebar(false)
+          }}
+          className="app-sidebar-menu"
+        />
+        <TaskCenterSidebar compact={iconOnly} />
+        <div className="app-sidebar-account">
+          <Dropdown
+            trigger={['click']}
+            placement="topLeft"
+            align={sidebar.sidebarOpen && !iconOnly ? undefined : { offset: [sidebar.sidebarOpen ? 12 : 52, 0] }}
+            overlayClassName="account-dropdown"
+            menu={{
+              onClick: ({ key }) => {
+                onAccountMenu(key)
+                if (isMobile) sidebar.toggleSidebar(false)
+              },
+              items: accountMenuItems(),
+            }}
+          >
+            <button className="account-trigger" type="button" aria-label={iconOnly ? accountName : undefined} title={iconOnly ? accountName : undefined}>
+              <Avatar size={34} src={account?.avatarUrl ?? undefined} icon={account ? undefined : <UserOutlined />}>{account && !account.avatarUrl ? account.displayName.slice(0, 1) : null}</Avatar>
+              {iconOnly ? null : (
+                <span className="account-trigger-copy">
+                  <span className="account-name">{accountName}</span>
+                  <span className="account-meta">{account?.email ?? '本地模式'}</span>
+                </span>
+              )}
+            </button>
+          </Dropdown>
+        </div>
+        {sidebar.canResizeSidebar && sidebar.sidebarOpen ? (
+          <SidebarResizeHandle
+            width={sidebar.sidebarWidth}
+            onChange={(next, commit) => {
+              sidebar.setSidebarResizing(!commit)
+              if (!commit) document.body.classList.add('sidebar-resizing')
+              else document.body.classList.remove('sidebar-resizing')
+              sidebar.changeSidebarWidth(next, commit)
+            }}
+          />
+        ) : null}
+      </Sider>
+    </>
   )
 }
 
@@ -284,13 +355,13 @@ export default function MainLayout() {
 }
 
 function MainLayoutContent() {
+  const sidebar = useSidebarState()
   const location = useLocation()
   const navigate = useNavigate()
   const { message } = App.useApp()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
   const [creditsOpen, setCreditsOpen] = useState(false)
-  const [narrowScreen, setNarrowScreen] = useState(() => window.matchMedia('(max-width: 720px)').matches)
   const account = useUserStore((s) => s.account)
   const currentUserId=useUserStore(state=>state.userId)
   const credits = useUserStore((s) => s.credits)
@@ -342,13 +413,6 @@ function MainLayoutContent() {
     if (isPreferencePage(location.pathname)) usePreferencesStore.getState().update({ recent: { page: location.pathname } })
   }, [location.pathname, location.search])
 
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 720px)')
-    const onChange = (event: MediaQueryListEvent) => setNarrowScreen(event.matches)
-    media.addEventListener('change', onChange)
-    return () => media.removeEventListener('change', onChange)
-  }, [])
-
   const handleAccountMenu = ({ key }: { key: string }) => {
     if (key === 'help') {
       navigate('/help')
@@ -377,10 +441,26 @@ function MainLayoutContent() {
   return (
     <TaskNavigationProvider><TaskCenterProvider onCredits={() => setCreditsOpen(true)}>
       <Layout className="app-shell" style={{ height: '100vh' }}>
-        <AppSidebar key={sidebarOwner} topKey={topKey} onAccountMenu={key => handleAccountMenu({ key })} />
+        <AppSidebar
+          key={sidebarOwner}
+          topKey={topKey}
+          onAccountMenu={key => handleAccountMenu({ key })}
+          sidebar={sidebar}
+        />
         <Layout className="app-shell-main">
           <Header className="app-header">
             <div className="app-header-leading">
+              {sidebar.narrowLocked ? (
+                <button
+                  className="mobile-sidebar-toggle"
+                  type="button"
+                  onClick={() => sidebar.toggleSidebar(true)}
+                  aria-label="展开侧边栏"
+                  title="展开侧边栏"
+                >
+                  <MenuUnfoldOutlined />
+                </button>
+              ) : null}
               {isCanvasRoute(location.pathname)
                 ? <CanvasProjectCrumb />
                 : <Breadcrumb items={subTitle ? [{ title: topTitle }, { title: subTitle }] : [{ title: topTitle }]} />}
@@ -427,7 +507,7 @@ function MainLayoutContent() {
         <SettingsDialog
           open={settingsOpen}
           section={settingsSection}
-          narrow={narrowScreen}
+          narrow={sidebar.narrowLocked}
           onClose={() => setSettingsOpen(false)}
           onSectionChange={setSettingsSection}
         />

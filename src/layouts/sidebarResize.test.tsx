@@ -162,6 +162,44 @@ describe('侧边栏拖拽', () => {
     expect(document.querySelector('.app-brand-wordmark')).toBeTruthy()
     expect(readSidebarState('local')).toBe(true)
   })
+
+  it('移动端展开为浮动抽屉与遮罩，点击遮罩、关闭按钮、菜单项或按 ESC 均可收起', () => {
+    installMatchMedia(false)
+    renderLayout()
+    const toggle = screen.getByRole('button', { name: '展开侧边栏' })
+    expect(toggle.classList.contains('mobile-sidebar-toggle')).toBe(true)
+    expect(document.querySelector('.app-sidebar-backdrop')).toBeNull()
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
+
+    // 点击展开
+    fireEvent.click(toggle)
+    expect(document.querySelector('.app-sidebar-backdrop')).toBeTruthy()
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeTruthy()
+    expect(document.querySelector('.app-brand-wordmark')).toBeTruthy()
+
+    // 1. 点击遮罩收起
+    fireEvent.click(document.querySelector('.app-sidebar-backdrop')!)
+    expect(document.querySelector('.app-sidebar-backdrop')).toBeNull()
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
+
+    // 2. 再次展开并按 ESC 收起
+    fireEvent.click(screen.getByRole('button', { name: '展开侧边栏' }))
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
+
+    // 3. 再次展开并点击右上角收起按钮
+    fireEvent.click(screen.getByRole('button', { name: '展开侧边栏' }))
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '收起侧边栏' }))
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
+
+    // 4. 再次展开并点击导航菜单项，自动收起抽屉
+    fireEvent.click(screen.getByRole('button', { name: '展开侧边栏' }))
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeTruthy()
+    fireEvent.click(screen.getByText('工作台首页'))
+    expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
+  })
 })
 
 function writeWidth(owner: string, width: number) {
