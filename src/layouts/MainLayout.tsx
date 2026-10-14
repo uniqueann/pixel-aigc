@@ -369,6 +369,7 @@ function MainLayoutContent() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState('general')
   const [creditsOpen, setCreditsOpen] = useState(false)
+  const [creditsInitialTab, setCreditsInitialTab] = useState<'ledger' | 'recharge'>('ledger')
   const account = useUserStore((s) => s.account)
   const currentUserId=useUserStore(state=>state.userId)
   const credits = useUserStore((s) => s.credits)
@@ -381,14 +382,22 @@ function MainLayoutContent() {
     return () => window.removeEventListener('online', sync)
   }, [currentUserId])
   useEffect(()=>{
-    const open=()=>setCreditsOpen(true)
+    const open=()=>{
+      setCreditsInitialTab('recharge')
+      setCreditsOpen(true)
+    }
     window.addEventListener(RECHARGE_EVENT,open)
     return()=>window.removeEventListener(RECHARGE_EVENT,open)
   },[])
   useEffect(()=>{
     const id=new URLSearchParams(location.search).get('creditOrder'),owner=account?.userId
     if(!id || !owner) return
-    queueMicrotask(()=>{if(useUserStore.getState().userId===owner) setCreditsOpen(true)})
+    queueMicrotask(()=>{
+      if(useUserStore.getState().userId===owner) {
+        setCreditsInitialTab('recharge')
+        setCreditsOpen(true)
+      }
+    })
     let active=true,attempt=0,timer:ReturnType<typeof setTimeout>
     const check=async()=>{
       try {
@@ -505,7 +514,10 @@ function MainLayoutContent() {
                   type="button"
                   className="credits-trigger"
                   aria-label={`积分余额 ${credits}`}
-                  onClick={() => setCreditsOpen(true)}
+                  onClick={() => {
+                    setCreditsInitialTab('ledger')
+                    setCreditsOpen(true)
+                  }}
                 >
                   积分 {credits}
                 </button>
@@ -521,7 +533,12 @@ function MainLayoutContent() {
             </ErrorBoundary>
           </Content>
         </Layout>
-        <CreditsLedgerDrawer key={`${currentUserId}:${creditsOpen}`} open={creditsOpen} onClose={() => setCreditsOpen(false)} />
+        <CreditsLedgerDrawer
+          key={`${currentUserId}:${creditsOpen}:${creditsInitialTab}`}
+          open={creditsOpen}
+          initialTab={creditsInitialTab}
+          onClose={() => setCreditsOpen(false)}
+        />
         <CreditSpendGate key={currentUserId} />
         <SettingsDialog
           open={settingsOpen}
