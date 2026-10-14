@@ -20,6 +20,7 @@ import {
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { NAV_META, SUB_ROUTE_LABELS } from '@/router/meta'
 import { useUserStore } from '@/store/useUserStore'
+import { useThemeStore } from '@/store/useThemeStore'
 import { TaskCenterProvider } from '@/features/task-center/TaskCenterRuntime'
 import { TaskNavigationProvider } from '@/features/task-center/navigation'
 import { TaskCenterSidebar,TaskCenterEntry } from '@/features/task-center/TaskCenterSidebar'
@@ -232,6 +233,8 @@ function AppSidebar({
 }) {
   const navigate = useNavigate()
   const account = useUserStore(state => state.account)
+  const resolvedTheme = useThemeStore(state => state.resolvedTheme)
+  const siderTheme = resolvedTheme === 'dark' ? 'dark' : 'light'
   const isMobile = sidebar.narrowLocked
   const iconOnly = !isMobile && (!sidebar.sidebarOpen || (sidebar.canResizeSidebar && sidebar.sidebarWidth < SIDEBAR_WIDTH_COMPACT))
   const showFold = sidebar.sidebarOpen && (!sidebar.canResizeSidebar || sidebar.sidebarWidth >= SIDEBAR_FOLD_MIN || isMobile)
@@ -271,6 +274,7 @@ function AppSidebar({
         />
       ) : null}
       <Sider
+        theme={siderTheme}
         width={isMobile ? 280 : (sidebar.canResizeSidebar && sidebar.sidebarOpen ? sidebar.sidebarWidth : SIDEBAR_WIDTH_MAX)}
         collapsedWidth={collapsedWidth}
         collapsible
@@ -299,6 +303,7 @@ function AppSidebar({
           )}
         </div>
         <Menu
+          theme={siderTheme}
           mode="inline"
           inlineCollapsed={iconOnly}
           selectedKeys={[topKey]}
