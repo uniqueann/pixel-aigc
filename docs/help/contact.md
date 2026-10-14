@@ -10,8 +10,7 @@
 
 ## 联系方式
 
-- **邮箱**：support@contentup.cc
-- **X（Twitter）**：[@uniqueann](https://x.com/uniqueann) 私信
+- **邮箱**：uniqueainn@gmail.com
 
 一般 1–2 个工作日内回复。涉及扣费异常的，请附上积分明细截图，我们会优先处理。
 
