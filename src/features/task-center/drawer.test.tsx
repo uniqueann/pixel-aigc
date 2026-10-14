@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   cleanup,
   fireEvent,
@@ -207,5 +209,20 @@ describe('共用只读任务抽屉', () => {
       ),
     ).toBe(true)
     await waitFor(() => expect(context.show).toHaveBeenCalled())
+  })
+
+  it('任务详情底部吸底工具条正常渲染并采用主题设计变量', async () => {
+    mount()
+    await screen.findByText('原生成结果正文')
+    const footer = document.querySelector('.ant-drawer-footer .task-drawer-footer')
+    expect(footer).toBeTruthy()
+    expect(screen.getByRole('button', { name: '查看积分明细' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '移出列表' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '在工具中查看' })).toBeTruthy()
+
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
+    expect(css).toContain('.task-center-drawer .ant-drawer-footer')
+    expect(css).toMatch(/\.task-center-drawer \.ant-drawer-footer\s*\{[^}]*background:\s*var\(--color-surface\)/)
+    expect(css).toMatch(/\.task-drawer-footer \.ant-btn-primary\s*\{[^}]*background:\s*var\(--color-accent\)/)
   })
 })

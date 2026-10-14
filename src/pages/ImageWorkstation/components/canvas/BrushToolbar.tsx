@@ -51,7 +51,13 @@ export default function BrushToolbar({
     <Space
       size={6}
       wrap
-      style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--color-surface)', boxShadow: '0 4px 16px #0006' }}
+      style={{
+        padding: '8px 10px',
+        borderRadius: 8,
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+      }}
     >
       <Tooltip title="画笔">
         <Button
