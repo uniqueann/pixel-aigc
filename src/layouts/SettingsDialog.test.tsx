@@ -3,8 +3,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { App } from 'antd'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { usePreferencesStore } from '@/features/preferences/store'
+import { useThemeStore, THEME_STORAGE_KEY } from '@/store/useThemeStore'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsDialog from './SettingsDialog'
 
@@ -160,3 +161,46 @@ describe('设置弹窗当前标签可见', () => {
     expect(screen.getAllByRole('button', { name: '重试同步' }).length).toBeGreaterThanOrEqual(1)
   })
 })
+
+describe('通用设置外观模式切换', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    useThemeStore.getState().setMode('system')
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it('在通用设置中展示外观选项并可切换浅色、深色与跟随系统', () => {
+    stubMatchMedia(false)
+    render(
+      <App>
+        <SettingsDialog open section="general" narrow={false} onClose={() => undefined} onSectionChange={() => undefined} />
+      </App>,
+    )
+    expect(screen.getByText('外观')).toBeTruthy()
+    expect(screen.getByText('浅色')).toBeTruthy()
+    expect(screen.getByText('深色')).toBeTruthy()
+    expect(screen.getByText('跟随系统')).toBeTruthy()
+
+    // 切换到浅色
+    fireEvent.click(screen.getByRole('radio', { name: /浅色/ }))
+    expect(useThemeStore.getState().mode).toBe('light')
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('light')
+
+    // 切换到深色
+    fireEvent.click(screen.getByRole('radio', { name: /深色/ }))
+    expect(useThemeStore.getState().mode).toBe('dark')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
+
+    // 切换回跟随系统
+    fireEvent.click(screen.getByRole('radio', { name: /跟随系统/ }))
+    expect(useThemeStore.getState().mode).toBe('system')
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('system')
+  })
+})
+
