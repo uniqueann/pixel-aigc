@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import {
@@ -493,22 +493,32 @@ function TaskDrawerPanel({
                     <div key={index} className="task-text-result">
                       <h4>生成结果</h4>
                       <pre>{result.text}</pre>
-                      <Button
-                        onClick={() =>
-                          void navigator.clipboard
-                            .writeText(result.text)
-                            .then(() => message.success('已复制'))
-                            .catch(() =>
-                              message.error('复制失败，请手动选择文本'),
-                            )
-                        }
-                      >
-                        复制结果
-                      </Button>
                       {result.editedText ? (
                         <>
                           <h4>修改草稿</h4>
                           <pre>{result.editedText}</pre>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null,
+                )}
+                <Space wrap>
+                  {value?.results.map((result, index) =>
+                    result.kind === 'text' ? (
+                      <Fragment key={index}>
+                        <Button
+                          onClick={() =>
+                            void navigator.clipboard
+                              .writeText(result.text)
+                              .then(() => message.success('已复制'))
+                              .catch(() =>
+                                message.error('复制失败，请手动选择文本'),
+                              )
+                          }
+                        >
+                          复制结果
+                        </Button>
+                        {result.editedText ? (
                           <Button
                             onClick={() =>
                               void navigator.clipboard
@@ -521,12 +531,10 @@ function TaskDrawerPanel({
                           >
                             复制修改稿
                           </Button>
-                        </>
-                      ) : null}
-                    </div>
-                  ) : null,
-                )}
-                <Space wrap>
+                        ) : null}
+                      </Fragment>
+                    ) : null,
+                  )}
                   <Button onClick={center.credits}>查看积分明细</Button>
                   {!taskIsActive(task) && task.outcomeVersion ? (
                     <Button
