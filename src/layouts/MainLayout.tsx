@@ -1,7 +1,7 @@
 import { authEnabled, supabase } from '@/cloud/client'
 import { flushProject } from '@/editor/persistence/projectPersistence'
 import { useCloudStore } from '@/cloud/sync'
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu, Tooltip } from 'antd'
 import {
   AppstoreOutlined,
@@ -152,7 +152,7 @@ function useSidebarState(): SidebarController {
   const [canResizeSidebar, setCanResizeSidebar] = useState(() => window.matchMedia('(min-width: 768px)').matches)
   const [sidebarResizing, setSidebarResizing] = useState(false)
   const sidebarWidthRef = useRef(sidebarWidth)
-  const toggleSidebar = (open: boolean) => {
+  const toggleSidebar = useCallback((open: boolean) => {
     if (narrowLocked || window.matchMedia('(max-width: 720px)').matches) {
       setNarrowManualOpen(open)
       return
@@ -160,13 +160,20 @@ function useSidebarState(): SidebarController {
     setPreferredOpen(open)
     const state = usePreferencesStore.getState()
     if (state.preferences.workbench.rememberSidebar) writeSidebarState(state.owner, open)
-  }
+  }, [narrowLocked])
   const changeSidebarWidth = (next: number, commit: boolean) => {
     const clamped = clampSidebarWidth(next)
     sidebarWidthRef.current = clamped
     setSidebarWidth(clamped)
     if (commit) writeSidebarWidth(usePreferencesStore.getState().owner, clamped)
   }
+  useEffect(() => {
+    const onCollapse = () => {
+      setNarrowManualOpen(false)
+    }
+    window.addEventListener('pixel-sidebar-collapse', onCollapse)
+    return () => window.removeEventListener('pixel-sidebar-collapse', onCollapse)
+  }, [])
   useEffect(() => {
     const onReset = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== usePreferencesStore.getState().owner) return
@@ -412,6 +419,18 @@ function MainLayoutContent() {
     } catch { /* 账号尚未就绪时不记录导航。 */ }
     if (isPreferencePage(location.pathname)) usePreferencesStore.getState().update({ recent: { page: location.pathname } })
   }, [location.pathname, location.search])
+
+  const { narrowLocked, toggleSidebar } = sidebar
+  const currentPath = location.pathname + location.search
+  const lastPathRef = useRef(currentPath)
+  useEffect(() => {
+    if (lastPathRef.current !== currentPath) {
+      lastPathRef.current = currentPath
+      if (narrowLocked) {
+        toggleSidebar(false)
+      }
+    }
+  }, [currentPath, narrowLocked, toggleSidebar])
 
   const handleAccountMenu = ({ key }: { key: string }) => {
     if (key === 'help') {
