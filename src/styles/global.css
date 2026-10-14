@@ -3333,6 +3333,45 @@ body.sidebar-resizing * {
 }
 
 @media (max-width: 768px) {
+  /* 移动端收起态完全隐藏并释放占位，使主内容获得 100% 满宽空间 */
+  .app-sidebar.ant-layout-sider-zero-width,
+  .app-sidebar.ant-layout-sider-collapsed:not(.is-mobile-open) {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex: 0 0 0px !important;
+    border-right: none !important;
+    overflow: hidden !important;
+    visibility: hidden;
+  }
+
+  /* 移动端展开态作为全高浮动 Drawer 滑出，不侵占主工作区排版 */
+  .app-sidebar.is-mobile-open {
+    position: fixed !important;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    height: 100vh !important;
+    width: 280px !important;
+    max-width: 82vw !important;
+    flex: 0 0 280px !important;
+    z-index: 1000 !important;
+    background: #171719 !important;
+    border-right: 1px solid var(--color-border);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.6);
+    animation: appSidebarSlideIn 0.22s cubic-bezier(0, 0, 0.2, 1);
+  }
+
+  .app-shell-main {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+  }
+
+  .app-header {
+    padding: 0 12px !important;
+  }
+
   .app-sidebar,
   .app-sidebar .ant-layout-sider-children,
   .app-sidebar-menu,
@@ -3350,6 +3389,47 @@ body.sidebar-resizing * {
     width: 0 !important;
     height: 0 !important;
   }
+}
+
+.mobile-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 17px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.mobile-sidebar-toggle:hover {
+  background: var(--color-surface-2, rgba(255, 255, 255, 0.08));
+  color: var(--color-primary, #10b981);
+}
+
+.app-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 999;
+  animation: appSidebarFadeIn 0.2s cubic-bezier(0, 0, 0.2, 1);
+}
+
+@keyframes appSidebarSlideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes appSidebarFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .app-sidebar.is-compact .app-sidebar-menu,
