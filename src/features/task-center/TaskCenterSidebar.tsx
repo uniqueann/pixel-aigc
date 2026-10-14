@@ -71,13 +71,18 @@ export function TaskCenterSidebar({ compact }: { compact: boolean }) {
           type="button"
           className="task-sidebar-heading"
           onClick={() => center.show()}
-          aria-label={`任务，进行中 ${count}，查看全部`}
+          aria-label={count > 0 ? `任务，进行中 ${count}，全部` : '任务，全部'}
         >
-          <Badge count={count} size="small" overflowCount={99}>
-            <ClockCircleOutlined />
-          </Badge>
-          <span className="task-sidebar-expanded">
-            任务{count > 0 ? ` · 进行中 ${count}` : ''}
+          <div className="task-sidebar-heading-leading">
+            <Badge count={count} size="small" overflowCount={99}>
+              <ClockCircleOutlined />
+            </Badge>
+            <span className="task-sidebar-expanded task-sidebar-heading-title">
+              任务{count > 0 ? ` · ${count}` : ''}
+            </span>
+          </div>
+          <span className="task-sidebar-expanded task-sidebar-heading-all">
+            全部 ›
           </span>
         </button>
       </Tooltip>
@@ -136,9 +141,6 @@ export function TaskCenterSidebar({ compact }: { compact: boolean }) {
         !pending.length ? (
           <p className="task-empty">暂无近期任务</p>
         ) : null}
-        <Button size="small" type="text" onClick={() => center.show()}>
-          查看全部
-        </Button>
       </div>
     </section>
   )
