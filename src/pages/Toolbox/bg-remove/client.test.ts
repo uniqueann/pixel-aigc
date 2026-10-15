@@ -18,7 +18,7 @@ vi.mock('@/services/api/objects', async (importOriginal) => {
   }
 })
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false, createTask: vi.fn(), getTask: vi.fn() }))
-import { requestMatte } from './client'
+import { clearBgRemoveSourceUploadSession, requestMatte } from './client'
 
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
 function image(size = 20): BatchImage {
@@ -30,8 +30,10 @@ function objectResponse() { return new Response(JSON.stringify({ objectKey: 'tem
   url: 'https://r2.test/result', mimeType: 'image/png', bytes: png.length, expiresAt: Date.now() + 60_000 }), { headers: { 'Content-Type': 'application/json' } }) }
 
 beforeEach(() => {
+  useUserStore.getState().setAccount(null)
   useUserStore.getState().setUser('u', 'free')
   clearOwnedImageSession()
+  clearBgRemoveSourceUploadSession()
   mocks.upload.mockReset().mockResolvedValue('temporary/task-inputs/u/image')
   mocks.signed.mockReset().mockResolvedValue('https://r2.test/refreshed')
   vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 100, height: 80, close: vi.fn() })))
@@ -44,7 +46,7 @@ beforeEach(() => {
     },
   })
 })
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+afterEach(() => { clearBgRemoveSourceUploadSession(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('智能抠图对象传输与可恢复下载', () => {
   it('小图按真实 JPEG 内联提交，返回透明 PNG', async () => {
@@ -72,6 +74,32 @@ describe('智能抠图对象传输与可恢复下载', () => {
       expect(body.dataBase64).toBeUndefined()
       expect(String(init.body).length).toBeLessThan(1000)
     }
+  })
+
+  it('同账号重新选择相同图片复用上传，但每次主动处理仍走原计费接口', async () => {
+    const logs = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const fetch = vi.fn().mockImplementation(async () => response())
+    vi.stubGlobal('fetch', fetch)
+    await requestMatte(image(5 * 1024 * 1024), () => false, { ownerId: 'u' })
+    await requestMatte(image(5 * 1024 * 1024), () => false, { ownerId: 'u' })
+    expect(mocks.upload).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls.filter(([url]) => url === '/api/bg-remove')).toHaveLength(2)
+    expect(logs.mock.calls.some(([value]) => String(value).includes('"source":"cache"'))).toBe(true)
+    expect(JSON.stringify(logs.mock.calls)).not.toContain('temporary/task-inputs')
+  })
+
+  it('服务器确认缓存对象已清理后不自动重提，重新选择同图也能恢复上传', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response())
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'OBJECT_NOT_FOUND' }), { status: 404 }))
+      .mockResolvedValueOnce(response())
+    vi.stubGlobal('fetch', fetch)
+    await requestMatte(image(5 * 1024 * 1024), () => false, { ownerId: 'u' })
+    await expect(requestMatte(image(5 * 1024 * 1024), () => false, { ownerId: 'u' })).rejects.toThrow()
+    expect(mocks.upload).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    await requestMatte(image(5 * 1024 * 1024), () => false, { ownerId: 'u' })
+    expect(mocks.upload).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenCalledTimes(3)
   })
 
   it('大结果下载失败后只重试下载，不重新生成', async () => {
@@ -131,6 +159,39 @@ describe('智能抠图对象传输与可恢复下载', () => {
     abort.abort()
     await rejection
     expect(fetch).not.toHaveBeenCalled()
+  })
+  it('上传期间切换账号会停止旧请求，迟到对象不能写入新账号队列', async () => {
+    let finish!: (key: string) => void
+    mocks.upload.mockImplementation(() => new Promise<string>(resolve => { finish = resolve }))
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    const onTransfer = vi.fn()
+    const result = requestMatte(image(5 * 1024 * 1024), () => false, { ownerId: 'u', onTransfer }).catch(error => error)
+    await vi.waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1))
+    useUserStore.getState().setUser('另一账号', 'free')
+    expect((await result).name).toBe('AbortError')
+    finish('temporary/task-inputs/u/迟到对象')
+    expect(onTransfer).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('同账号切换运行环境不复用旧队列对象或结果', async () => {
+    const setScope = (runtimeScope: 'preview' | 'production') => useUserStore.getState().setAccount({
+      userId: 'u', runtimeScope, credits: 10, email: '', emailVerified: true, displayName: '', avatarUrl: null,
+      providers: [], status: 'active', workspace: { id: 'w', name: '', type: 'personal', role: 'admin' },
+    })
+    setScope('production')
+    let current = image(5 * 1024 * 1024)
+    const fetch = vi.fn().mockImplementation(async () => response())
+    vi.stubGlobal('fetch', fetch)
+    mocks.upload.mockResolvedValueOnce('生产原图对象').mockResolvedValueOnce('预览原图对象')
+    const onTransfer = (transfer: NonNullable<BatchImage['transfer']>) => { current = { ...current, transfer } }
+    await requestMatte(current, () => false, { ownerId: 'u', onTransfer })
+    setScope('preview')
+    await requestMatte(current, () => false, { ownerId: 'u', onTransfer })
+    expect(mocks.upload).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(String(fetch.mock.calls[1][1].body)).sourceImageKey).toBe('预览原图对象')
+    expect(current.transfer?.runtimeScope).toBe('preview')
   })
   it('取消结果下载时保留结果描述，不刷新签名或重复生成', async () => {
     const abort = new AbortController()

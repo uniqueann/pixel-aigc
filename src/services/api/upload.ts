@@ -24,6 +24,15 @@ export function uploadDataUrl(dataUrl: string): Promise<string> {
 }
 
 export type TaskInputUploadPhase = 'validating' | 'signing' | 'uploading'
+export interface TaskInputNetworkTiming {
+  dnsMs: number
+  /** 建连总时间，TLS 是它的子段，不重复相加。 */
+  connectMs: number
+  tlsMs: number
+  /** 包含请求体传输和服务端等待，不能解释为纯上传时间。 */
+  requestToResponseMs: number
+  responseReadMs: number
+}
 export interface TaskInputUploadMetrics {
   validateMs: number
   signMs: number
@@ -31,6 +40,33 @@ export interface TaskInputUploadMetrics {
   inputBytes: number
   uploadedBytes: number
   outcome: 'success' | 'failed' | 'cancelled'
+  /** 从发起 PUT 至响应头或失败的时间，含连接、传输与服务端等待。 */
+  directUploadMs?: number
+  directStatus?: number
+  directOutcome?: 'success' | 'network-error' | 'http-error' | 'cancelled'
+  fallbackEncodeMs?: number
+  fallbackUploadMs?: number
+  transport?: 'direct' | 'fallback'
+  elapsedMs?: number
+  networkTiming?: TaskInputNetworkTiming
+}
+
+function uploadNetworkTiming(url: string, started: number): TaskInputNetworkTiming | undefined {
+  if (typeof performance.getEntriesByName !== 'function') return undefined
+  try {
+    const entry = (performance.getEntriesByName(url, 'resource') as PerformanceResourceTiming[])
+      .filter(value => value.startTime >= started - 1).at(-1)
+    // 跨域资源没有 Timing-Allow-Origin，或时序尚未完整可见时，不把零值当作实测。
+    if (!entry || !entry.requestStart || !entry.responseStart || !entry.responseEnd) return undefined
+    const elapsed = (end: number, start: number) => Math.max(0, Math.round(end - start))
+    return {
+      dnsMs: elapsed(entry.domainLookupEnd, entry.domainLookupStart),
+      connectMs: elapsed(entry.connectEnd, entry.connectStart),
+      tlsMs: entry.secureConnectionStart > 0 ? elapsed(entry.connectEnd, entry.secureConnectionStart) : 0,
+      requestToResponseMs: elapsed(entry.responseStart, entry.requestStart),
+      responseReadMs: elapsed(entry.responseEnd, entry.responseStart),
+    }
+  } catch { return undefined } // 观测能力异常不能使已经成功的上传失败。
 }
 export interface TaskInputUploadOptions {
   onPhase?: (phase: TaskInputUploadPhase) => void
@@ -38,6 +74,7 @@ export interface TaskInputUploadOptions {
 }
 
 export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image/jpeg', signal?: AbortSignal, options: TaskInputUploadOptions = {}) {
+  const started = performance.now()
   const metrics: TaskInputUploadMetrics = { validateMs: 0, signMs: 0, uploadMs: 0, inputBytes: file.size, uploadedBytes: 0, outcome: 'failed' }
   const check = () => { if (signal?.aborted) throw signal.reason ?? new DOMException('上传已取消', 'AbortError') }
   const stage = async <T>(phase: TaskInputUploadPhase, operation: () => Promise<T>) => {
@@ -45,7 +82,11 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
     options.onPhase?.(phase)
     const started = performance.now()
     try { return await operation() }
-    finally { metrics[phase === 'validating' ? 'validateMs' : phase === 'signing' ? 'signMs' : 'uploadMs'] = Math.round(performance.now() - started) }
+    finally {
+      const ms = Math.round(performance.now() - started)
+      if (phase === 'uploading') metrics.uploadMs += ms
+      else metrics[phase === 'validating' ? 'validateMs' : 'signMs'] = ms
+    }
   }
   try {
     check()
@@ -59,30 +100,49 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
     check()
     if (!signed.uploadUrl || !signed.objectKey) throw new Error('未获得原图上传地址')
     let uploaded: Response | undefined
+    const directStarted = performance.now()
     try {
       uploaded = await stage('uploading', () => fetch(signed.uploadUrl, {
         method: 'PUT', headers: { 'Content-Type': mimeType }, body: file, signal, credentials: 'omit',
       }))
+      metrics.directStatus = uploaded.status
+      metrics.directOutcome = uploaded.ok ? 'success' : 'http-error'
       check()
     } catch (fetchErr) {
+      metrics.directOutcome = signal?.aborted ? 'cancelled' : 'network-error'
       if (signal?.aborted) throw fetchErr
+    } finally {
+      metrics.directUploadMs = Math.round(performance.now() - directStarted)
+      metrics.networkTiming = uploadNetworkTiming(signed.uploadUrl, directStarted)
     }
     if (uploaded) {
       if (!uploaded.ok) throw new Error('原图上传失败，请重试')
+      metrics.transport = 'direct'
     } else {
-      const dataBase64 = await fileToBase64(file)
+      metrics.transport = 'fallback'
+      const encodeStarted = performance.now()
+      let dataBase64: string
+      try { dataBase64 = await fileToBase64(file) }
+      finally { metrics.fallbackEncodeMs = Math.round(performance.now() - encodeStarted) }
       check()
-      await stage('uploading', () => apiClient.post('/task-inputs/fallback', {
-        objectKey: signed.objectKey, mimeType, dataBase64,
-      }, ...(signal ? [{ signal }] : [])))
+      const fallbackStarted = performance.now()
+      try {
+        await stage('uploading', () => apiClient.post('/task-inputs/fallback', {
+          objectKey: signed.objectKey, mimeType, dataBase64,
+        }, ...(signal ? [{ signal }] : [])))
+      } finally { metrics.fallbackUploadMs = Math.round(performance.now() - fallbackStarted) }
     }
+    check()
     metrics.outcome = 'success'
     metrics.uploadedBytes = file.size
     return signed.objectKey
   } catch (error) {
     if (signal?.aborted) { metrics.outcome = 'cancelled'; throw signal.reason ?? new DOMException('上传已取消', 'AbortError') }
     throw error
-  } finally { options.onMetrics?.(metrics) }
+  } finally {
+    metrics.elapsedMs = Math.round(performance.now() - started)
+    options.onMetrics?.(metrics)
+  }
 }
 
 /** 上传图片并返回可注册到 AssetRegistry 的元数据。 */

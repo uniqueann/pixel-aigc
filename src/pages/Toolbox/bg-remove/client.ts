@@ -8,9 +8,18 @@ import { clientTiming, downloadImageResult, fileToBase64, ImageResultError,
   readImageResult, shouldUseInlineImageTransport, throwIfImageRequestAborted } from '@/services/api/image-transfer'
 import { createTask, getTask, liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
+import { useUserStore } from '@/store/useUserStore'
+import { BgRemoveSourceUploads, type BgRemoveSourceMetrics } from './sourceUpload'
 import type { BatchImage } from './types'
 
 const ACTIVE = new Set(['pending', 'queued', 'processing'])
+const sourceUploads = new BgRemoveSourceUploads(uploadTaskInput)
+let sessionVersion = 0
+export function clearBgRemoveSourceUploadSession() { sessionVersion++; sourceUploads.clear() }
+useUserStore.subscribe((state, previous) => {
+  if (state.userId !== previous.userId || state.account?.runtimeScope !== previous.account?.runtimeScope)
+    clearBgRemoveSourceUploadSession()
+})
 
 async function readSize(blob: Blob) {
   const bitmap = await createImageBitmap(blob)
@@ -30,12 +39,23 @@ function timedSignal(timeout: number, signal?: AbortSignal) {
 }
 
 async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean, options: MattingOptions) {
-  const ownerId = options.ownerId ?? 'local'
-  const transfer = { ...(image.transfer?.ownerId === ownerId ? image.transfer : {}), ownerId }
+  const actor = useUserStore.getState()
+  const ownerId = options.ownerId ?? actor.userId ?? 'local'
+  const runtimeScope = actor.account?.runtimeScope ?? 'local'
+  const scope = JSON.stringify([ownerId, runtimeScope])
+  const version = sessionVersion
+  const transfer = {
+    ...(image.transfer?.ownerId === ownerId && (image.transfer.runtimeScope ?? 'local') === runtimeScope ? image.transfer : {}),
+    ownerId, runtimeScope,
+  }
   const saveTransfer = () => options.onTransfer?.({ ...transfer })
   const check = () => {
     throwIfImageRequestAborted(options.signal)
     if (shouldStop()) throw new DOMException('处理已取消', 'AbortError')
+    const current = useUserStore.getState()
+    if (version !== sessionVersion || (current.userId ?? 'local') !== ownerId
+      || (current.account?.runtimeScope ?? 'local') !== runtimeScope)
+      throw new DOMException('账号或环境已切换，旧抠图请求已停止', 'AbortError')
   }
   const finish = async (blob: Blob) => {
     check()
@@ -77,6 +97,7 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
   const source = await normalizeImageBlob(image.file)
   check()
   let uploadMs = 0
+  let sourceMetric: BgRemoveSourceMetrics | undefined
   for (let attempt = 0; attempt < 1; attempt += 1) {
     let body: Record<string, unknown>
     if (shouldUseInlineImageTransport(source.size, 0, '', transfer.sourceImageKey)) {
@@ -84,8 +105,16 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
     } else {
       if (!transfer.sourceImageKey) {
         const uploadStarted = performance.now()
-        transfer.sourceImageKey = await uploadTaskInput(source, source.type, timedSignal(120_000, options.signal))
-        uploadMs += Math.round(performance.now() - uploadStarted)
+        transfer.sourceImageKey = await sourceUploads.read(source, {
+          scope, signal: timedSignal(120_000, options.signal),
+          onMetrics: metrics => {
+            sourceMetric = metrics
+            // 摘要、对象键、文件名及签名地址均不写入耗时日志。
+            console.info(JSON.stringify({ evt: 'bg-remove-upload', ...metrics, inputBytes: source.size }))
+          },
+        })
+        check()
+        if (sourceMetric?.source !== 'cache') uploadMs += Math.round(performance.now() - uploadStarted)
         saveTransfer()
       }
       body = { sourceImageKey: transfer.sourceImageKey }
@@ -93,7 +122,9 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
     check()
     body.clientTimingMs = clientTiming(started, uploadMs)
     const response = await postBilledSyncImage('bg-remove',body,quote,timedSignal(115_000,options.signal)).catch(error=>{
+      check()
       if(error && typeof error === 'object' && 'code' in error && error.code === 'OBJECT_NOT_FOUND') {
+        if (transfer.sourceImageKey) sourceUploads.invalidate(scope, transfer.sourceImageKey)
         transfer.sourceImageKey=undefined;saveTransfer()
       }
       throw error
@@ -102,13 +133,16 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
     const downloadStarted = performance.now()
     const matte = await readImageResult(response, '抠图', {
       expectedMime: 'image/png', signal: options.signal, ownerId: options.ownerId,
-      onObjectResult: result => { transfer.result = result; saveTransfer() },
+      onObjectResult: result => { check(); transfer.result = result; saveTransfer() },
     }).catch(error => {
+      check()
       if (error instanceof ImageResultError && error.status === 200) { transfer.result = undefined; saveTransfer() }
       throw error
     })
     console.info(JSON.stringify({ evt: 'bg-remove-client', requestId: response.headers.get('X-Request-Id'),
-      downloadMs: Math.round(performance.now() - downloadStarted), uploadMs, totalMs: Math.round(performance.now() - started) }))
+      downloadMs: Math.round(performance.now() - downloadStarted), uploadMs,
+      sourceReuse: sourceMetric?.source ?? (transfer.sourceImageKey ? 'item' : 'inline'),
+      totalMs: Math.round(performance.now() - started) }))
     return finish(matte)
   }
   throw new Error('图片对象已过期，请重新上传')

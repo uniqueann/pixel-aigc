@@ -20,7 +20,7 @@ export interface BatchImage {
   output?: Blob
   outputMime?: string
   error?: string
-  transfer?: { ownerId: string; sourceImageKey?: string; result?: SyncImageObjectResult }
+  transfer?: { ownerId: string; runtimeScope?: string; sourceImageKey?: string; result?: SyncImageObjectResult }
   restored?: boolean
   createdAt?: string
 }

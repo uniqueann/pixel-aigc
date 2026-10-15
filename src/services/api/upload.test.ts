@@ -42,6 +42,68 @@ describe('uploadTaskInput', () => {
     expect((await result).name).toBe('AbortError')
     expect(fetch).not.toHaveBeenCalled()
   })
+  it('直传失败后累计两次传输耗时，分别记录回退阶段', async () => {
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    mocks.sign.mockImplementation(async (path: string) => {
+      now += path === '/task-inputs' ? 5 : 60
+      return path === '/task-inputs' ? { uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' } : { ok: true }
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => { now += 40; throw new TypeError('网络中断') }))
+    const metrics = vi.fn()
+    await uploadTaskInput(png, undefined, undefined, { onMetrics: metrics })
+    expect(metrics).toHaveBeenCalledWith(expect.objectContaining({
+      signMs: 5, directUploadMs: 40, directOutcome: 'network-error', fallbackUploadMs: 60,
+      fallbackEncodeMs: 0, uploadMs: 100, elapsedMs: 105, transport: 'fallback', outcome: 'success',
+    }))
+  })
+  it('直传 HTTP 失败有明确状态，保持原有不自动回退行为', async () => {
+    mocks.sign.mockResolvedValue({ uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })))
+    const metrics = vi.fn()
+    await expect(uploadTaskInput(png, undefined, undefined, { onMetrics: metrics })).rejects.toThrow('原图上传失败')
+    expect(mocks.sign).toHaveBeenCalledTimes(1)
+    expect(metrics).toHaveBeenCalledWith(expect.objectContaining({ directStatus: 503, directOutcome: 'http-error', outcome: 'failed' }))
+  })
+  it('跨域时序不可见时不将零值解释为 DNS 或建连实际耗时', async () => {
+    vi.spyOn(performance, 'now').mockReturnValue(100)
+    vi.spyOn(performance, 'getEntriesByName').mockReturnValue([
+      { startTime: 100, requestStart: 0, responseStart: 0 } as PerformanceResourceTiming,
+    ])
+    mocks.sign.mockResolvedValue({ uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
+    const metrics = vi.fn()
+    await uploadTaskInput(png, undefined, undefined, { onMetrics: metrics })
+    expect(metrics.mock.calls[0][0].networkTiming).toBeUndefined()
+  })
+  it('可见的网络时序仅记录数值，不泄漏上传签名和对象地址', async () => {
+    vi.spyOn(performance, 'now').mockReturnValue(100)
+    vi.spyOn(performance, 'getEntriesByName').mockReturnValue([
+      { startTime: 100, domainLookupStart: 100, domainLookupEnd: 103, connectStart: 103, secureConnectionStart: 105,
+        connectEnd: 110, requestStart: 110, responseStart: 125, responseEnd: 126 } as PerformanceResourceTiming,
+    ])
+    mocks.sign.mockResolvedValue({ uploadUrl: 'https://r2.test/private?signature=secret', objectKey: 'input-key' })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
+    const metrics = vi.fn()
+    await uploadTaskInput(png, undefined, undefined, { onMetrics: metrics })
+    expect(metrics.mock.calls[0][0].networkTiming).toEqual({ dnsMs: 3, connectMs: 7, tlsMs: 5, requestToResponseMs: 15, responseReadMs: 1 })
+    expect(JSON.stringify(metrics.mock.calls)).not.toMatch(/signature|secret|r2\.test|input-key/)
+  })
+  it('网络观测接口异常不会使已成功的上传失败', async () => {
+    vi.spyOn(performance, 'getEntriesByName').mockImplementation(() => { throw new Error('观测受限') })
+    mocks.sign.mockResolvedValue({ uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
+    await expect(uploadTaskInput(png)).resolves.toBe('input-key')
+  })
+  it('直传期间取消不会触发回退上传', async () => {
+    const abort = new AbortController()
+    mocks.sign.mockResolvedValue({ uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' })
+    vi.stubGlobal('fetch', vi.fn(async () => { abort.abort(); throw new DOMException('取消', 'AbortError') }))
+    const metrics = vi.fn()
+    await expect(uploadTaskInput(png, undefined, abort.signal, { onMetrics: metrics })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(mocks.sign).toHaveBeenCalledTimes(1)
+    expect(metrics).toHaveBeenCalledWith(expect.objectContaining({ directOutcome: 'cancelled', outcome: 'cancelled' }))
+  })
   it('空文件、非法格式及超大文件在申请签名前拒绝', async () => {
     await expect(uploadTaskInput(new Blob())).rejects.toThrow('不能为空')
     await expect(uploadTaskInput(new Blob(['损坏图片']))).rejects.toThrow('文件已损坏')
