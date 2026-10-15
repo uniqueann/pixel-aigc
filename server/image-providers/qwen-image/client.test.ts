@@ -265,6 +265,66 @@ describe('qwen image 客户端', () => {
     }))
   })
 
+  it('状态查询不继承生成提交的重试次数，后续仍查询同一个任务', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse({ code: 'InternalError' }, 502))
+      .mockResolvedValueOnce(jsonResponse(pollSucceededOne))
+    const ctx = context(fetchImpl)
+    const separated = createQwenImageProvider(() => ({ ...settings, retryCount: 2 }))
+    await expect(separated.getStatus!(QWEN_TASK_ID, ctx)).rejects.toMatchObject({ code: 'UPSTREAM_UNAVAILABLE', retryable: true })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(ctx.sleep).not.toHaveBeenCalled()
+    await expect(separated.getStatus!(QWEN_TASK_ID, ctx)).resolves.toMatchObject({ state: 'succeeded' })
+    expect(fetchImpl.mock.calls.every(([url, init]) => url.endsWith(`/tasks/${QWEN_TASK_ID}`) && !init.method)).toBe(true)
+  })
+
+  it('分别记录等响应头和读取正文的时间，不把完整查询都算成网络建连', async () => {
+    let now = 0
+    const fetchImpl = vi.fn(async () => {
+      now += 25
+      return Object.assign(jsonResponse(pollPending), { json: async () => { now += 15; return pollPending } })
+    })
+    const ctx = { ...context(fetchImpl), now: () => now }
+    await provider.getStatus!(QWEN_TASK_ID, ctx)
+    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'qwen-image-status', ms: 40, responseHeadersMs: 25, responseReadMs: 15, timeoutMs: 8_000,
+    }))
+  })
+
+  it('状态请求和正文读取受同一短预算约束，超时交还原任务调度', async () => {
+    for (const bodyStalls of [false, true]) {
+      const limited = createQwenImageProvider(() => ({ ...settings, statusTimeoutMs: 25 }))
+      const fetchImpl = vi.fn((_url: string, init: RequestInit) => {
+        const signal = init.signal!
+        const stalled = () => new Promise<never>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        return bodyStalls ? Promise.resolve(Object.assign(new Response(null, { status: 200 }), { json: stalled })) : stalled()
+      })
+      await expect(limited.getStatus!(QWEN_TASK_ID, context(fetchImpl as typeof fetch)))
+        .rejects.toMatchObject({ code: 'TIMEOUT', retryable: true })
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('可选查询重试的退避也受总预算约束，不等待完整的原重试链', async () => {
+    const limited = createQwenImageProvider(() => ({ ...settings, statusTimeoutMs: 25, statusRetryCount: 1 }))
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ code: 'InternalError' }, 502))
+    const ctx = context(fetchImpl, vi.fn(() => new Promise<void>(() => {})))
+    await expect(limited.getStatus!(QWEN_TASK_ID, ctx)).rejects.toMatchObject({ code: 'TIMEOUT', retryable: true })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(ctx.sleep).toHaveBeenCalledTimes(1)
+  })
+
+  it('状态短预算不会截断原有生成提交请求', async () => {
+    const limited = createQwenImageProvider(() => ({ ...settings, statusTimeoutMs: 1, requestTimeoutMs: 1_000 }))
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      await new Promise(resolve => setTimeout(resolve, 15))
+      expect(init.signal?.aborted).toBe(false)
+      return jsonResponse(submitPending)
+    })
+    await expect(limited.submit!(input, context(fetchImpl as typeof fetch))).resolves.toEqual({ providerTaskId: QWEN_TASK_ID })
+  })
+
   it('多图同时接受一个 content 数组和多个 choice，并记下命中的字段', async () => {
     for (const body of [pollSucceededContentImages(4), pollSucceededChoices(4)]) {
       const state = await provider.getStatus!(QWEN_TASK_ID, context(vi.fn().mockResolvedValue(jsonResponse(body))))

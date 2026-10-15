@@ -19,6 +19,7 @@ import {
   DEFAULT_QWEN_INITIAL_POLL_DELAY_MS,
   DEFAULT_QWEN_POLL_INTERVAL_MS,
   DEFAULT_QWEN_TASK_TIMEOUT_MS,
+  DEFAULT_QWEN_STATUS_TIMEOUT_MS,
   qwenImageEnabled,
   qwenImageSettings,
   qwenForcedThrottle,
@@ -160,7 +161,27 @@ function requestLevelError(payload: unknown) {
 }
 
 async function readPayload(response: Response) {
-  return await response.json().catch(() => ({})) as unknown
+  return await response.json().catch(error => {
+    // 正文读取超时必须交回查询调度，不能误判为 UNKNOWN 后记录为成功请求。
+    if (isAbortOrTimeout(error)) throw error
+    return {}
+  }) as unknown
+}
+
+async function waitForRetry(ctx: ProviderContext, ms: number) {
+  const signal = ctx.signal
+  if (!signal) return ctx.sleep(ms)
+  signal.throwIfAborted()
+  return new Promise<void>((resolve, reject) => {
+    const finish = (error?: unknown) => {
+      signal.removeEventListener('abort', abort)
+      if (error) reject(error)
+      else resolve()
+    }
+    const abort = () => finish(signal.reason)
+    signal.addEventListener('abort', abort, { once: true })
+    void ctx.sleep(ms).then(() => finish(), finish)
+  })
 }
 
 async function qwenCall(
@@ -175,12 +196,16 @@ async function qwenCall(
   const retryCount = (init.method ?? 'GET').toUpperCase() === 'GET' ? settings.retryCount : 0
   for (let attempt = 0; attempt <= retryCount; attempt += 1) {
     const started = ctx.now()
+    let responseHeadersMs: number | undefined
     try {
+      ctx.signal?.throwIfAborted()
       const response = await fetchImpl(url, {
         ...init,
         signal: operationSignal(ctx,settings.requestTimeoutMs),
       })
+      responseHeadersMs = Math.max(0, ctx.now() - started)
       const payload = await readPayload(response)
+      ctx.signal?.throwIfAborted()
       const requestCode = readRequestCode(payload)
       const requestError = !response.ok || requestLevelError(payload)
       const mapped = requestError
@@ -195,12 +220,15 @@ async function qwenCall(
         retry,
         host: requestHost(url) ?? dashScopeHost(url),
         ms: ctx.now() - started,
+        responseHeadersMs,
+        responseReadMs: Math.max(0, ctx.now() - started - responseHeadersMs),
+        timeoutMs: settings.requestTimeoutMs,
         requestId: ctx.requestId,
         ...(requestCode.code ? { upstreamCode: requestCode.code } : {}),
         ...(requestCode.message ? { upstreamMessage: requestCode.message.slice(0, 300) } : {}),
       })
       if (retry) {
-        await ctx.sleep(retryBackoffMs(attempt))
+        await waitForRetry(ctx, retryBackoffMs(attempt))
         continue
       }
       if (mapped) {
@@ -214,7 +242,7 @@ async function qwenCall(
       lastError = error
       if (error instanceof ProviderError) {
         if (error.retryable && !error.holdPending && !ctx.signal?.aborted && attempt < retryCount) {
-          await ctx.sleep(retryBackoffMs(attempt))
+          await waitForRetry(ctx, retryBackoffMs(attempt))
           continue
         }
         throw error
@@ -232,9 +260,11 @@ async function qwenCall(
         ms: ctx.now() - started,
         requestId: ctx.requestId,
         ...connectErrorLogFields(error),
+        ...(responseHeadersMs !== undefined ? { responseHeadersMs, responseReadMs: Math.max(0, ctx.now() - started - responseHeadersMs) } : {}),
+        timeoutMs: settings.requestTimeoutMs,
       })
       if (retry) {
-        await ctx.sleep(connect ? connectRetryDelay(attempt) : retryBackoffMs(attempt))
+        await waitForRetry(ctx, connect ? connectRetryDelay(attempt) : retryBackoffMs(attempt))
         continue
       }
       if (preSend) {
@@ -419,11 +449,13 @@ export function createQwenImageProvider(
     },
     async getStatus(providerTaskId: string, ctx: ProviderContext): Promise<ProviderTaskState> {
       const settings = settingsOf()
+      const timeoutMs = settings.statusTimeoutMs ?? DEFAULT_QWEN_STATUS_TIMEOUT_MS
+      const queryContext = { ...ctx, signal: operationSignal(ctx, timeoutMs) }
       const payload = await qwenCall(
         `${settings.baseUrl}/api/v1/tasks/${encodeURIComponent(providerTaskId)}`,
         { headers: { Authorization: `Bearer ${settings.apiKey}` } },
-        ctx,
-        settings,
+        queryContext,
+        { ...settings, requestTimeoutMs: timeoutMs, retryCount: settings.statusRetryCount ?? 0 },
         'qwen-image-status',
       )
       const status = taskStatus(payload) ?? 'UNKNOWN'

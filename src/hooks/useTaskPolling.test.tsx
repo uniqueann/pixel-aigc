@@ -53,6 +53,28 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={client}>{children}</QueryClientProvider>
 )
 describe('共享单任务轮询', () => {
+  it('按服务端提示等到查询时间，完成后停止，多个观察者仍只发一次请求', async () => {
+    vi.useFakeTimers()
+    try {
+      mocks.get.mockResolvedValueOnce({ ...task, status: 'processing', pollAfterMs: 3_000 }).mockResolvedValue(task)
+      const consume = vi.fn()
+      renderHook(() => { useTaskPolling(task.id, consume); useTaskPolling(task.id) }, { wrapper })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(mocks.get).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_999) })
+      expect(mocks.get).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(mocks.get).toHaveBeenCalledTimes(2)
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+      expect(mocks.get).toHaveBeenCalledTimes(2)
+      expect(consume).toHaveBeenCalledWith(task)
+    } finally {
+      cleanup()
+      client.clear()
+      await vi.runOnlyPendingTimersAsync()
+      vi.useRealTimers()
+    }
+  })
   it('两个消费者复用一次查询，各自收到回调；缓存含账号与环境', async () => {
     mocks.get.mockResolvedValue(task)
     const first = vi.fn(),

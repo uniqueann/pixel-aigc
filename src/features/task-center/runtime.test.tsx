@@ -148,6 +148,29 @@ afterEach(() => {
 })
 
 describe('全局任务运行层', () => {
+  it('按服务端提示刷新只读快照，完成后停止快速刷新', async () => {
+    vi.useFakeTimers()
+    try {
+      api.request.mockResolvedValueOnce({ items: [{ ...row(), pollAfterMs: 3_000 }], activeCount: 1, unseenCount: 0, snapshotAt: new Date().toISOString() })
+        .mockResolvedValue({ items: [row(1, 'succeeded')], activeCount: 0, unseenCount: 1, snapshotAt: new Date().toISOString() })
+      mount()
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(api.request).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_999) })
+      expect(api.request).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(api.request).toHaveBeenCalledTimes(2)
+      expect(api.request.mock.calls.every(call => call[1] === 'GET' && call[0].startsWith('/task-center'))).toBe(true)
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(8_000) })
+      expect(api.request).toHaveBeenCalledTimes(2)
+    } finally {
+      cleanup()
+      client.clear()
+      await vi.runOnlyPendingTimersAsync()
+      vi.useRealTimers()
+    }
+  })
   it('提交响应丢失后原请求查询写回工作站绑定，完成任务也可自动找回',async()=>{
     const task={...row(10,'succeeded'),origin:{entry:'workstation' as const,tool:'variation' as const}}
     saveReceipt('image_job',task.requestId,task.origin)

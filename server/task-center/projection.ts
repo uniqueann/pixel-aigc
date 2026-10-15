@@ -24,7 +24,7 @@ with images as (select * from aigc.image_jobs where user_id=$1::uuid and scope=$
       when coalesce(j.params->>'referenceImageKey','')<>'' then 'fusion'
       when j.params->'relight' is not null and j.params->'relight'<>'null'::jsonb then 'relight'
       when jsonb_typeof(j.params->'retouchDirections')='array' and j.params->'retouchDirections'<>'[]'::jsonb then 'retouch'
-      else 'smart-edit' end else null end) as tool
+      else 'smart-edit' end else null end) as tool,j.next_poll_at
   from images j left join lateral (
    select count(*) filter(where status='succeeded' and result_object_key is not null) as completed,
     jsonb_agg(jsonb_build_array(ordinal,result_object_key) order by ordinal) filter(where status='succeeded' and result_object_key is not null) as identities
@@ -39,7 +39,7 @@ with images as (select * from aigc.image_jobs where user_id=$1::uuid and scope=$
     case when j.result->>'chargedCredits' ~ '^[0-9]{1,9}$' then (j.result->>'chargedCredits')::int else null end,
     j.created_at,j.updated_at,case when j.state<>'reserved' then j.updated_at else null end,null,null,
     case when j.state='settled' and coalesce(j.result->>'objectKey','')<>'' then jsonb_build_array(j.result->>'objectKey') else '[]'::jsonb end,
-    coalesce(j.origin->>'tool',case j.operation when 'erase' then 'remove' else j.operation end)
+    coalesce(j.origin->>'tool',case j.operation when 'erase' then 'remove' else j.operation end),null::timestamptz
   from syncs j
   union all
   select 'email_task',j.id,j.request_id,'email_assist',j.model_profile_id,
@@ -47,7 +47,7 @@ with images as (select * from aigc.image_jobs where user_id=$1::uuid and scope=$
     1,case when j.status='succeeded' and coalesce(j.result_text,'')<>'' then 1 else 0 end,
     j.error_code,'{}'::text[],j.origin,j.billing_state,j.credits_reserved,j.credits_charged,
     j.created_at,j.updated_at,case when j.status<>'processing' then j.updated_at else null end,j.expires_at,j.expires_at,
-    jsonb_build_array(coalesce(j.result_text,'')<>''),'email-assist' from emails j
+    jsonb_build_array(coalesce(j.result_text,'')<>''),'email-assist',null::timestamptz from emails j
  ), normalized as (
   select s.*,case when original_billing in ('none','legacy_free') then 'none'
    when original_billing='reserved' then 'reserved'

@@ -42,6 +42,8 @@ export interface GenerationTask<TParams = Record<string, unknown>> {
   /** 用户修改稿与 AI 原始结果分别保存。 */
   editedText?: string
   modelProfileId?: string
+  /** 服务端建议下次读取前等待的毫秒数；旧服务端缺省时沿用原查询间隔。 */
+  pollAfterMs?: number
   tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number }
   errorMessage?: string
   errorCode?: string

@@ -38,6 +38,7 @@ import {
   type TaskReceipt,
 } from './receipts'
 import { TaskCenterContext, type TaskCenterContextValue } from './context'
+import { taskCenterPollIntervalMs } from './pollInterval'
 const TaskCenterDrawer = lazy(() =>
   import('./TaskCenterDrawer').then((module) => ({
     default: module.TaskCenterDrawer,
@@ -230,9 +231,7 @@ function TaskCenterSession({
         ? [8000, 16000, 30000, 60000][
             Math.min(Math.max(failures.current - 1, 0), 3)
           ]
-        : q.state.data?.activeCount || receipts.length || watched.current.size
-          ? 8000
-          : 30000,
+        : taskCenterPollIntervalMs(q.state.data, !!(receipts.length || watched.current.size), Date.now() - q.state.dataUpdatedAt),
   })
   const observeRef = useRef(observe)
   useEffect(() => {

@@ -123,6 +123,8 @@ export interface TaskCenterSummary {
   tool: TaskTool | null
   capability: string
   modelProfileId: string | null
+  /** 只读快照的刷新建议，不授权客户端推进或重提任务。 */
+  pollAfterMs?: number
   state: TaskState
   requestedCount: number
   completedCount: number

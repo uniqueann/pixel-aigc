@@ -5,7 +5,7 @@ import { createMockImageProvider,MOCK_PNG_1X1 } from '../image-providers/mock.js
 import { ProviderError,type ImageProvider } from '../image-providers/types.js'
 import { createMemoryStore } from './memory-store.js'
 import { shouldAdvance } from './state.js'
-import { advanceImageClaim,advanceJobInStore,createImageJobInStore,createImageTaskSchema,type ImageJobRuntime } from './service.js'
+import { advanceImageClaim,advanceJobInStore,createImageJobInStore,createImageTaskSchema,toClientImageTask,type ImageJobRuntime } from './service.js'
 
 const user = { id: '00000000-0000-4000-8000-000000000001',email: 'alice@example.com',suggestedName: 'A',avatarUrl: null,providers: ['email'] }
 const previous = { ...process.env }
@@ -36,6 +36,34 @@ async function fixture(provider: ImageProvider = createMockImageProvider(),count
 }
 
 describe('图片持久化执行协议',() => {
+  it('状态查询超时保留原任务与预扣，下一轮成功只结算一次且不会补生成', async () => {
+    const submit = vi.fn(async () => ({ providerTaskId: '原任务编号' }))
+    const getStatus = vi.fn().mockRejectedValueOnce(new ProviderError('TIMEOUT', '查询超时', true, 504))
+      .mockResolvedValue({ state: 'succeeded', resultUrls: ['https://provider.test/private?token=secret'] })
+    const f = await fixture(createMockImageProvider({ submit, getStatus }))
+    const submitted = await advanceImageClaim(f.bundle, f.runtime, true)
+    const dto = await toClientImageTask(submitted, f.runtime)
+    expect(dto.pollAfterMs).toBe(new Date(submitted.job.next_poll_at).getTime() - f.now())
+    f.setNow(new Date(submitted.job.next_poll_at).getTime() + 1)
+    const waiting = await advanceImageClaim(await f.claim(), f.runtime)
+    expect(waiting.job.billing_state).toBe('reserved')
+    expect(waiting.items[0].provider_task_id).toBe('原任务编号')
+    expect(f.billing.settle).not.toHaveBeenCalled()
+    expect(f.billing.release).not.toHaveBeenCalled()
+    f.setNow(new Date(waiting.job.next_poll_at).getTime() + 1)
+    const done = await advanceImageClaim(await f.claim(), f.runtime)
+    expect(done.job.status).toBe('succeeded')
+    expect((await toClientImageTask(done, f.runtime)).pollAfterMs).toBeUndefined()
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(getStatus.mock.calls.map(([id]) => id)).toEqual(['原任务编号', '原任务编号'])
+    expect(f.billing.reserve).toHaveBeenCalledTimes(1)
+    expect(f.billing.settle).toHaveBeenCalledTimes(1)
+    expect(f.billing.release).not.toHaveBeenCalled()
+    const metrics = vi.mocked(f.runtime.log).mock.calls.map(([entry]) => entry).filter(entry => entry.evt === 'image-job-phase')
+    expect(metrics.filter(entry => entry.phase === 'status').map(entry => entry.outcome)).toEqual(['failed', 'success'])
+    expect(metrics.map(entry => entry.phase)).toEqual(expect.arrayContaining(['prepare', 'reconcile', 'download', 'postprocess', 'transfer-intent', 'store', 'billing', 'finalize', 'present']))
+    expect(JSON.stringify(metrics)).not.toMatch(/provider\.test|token|secret|generated\//)
+  })
   it('来源变化不重复预扣，重入保留首次来源，生成参数变化仍冲突',async()=>{
     const origin:TaskOrigin={entry:'canvas',tool:'text-to-image',projectId:'first',sceneId:'scene',projectSource:'local'}
     const f=await fixture(undefined,1,origin)
