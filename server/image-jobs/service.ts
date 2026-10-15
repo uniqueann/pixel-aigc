@@ -68,6 +68,8 @@ import { createSqlStore } from './repository.js'
 import { ImageLeaseLost, sqlImageExecution, type ImageExecutionPort } from './execution.js'
 import { getDeadline } from '@vercel/functions'
 import { taskOriginSchema, validTaskOrigin } from '../../shared/task-center.js'
+import { imageTaskPollAfterMs } from '../../shared/task-polling.js'
+import { measureImagePhase } from './metrics.js'
 import {
   ACTIVE_JOB_STATUSES,
   LATE_RESULT_WARNING,
@@ -957,10 +959,10 @@ export async function finalizeJob(
     if (reduced.status === 'succeeded' && !lateDelivery) {
       const unit = job.requested_count ? Math.round(job.credits_reserved / job.requested_count) : 0
       creditsCharged = succeeded * unit
-      await runtime.billing.settle({ jobId: job.id, charged: creditsCharged })
+      await measureImagePhase(runtime, job, 'billing', () => runtime.billing.settle({ jobId: job.id, charged: creditsCharged }))
       billingState = 'settled'
     } else {
-      await runtime.billing.release(job.id)
+      await measureImagePhase(runtime, job, 'billing', () => runtime.billing.release(job.id))
       billingState = 'released'
       creditsCharged = 0
     }
@@ -1027,13 +1029,13 @@ async function persistDownloadedResult(
   if (!runtime.execution || !job.lease_token) throw new ImageLeaseLost()
   const params = job.params as StoredImageParams
   const source = sourceDimensions(params)
-  const cropped = await runtime.crop(bytes, source.width, source.height)
+  const cropped = await measureImagePhase(runtime, job, 'postprocess', () => runtime.crop(bytes, source.width, source.height), { ordinal: item.ordinal })
   const attemptId = randomUUID()
   const objectKey = `generated/${job.user_id}/${job.scope}/${job.id}/${item.ordinal}/${attemptId}.${extensionFor(cropped.mimeType || mimeType)}`
   const descriptor = { object_key: objectKey,mime_type: cropped.mimeType || mimeType,width: cropped.width,height: cropped.height,
     checksum: createHash('sha256').update(cropped.bytes).digest('hex') }
-  await runtime.execution.transaction(store => store.startTransfer(job.id,job.lease_token!,item.ordinal,attemptId,descriptor))
-  await runtime.putObject(objectKey,cropped.bytes,descriptor.mime_type,runtime.signal)
+  await measureImagePhase(runtime, job, 'transfer-intent', () => runtime.execution!.transaction(store => store.startTransfer(job.id,job.lease_token!,item.ordinal,attemptId,descriptor)), { ordinal: item.ordinal })
+  await measureImagePhase(runtime, job, 'store', () => runtime.putObject(objectKey,cropped.bytes,descriptor.mime_type,runtime.signal), { ordinal: item.ordinal })
   return {
     status: 'succeeded',
     result_object_key: objectKey,
@@ -1125,7 +1127,10 @@ export async function collectAdvancePatches(
     const shared = job.provider_params.batch === true || group.length > 1
     const lead = group.reduce((best, item) => item.ordinal < best.ordinal ? item : best)
     try {
-      const state = await provider.getStatus(taskId, ctx)
+      const state = await measureImagePhase(runtime, job, 'status', () => provider.getStatus!(taskId, ctx), {
+        ordinal: lead.ordinal,
+        scheduledLateMs: Math.max(0, runtime.now() - new Date(job.next_poll_at).getTime()),
+      })
       const batch = job.provider_params.batch === true
       const usageOrdinal = batch ? 0 : lead.ordinal
       const vendorFor = (item: ImageJobItemRow) => (batch || (shared && item.ordinal !== lead.ordinal) ? undefined : state.vendor)
@@ -1163,7 +1168,7 @@ export async function collectAdvancePatches(
       if (!shared) {
         const resultUrl = state.resultUrls[0]
         if (!resultUrl) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回结果地址')
-        const downloaded = await provider.fetchResult(resultUrl, ctx)
+        const downloaded = await measureImagePhase(runtime, job, 'download', () => provider.fetchResult(resultUrl, ctx), { ordinal: lead.ordinal })
         outcomes.push({
           ordinal: lead.ordinal,
           patch: await persistDownloadedResult(job, lead, downloaded.bytes, downloaded.mimeType, runtime),
@@ -1182,7 +1187,7 @@ export async function collectAdvancePatches(
           return
         }
         try {
-          const downloaded = await provider.fetchResult(resultUrl, ctx)
+          const downloaded = await measureImagePhase(runtime, job, 'download', () => provider.fetchResult(resultUrl, ctx), { ordinal: item.ordinal })
           outcomes.push({
             ordinal: item.ordinal,
             patch: await persistDownloadedResult(job, item, downloaded.bytes, downloaded.mimeType, runtime),
@@ -1289,7 +1294,7 @@ async function reconcileImageAttempts(bundle: ImageJobBundle,runtime: ImageJobRu
 export async function advanceImageClaim(bundle: ImageJobBundle,runtime: ImageJobRuntime,initial = false) {
   if (!runtime.execution || !bundle.job.lease_token) throw new ImageLeaseLost()
   const execution = runtime.execution
-  const prepared = await execution.transaction(async (store,billing) => {
+  const prepared = await measureImagePhase(runtime, bundle.job, 'prepare', () => execution.transaction(async (store,billing) => {
     const current = await store.assertLease(bundle.job.id,bundle.job.lease_token!)
     if (!current) throw new ImageLeaseLost()
     const items = await store.listItems(current.id)
@@ -1298,10 +1303,10 @@ export async function advanceImageClaim(bundle: ImageJobBundle,runtime: ImageJob
       return finalizeJob(store,current,items,{ ...runtime,billing: runtime.billing === noopBilling ? billing : runtime.billing },false,[],{ keepLease: true })
     }
     return { job: current,items }
-  })
+  }))
   let outcomes: SubmitOutcome[] = []
   try {
-    const reconciled = await reconcileImageAttempts(prepared,runtime)
+    const reconciled = await measureImagePhase(runtime, bundle.job, 'reconcile', () => reconcileImageAttempts(prepared,runtime))
     const provider = runtime.providerFor(reconciled.job.provider)
     if (initial && provider) {
       outcomes = await runProviderSubmits(reconciled,provider,reconciled.job.user_id,runtime)
@@ -1318,11 +1323,15 @@ export async function advanceImageClaim(bundle: ImageJobBundle,runtime: ImageJob
         patch: { status: 'failed',error_code: 'INPUT_UNAVAILABLE',error_message: '图片源文件读取失败' } }))
     } else runtime.log({ stage: 'advance-retry',jobId: bundle.job.id,code: 'IO_FAILED' })
   }
-  return execution.transaction((store,billing) => advanceJobInStore(store,bundle,
-    { ...runtime,billing: runtime.billing === noopBilling ? billing : runtime.billing },{ alreadyLeased: true,outcomes }))
+  return measureImagePhase(runtime, bundle.job, 'finalize', () => execution.transaction((store,billing) => advanceJobInStore(store,bundle,
+    { ...runtime,billing: runtime.billing === noopBilling ? billing : runtime.billing },{ alreadyLeased: true,outcomes })))
 }
 
 export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJobRuntime) {
+  return measureImagePhase(runtime, bundle.job, 'present', () => presentImageTask(bundle, runtime))
+}
+
+async function presentImageTask(bundle: ImageJobBundle, runtime: ImageJobRuntime) {
   const mapped = toClientTaskStatus(bundle.job.status)
   const images = []
   for (const item of bundle.items) {
@@ -1347,6 +1356,8 @@ export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJo
     status: mapped.status,
     params: bundle.job.params,
     modelProfileId: bundle.job.model_profile_id,
+    ...(ACTIVE_JOB_STATUSES.has(bundle.job.status) && bundle.job.capability !== 'text_to_video'
+      ? { pollAfterMs: imageTaskPollAfterMs(bundle.job.next_poll_at, runtime.now()) } : {}),
     resultUrls: images.map(image => image.url),
     resultImages: images,
     warnings: bundle.job.warnings,
@@ -1400,7 +1411,8 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
 }
 
 export async function loadImageTask(user: User,id: string,runtime = defaultImageJobRuntime()) {
-  const prepared = await withIdentity(user.id,user.email,async sql => {
+  const identity = { id, request_id: '', provider: 'unknown', model_profile_id: '', scope: runtimeScope() }
+  const prepared = await measureImagePhase(runtime, identity, 'lookup', () => withIdentity(user.id,user.email,async sql => {
     await sql`select set_config('statement_timeout','8000',true),set_config('lock_timeout','5000',true)`
     await requireActive(sql,user.id)
     const store = createSqlStore(sql,user.id)
@@ -1411,9 +1423,9 @@ export async function loadImageTask(user: User,id: string,runtime = defaultImage
     if (job.capability === 'text_to_video') return { mode: 'video' as const,job,items }
     if (!shouldAdvance(job,runtime.now(),items) || (!ACTIVE_JOB_STATUSES.has(job.status) && !canSalvage(job,runtime.now(),items)))
       return { mode: 'snapshot' as const,job,items }
-    const leased = await store.tryAcquireLease(job.id,new Date(runtime.now() + IMAGE_LEASE_MS),'poll')
+    const leased = await measureImagePhase(runtime, job, 'lease', () => store.tryAcquireLease(job.id,new Date(runtime.now() + IMAGE_LEASE_MS),'poll'))
     return leased ? { mode: 'advance' as const,job: leased,items } : { mode: 'snapshot' as const,job,items }
-  })
+  }))
   if (!prepared) return null
   if (prepared.mode === 'video') {
     const { toClientVideoTask } = await import('../video-jobs/service.js')

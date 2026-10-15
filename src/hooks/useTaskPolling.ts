@@ -51,7 +51,7 @@ export function useTaskPolling(
       return value
     },
     enabled: !!taskId && enabled,
-    refetchInterval: (q) => taskRefetchIntervalMs(q.state.data),
+    refetchInterval: (q) => taskRefetchIntervalMs(q.state.data, Date.now() - q.state.dataUpdatedAt),
   })
   useEffect(() => {
     const task = query.data,

@@ -24,6 +24,8 @@ const KEYS = [
   'QWEN_IMAGE_MAX_PARALLEL',
   'QWEN_IMAGE_REQUEST_TIMEOUT_MS',
   'QWEN_IMAGE_REQUEST_RETRY_COUNT',
+  'QWEN_IMAGE_STATUS_TIMEOUT_MS',
+  'QWEN_IMAGE_STATUS_RETRY_COUNT',
   'DASHSCOPE_API_KEY',
   'DASHSCOPE_BASE_URL',
 ] as const
@@ -39,6 +41,13 @@ afterEach(() => {
 })
 
 describe('qwen image 配置', () => {
+  it('状态查询默认八秒零重试，与生成提交配置分开且有上限', () => {
+    const env = { QWEN_IMAGE_API_KEY: 'test-key', QWEN_IMAGE_REQUEST_TIMEOUT_MS: '45000', QWEN_IMAGE_REQUEST_RETRY_COUNT: '3' }
+    expect(qwenImageSettings(env)).toMatchObject({ requestTimeoutMs: 45_000, retryCount: 3, statusTimeoutMs: 8_000, statusRetryCount: 0 })
+    expect(qwenImageSettings({ ...env, QWEN_IMAGE_STATUS_TIMEOUT_MS: '999999', QWEN_IMAGE_STATUS_RETRY_COUNT: '9' }))
+      .toMatchObject({ requestTimeoutMs: 45_000, retryCount: 3, statusTimeoutMs: 30_000, statusRetryCount: 1 })
+    expect(qwenImageSettings({ ...env, QWEN_IMAGE_STATUS_TIMEOUT_MS: '0' })?.statusTimeoutMs).toBe(1_000)
+  })
   it('默认关闭，只配百炼 Key 也不会对外可用', () => {
     delete process.env.QWEN_IMAGE_ENABLED
     process.env.DASHSCOPE_API_KEY = 'sk-dash'

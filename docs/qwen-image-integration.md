@@ -1,6 +1,6 @@
 # 千问图像 3.0 / 3.0 Pro 文生图（P0）
 
-更新时间：2026-10-06。
+更新时间：2026-10-16。
 
 P0 把阿里云百炼 `qwen-image-3.0`、`qwen-image-3.0-pro` 和 `qwen-image-2.1-pro` 接进现有图片任务层。默认关闭。关闭时模型列表、能力开关和 GPT Image 2 的提交方式都不变。三个模型都可以文生图，也可以做智能编辑、裂变和融合。融合仍是带第二张参考图的 `image_edit`，不是单独的 operation。不接蒙版，也不接 2.1 Pro 的 edit-plus。
 
@@ -20,7 +20,7 @@ P0 把阿里云百炼 `qwen-image-3.0`、`qwen-image-3.0-pro` 和 `qwen-image-2.
 - 上游不回传金额。成功后按模型目录单价乘以实际返回张数写入 `provider_params.vendor.cost`，并带 `currency: CNY`。公开的模型接口和任务接口都不返回 `vendorCost`。DashScope 没有 `credits_cost`，该字段保持 0；用户积分仍在 `credits_charged`。
 - 状态日志 `qwen-image-status` 和用量日志 `bailian-usage` 带上 `submitTime` / `scheduledTime` / `endTime`（来自任务结果）以及 `imageShape`（多图解析命中了哪一段）。`bailian-usage` 和 `qwen-image-submit` 还带上实际采用的 `enableThinking`。
 - 思考默认关闭。自由画布在选中千问模型时显示「自动扩写」，勾选后当次请求带 `enableThinking: true`。积分与关闭时相同。`prompt_extend` 仍只由环境变量控制，默认 `true`。
-- 浏览器对 `bailian:` 任务大约每 1 秒问一次本服务；GPT Image 2 仍是 2 秒，视频仍是 5 秒。服务端对千问仍按 `QWEN_IMAGE_POLL_INTERVAL_MS`（默认 3 秒，且不低于 3 秒）才去 `GET /tasks`。提交收尾不再把首次查询时间改成稳态间隔。
+- 活跃图片响应提供 `pollAfterMs` 时，浏览器按服务端时间提示查询；旧服务端缺省时，`bailian:` 任务仍为 1 秒、其他图片 2 秒，视频 5 秒。服务端对千问仍按 `QWEN_IMAGE_POLL_INTERVAL_MS`（默认 3 秒，且不低于 3 秒）才去 `GET /tasks`。提交收尾不把首次查询时间改成稳态间隔。详细口径见 [状态查询优化](image-task-query-performance.md)。
 - 千问使用自己的 undici 连接，建连超时默认 10 秒（`QWEN_IMAGE_CONNECT_TIMEOUT_MS`）。消除、重绘、扩图继续用 `server/dashscope.ts` 的 4 秒。连接失败日志带 `errorCode` 和 `cause`（例如 `UND_ERR_CONNECT_TIMEOUT`）。只有能确定请求字节还没写出的失败（建连超时、DNS、连接被拒绝）才把明细留在 pending，并在截止时间前的下一轮轮询再提交；同一次提交里这种重试最多一次，避免和 30 秒租约重叠后再发一单。`ECONNRESET`、裸 `fetch failed`、读超时都直接失败，因为上游可能已经收到请求。
 - 提交遇到瞬时限流（HTTP 429，`Throttling` / `Throttling.RateQuota` / `Throttling.BurstRate`）不再在这次请求里重试，也不把任务判失败。明细保持 pending，任务状态保持 `queued`，界面显示「排队中」。下次提交按退避时间排队：3.0 从 8 秒起，Pro 从 15 秒起，每次翻倍，封顶 60 秒，再加 0–50% 抖动。截止前由用户轮询触发重提；已经有 `task_id` 的明细不会再提交。`qwen-image-submit` 日志带上游 `upstreamCode`（例如 `Throttling.RateQuota`）。
 - 一直限流到截止时间：全额退回预扣，错误文案是「当前排队人数较多，请稍后重试（积分已退回）」。已经向上游提交成功、只是生成超时的任务仍用「任务处理超时，请重试」。
@@ -56,9 +56,11 @@ Preview 实测（`qwen-image-3.0`，1K，1:1，1 张）：思考打开时端到�
 | `QWEN_IMAGE_POLL_INTERVAL_MS` | `3000` | 首次之后查询上游的间隔，最小 3000。浏览器问得更勤也不会更频繁打到 DashScope |
 | `QWEN_IMAGE_INITIAL_POLL_DELAY_MS` | `3000` | 提交后第一次查询上游前的等待 |
 | `QWEN_IMAGE_MAX_PARALLEL` | `1` | 千问走批量 `n`，这个值只在意外扇出时限制并发 |
-| `QWEN_IMAGE_REQUEST_TIMEOUT_MS` | `30000` | 单次提交或查询的 HTTP 超时 |
+| `QWEN_IMAGE_REQUEST_TIMEOUT_MS` | `30000` | 生成提交和结果下载的 HTTP 超时；状态查询使用独立预算 |
+| `QWEN_IMAGE_STATUS_TIMEOUT_MS` | `8000` | 单轮状态查询的总预算，含响应正文和可选重试等待，范围 1000–30000 |
+| `QWEN_IMAGE_STATUS_RETRY_COUNT` | `0` | 单轮查询内部重试次数，最多 1；瞬时失败交回原任务的下一轮查询 |
 | `QWEN_IMAGE_CONNECT_TIMEOUT_MS` | `10000` | 千问建连超时。不改变消除/重绘/扩图 |
-| `QWEN_IMAGE_REQUEST_RETRY_COUNT` | `2` | 5xx 和查询连接失败的请求内重试次数。提交时的建连失败最多再试 1 次。瞬时限流不在请求内重试 |
+| `QWEN_IMAGE_REQUEST_RETRY_COUNT` | `2` | 保留原兼容配置；不再控制状态查询。生成 POST 不在适配器内重发，仍使用持久化执行器的既有重试约束 |
 | `QWEN_IMAGE_ACTIVE_LIMIT` | `8` | 同一环境里进行中的百炼文生图任务。预扣前检查 |
 | `QWEN_IMAGE_PRO_ACTIVE_LIMIT` | `4` | 只限制 `qwen-image-3.0-pro`。2.1 Pro 不走这项 |
 | `QWEN_IMAGE_FORCE_THROTTLE` | 关闭 | 仅预览或本地。`true` / `rate` 让提交假装 `Throttling.RateQuota`；`quota` 假装 `AllocationQuota`。`VERCEL_ENV` 或 `AIGC_RUNTIME_SCOPE` 为 `production` 时忽略；两者都未设置时也不生效 |

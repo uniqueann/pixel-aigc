@@ -1,4 +1,5 @@
 import { Capability, type TaskStatus } from '@/types'
+import { remainingTaskPollMs } from '@shared/task-polling'
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
 
@@ -11,9 +12,12 @@ export function taskRefetchIntervalMs(task: {
   status?: TaskStatus
   capability?: Capability | string
   modelProfileId?: string
-} | undefined): number | false {
+  pollAfterMs?: number
+} | undefined, elapsedMs = 0): number | false {
   if (!task?.status || !ACTIVE_STATUSES.has(task.status)) return false
   if (task.capability === Capability.TextToVideo) return VIDEO_POLL_INTERVAL_MS
+  const suggested = remainingTaskPollMs(task.pollAfterMs, elapsedMs)
+  if (suggested !== undefined) return suggested
   if (task.modelProfileId?.startsWith('bailian:')) return BAILIAN_POLL_INTERVAL_MS
   return IMAGE_POLL_INTERVAL_MS
 }

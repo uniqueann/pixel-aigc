@@ -6,6 +6,7 @@ import type {
   TaskTool,
 } from '../../shared/task-center.js'
 import { taskHistorySchema } from '../../shared/task-center.js'
+import { taskCenterPollAfterMs } from '../../shared/task-polling.js'
 import { HttpError } from '../errors.js'
 import { TASK_PROJECTION } from './projection.js'
 
@@ -63,6 +64,8 @@ export function taskSummary(row: Record<string, unknown>): TaskCenterSummary {
     tool: row.tool as TaskTool | null,
     capability: String(row.capability),
     modelProfileId: row.model_profile_id as string | null,
+    ...(row.source_kind === 'image_job' && row.capability !== 'text_to_video' && ['queued', 'processing'].includes(state)
+      ? { pollAfterMs: taskCenterPollAfterMs(row.next_poll_at as Date | string | undefined, Date.now()) } : {}),
     state,
     requestedCount: requested,
     completedCount: count,

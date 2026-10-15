@@ -16,4 +16,13 @@ describe('任务轮询间隔', () => {
     expect(taskRefetchIntervalMs({ status: 'succeeded', capability: Capability.TextToImage, modelProfileId: 'bailian:qwen-image-3.0' })).toBe(false)
     expect(taskRefetchIntervalMs(undefined)).toBe(false)
   })
+  it('图片按服务端时间查询，缓存观察者扣除已经等待的时间', () => {
+    const task = { status: 'processing' as const, capability: Capability.ImageEdit, pollAfterMs: 5_000 }
+    expect(taskRefetchIntervalMs(task)).toBe(5_000)
+    expect(taskRefetchIntervalMs(task, 2_000)).toBe(3_000)
+    expect(taskRefetchIntervalMs(task, 20_000)).toBe(1_000)
+    expect(taskRefetchIntervalMs({ ...task, pollAfterMs: NaN })).toBe(IMAGE_POLL_INTERVAL_MS)
+    expect(taskRefetchIntervalMs({ ...task, status: 'succeeded' })).toBe(false)
+    expect(taskRefetchIntervalMs({ ...task, capability: Capability.TextToVideo })).toBe(VIDEO_POLL_INTERVAL_MS)
+  })
 })

@@ -8,6 +8,8 @@ export const DEFAULT_QWEN_POLL_INTERVAL_MS = 3_000
 export const DEFAULT_QWEN_INITIAL_POLL_DELAY_MS = 3_000
 export const DEFAULT_QWEN_TASK_TIMEOUT_MS = 300_000
 export const DEFAULT_QWEN_REQUEST_TIMEOUT_MS = 30_000
+/** 单轮状态查询的总预算，包含正文读取和有限重试；生成提交继续使用原预算。 */
+export const DEFAULT_QWEN_STATUS_TIMEOUT_MS = 8_000
 /** 俄勒冈到北京的建连有时超过共享百炼客户端的 4 秒。只给千问放宽。 */
 export const DEFAULT_QWEN_CONNECT_TIMEOUT_MS = 10_000
 export const DEFAULT_QWEN_MAX_PARALLEL = 1
@@ -32,6 +34,8 @@ export interface QwenImageSettings {
   requestTimeoutMs: number
   connectTimeoutMs: number
   retryCount: number
+  statusTimeoutMs?: number
+  statusRetryCount?: number
   pollIntervalMs: number
   initialPollDelayMs: number
   taskTimeoutMs: number
@@ -123,6 +127,8 @@ export function qwenImageSettings(env: NodeJS.ProcessEnv = process.env): QwenIma
     requestTimeoutMs: readNumber(env, 'QWEN_IMAGE_REQUEST_TIMEOUT_MS', DEFAULT_QWEN_REQUEST_TIMEOUT_MS, 5_000, 120_000),
     connectTimeoutMs: readNumber(env, 'QWEN_IMAGE_CONNECT_TIMEOUT_MS', DEFAULT_QWEN_CONNECT_TIMEOUT_MS, 1_000, 30_000),
     retryCount: readNumber(env, 'QWEN_IMAGE_REQUEST_RETRY_COUNT', 2, 0, 5),
+    statusTimeoutMs: readNumber(env, 'QWEN_IMAGE_STATUS_TIMEOUT_MS', DEFAULT_QWEN_STATUS_TIMEOUT_MS, 1_000, 30_000),
+    statusRetryCount: readNumber(env, 'QWEN_IMAGE_STATUS_RETRY_COUNT', 0, 0, 1),
     pollIntervalMs: Math.max(3_000, readNumber(env, 'QWEN_IMAGE_POLL_INTERVAL_MS', DEFAULT_QWEN_POLL_INTERVAL_MS, 3_000, 30_000)),
     initialPollDelayMs: readNumber(env, 'QWEN_IMAGE_INITIAL_POLL_DELAY_MS', DEFAULT_QWEN_INITIAL_POLL_DELAY_MS, 0, 60_000),
     taskTimeoutMs: readNumber(env, 'QWEN_IMAGE_TASK_TIMEOUT_MS', DEFAULT_QWEN_TASK_TIMEOUT_MS, 30_000, 900_000),

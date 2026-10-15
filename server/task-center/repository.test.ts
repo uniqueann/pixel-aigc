@@ -116,6 +116,24 @@ async function fixture(
 }
 
 describe('统一任务只读查询、展示权限和分页', () => {
+  it('活跃图片的读取提示来自原查询时间，读取不修改任务或账本', async () => {
+    const f = await fixture()
+    await db.query("update aigc.image_jobs set status='processing',next_poll_at=$2 where id=$1", [f.image, new Date(Date.now() + 5_000).toISOString()])
+    const before = (await db.query('select to_jsonb(j) as data from aigc.image_jobs j where id=$1', [f.image])).rows
+    const ledger = (await db.query('select count(*)::int as n from aigc.credit_ledger')).rows
+    const task = await actor(users[0], 'local', async r => taskSummary(await r.get('image_job', f.image)), true)
+    expect(task.pollAfterMs).toBeGreaterThan(1_000)
+    expect(task.pollAfterMs).toBeLessThanOrEqual(5_000)
+    const raw = await actor(users[0], 'local', r => r.get('image_job', f.image), true)
+    expect(taskSummary({ ...raw, next_poll_at: new Date(Date.now() - 60_000) }).pollAfterMs).toBe(8_000)
+    const side = await actor(users[0], 'local', r => r.sidebar(), true)
+    expect(side.items.find(item => item.sourceId === f.image)?.pollAfterMs).toBeGreaterThan(1_000)
+    expect((await actor(users[0], 'local', async r => taskSummary(await r.get('email_task', f.email)), true)).pollAfterMs).toBeUndefined()
+    expect((await db.query('select to_jsonb(j) as data from aigc.image_jobs j where id=$1', [f.image])).rows).toEqual(before)
+    expect((await db.query('select count(*)::int as n from aigc.credit_ledger')).rows).toEqual(ledger)
+    for (const [owner, scope] of [[users[1], 'local'], [users[0], 'preview']] as const)
+      await expect(actor(owner, scope, r => r.get('image_job', f.image), true)).rejects.toMatchObject({ status: 404 })
+  })
   it('三源已查看与移除均成功，同步原表和账本不被修改', async () => {
     const f = await fixture()
     const before = (await db.query('select to_jsonb(j) as data from aigc.sync_credit_jobs j where id=$1',[f.sync])).rows
