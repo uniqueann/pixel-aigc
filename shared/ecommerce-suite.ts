@@ -174,6 +174,7 @@ export const suiteQuoteItemSchema = z.discriminatedUnion('mode', [
     count: z.number().int().min(1).max(4), unitCredits: credits.refine(value => value > 0, '模型单价必须大于零'), credits,
     size, promptSnapshot: z.string().trim().min(1).max(PROMPT_MAX_LENGTH),
     referenceAssetIds: z.array(id).max(4).refine(unique, '参考图不能重复'), factsSnapshot: confirmedFacts,
+    warnings: z.array(z.string().max(500)).max(20).optional(),
   }).strict(),
 ])
 export const suiteQuoteSchema = z.object({

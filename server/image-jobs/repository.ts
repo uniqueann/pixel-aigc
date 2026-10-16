@@ -18,6 +18,12 @@ export function createSqlStore(sql: Transaction, userId: string, media: 'image' 
   const scope = runtimeScope()
   return {
     kind: 'sql',
+    async suiteAssetReady(key) {
+      const [row] = await sql`select 1 from aigc.suite_assets a join aigc.suite_projects p
+        on p.id=a.project_id and p.user_id=a.user_id and p.scope=a.scope
+        where a.user_id=${userId} and a.scope=${scope} and a.object_key=${key} and a.status='ready' and p.deleted_at is null`
+      return Boolean(row)
+    },
     async findById(id) {
       const [row] = await sql`select * from aigc.image_jobs
         where id=${id} and user_id=${userId} and scope=${scope} and expires_at>now()`

@@ -101,6 +101,8 @@ export type AttemptReceipt = Pick<ImageJobAttempt, 'provider_task_id' | 'outcome
 export type TransferDescriptor = Pick<ImageJobAttempt, 'object_key' | 'mime_type' | 'width' | 'height' | 'checksum'>
 
 export interface ImageJobStore {
+  /** 持久套图输入除了路径还必须核对资产登记与当前归属。 */
+  suiteAssetReady?(key: string): Promise<boolean>
   kind: 'sql' | 'memory'
   findById(id: string): Promise<ImageJobRow | undefined>
   findByRequestId(requestId: string): Promise<ImageJobRow | undefined>

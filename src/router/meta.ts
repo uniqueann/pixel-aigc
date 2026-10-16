@@ -7,6 +7,7 @@ import { HELP_ARTICLES } from '@/pages/Help/articles'
 export const NAV_META: Record<string, string> = {
   '/': '工作台首页',
   '/email': '邮件助手',
+  '/ecommerce': '电商套图',
   '/image-workstation': '图片工作站',
   '/toolbox': '工具箱',
   '/canvas': '自由画布',

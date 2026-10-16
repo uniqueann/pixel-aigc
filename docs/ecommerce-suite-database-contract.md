@@ -2,6 +2,8 @@
 
 状态：设计冻结，基线 `55e6040`。本文是后续迁移和真实 PostgreSQL 测试的规范，不是已部署数据库；本阶段不创建可自动执行的迁移文件。关联[共享契约](../shared/ecommerce-suite.ts)、[阶段一契约](ecommerce-suite-phase-one-contract.md)和[故障矩阵](ecommerce-suite-failure-matrix.md)。
 
+阶段二更新：项目／资产／版本及单槽位所需的报价、批次和操作最小子集已在[正式迁移](../supabase/migrations/20261016224010_ecommerce_suite_phase_two.sql)实现，并通过本机独立 PostgreSQL 验证；目标环境尚未执行。对象键增加内容哈希以避免并发覆盖，详见[阶段二说明](ecommerce-suite-phase-two.md)。领取、桥接及维护清理仍是后续设计。
+
 ## 1. 归属、角色与对象身份
 
 沿用 `aigc` schema、`aigc_api` 应用角色、[withIdentity](../server/db.ts) 的 `aigc.user_id / aigc.scope` 事务局部设置。所有表显式携带 `user_id` 与 `scope`，且读取／更新／删除的 `USING`、新增／更新的 `WITH CHECK` 都要求账号、环境和有效成员一致。

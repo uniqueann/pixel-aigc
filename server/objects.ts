@@ -17,6 +17,7 @@ export async function loadOwnedObject(user: User, key: string) {
   if (!isSafeObjectKey(user.id, key)) throw new HttpError(400, '对象无效或无权访问', 'INVALID_SOURCE')
   await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
+    await requireSuiteObject(sql, key)
   })
   const object = await getObject(key)
   return {
@@ -29,6 +30,7 @@ export async function signOwnedObjectRead(user: User, key: string, filename?: st
   if (!isSafeObjectKey(user.id, key)) throw new HttpError(400, '对象无效或无权访问', 'INVALID_SOURCE')
   const retentionExpiresAt = await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
+    await requireSuiteObject(sql, key)
     if (!key.startsWith(`generated/${user.id}/video/`)) return undefined
     const [row] = await sql`select j.expires_at from aigc.image_jobs j join aigc.image_job_items i on i.job_id=j.id
       where j.user_id=${user.id} and j.scope=${runtimeScope()} and j.capability='text_to_video'
@@ -40,4 +42,12 @@ export async function signOwnedObjectRead(user: User, key: string, filename?: st
   const ttl = retentionExpiresAt === undefined ? 900 : Math.min(900, Math.floor((retentionExpiresAt - Date.now()) / 1000))
   if (ttl < 1) throw new HttpError(404, '视频已过期', 'VIDEO_EXPIRED')
   return filename ? signRead(key, ttl, objectContentDisposition(filename.slice(0, 180))) : signRead(key, ttl)
+}
+
+async function requireSuiteObject(sql: import('./db.js').Transaction, key: string) {
+  if (!key.startsWith('suite-assets/')) return
+  const [row] = await sql`select 1 from aigc.suite_assets a join aigc.suite_projects p
+    on p.id=a.project_id and p.user_id=a.user_id and p.scope=a.scope
+    where a.object_key=${key} and a.status='ready' and p.deleted_at is null`
+  if (!row) throw new HttpError(404, '图片不存在或无权访问', 'SUITE_ASSET_UNAVAILABLE')
 }

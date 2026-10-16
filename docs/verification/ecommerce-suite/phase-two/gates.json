@@ -1,0 +1,115 @@
+{
+  "kind": "local_phase_two_gates",
+  "checkedAt": "2026-10-16T23:09:31.481144+00:00",
+  "worktreeBaseCommit": "8a5971b51e9657d60e6c3321f1686ae9a12133a6",
+  "branch": "feat/ecommerce-suite-phase-two",
+  "gates": {
+    "npm test": {
+      "passed": true,
+      "files": 279,
+      "tests": 1854,
+      "unhandledErrors": 0
+    },
+    "npm run build": {
+      "passed": true
+    },
+    "npm run lint": {
+      "passed": true
+    },
+    "npm run check:ecommerce-suite:phase-one": {
+      "passed": true,
+      "examples": 21,
+      "templates": 3,
+      "localLinks": 63
+    },
+    "isolatedPostgres": {
+      "passed": true,
+      "cases": 8,
+      "actualApplicationRole": true
+    },
+    "browserSyntheticHttp": {
+      "passed": true,
+      "submissions": 1,
+      "consoleErrors": 0
+    },
+    "diffAndNewFileWhitespace": {
+      "passed": true
+    }
+  },
+  "sourceHashes": {
+    ".env.example": "6f48f0d3185a7ec2be85accc53f8e39b5ba9b6adc4d7262108d3fa73d8ccf90a",
+    "package.json": "95e3f4cad54cd7259778495578b83fb3262dd65854b11cec6cfdf38b768ba3be",
+    "scripts/ecommerce-suite-postgres-check.ts": "d94a6b9bb31c5b000c9868f1f178187fc73a65de71ae4bb3656a89b2b66c052a",
+    "server/ecommerce-suite/assets.test.ts": "f5e40de74c14a372206f3038ae6cf7049f64f3c12f7dd3aaa6f0f46b3599de73",
+    "server/ecommerce-suite/assets.ts": "343d625d866c5b329738fb9dae1e9af603f5be8df668e8495480ab460997d3d6",
+    "server/ecommerce-suite/config.ts": "1362a998f18cecc4d2fab38843fa693a11342e1dbdaede485e079cf03c5c318d",
+    "server/ecommerce-suite/generation.ts": "c52b8b0fa97e301fbce0d30d14e77361de21c487b53f855a1ceafd0a04527f85",
+    "server/ecommerce-suite/projects.ts": "7b8366234df9c21e2f87fe842cd2d6fff5843aab9f03e850d04b3a1a8b037d32",
+    "server/ecommerce-suite/repository.ts": "00350ae46d8e6fc6ada9ce150ec35789666e5d5dc2209cb78209246c86db3869",
+    "server/ecommerce-suite/results.ts": "4a7928ec721c118211e599c984c991378a172f65c4b17e65dd4a519b8eb15eb1",
+    "server/ecommerce-suite/route.test.ts": "9e8d3cb45c0a7013286307300289438855eff42a40c5eb3e4cdbb763aab35523",
+    "server/ecommerce-suite/route.ts": "b0ccd8174ae4645bc47a4e128b60839add23f9b5bb3a79cf08463fa106844696",
+    "server/handler.ts": "434c8fa40c95e2def78ea27e005bc76f0f2518da5095605bbef1887b1d9acbb2",
+    "server/image-jobs/repository.ts": "722bd54e5c625a47b0733169be5112728147067f07db00d8f71ff5114abcf8c2",
+    "server/image-jobs/service.ts": "fd9982f5c86f4b9fd2fb4d5d65680afaadea59dcdf94bcf49ccb49e26aedabb0",
+    "server/image-jobs/types.ts": "75fe8767b2d1c537db4ba1f98e1727242b01efaaf183170ed0b137a395b0679e",
+    "server/objects.ts": "bd2c589b2e7358d608fadc51843b63e976d470e39ae0a853aa604dd337e3a0fd",
+    "shared/ecommerce-suite-runtime.ts": "10df21e9dc9f82012ea0851c3a2b7d3cfca6e75a54b055e91f01e2234e7037e0",
+    "shared/ecommerce-suite.test.ts": "53b4d3f4e3ba6ae1370691ee8ab6f550d1d5851191206ec6d8ae769c2a07d610",
+    "shared/ecommerce-suite.ts": "3c651c8611990b2208be6581de483a631f304a20552a242c7e0cb89aa3826508",
+    "shared/task-center.ts": "81ed5eb59df046adbad738c79dae6fb85bb32a7fa32ae4a7418518d42bfec265",
+    "src/features/ecommerce-suite/CreateSuite.tsx": "ccf1f311d6055d81c66d0fbbde866da4c47aa65cf4ea7b1d463b7da9f04ad39a",
+    "src/features/ecommerce-suite/GenerationPanel.tsx": "4bc7e734b68688415f8c90c155b3119d9100fb95be8582d1bec6beb5ac80e051",
+    "src/features/ecommerce-suite/ProductFields.tsx": "8f87d7484e969a1389093a67b437cf52c1f6a6253793f50a22eb121414a15950",
+    "src/features/ecommerce-suite/SuiteImage.tsx": "20cc3fa6bf1d2941cbfe2f82d045e60e53aedf102eee68d86eb6c7dab872c8a0",
+    "src/features/ecommerce-suite/SuiteWorkspace.tsx": "d83b7242171fb5b6899ada1417b58596ecb92c1d7aad5aeadaa9f910906cd5a1",
+    "src/features/ecommerce-suite/VersionPanel.tsx": "a2869ca7b5a712e14ab84ef0bb39d83cb94278f1f80cf357e2ef1561d72aafa3",
+    "src/features/ecommerce-suite/api.ts": "2d58319b36510f9d485c9a348b8d51ae3839552164f39ec90cb8898c18c6509c",
+    "src/features/ecommerce-suite/backup.test.ts": "7870f1ac134a4ebc1cfaddc80a1b8a81082294e3b51f5dd3ab548dfe8b4a10d9",
+    "src/features/ecommerce-suite/backup.ts": "f97dea0a64d85d6ad350b93c87f08d4a93015a40ec13d691085442acbfd005ce",
+    "src/features/ecommerce-suite/config.test.ts": "454c575f00611756c64fd74c3d407f837502e73ab874b3229a0f9bb4f4efbc14",
+    "src/features/ecommerce-suite/config.ts": "6e4f39e190df291108cdb96f09eada67729bb2863c76e07ea354e57528acca34",
+    "src/features/ecommerce-suite/copy.ts": "bf01d117eb88925525b138b1e2a4bad7e2de4fde17bb792b4b3467a21e65c385",
+    "src/features/ecommerce-suite/recovery.test.ts": "a83e9f60f152c4fbf628cbf7a4786d7be2829b1e24489fcefa82257abff083a6",
+    "src/features/ecommerce-suite/recovery.ts": "7bf13041b381f9d4c77a0e66c889537d466d9d16590b5d1f8200b7f6372a837a",
+    "src/features/ecommerce-suite/recoveryPackage.test.ts": "150478c37bad409282a81c45771b96c77eabd4fe26f9c2d335a5b735820e3c1f",
+    "src/features/ecommerce-suite/recoveryPackage.ts": "57470bb8e7ec7a00d20039ccda2008c7786d119832267fc9de64980c9b835c09",
+    "src/features/ecommerce-suite/store.ts": "9c96a137c6427dae11147b6d9bdb860fbe610dc34c77100cff55095981f27ae0",
+    "src/features/ecommerce-suite/useSuiteWorkspace.ts": "89f19b9db8a42ca19b632952d5f0543ecedd2aeea2808fd522db1b444a3af193",
+    "src/features/free-canvas/images/CanvasAssetPicker.tsx": "765bf4d82253565bf6294f1f1863b828cf04df5646665ae4813f73b662c1421d",
+    "src/features/task-center/route.ts": "62369270541b6ba4a8eb43001bcc3006301c39c30b2dfccb54738d7397af2372",
+    "src/layouts/MainLayout.tsx": "4d3842ae6727d68621e4048fad741651fb7b0a230becfbb92f4050c301886908",
+    "src/pages/EcommerceSuite/index.tsx": "da9ee4fa02659a50f53a082e315d2c712892aa06fb80d6658f8e9a24c6d60fc6",
+    "src/pages/EcommerceSuite/style.css": "33a97b71a8b93ff15c3434c77083b66d440d48c2c26f93cbe93898fb0b6699a8",
+    "src/router/index.tsx": "2e879b44e5e8c73c1036061ccf51ab1519e1857bf82dd5a37384f6c33172ab81",
+    "src/router/meta.ts": "7041e712c3107bf68d0247c8ec52710881155a88e38259601402168648244a0a",
+    "src/store/useUserStore.ts": "bd1cddd8858e1181b2da0643aa5ea79cd2d17e09b7b8aa67706ff2355271f23e",
+    "supabase/migrations/20261016224010_ecommerce_suite_phase_two.sql": "8baa7ea33a51edcbf4a3aa6f2a9d086404d6e348a8b43c10a986deabee5f8602"
+  },
+  "warnings": {
+    "tests": [
+      "部分既有测试保留 React act 提示"
+    ],
+    "build": [
+      "依赖注释、混合导入与大包提示"
+    ],
+    "advisorsExistingFindings": 22
+  },
+  "realSamples": {
+    "required": 9,
+    "received": 0,
+    "accepted": 0
+  },
+  "phaseTwoExitPassed": false,
+  "runtimeVerification": {
+    "database": "isolated_postgres_actual_role_verified",
+    "browser": "synthetic_http_fixtures",
+    "billing": "isolated_mock_ledger_verified",
+    "targetMigration": "not_applied",
+    "authenticatedHttp": "not_verified_in_target",
+    "r2": "coded_not_verified_in_target",
+    "provider": "mock_only",
+    "suiteScheduler": "not_implemented",
+    "releaseFlag": "default_off"
+  }
+}

@@ -6,6 +6,7 @@ import { App, Avatar, Breadcrumb, Dropdown, Layout, Menu, Tooltip } from 'antd'
 import {
   AppstoreOutlined,
   MailOutlined,
+  ShoppingOutlined,
   PictureOutlined,
   ToolOutlined,
   BgColorsOutlined,
@@ -48,6 +49,7 @@ const { Sider, Content, Header } = Layout
 const NAV_ITEMS = [
   { key: '/', icon: <AppstoreOutlined />, label: '工作台首页' },
   { key: '/email', icon: <MailOutlined />, label: '邮件助手' },
+  { key: '/ecommerce', icon: <ShoppingOutlined />, label: '电商套图' },
   { key: '/image-workstation', icon: <PictureOutlined />, label: '图片工作站' },
   { key: '/toolbox', icon: <ToolOutlined />, label: '工具箱' },
   { key: '/canvas', icon: <BgColorsOutlined />, label: '自由画布' },
@@ -307,7 +309,7 @@ function AppSidebar({
           mode="inline"
           inlineCollapsed={iconOnly}
           selectedKeys={[topKey]}
-          items={NAV_ITEMS}
+          items={NAV_ITEMS.filter(item => item.key !== '/ecommerce' || account?.features?.ecommerceSuite)}
           onClick={({ key }) => {
             navigate(key)
             if (isMobile) sidebar.toggleSidebar(false)

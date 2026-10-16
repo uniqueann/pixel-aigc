@@ -1,0 +1,405 @@
+{
+  "kind": "isolated_postgres_advisors",
+  "cliVersion": "2.117.0",
+  "passed": true,
+  "suiteFindings": [],
+  "existingFindings": [
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.members` has a row level security policy `member_profile_update` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "members",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_members_member_profile_update"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.members` has a row level security policy `member_self` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "members",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_members_member_self"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.assets` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "assets",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_assets_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.generations` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "generations",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_generations_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.generation_assets` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "generation_assets",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_generation_assets_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.projects` has a row level security policy `project_member_owner` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "projects",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_projects_project_member_owner"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.workspaces` has a row level security policy `workspace_owner` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "workspaces",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_workspaces_workspace_owner"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.workspace_members` has a row level security policy `workspace_member_self` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "workspace_members",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_workspace_members_workspace_member_self"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.model_credentials` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "model_credentials",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_model_credentials_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.image_jobs` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "image_jobs",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_image_jobs_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.image_job_items` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "image_job_items",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_image_job_items_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.model_preferences` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "model_preferences",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_model_preferences_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.credit_ledger` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "credit_ledger",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_credit_ledger_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.sync_requests` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "sync_requests",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_sync_requests_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.credit_orders` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "credit_orders",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_credit_orders_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.credit_accounts` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "credit_accounts",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_credit_accounts_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.image_job_attempts` has a row level security policy `image_job_attempts_owner` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "image_job_attempts",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_image_job_attempts_image_job_attempts_owner"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.user_welcome_state` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "user_welcome_state",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_user_welcome_state_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.user_activation_events` has a row level security policy `owner_read` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "user_activation_events",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_user_activation_events_owner_read"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.sync_credit_jobs` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "sync_credit_jobs",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_sync_credit_jobs_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.email_tasks` has a row level security policy `owner_access` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "email_tasks",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_email_tasks_owner_access"
+    },
+    {
+      "name": "auth_rls_initplan",
+      "title": "Auth RLS Initialization Plan",
+      "level": "WARN",
+      "facing": "EXTERNAL",
+      "categories": [
+        "PERFORMANCE"
+      ],
+      "description": "Detects if calls to `current_setting()` and `auth.<function>()` in RLS policies are being unnecessarily re-evaluated for each row",
+      "detail": "Table `aigc.task_ui_state` has a row level security policy `task_ui_owner` that re-evaluates current_setting() or auth.<function>() for each row. This produces suboptimal query performance at scale. Resolve the issue by replacing `auth.<function>()` with `(select auth.<function>())`. See [docs](https://supabase.com/docs/guides/database/postgres/row-level-security#call-functions-with-select) for more info.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0003_auth_rls_initplan",
+      "metadata": {
+        "name": "task_ui_state",
+        "type": "table",
+        "schema": "aigc"
+      },
+      "cacheKey": "auth_rls_init_plan_aigc_task_ui_state_task_ui_owner"
+    }
+  ],
+  "targetEnvironmentVerified": false
+}

@@ -403,6 +403,10 @@ export function defaultImageJobRuntime(): ImageJobRuntime {
 
 export function isSafeObjectKey(userId: string, key: string) {
   if (!key || key.includes('..') || key.includes('\\') || key.startsWith('/') || key.includes('//')) return false
+  if (key.startsWith('suite-assets/')) {
+    const prefix = `suite-assets/${runtimeScope()}/${userId}/`
+    return key.startsWith(prefix) && /^[0-9a-f-]{36}\/[0-9a-f-]{36}-[a-f0-9]{64}\.(jpg|png|webp)$/.test(key.slice(prefix.length))
+  }
   const generatedPrefix = `generated/${userId}/`
   if (key.startsWith(generatedPrefix)) {
     const scoped = /^(local|preview|production)\//.exec(key.slice(generatedPrefix.length))
@@ -539,6 +543,10 @@ export async function createImageJobInStore(
   const relight = parsed.capability === 'image_edit' ? readRelight(parsed.params) : undefined
   const isRelight = relight !== undefined
   const sourceKey = parsed.capability === 'text_to_image' ? undefined : parsed.params.sourceImageKey
+  for (const key of [sourceKey, referenceKey]) {
+    if (key?.startsWith('suite-assets/') && (!isSafeObjectKey(user.id, key) || !await store.suiteAssetReady?.(key)))
+      throw new HttpError(400, '套图图片未登记或无权访问', 'INVALID_SOURCE')
+  }
   if (isRelight && (isRetouch || isFusion)) throw new HttpError(400, '不能同时提交重新打光和其他编辑', 'INVALID_PARAMS')
   if (isFusion && isRetouch) throw new HttpError(400, '不能同时提交精修和融合', 'INVALID_PARAMS')
   if (parsed.capability === 'variation' && userPrompt.length > VARIATION_USER_PROMPT_MAX) {
@@ -1409,6 +1417,7 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
   assertRelightRequest(body)
   assertRetouchNoteLimit(body)
   const parsed = createImageTaskSchema.parse(body)
+  if (parsed.origin?.entry === 'ecommerce') throw new HttpError(403, '请从套图报价确认入口创建任务', 'INVALID_ORIGIN')
   const execution = sqlImageExecution(user.id,user.email)
   const bounded = boundedImageRuntime({ ...runtime,execution,allowSubmit: true },110_000)
   const created = await withIdentity(user.id,user.email,async sql => {

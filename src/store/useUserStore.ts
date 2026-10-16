@@ -14,7 +14,7 @@ interface UserStoreState {
 }
 
 export interface AccountContext {
-  features?: { taskCenter?: boolean }
+  features?: { taskCenter?: boolean; ecommerceSuite?: boolean }
   welcome?: WelcomeState
   runtimeScope?: 'local' | 'preview' | 'production'
   userId: string
