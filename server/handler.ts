@@ -124,6 +124,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const method = req.method ?? 'GET'
     const heavy = ['bg-remove','subject-detect','outpaint','erase','repaint','smart-select'].includes(path[0])
     await readRequestBody(req,path[0] === 'repaint' ? 48*1024*1024 : heavy ? 28*1024*1024 : 3*1024*1024)
+    if (path.join('/') === 'internal/image-benchmark') {
+      const { authorizeImageBenchmark, runImageBenchmark } = await import('./image-benchmark/probe.js')
+      authorizeImageBenchmark(req.headers.authorization)
+      if (method !== 'POST') throw new HttpError(405, '基准入口只接受 POST', 'METHOD_NOT_ALLOWED')
+      const { imageBenchmarkRuntime } = await import('./image-benchmark/runtime.js')
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
+      res.status(200).json(await runImageBenchmark(body, imageBenchmarkRuntime()))
+      return
+    }
     if (path[0] === 'payments' && path[2] === 'webhook' && path.length === 3 && method === 'POST') {
       const provider = z.enum(['creem','dodo']).parse(path[1])
       if (typeof req.rawBody !== 'string') throw new HttpError(400,'支付回调缺少原始请求体','RAW_BODY_REQUIRED')
