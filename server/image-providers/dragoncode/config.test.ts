@@ -18,18 +18,22 @@ describe('DragonCode 轮询默认值', () => {
     delete process.env.DRAGONCODE_TASK_TIMEOUT_MS
   })
 
-  it('首次轮询 5s、间隔 3-5s、超时 ≥180s，预签名 TTL ≥15min', () => {
+  it('首次轮询 5s、后续间隔 3s、超时 ≥180s，预签名 TTL ≥15min', () => {
     process.env.DRAGONCODE_API_KEY = 'test-key'
     const config = dragonCodeConfig()
     expect(DEFAULT_INITIAL_POLL_DELAY_MS).toBe(5_000)
-    expect(DEFAULT_POLL_INTERVAL_MS).toBe(5_000)
+    expect(DEFAULT_POLL_INTERVAL_MS).toBe(3_000)
     expect(DEFAULT_TASK_TIMEOUT_MS).toBe(300_000)
     expect(SOURCE_PRESIGN_TTL_SECONDS).toBeGreaterThanOrEqual(15 * 60)
     expect(config).toMatchObject({
       initialPollDelayMs: 5_000,
-      pollIntervalMs: 5_000,
+      pollIntervalMs: 3_000,
       taskTimeoutMs: 300_000,
     })
     expect(config!.taskTimeoutMs).toBeGreaterThanOrEqual(180_000)
+  })
+  it('显式配置较慢间隔时保留配置，过低值仍限制为 3s', () => {
+    expect(dragonCodeConfig({ DRAGONCODE_API_KEY: 'test', DRAGONCODE_POLL_INTERVAL_MS: '8000' })?.pollIntervalMs).toBe(8_000)
+    expect(dragonCodeConfig({ DRAGONCODE_API_KEY: 'test', DRAGONCODE_POLL_INTERVAL_MS: '1000' })?.pollIntervalMs).toBe(3_000)
   })
 })

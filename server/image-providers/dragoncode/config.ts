@@ -1,7 +1,7 @@
 export const DEFAULT_DRAGONCODE_BASE_URL = 'https://dragoncode.codes/gpt-image/v1'
 export const DEFAULT_DRAGONCODE_MODEL = 'gpt-image-2'
 export const DEFAULT_INITIAL_POLL_DELAY_MS = 5_000
-export const DEFAULT_POLL_INTERVAL_MS = 5_000
+export const DEFAULT_POLL_INTERVAL_MS = 3_000
 export const DEFAULT_TASK_TIMEOUT_MS = 300_000
 export const SOURCE_PRESIGN_TTL_SECONDS = 3_600
 export const DRAGONCODE_MAX_DATA_URI_BYTES = 20_971_520

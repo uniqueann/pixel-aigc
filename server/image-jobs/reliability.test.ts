@@ -36,6 +36,44 @@ async function fixture(provider: ImageProvider = createMockImageProvider(),count
 }
 
 describe('图片持久化执行协议',() => {
+  it.each([1_200, 4_000])('查询耗时 %i ms 时从查询开始计间隔，每个请求仍只查一次上游', async duration => {
+    const getStatus = vi.fn(async () => {
+      f.setNow(f.now() + duration)
+      return { state: 'processing' as const }
+    })
+    const provider = { ...createMockImageProvider({ getStatus }),
+      jobPolicy: () => ({ taskTimeoutMs: 300_000, pollIntervalMs: 3_000, initialPollDelayMs: 5_000, maxParallel: 1 }) }
+    const f = await fixture(provider)
+    const submitted = await advanceImageClaim(f.bundle, f.runtime, true)
+    f.setNow(new Date(submitted.job.next_poll_at).getTime())
+    const startedAt = f.now()
+    const waiting = await advanceImageClaim(await f.claim(), f.runtime)
+    expect(new Date(waiting.job.next_poll_at).getTime()).toBe(startedAt + 3_000)
+    expect((await toClientImageTask(waiting, f.runtime)).pollAfterMs).toBe(Math.max(1_000, 3_000 - duration))
+    expect(getStatus).toHaveBeenCalledTimes(1)
+    expect(f.billing.reserve).toHaveBeenCalledTimes(1)
+    expect(f.billing.settle).not.toHaveBeenCalled()
+    expect(f.billing.release).not.toHaveBeenCalled()
+  })
+  it.each([false, true])('多上游按最后一次查询计间隔，更晚平台退避不会被提前：%s', async deferred => {
+    const starts: number[] = []
+    const getStatus = vi.fn(async () => {
+      starts.push(f.now())
+      f.setNow(f.now() + 600)
+      if (deferred && starts.length === 2) await f.store.updateJob(f.bundle.job.id, { next_poll_at: new Date(f.now() + 15_000) })
+      return { state: 'processing' as const }
+    })
+    const provider = { ...createMockImageProvider({ submit: async input => ({ providerTaskId: `task-${input.ordinal}` }), getStatus }),
+      jobPolicy: () => ({ taskTimeoutMs: 300_000, pollIntervalMs: 3_000, initialPollDelayMs: 3_000, maxParallel: 2 }) }
+    const f = await fixture(provider, 2)
+    const submitted = await advanceImageClaim(f.bundle, f.runtime, true)
+    f.setNow(new Date(submitted.job.next_poll_at).getTime())
+    const waiting = await advanceImageClaim(await f.claim(), f.runtime)
+    expect(starts).toHaveLength(2)
+    expect(new Date(waiting.job.next_poll_at).getTime()).toBe(deferred ? f.now() + 15_000 : starts[1] + 3_000)
+    expect(new Date(waiting.job.next_poll_at).getTime()).toBeGreaterThanOrEqual(starts[1] + 3_000)
+    expect(getStatus).toHaveBeenCalledTimes(2)
+  })
   it('状态查询超时保留原任务与预扣，下一轮成功只结算一次且不会补生成', async () => {
     const submit = vi.fn(async () => ({ providerTaskId: '原任务编号' }))
     const getStatus = vi.fn().mockRejectedValueOnce(new ProviderError('TIMEOUT', '查询超时', true, 504))
