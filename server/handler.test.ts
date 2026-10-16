@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   getObject: vi.fn(), loadEraseStoredImage: vi.fn(), loadStoredSyncImage: vi.fn(), validateSyncImage: vi.fn(), metrics: [] as unknown[], putObject: vi.fn(), signRead: vi.fn(),
 }))
 vi.mock('./auth', () => ({ authenticate: mocks.authenticate }))
-vi.mock('./db', () => ({ runtimeScope: () => 'local', withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
+vi.mock('./db', () => ({ runtimeScope: () => 'local', database: () => { throw new Error('路由测试禁止真实数据库访问') }, withIdentity: async (_id: string, _email: string, fn: (sql: unknown) => Promise<unknown>) => fn(Object.assign(mocks.sql, { json: (v: unknown) => v })) }))
 vi.mock('./storage', () => ({
   verifyAndPromote: mocks.verify,
   signRead: mocks.signRead,
@@ -47,6 +47,29 @@ import { HttpError } from './errors'
 import { SEEDANCE_VIDEO_MODEL } from '../shared/video-models.js'
 const draft = { prompt: '',presetKey: '1:1',count: 1,durationSeconds: 5 }
 const body = { name: '测试',schemaVersion: 1,baseRevision: 3,document: { version: 1,activeSceneId: 's',scenes: [{ id: 's',name: '场景',width: 100,height: 100,viewport: { zoom: 1,panX: 0,panY: 0 },nodes: [] }] },drafts: { 'text-to-image': draft,'text-to-video': draft } }
+describe('预览基准路由', () => {
+  afterEach(() => vi.unstubAllEnvs())
+  it('正式环境即使开关开启也隐藏入口，不调用认证、生成或账本', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production')
+    vi.stubEnv('IMAGE_BENCHMARK_ENABLED', 'true')
+    const response = await request({ runId: '00000000-0000-4000-8000-000000000001', case: 'control', sample: 0 }, 'POST', '/api/internal/image-benchmark')
+    expect(response.status).toHaveBeenCalledWith(404)
+    expect(mocks.authenticate).not.toHaveBeenCalled()
+    expect(mocks.sql).not.toHaveBeenCalled()
+  })
+  it('预览 POST 解析原始 JSON，control 不访问业务依赖', async () => {
+    for (const [key, value] of Object.entries({ VERCEL_ENV: 'preview', AIGC_RUNTIME_SCOPE: 'preview', IMAGE_BENCHMARK_ENABLED: 'true',
+      IMAGE_BENCHMARK_EXPIRES_AT: String(Date.now() + 3_600_000), IMAGE_BENCHMARK_TOKEN: 'x'.repeat(48),
+      IMAGE_BENCHMARK_REVISION: 'a'.repeat(40), IMAGE_BENCHMARK_USER_ID: '00000000-0000-4000-8000-000000000001' })) vi.stubEnv(key, value)
+    const response = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn() }; response.status.mockReturnValue(response)
+    await realHandler({ url: '/api/internal/image-benchmark', method: 'POST', headers: { authorization: `Bearer ${'x'.repeat(48)}` },
+      body: JSON.stringify({ runId: '00000000-0000-4000-8000-000000000001', case: 'control', sample: 0 }) } as VercelRequest, response as unknown as VercelResponse)
+    expect(response.status).toHaveBeenCalledWith(200)
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'success', case: 'control' }))
+    expect(mocks.authenticate).not.toHaveBeenCalled()
+    expect(mocks.sql).not.toHaveBeenCalled()
+  })
+})
 async function request(payload: unknown, method='PUT', url='/api/projects/p') {
   const req = { headers: { authorization: 'Bearer test' },method,url,body: payload } as VercelRequest
   const response = { setHeader: vi.fn(),status: vi.fn(),json: vi.fn() }

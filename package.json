@@ -11,6 +11,7 @@
     "test:task-center:http": "tsx --env-file-if-exists=.env.local scripts/task-center-http-check.ts",
     "test:image-jobs:postgres": "tsx scripts/image-job-concurrency-check.ts",
     "test:image-jobs:preview": "tsx --env-file-if-exists=.env.local scripts/image-job-preview-check.ts",
+    "benchmark:image-network": "tsx scripts/image-benchmark/run.ts",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings 0",
     "dev:api": "tsx --env-file-if-exists=.env.local scripts/dev-api.ts",
