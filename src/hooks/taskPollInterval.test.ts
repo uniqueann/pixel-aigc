@@ -5,6 +5,7 @@ import {
   IMAGE_POLL_INTERVAL_MS,
   VIDEO_POLL_INTERVAL_MS,
   taskRefetchIntervalMs,
+  taskPollDecision,
 } from './taskPollInterval'
 
 describe('任务轮询间隔', () => {
@@ -24,5 +25,9 @@ describe('任务轮询间隔', () => {
     expect(taskRefetchIntervalMs({ ...task, pollAfterMs: NaN })).toBe(IMAGE_POLL_INTERVAL_MS)
     expect(taskRefetchIntervalMs({ ...task, status: 'succeeded' })).toBe(false)
     expect(taskRefetchIntervalMs({ ...task, capability: Capability.TextToVideo })).toBe(VIDEO_POLL_INTERVAL_MS)
+  })
+  it('区分无提示与无效提示，选择结果与实际间隔使用同一决策', () => {
+    expect(taskPollDecision({ status: 'processing' })).toMatchObject({ source: 'fallback', fallbackReason: 'missing_hint', intervalMs: 2_000 })
+    expect(taskPollDecision({ status: 'processing', pollAfterMs: -1 })).toMatchObject({ source: 'fallback', fallbackReason: 'invalid_hint', pollAfterMs: null })
   })
 })

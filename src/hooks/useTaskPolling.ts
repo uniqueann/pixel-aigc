@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { App } from 'antd'
 import { getTask } from '@/services/api/task'
 import { useTaskStore } from '@/store/useTaskStore'
 import { useUserStore } from '@/store/useUserStore'
 import { type GenerationTask, type TaskStatus, Capability } from '@/types'
-import { taskRefetchIntervalMs } from '@/hooks/taskPollInterval'
+import { taskPollDecision } from '@/hooks/taskPollInterval'
+import { forgetTaskPollSchedule, observeTaskPollRequest, rememberTaskPollSchedule } from '@/hooks/taskPollingMetrics'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
 import { emitTaskCenter } from '@/features/task-center/receipts'
 import { CloudError } from '@/cloud/client'
@@ -17,6 +18,7 @@ export function useTaskPolling(
   onTask?: (task: GenerationTask<unknown>) => void,
   enabled = true,
 ) {
+  const queryClient = useQueryClient()
   const user = useUserStore((s) => s.userId),
     scope = useUserStore((s) => s.account?.runtimeScope ?? 'local'),
     globalCenter = useUserStore(
@@ -24,6 +26,7 @@ export function useTaskPolling(
         s.account?.userId === s.userId && !!s.account?.features?.taskCenter,
     )
   const owner = `${user ?? 'local'}:${scope}`,
+    pollObserver = useRef({}),
     previous = useRef<TaskStatus>(),
     callback = useRef(onTask),
     { notification } = App.useApp()
@@ -34,11 +37,20 @@ export function useTaskPolling(
     previous.current = undefined
     useTaskStore.getState().resetOwner(owner)
   }, [taskId, owner])
+  useEffect(() => {
+    const observer = pollObserver.current
+    return () => {
+      const sharedQuery = queryClient.getQueryCache().find({ queryKey: ['task', user ?? 'local', scope, taskId], exact: true })
+      if (sharedQuery) forgetTaskPollSchedule(sharedQuery, observer)
+    }
+  }, [queryClient, taskId, user, scope])
   const query = useQuery({
     queryKey: ['task', user ?? 'local', scope, taskId],
     queryFn: async ({ signal }) => {
       if (signal.aborted)
         throw signal.reason ?? new DOMException('查询已取消', 'AbortError')
+      const sharedQuery = queryClient.getQueryCache().find({ queryKey: ['task', user ?? 'local', scope, taskId], exact: true })
+      if (sharedQuery) observeTaskPollRequest(sharedQuery, taskId!, scope)
       const value = await getTask(taskId!, { signal })
       if (signal.aborted)
         throw signal.reason ?? new DOMException('查询已取消', 'AbortError')
@@ -51,7 +63,13 @@ export function useTaskPolling(
       return value
     },
     enabled: !!taskId && enabled,
-    refetchInterval: (q) => taskRefetchIntervalMs(q.state.data, Date.now() - q.state.dataUpdatedAt),
+    refetchInterval: (q) => {
+      const now = Date.now()
+      const decision = taskPollDecision(q.state.data, now - q.state.dataUpdatedAt)
+      if (!enabled || !taskId) forgetTaskPollSchedule(q, pollObserver.current)
+      else if (q.state.fetchStatus === 'idle') rememberTaskPollSchedule(q, pollObserver.current, decision, q.state.dataUpdatedAt, now)
+      return decision.intervalMs
+    },
   })
   useEffect(() => {
     const task = query.data,

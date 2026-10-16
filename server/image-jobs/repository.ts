@@ -146,6 +146,13 @@ export function createSqlStore(sql: Transaction, userId: string, media: 'image' 
         error_message=${patch.error_message === undefined ? sql`error_message` : patch.error_message},
         updated_at=now()
         where job_id=${jobId} and ordinal=${ordinal} and user_id=${userId} and scope=${scope} returning *`
+      if (media === 'image' && row?.status === 'succeeded' && patch.result_object_key) {
+        // 明细写入已通过数据库租约校验；在同一发布事务确认原转存意图，回滚时一起撤销。
+        await sql`update aigc.image_job_attempts set outcome='accepted'
+          where job_id=${jobId} and user_id=${userId} and scope=${scope} and kind='transfer'
+            and ${ordinal}=any(ordinals) and object_key=${patch.result_object_key}
+            and cleaned_at is null and cleanup_token is null and (outcome is null or outcome='unknown')`
+      }
       return asItem(row)
     },
     async hourlyCount() {

@@ -38,6 +38,7 @@ afterEach(() => {
   client.clear()
   useTaskStore.getState().resetOwner(null)
   useUserStore.getState().setAccount(null)
+  vi.restoreAllMocks()
 })
 const task = {
   id: 'task-one',
@@ -53,9 +54,31 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={client}>{children}</QueryClientProvider>
 )
 describe('共享单任务轮询', () => {
+  it('重复渲染不把同间隔的计划时间向后覆盖，仍记录真实定时等待', async () => {
+    vi.useFakeTimers()
+    try {
+      const log = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+      mocks.get.mockResolvedValueOnce({ ...task, status: 'processing', pollAfterMs: 3_000 }).mockResolvedValue(task)
+      const hook = renderHook(() => useTaskPolling(task.id), { wrapper })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      for (const elapsed of [1_000, 1_000, 500, 500]) {
+        await act(async () => { await vi.advanceTimersByTimeAsync(elapsed) })
+        hook.rerender()
+      }
+      expect(mocks.get).toHaveBeenCalledTimes(2)
+      const requests = log.mock.calls.map(([entry]) => entry).filter(entry => entry.evt === 'task-poll-request')
+      expect(requests[1]).toMatchObject({ intervalMs: 1_000, cachedElapsedMs: 2_000, actualWaitMs: 1_000, actualIntervalMs: 3_000 })
+    } finally {
+      cleanup()
+      client.clear()
+      await vi.runOnlyPendingTimersAsync()
+      vi.useRealTimers()
+    }
+  })
   it('按服务端提示等到查询时间，完成后停止，多个观察者仍只发一次请求', async () => {
     vi.useFakeTimers()
     try {
+      const log = vi.spyOn(console, 'info').mockImplementation(() => undefined)
       mocks.get.mockResolvedValueOnce({ ...task, status: 'processing', pollAfterMs: 3_000 }).mockResolvedValue(task)
       const consume = vi.fn()
       renderHook(() => { useTaskPolling(task.id, consume); useTaskPolling(task.id) }, { wrapper })
@@ -68,6 +91,35 @@ describe('共享单任务轮询', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
       expect(mocks.get).toHaveBeenCalledTimes(2)
       expect(consume).toHaveBeenCalledWith(task)
+      const requests = log.mock.calls.map(([entry]) => entry).filter(entry => entry.evt === 'task-poll-request')
+      expect(requests).toHaveLength(2)
+      expect(requests[1]).toMatchObject({ source: 'server', pollAfterMs: 3_000, intervalMs: 3_000,
+        cachedElapsedMs: 0, actualWaitMs: 3_000, actualIntervalMs: 3_000, fallbackReason: null })
+    } finally {
+      cleanup()
+      client.clear()
+      await vi.runOnlyPendingTimersAsync()
+      vi.useRealTimers()
+    }
+  })
+  it('从缓存恢复时记录扣除等待后的实际调度，失效提示记录回退原因', async () => {
+    vi.useFakeTimers()
+    try {
+      const log = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+      client.setQueryData(['task', owner, 'preview', task.id], { ...task, status: 'processing', pollAfterMs: 5_000 },
+        { updatedAt: Date.now() - 2_000 })
+      mocks.get.mockResolvedValueOnce({ ...task, status: 'processing', pollAfterMs: NaN }).mockResolvedValue(task)
+      renderHook(() => useTaskPolling(task.id), { wrapper })
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_999) })
+      expect(mocks.get).not.toHaveBeenCalled()
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(mocks.get).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+      expect(mocks.get).toHaveBeenCalledTimes(2)
+      const requests = log.mock.calls.map(([entry]) => entry).filter(entry => entry.evt === 'task-poll-request')
+      expect(requests[0]).toMatchObject({ source: 'server', pollAfterMs: 5_000, intervalMs: 3_000,
+        cachedElapsedMs: 2_000, actualWaitMs: 3_000 })
+      expect(requests[1]).toMatchObject({ source: 'fallback', pollAfterMs: null, intervalMs: 2_000, fallbackReason: 'invalid_hint' })
     } finally {
       cleanup()
       client.clear()

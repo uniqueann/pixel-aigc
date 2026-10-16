@@ -141,6 +141,17 @@ export function createMemoryStore(userId: string, scope = 'local', clock = () =>
       const next = { ...current, ...patch, updated_at: now() }
       rows[ordinal] = next
       items.set(jobId, rows)
+      if (next.status === 'succeeded' && patch.result_object_key) {
+        const job = await this.findById(jobId)
+        if (job?.lease_token && await this.assertLease(jobId, job.lease_token)) {
+          for (const [id, attempt] of attempts) {
+            if (attempt.job_id === jobId && attempt.user_id === userId && attempt.scope === scope
+              && attempt.kind === 'transfer' && attempt.ordinals.includes(ordinal) && attempt.object_key === patch.result_object_key
+              && !attempt.cleaned_at && !attempt.cleanup_token && (attempt.outcome === null || attempt.outcome === 'unknown'))
+              attempts.set(id, { ...attempt, outcome: 'accepted' })
+          }
+        }
+      }
       return next
     },
     async hourlyCount() { return jobs.size },

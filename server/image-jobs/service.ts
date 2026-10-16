@@ -69,7 +69,7 @@ import { ImageLeaseLost, sqlImageExecution, type ImageExecutionPort } from './ex
 import { getDeadline } from '@vercel/functions'
 import { taskOriginSchema, validTaskOrigin } from '../../shared/task-center.js'
 import { imageTaskPollAfterMs } from '../../shared/task-polling.js'
-import { measureImagePhase } from './metrics.js'
+import { measureImagePhase, observeImagePollHint } from './metrics.js'
 import {
   ACTIVE_JOB_STATUSES,
   LATE_RESULT_WARNING,
@@ -1323,12 +1323,16 @@ export async function advanceImageClaim(bundle: ImageJobBundle,runtime: ImageJob
         patch: { status: 'failed',error_code: 'INPUT_UNAVAILABLE',error_message: '图片源文件读取失败' } }))
     } else runtime.log({ stage: 'advance-retry',jobId: bundle.job.id,code: 'IO_FAILED' })
   }
-  return measureImagePhase(runtime, bundle.job, 'finalize', () => execution.transaction((store,billing) => advanceJobInStore(store,bundle,
+  return measureImagePhase(runtime, bundle.job, 'persist', () => execution.transaction((store,billing) => advanceJobInStore(store,bundle,
     { ...runtime,billing: runtime.billing === noopBilling ? billing : runtime.billing },{ alreadyLeased: true,outcomes })))
 }
 
-export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJobRuntime) {
-  return measureImagePhase(runtime, bundle.job, 'present', () => presentImageTask(bundle, runtime))
+export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJobRuntime, mode: 'advance' | 'snapshot' = 'snapshot') {
+  const task = mode === 'advance'
+    ? await measureImagePhase(runtime, bundle.job, 'present', () => presentImageTask(bundle, runtime))
+    : await presentImageTask(bundle, runtime)
+  observeImagePollHint(runtime, bundle.job, task.pollAfterMs)
+  return task
 }
 
 async function presentImageTask(bundle: ImageJobBundle, runtime: ImageJobRuntime) {
@@ -1407,7 +1411,7 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
     return createImageJobInStore(createSqlStore(sql,user.id),user,parsed,billingRuntime)
   })
   if (!created.created) return toClientImageTask(created.bundle,runtime)
-  return toClientImageTask(await advanceImageClaim(created.bundle,bounded,true),runtime)
+  return toClientImageTask(await advanceImageClaim(created.bundle,bounded,true),runtime,'advance')
 }
 
 export async function loadImageTask(user: User,id: string,runtime = defaultImageJobRuntime()) {
@@ -1434,7 +1438,7 @@ export async function loadImageTask(user: User,id: string,runtime = defaultImage
   if (prepared.mode === 'snapshot') return toClientImageTask(prepared,runtime)
   const bounded = boundedImageRuntime({ ...runtime,execution: sqlImageExecution(user.id,user.email),
     allowSubmit: process.env.IMAGE_BACKGROUND_SUBMIT_ENABLED === 'true' },110_000)
-  return toClientImageTask(await advanceImageClaim(prepared,bounded),runtime)
+  return toClientImageTask(await advanceImageClaim(prepared,bounded),runtime,'advance')
 }
 
 export async function loadImageTaskByRequest(user: User, requestId: string, runtime = defaultImageJobRuntime()) {
