@@ -2,10 +2,10 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v2，2026-10-17 |
-| 实现基线 | `main` / `fddfbf1`；本文所述现状以该提交为准 |
+| 文档版本 | v2.1，2026-10-17，阶段一契约基线 |
+| 实现基线 | `main` / `55e6040`，PR #193 已合并；阶段一共享契约与设计单独交付 |
 | 设计基线 | 用户提供的「套图工作台-html (1).zip」，见[原型说明](prototypes/ecommerce-suite/README.md) |
-| 当前状态 | 开发计划与原型基线；套图页面、接口、表、调度器及预检规则均待实现 |
+| 当前状态 | 阶段一共享契约、模板及设计基线已落地；真实素材待采集，运行页面、API、数据库迁移及调度仍待实现 |
 | 首期范围 | Home & Kitchen 三个子类，Amazon 美国站与通用模板，默认 7 槽位 |
 | 交付目标 | 商品资料 → 槽位计划 → 真实生成 → 保存与恢复 → 图层与版本 → 工作站回填 → 平台预检与导出 |
 
@@ -167,144 +167,25 @@ Zustand 管理当前编辑草稿、选中槽位／图层及本地保存状态；
 
 ## 五、数据模型与持久化
 
-### 1. 核心类型草案
+### 1. 已冻结的共享契约
 
-以下是阶段一需冻结的目标契约，不是已新增代码。读取响应可附带短期 URL，持久身份只保存资产与原任务标识。
+阶段一已新增 [shared/ecommerce-suite.ts](../shared/ecommerce-suite.ts) 作为规范定义，通过 Zod 校验并推导 TypeScript 类型，不再维护一份独立接口草案。[阶段一契约](ecommerce-suite-phase-one-contract.md)补齐输入、响应、状态与交互；[数据库契约](ecommerce-suite-database-contract.md)冻结关联、权限与事务设计。
 
-```typescript
-export type SuiteScope = 'local' | 'preview' | 'production'
-export type SuitePlatform = 'amazon' | 'general'
-export type SuiteSubcategory = 'furniture' | 'kitchen-dining' | 'storage-textile'
-export type SlotKind = 'main' | 'scene' | 'atmosphere' | 'feature' | 'size' | 'detail' | 'use'
+| 类型／入口 | 冻结内容 |
+| --- | --- |
+| `SuiteProjectConfig` / `SuiteProject` | 客户端只写配置；服务端归属、修订和槽位当前指针单独返回 |
+| `SuiteFact` | 数值与文字事实区分，尺寸以 subject 与 axis 区分整体／部件，未确认值不能进入执行／成品快照 |
+| `SuiteSlotConfig` | UUID、稳定模板 key、语义 kind 与展示 order 分开 |
+| `SuiteAssetRef` | 持久对象身份、格式、尺寸、大小与校验值；短期 URL 单独访问 |
+| `SuiteSlotVersion` / `SuiteLayer` | `composition` 冻结底图对应画板、图层、事实、语言／单位及渲染版本 |
+| `SuiteQuote` / `SuiteCreateBatchRequest` | 明细和合计一致的服务端报价；接受批次只传原报价身份、指纹和预算 |
+| `SuiteBatch` / `SuiteOperation` / `SuiteBridge` | 冻结批次、稳定原请求绑定、阶段与有效期读模型，不携带第二套计费状态 |
+| `SuiteSlotDraft` | 允许临时空文字，使用独立草稿修订；成品保存仍需完整校验 |
+| 桥接／预检 Schema | 原结果身份、工具、画板与格式边界；结构校验不能代替实际权限或账本 |
 
-export interface SuiteActor {
-  userId: string
-  runtimeScope: SuiteScope
-}
+完整合法输入与读模型见[合同样例](verification/ecommerce-suite/phase-one/contract-fixtures.json)，全部为合成身份、规格和测试模型，不能作为真实商品或价格证据。
 
-export interface SuiteAssetRef {
-  assetId: string
-  objectKey: string
-  mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
-  width: number
-  height: number
-  bytes: number
-  checksum: string
-}
-
-export interface SuiteFact {
-  id: string
-  kind: 'dimension' | 'capacity' | 'weight' | 'load_capacity' | 'material' | 'feature'
-  name: string
-  value: string | number
-  unit?: string
-  originalText: string
-  source: 'user' | 'tag_parse'
-  confirmed: boolean
-}
-
-export interface SuitePoint {
-  x: number // 相对成品画板的归一化坐标，范围 0～1
-  y: number
-}
-
-export interface SuiteTextLayer {
-  id: string
-  type: 'text'
-  text: string
-  position: SuitePoint
-  width: number // 相对画板宽度，范围 0～1
-  fontFamily: string
-  fontSize: number // 设计画板像素，导出时按比例缩放
-  fontWeight: number
-  color: string
-  background: string
-  align: 'left' | 'center' | 'right'
-  zIndex: number
-}
-
-export interface SuiteDimensionLayer {
-  id: string
-  type: 'dimension'
-  factId: string // 必须关联已确认规格
-  start: SuitePoint
-  end: SuitePoint
-  labelPosition: SuitePoint
-  color: string
-  strokeWidth: number
-  fontSize: number
-  zIndex: number
-}
-
-export type SuiteLayer = SuiteTextLayer | SuiteDimensionLayer
-
-export interface SuiteTaskRef {
-  sourceKind: 'image_job' | 'sync_credit'
-  sourceId: string
-  requestId: string
-  ordinal: number
-}
-
-export interface SuiteSlotVersion {
-  id: string
-  projectId: string
-  slotId: string
-  versionNumber: number
-  parentVersionId?: string
-  assetId: string
-  source: 'reuse' | 'generated' | 'annotation_edit' | 'workstation_return'
-  sourceTask?: SuiteTaskRef
-  sourceTool?: 'repaint' | 'smart-edit' | 'retouch' | 'relight'
-  modelProfileId?: string
-  resolution?: '1k' | '2k' | '4k'
-  promptSnapshot?: string
-  templateVersion: string
-  renderSize: { width: number; height: number }
-  layersSnapshot: SuiteLayer[]
-  factsSnapshot: SuiteFact[] // 只冻结本版本使用且已确认的事实
-  copyLanguage: 'zh-CN' | 'en-US'
-  unitSystem: 'metric' | 'imperial'
-  rendererVersion: string
-  createdAt: string
-}
-
-export interface SuiteSlot {
-  id: string // 稳定 UUID，不使用数组下标作为身份
-  kind: SlotKind
-  name: string
-  order: number
-  enabled: boolean
-  referenceAssetIds: string[]
-  activeVersionId?: string
-  headRevision: number // 当前版本指针的并发保护
-}
-
-export interface SuiteProject {
-  schemaVersion: 1
-  id: string
-  actor: SuiteActor // 来自服务端身份，不接受客户端自报归属
-  revision: number // 项目配置的乐观锁版本
-  title: string
-  sku?: string
-  category: 'home-kitchen'
-  subcategory: SuiteSubcategory
-  platform: SuitePlatform
-  marketplace?: 'US'
-  ruleProfile: { id: string; version: string }
-  baseAssetId: string
-  tags: string[]
-  facts: SuiteFact[]
-  copyLanguage: 'zh-CN' | 'en-US'
-  unitSystem: 'metric' | 'imperial'
-  style: { palette: string[]; sceneTone: string; templateId: string; templateVersion: string }
-  slots: SuiteSlot[]
-  createdAt: string
-  updatedAt: string
-  deletedAt?: string
-}
-```
-
-图层选择态、页签与悬停态不进入成品版本。项目配置 `revision`、槽位指针 `headRevision`、批次／任务状态分别更新，避免后台进度刷新导致配置保存冲突。
+图层选择态、页签与悬停态不进入成品版本。配置 `revision`、当前指针 `headRevision`、槽位草稿 `draftRevision` 与后台任务状态独立更新。运行入口、RLS 与收费行为仍在后续阶段接入，不因 Schema 存在就视为已实现。
 
 ### 2. 批次、操作与会话
 
@@ -334,6 +215,7 @@ export interface SuiteProject {
 | `suite_slots` | 稳定槽位、启用状态、当前版本及 `headRevision` |
 | `suite_assets` | 原图／参考图／结果／缩略图身份、尺寸、对象键、校验值与可用性 |
 | `suite_versions` | 不可变成品及图层快照、原任务结果和版本序号 |
+| `suite_quotes` | 服务端不可变报价、计划指纹、十分钟有效期及一次性批次接受关联 |
 | `suite_batches` | 已确认的计划、预算、派发期限与批次身份 |
 | `suite_operations` | 待派发项、稳定请求号、原任务绑定、结果应用与租约 |
 | `suite_bridges` | 可恢复工作站会话及幂等回填 |
@@ -352,7 +234,7 @@ export interface SuiteProject {
 2. 原任务结果必须取得长期项目引用，避免原任务清理导致版本失效。对象写入与数据库分开，先核验对象，再事务关联；孤儿清理前再次检查所有引用。
 3. 原任务成功但版本登记／转存／缩略图失败，只修复登记与资产，不重做生成或改写账本。原任务与账本查询不依赖项目是否打开。
 4. 签名 URL 仅在访问响应及内存缓存出现，持久化保存资产 ID／对象键。过期重新授权；真正缺失显示资源不可用，不归类成新的生成失败。
-5. 配置与图层草稿默认 800ms 防抖保存；提交、切换基准版本、进入工作站、导出前刷新保存。写入带 `expectedRevision`，409 保留本机副本并提示读取云端或另存，不静默覆盖。
+5. 配置与图层草稿默认 800ms 防抖保存；提交、切换基准版本、进入工作站、导出前刷新保存。配置带 `expectedRevision`，槽位草稿带 `expectedDraftRevision`，当前指针带 `expectedHeadRevision`；409 保留本机副本并提示读取云端或另存，不静默覆盖。
 6. 本地备份包括配置、历史版本／图层、原任务身份和已缓存原图／结果 Blob；不存签名地址、令牌、密钥。只有全部相关 Blob 落盘才显示“本地完整备份已就绪”，空间不足提示降级并提供含图片的恢复 ZIP。
 7. 恢复包校验格式版本与文件；导入仅恢复草稿及成品，不能恢复可执行队列、重放请求或获得原云端权限。收费生成需重新上传并确认。
 8. 删除使用 7 天回收站，停止尚未派发项；已提交原任务继续收口与结算。到期仅清理无其他引用的资产；账本和原任务遵循原有留存。首期不静默裁剪版本，存储达到既有限额时阻止新增并引导清理。
@@ -498,16 +380,18 @@ Amazon 主图预设白底且无叠加文字；默认 2000 × 2000 JPEG 是本产
 
 ## 十、目标接口与错误约定
 
-以下均为拟新增接口，以 `/api` 为前缀；阶段一冻结请求／响应 Schema 后实施。读取保持只读，写请求检查归属、环境、版本及幂等身份。
+以下均为拟新增接口，以 `/api` 为前缀；阶段一已冻结共享 Schema 与[完整接口契约](ecommerce-suite-phase-one-contract.md)，后续阶段实现运行入口。读取保持只读，写请求检查归属、环境、版本及幂等身份。
 
 | 接口 | 行为 |
 | --- | --- |
 | `GET /ecommerce/suites` | 分页项目摘要，按平台／状态筛选 |
 | `POST /ecommerce/suites` | 幂等保存草稿，不开始生成 |
+| `GET /ecommerce/suites/by-request/:requestId` | 查找原创建请求，不自动创建 |
 | `GET /ecommerce/suites/:id` | 配置、当前版本、修订与批次摘要 |
 | `PATCH /ecommerce/suites/:id` | 带 `expectedRevision` 更新，冲突返回 409 |
 | `POST /ecommerce/suites/:id/assets` | 受控上传或有权限资产导入，完成校验后登记 |
-| `POST /ecommerce/suites/:id/quotes` | 规范化计划、预算和有效期，不预扣、不派发 |
+| `PATCH /ecommerce/suites/:id/slots/:slotId/draft` | 独立草稿修订，允许未完成文字，不携带任务状态 |
+| `POST /ecommerce/suites/:id/quotes` | 规范化计划、预算和有效期，持久保存服务端报价，不预扣、不派发 |
 | `POST /ecommerce/suites/:id/batches` | 校验确认报价／配置，幂等创建批次及操作 |
 | `GET /ecommerce/suites/:id/batches/by-request/:requestId` | 找回提交响应丢失的原批次，不派发、不重提 |
 | `GET /ecommerce/suites/:id/batches/:batchId` | 槽位、原任务、费用与结果关联 |
@@ -529,13 +413,14 @@ Amazon 主图预设白底且无叠加文字；默认 2000 × 2000 JPEG 是本产
 
 ### 阶段一：原型与契约冻结
 
-- [ ] 固定附件、尺寸节律、主题映射和缺失页面的补充交互。
-- [ ] 冻结类目、事实确认、处理路径、模型参数和费用确认行为。
-- [ ] 冻结项目／资产／版本／批次／操作／会话 Schema、API 与状态映射。
-- [ ] 设计 RLS、原事务绑定、唯一约束、租约、长期引用与回收；按正式迁移流程生成文件，不手改生产数据库。
-- [ ] 补齐故障矩阵、真实商品样本和各阶段证据格式。
+- [x] 固定附件、尺寸节律、主题映射和缺失页面操作契约。
+- [x] 冻结三类模板、事实确认、处理路径、模型参数和费用确认边界。
+- [x] 新增可执行共享 Schema、核心读模型、请求与状态契约，配套合同样例及测试。
+- [x] 冻结 RLS、复合关联、事务、唯一约束、租约、长期引用与回收设计；正式迁移文件在对应实施阶段通过 CLI 生成与验证。
+- [x] 补齐带编号故障矩阵、真实样本采集清单及分阶段证据格式。
+- [ ] 补齐三个子类各三个真实商品素材；当前收到 0 个，不能使用原型或合同样例冒充。
 
-**退出条件：** 每个操作都有状态来源、保存位置、收费与失败行为；不保留“加枚举即可集成”或未经验证的后台继续承诺。
+**退出条件：** 每个操作都有状态来源、保存位置、收费与失败行为；不保留“加枚举即可集成”或未经验证的后台继续承诺。契约和设计子项已可校验，真实素材采集项仍待完成，不能宣称全阶段真实验收已通过。详见[阶段一契约](ecommerce-suite-phase-one-contract.md)、[故障矩阵](ecommerce-suite-failure-matrix.md)和[本地证据](verification/ecommerce-suite/phase-one/README.md)。
 
 ### 阶段二：单槽位真实闭环
 

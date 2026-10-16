@@ -1,0 +1,29 @@
+{
+  "kind": "phase_one_contract_checks",
+  "contractVersion": 1,
+  "checkedAt": "2026-10-16T21:58:08.250Z",
+  "worktreeBaseCommit": "55e60401ea6ae268cdc516e8036eac047893125d",
+  "contractChecksPassed": true,
+  "validatedExamples": 21,
+  "validatedTemplates": 3,
+  "checkedLocalLinks": 58,
+  "prototypeSha256": "4a100dba9c3dc120c2c9d8bb1639b653cdfaf365bebf0e44b304a5986670e048",
+  "sourceHashes": {
+    "shared/ecommerce-suite.ts": "c00a45940d499d1b933d286e10d425fe8f52340df499f88827603282d1109329",
+    "shared/ecommerce-suite-templates.ts": "85ac2f1bd1951e53b9a8747592a21ed6ce15076fca9966d3ecf19d71fb7709c3",
+    "shared/ecommerce-suite.test.ts": "4f157954f55086be816fbe1e8f45ee7a489d0ffe82bab7d460f2ab1fade3cdc3"
+  },
+  "realSampleGatePassed": false,
+  "realSamples": {
+    "required": 9,
+    "received": 0,
+    "accepted": 0
+  },
+  "runtimeVerification": {
+    "http": "not_implemented",
+    "postgresRls": "design_only",
+    "billing": "not_executed",
+    "scheduler": "not_implemented",
+    "provider": "not_executed"
+  }
+}
