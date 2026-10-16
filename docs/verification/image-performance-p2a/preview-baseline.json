@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "verifiedAt": "2026-10-16T04:53:01Z",
+  "baseRevision": "bf97aa77da985ea9dea021413aaffbefc7f7606c",
+  "probeRevision": "c20d1cfa312bd7a8d86d2bafcb15fd612105be58",
+  "measurementStatus": "incomplete_due_to_control_network",
+  "statusNote": "三个区域控制响应已分别取得；正式采样被控制端 TLS 中断，尚无有效区域性能结论。",
+  "deployments": [
+    {
+      "region": "pdx1",
+      "id": "dpl_EacYkMR24rTsdTggcDARxRme9qhp",
+      "url": "https://pixel-aigc-1c4g7pt5o-ningnings-projects-2ed21e15.vercel.app",
+      "state": "READY",
+      "observedRegion": "pdx1"
+    },
+    {
+      "region": "hkg1",
+      "id": "dpl_84MH9DD4TUaqNe4Ds3nEyuYH1c1g",
+      "url": "https://pixel-aigc-csr0ojhdy-ningnings-projects-2ed21e15.vercel.app",
+      "state": "READY",
+      "observedRegion": "hkg1"
+    },
+    {
+      "region": "sin1",
+      "id": "dpl_G6oqDfJ4N8jEFTKH8GxsrXVRHUDi",
+      "url": "https://pixel-aigc-qkg73ff1d-ningnings-projects-2ed21e15.vercel.app",
+      "state": "READY",
+      "observedRegion": "sin1"
+    }
+  ],
+  "identityChecks": {
+    "revisionMatches": true,
+    "configurationMatches": true,
+    "nodeVersions": [
+      "v24.21.0"
+    ],
+    "memoryObserved": false
+  },
+  "databasePreflight": {
+    "region": "pdx1",
+    "outcome": "success",
+    "comparativeSample": false
+  },
+  "pendingCloudChecks": [
+    "database-regional-comparison",
+    "storage-put-get-checksum-cleanup",
+    "provider-dns-tcp-tls"
+  ],
+  "businessRecords": {
+    "scope": "preview",
+    "before": {
+      "jobs": 29,
+      "ledgerEntries": 72,
+      "providerAttempts": 14
+    },
+    "after": {
+      "jobs": 29,
+      "ledgerEntries": 72,
+      "providerAttempts": 14
+    }
+  },
+  "modelCalls": 0,
+  "creditsDebited": 0,
+  "productionConfigurationChanged": false,
+  "localChecks": {
+    "testFiles": 272,
+    "tests": 1805,
+    "unhandledErrors": 0,
+    "build": "passed",
+    "lint": "passed",
+    "diffCheck": "passed"
+  },
+  "note": "此记录仅证明部署与基础预检边界，不代表完整工具或生产性能验收通过。"
+}

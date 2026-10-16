@@ -31,6 +31,7 @@ describe('P2-A 执行器', () => {
   it('默认仅预算；执行、报告和恢复不重复已有请求', async () => {
     const f = await fixture()
     expect((await f.run()).stdout).toContain('"execution":false')
+    await expect(f.run(['--execute', '--report-only'])).rejects.toThrow()
     await expect(readFile(f.calls)).rejects.toMatchObject({ code: 'ENOENT' })
     await f.run(['--execute'])
     expect(await readFile(f.calls, 'utf8')).toBe('11')

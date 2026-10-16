@@ -18,6 +18,11 @@ describe('P2-A 预算和报告', () => {
     for (const patch of [{ region: 'hkg1' }, { revision: 'c'.repeat(40) }, { deployment: 'other.vercel.app' }, { configuration: 'c'.repeat(64) }])
       expect(() => validateBenchmarkSample(manifest, { ...sample(), result: { ...sample().result, ...patch } }, sample())).toThrow()
   })
+  it('通过受保护别名访问时仍核对原始部署，不能将别名指向的其他部署混入', () => {
+    const aliased = { ...manifest, targets: [{ region: 'pdx1' as const, url: 'https://alias.vercel.app', deployment: 'test.vercel.app' }] }
+    expect(() => validateBenchmarkSample(aliased, sample())).not.toThrow()
+    expect(() => validateBenchmarkSample(aliased, { ...sample(), result: { ...sample().result, deployment: 'changed.vercel.app' } })).toThrow()
+  })
   it('预热排除，失败与缺失样本显示；重复记录拒绝', () => {
     const rows = [sample(0), sample(1), sample(2, 'failed')]
     const summary = summarizeImageBenchmark(manifest, rows).find(row => row.case === 'storage-small')!

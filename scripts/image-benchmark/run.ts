@@ -6,15 +6,21 @@ import { performance } from 'node:perf_hooks'
 import { parseArgs } from 'node:util'
 import { IMAGE_BENCHMARK_BYTES, imageBenchmarkManifest, imageBenchmarkPlan, type ImageBenchmarkSample } from '../../shared/image-benchmark.js'
 import { renderImageBenchmarkReport, validateBenchmarkSample } from './report.js'
+import { curlImageBenchmark } from './curl.js'
 
 const options = parseArgs({ options: {
   manifest: { type: 'string' }, output: { type: 'string' }, execute: { type: 'boolean' },
   resume: { type: 'boolean' }, 'report-only': { type: 'boolean' }, 'via-vercel': { type: 'boolean' },
+  'via-curl': { type: 'boolean' },
 } }).values
 if (!options.manifest || !options.output) throw new Error('必须指定 --manifest 和 --output 私有结果路径')
+if (options.execute && options['report-only']) throw new Error('--execute 与 --report-only 不能同时使用')
 const manifest = imageBenchmarkManifest.parse(JSON.parse(await readFile(options.manifest, 'utf8')))
 const plan = imageBenchmarkPlan(manifest)
-const fingerprint = createHash('sha256').update(JSON.stringify(manifest)).digest('hex')
+if (options['via-curl'] && options['via-vercel']) throw new Error('只能选择一种控制端传输')
+if (manifest.controlEdgeAddress && !options['via-curl']) throw new Error('固定控制端地址只支持 --via-curl')
+const transport = options['via-curl'] ? 'curl' : options['via-vercel'] ? 'vercel' : 'fetch'
+const fingerprint = createHash('sha256').update(JSON.stringify({ manifest, transport })).digest('hex')
 console.log(JSON.stringify({ runId: manifest.runId, ...plan, execution: !!options.execute }))
 
 if (options.execute || options['report-only']) {
@@ -37,7 +43,7 @@ if (options.execute || options['report-only']) {
     // 同时检查重复记录，恢复不会再次发出已有样本的请求。
     renderImageBenchmarkReport(manifest, rows)
   } else if (options['report-only']) throw new Error('报告输入文件不存在')
-  else await writeFile(output, JSON.stringify({ version: 1, manifest: fingerprint }) + '\n', { mode: 0o600, flag: 'wx' })
+  else await writeFile(output, JSON.stringify({ version: 1, manifest: fingerprint, transport }) + '\n', { mode: 0o600, flag: 'wx' })
 
   if (options.execute) {
     const token = process.env.IMAGE_BENCHMARK_TOKEN
@@ -66,15 +72,18 @@ if (options.execute || options['report-only']) {
             await appendFile(output, JSON.stringify({ type: 'attempt', region: target.region, case: name, sample }) + '\n')
             const at = performance.now()
             let raw: unknown
-            if (options['via-vercel']) {
+            const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json',
+              ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET ? { 'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET }
+                : process.env.VERCEL_OIDC_TOKEN ? { 'x-vercel-trusted-oidc-idp-token': process.env.VERCEL_OIDC_TOKEN } : {}) }
+            if (options['via-curl']) raw = await curlImageBenchmark(new URL('/api/internal/image-benchmark', target.url).href, body, headers, manifest.controlEdgeAddress)
+            else if (options['via-vercel']) {
               const { stdout } = await promisify(execFile)(process.execPath, [process.env.VERCEL_CLI_ENTRYPOINT!, 'curl',
                 '/api/internal/image-benchmark', '--deployment', target.url, '--', '--request', 'POST', '--header', `Authorization: Bearer ${token}`,
                 '--header', 'Content-Type: application/json', '--data', body, '--silent', '--show-error', '--fail'], { timeout: 65_000, maxBuffer: 128 * 1024 })
               raw = JSON.parse(stdout)
             } else {
               const response = await fetch(new URL('/api/internal/image-benchmark', target.url), { method: 'POST', redirect: 'error',
-                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json',
-                  ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET ? { 'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET } : {}) },
+                headers,
                 body, signal: AbortSignal.timeout(60_000) })
               if (!response.ok) throw new Error(`基准 HTTP ${response.status}，已停止，不重发 POST`)
               raw = await response.json()

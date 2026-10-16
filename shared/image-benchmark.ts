@@ -34,10 +34,12 @@ export const imageBenchmarkManifest = z.object({
   rounds: z.number().int().min(1).max(40).default(20),
   maxRequests: z.number().int().min(1).max(800).default(400),
   maxTransferMiB: z.number().positive().max(2048).default(1024),
+  controlEdgeAddress: z.ipv4().optional(),
   cases: z.array(z.enum(IMAGE_BENCHMARK_CASES)).min(1).refine(v => v[0] === 'control' && new Set(v).size === v.length,
     '必须先验证 control，且场景不能重复'),
   targets: z.array(z.object({
     region: z.enum(['pdx1', 'hkg1', 'sin1']),
+    deployment: z.string().regex(/^[a-z0-9.-]+\.vercel\.app$/).optional(),
     url: z.url().refine(raw => {
       const url = new URL(raw)
       return url.protocol === 'https:' && url.hostname.endsWith('.vercel.app') && !url.username && !url.password

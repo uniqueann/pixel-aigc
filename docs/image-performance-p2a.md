@@ -74,10 +74,14 @@ npm run benchmark:image-network -- --manifest /私有目录/manifest.json --outp
 ```sh
 npm run benchmark:image-network -- --manifest /私有目录/manifest.json --output /私有目录/results.jsonl --execute --via-vercel
 npm run benchmark:image-network -- --manifest /私有目录/manifest.json --output /私有目录/results.jsonl --execute --via-vercel --resume
-npm run benchmark:image-network -- --manifest /私有目录/manifest.json --output /私有目录/results.jsonl --report-only
+npm run benchmark:image-network -- --manifest /私有目录/manifest.json --output /私有目录/results.jsonl --report-only --via-vercel
 ```
 
-不需要 Vercel CLI 的已授权 HTTP 环境可省略 `--via-vercel`；自动化保护密钥仅从进程环境读取。CLI 模式的 `requestMs` 包含进程及认证开销，区域分析优先比较服务端分段，不将它当作用户浏览器的端到端耗时。
+不需要 Vercel CLI 的已授权 HTTP 环境可省略 `--via-vercel`；可从进程环境读取短时 `VERCEL_OIDC_TOKEN`，发送到清单中的本项目预览部署以通过 Trusted Sources。已有自动化保护密钥也支持从进程环境读取。CLI 模式的 `requestMs` 包含进程及认证开销，区域分析优先比较服务端分段，不将它当作用户浏览器的端到端耗时。
+
+本机解析或路由导致某些预览域名连接中断时，可使用 `--via-curl`，并在私有清单中显式设置 `controlEdgeAddress` 为已核实的共同连接入口 IPv4 地址。curl 配置和凭证通过标准输入传递，保留每个部署的原域名、SNI 和证书校验；这类数据只分析函数内部路径，不评价用户端 DNS 或端到端网络。传输方式与地址均绑定清单指纹，恢复时不能混用。
+
+也可给本轮部署分配独立的 Vercel 预览别名。使用别名时，在对应 target 增加 `deployment` 字段填写原始部署主机名，仍核对返回的实际部署、区域和提交；测试别名不绑定正式域名，也不替代原部署身份校验。
 
 每场景每区先做一轮预热，随后 20 轮正式采样，单并发交错区域并轮换先后。完整清单共 378 次请求，对象 PUT/GET 预算 693 MiB；无模型调用、无站内积分。预算在执行前和每次请求前校验，失败请求也占计划预算。
 
@@ -93,4 +97,10 @@ P2-A 基础批次通过要求：真实区域与预期一致、代码和依赖配
 
 ## 本次执行记录
 
-待三个部署和实际基础链路结果完成后补充。用户已提供 #188 正式站三项收尾验收通过；本批以该版本为基线，旧 29 条转存回执不做回填。
+2026-10-16 已从 #188 合并后的 `bf97aa7` 新建分支，部署探测提交 `c20d1cfa312bd7a8d86d2bafcb15fd612105be58`。三个独立 Preview 均为 READY，平台部署记录与各自 `control` 响应均确认实际区域为 `pdx1`、`hkg1`、`sin1`。三个响应的代码、配置指纹和 Node.js 版本一致；内存值未观测到，不能据此宣称运行内存已核实。
+
+`pdx1` 的一次数据库预检成功，只证明预览账号、业务连接池和只读查询可用，不作为区域性能样本。当前控制端到 Preview 域名的 TLS 连接反复中断，正式批次没有形成有效区域对照；R2 读写、清理及供应商连接的云端采样仍待完成。保留失败批次及缺失样本，不自动重发回执未知的请求，不据此推荐迁移区域。
+
+本批未调用模型、未扣站内积分。预览测试账号的任务数 `29`、积分流水数 `72`、调用记录数 `14` 在探测前后均一致。未改变正式站区域及业务参数，旧转存回执未回填。脱敏证据见 [预览部署与基线记录](verification/image-performance-p2a/preview-baseline.json)；私有原始记录保留在本机临时目录，专用入口到期自动关闭。
+
+本地验证已通过：272 个测试文件、1805 项测试，无未处理错误；构建、lint 和差异格式检查通过。后续先恢复控制端网络并完成基础批次，再决定候选区域及真实工具对照预算。

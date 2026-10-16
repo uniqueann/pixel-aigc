@@ -3,7 +3,7 @@ import { imageBenchmarkResult, type ImageBenchmarkManifest, type ImageBenchmarkS
 export function validateBenchmarkSample(manifest: ImageBenchmarkManifest, raw: ImageBenchmarkSample, prior?: ImageBenchmarkSample) {
   const result = imageBenchmarkResult.parse(raw.result)
   const target = manifest.targets.find(value => value.region === result.region)
-  if (!target || result.deployment !== new URL(target.url).host || result.revision !== manifest.revision || result.runId !== manifest.runId
+  if (!target || result.deployment !== (target.deployment ?? new URL(target.url).host) || result.revision !== manifest.revision || result.runId !== manifest.runId
     || result.sample > manifest.rounds || !manifest.cases.includes(result.case) || !Number.isFinite(raw.requestMs) || raw.requestMs < 0)
     throw new Error('部署、区域、提交、轮次或测试清单不匹配')
   if (prior && (result.configuration !== prior.result.configuration || result.node !== prior.result.node || result.memoryMb !== prior.result.memoryMb))
@@ -56,6 +56,7 @@ export function renderImageBenchmarkReport(manifest: ImageBenchmarkManifest, row
     '- 数据库 acquireAndBegin 包含连接池排队、必要的连接建立和 BEGIN；query 是原身份与 preview 范围下的业务只读查询。',
     '- instance 与 instanceRequest 只标记本进程及调用次序，不能据此判断平台冷启动；预览结果不能替代生产冷启动测试。',
     '- requestMs 包含测试控制端到部署的路径；区域筛选优先比较服务端分段。阶段存在包含关系，不能直接相加。',
+    ...(manifest.controlEdgeAddress ? ['- 本轮固定控制端入口地址，保留各部署原域名、SNI 和证书校验；用于避开本机域名解析或路由差异，不用于评价浏览器 DNS 或用户端延迟。'] : []),
     '- 未完成完整工具对照前，不据此修改正式站区域或宣称达到 4 秒目标。', '']
   return lines.join('\n')
 }
