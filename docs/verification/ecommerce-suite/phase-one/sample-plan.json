@@ -1,0 +1,151 @@
+{
+  "evidenceKind": "real_sample_collection_plan",
+  "requiredCount": 9,
+  "receivedCount": 0,
+  "samples": [
+    {
+      "sampleId": "F01",
+      "subcategory": "furniture",
+      "product": "布艺沙发",
+      "focus": "主体形状、长宽语义、统一场景",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    },
+    {
+      "sampleId": "F02",
+      "subcategory": "furniture",
+      "product": "白色餐椅",
+      "focus": "浅色边缘、主图蒙版未知分支",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    },
+    {
+      "sampleId": "F03",
+      "subcategory": "furniture",
+      "product": "木质边桌",
+      "focus": "桌腿数量、连接细节",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    },
+    {
+      "sampleId": "K01",
+      "subcategory": "kitchen-dining",
+      "product": "不粘锅",
+      "focus": "把手、口径与材质待确认",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    },
+    {
+      "sampleId": "K02",
+      "subcategory": "kitchen-dining",
+      "product": "咖啡机",
+      "focus": "按钮与接口不得补造",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    },
+    {
+      "sampleId": "K03",
+      "subcategory": "kitchen-dining",
+      "product": "透明保鲜盒",
+      "focus": "透明主体、容量单位",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    },
+    {
+      "sampleId": "S01",
+      "subcategory": "storage-textile",
+      "product": "金属置物架",
+      "focus": "层数、尺寸与承重待确认",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    },
+    {
+      "sampleId": "S02",
+      "subcategory": "storage-textile",
+      "product": "床品套装",
+      "focus": "花纹和件数一致",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    },
+    {
+      "sampleId": "S03",
+      "subcategory": "storage-textile",
+      "product": "窗帘",
+      "focus": "织物纹理、性能词不自动推断",
+      "status": "awaiting_input",
+      "assetIds": [],
+      "verifiedFacts": [],
+      "accepted": false,
+      "requiredInputs": [
+        "有使用权限的商品主体实拍",
+        "尺寸或容量等可确认规格",
+        "适用时提供细节实拍"
+      ],
+      "evidence": null
+    }
+  ]
+}

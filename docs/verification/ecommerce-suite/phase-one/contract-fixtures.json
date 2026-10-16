@@ -1,0 +1,904 @@
+{
+  "contractVersion": 1,
+  "evidenceKind": "synthetic_contract_only",
+  "notice": "所有身份、商品规格、对象键、模型和积分均为合同样例，不存在真实对象或费用。",
+  "createProject": {
+    "requestId": "00000000-0000-4000-8000-000000000004",
+    "config": {
+      "schemaVersion": 1,
+      "title": "契约样例：三人沙发（非真实商品）",
+      "sku": "CONTRACT-ONLY-001",
+      "category": "home-kitchen",
+      "subcategory": "furniture",
+      "platform": "amazon",
+      "marketplace": "US",
+      "ruleProfile": {
+        "id": "amazon-us-home",
+        "version": "draft-2026-10-17"
+      },
+      "baseAssetId": "00000000-0000-4000-8000-000000000003",
+      "tags": [
+        "现代简约",
+        "自然光"
+      ],
+      "facts": [
+        {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "kind": "dimension",
+          "axis": "length",
+          "name": "长度",
+          "value": 210,
+          "unit": "cm",
+          "originalText": "长 210cm",
+          "source": "user",
+          "confirmed": true,
+          "subject": "product"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000021",
+          "kind": "dimension",
+          "axis": "width",
+          "name": "宽度",
+          "value": 85,
+          "unit": "cm",
+          "originalText": "宽 85cm",
+          "source": "tag_parse",
+          "confirmed": true,
+          "subject": "product"
+        }
+      ],
+      "copyLanguage": "zh-CN",
+      "unitSystem": "metric",
+      "style": {
+        "palette": [
+          "#ffffff",
+          "#21cfa0"
+        ],
+        "sceneTone": "自然光",
+        "templateId": "furniture",
+        "templateVersion": "home-kitchen-v1"
+      },
+      "slots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "key": "main",
+          "kind": "main",
+          "name": "白底主图",
+          "order": 0,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000011",
+          "key": "scene",
+          "kind": "scene",
+          "name": "居室场景",
+          "order": 1,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "key": "secondary",
+          "kind": "atmosphere",
+          "name": "氛围场景",
+          "order": 2,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000013",
+          "key": "feature",
+          "kind": "feature",
+          "name": "卖点信息图",
+          "order": 3,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000014",
+          "key": "size",
+          "kind": "size",
+          "name": "尺寸图",
+          "order": 4,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "key": "detail",
+          "kind": "detail",
+          "name": "材质与连接细节",
+          "order": 5,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000016",
+          "key": "use",
+          "kind": "use",
+          "name": "使用场景",
+          "order": 6,
+          "enabled": true,
+          "referenceAssetIds": []
+        }
+      ]
+    }
+  },
+  "updateProject": {
+    "expectedRevision": 0,
+    "config": {
+      "schemaVersion": 1,
+      "title": "契约样例：三人沙发（非真实商品）",
+      "sku": "CONTRACT-ONLY-001",
+      "category": "home-kitchen",
+      "subcategory": "furniture",
+      "platform": "amazon",
+      "marketplace": "US",
+      "ruleProfile": {
+        "id": "amazon-us-home",
+        "version": "draft-2026-10-17"
+      },
+      "baseAssetId": "00000000-0000-4000-8000-000000000003",
+      "tags": [
+        "现代简约",
+        "自然光"
+      ],
+      "facts": [
+        {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "kind": "dimension",
+          "axis": "length",
+          "name": "长度",
+          "value": 210,
+          "unit": "cm",
+          "originalText": "长 210cm",
+          "source": "user",
+          "confirmed": true,
+          "subject": "product"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000021",
+          "kind": "dimension",
+          "axis": "width",
+          "name": "宽度",
+          "value": 85,
+          "unit": "cm",
+          "originalText": "宽 85cm",
+          "source": "tag_parse",
+          "confirmed": true,
+          "subject": "product"
+        }
+      ],
+      "copyLanguage": "zh-CN",
+      "unitSystem": "metric",
+      "style": {
+        "palette": [
+          "#ffffff",
+          "#21cfa0"
+        ],
+        "sceneTone": "自然光",
+        "templateId": "furniture",
+        "templateVersion": "home-kitchen-v1"
+      },
+      "slots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "key": "main",
+          "kind": "main",
+          "name": "白底主图",
+          "order": 0,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000011",
+          "key": "scene",
+          "kind": "scene",
+          "name": "居室场景",
+          "order": 1,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "key": "secondary",
+          "kind": "atmosphere",
+          "name": "氛围场景",
+          "order": 2,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000013",
+          "key": "feature",
+          "kind": "feature",
+          "name": "卖点信息图",
+          "order": 3,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000014",
+          "key": "size",
+          "kind": "size",
+          "name": "尺寸图",
+          "order": 4,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "key": "detail",
+          "kind": "detail",
+          "name": "材质与连接细节",
+          "order": 5,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000016",
+          "key": "use",
+          "kind": "use",
+          "name": "使用场景",
+          "order": 6,
+          "enabled": true,
+          "referenceAssetIds": []
+        }
+      ]
+    }
+  },
+  "project": {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "actor": {
+      "userId": "00000000-0000-4000-8000-000000000001",
+      "runtimeScope": "local"
+    },
+    "revision": 0,
+    "config": {
+      "schemaVersion": 1,
+      "title": "契约样例：三人沙发（非真实商品）",
+      "sku": "CONTRACT-ONLY-001",
+      "category": "home-kitchen",
+      "subcategory": "furniture",
+      "platform": "amazon",
+      "marketplace": "US",
+      "ruleProfile": {
+        "id": "amazon-us-home",
+        "version": "draft-2026-10-17"
+      },
+      "baseAssetId": "00000000-0000-4000-8000-000000000003",
+      "tags": [
+        "现代简约",
+        "自然光"
+      ],
+      "facts": [
+        {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "kind": "dimension",
+          "axis": "length",
+          "name": "长度",
+          "value": 210,
+          "unit": "cm",
+          "originalText": "长 210cm",
+          "source": "user",
+          "confirmed": true,
+          "subject": "product"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000021",
+          "kind": "dimension",
+          "axis": "width",
+          "name": "宽度",
+          "value": 85,
+          "unit": "cm",
+          "originalText": "宽 85cm",
+          "source": "tag_parse",
+          "confirmed": true,
+          "subject": "product"
+        }
+      ],
+      "copyLanguage": "zh-CN",
+      "unitSystem": "metric",
+      "style": {
+        "palette": [
+          "#ffffff",
+          "#21cfa0"
+        ],
+        "sceneTone": "自然光",
+        "templateId": "furniture",
+        "templateVersion": "home-kitchen-v1"
+      },
+      "slots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "key": "main",
+          "kind": "main",
+          "name": "白底主图",
+          "order": 0,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000011",
+          "key": "scene",
+          "kind": "scene",
+          "name": "居室场景",
+          "order": 1,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "key": "secondary",
+          "kind": "atmosphere",
+          "name": "氛围场景",
+          "order": 2,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000013",
+          "key": "feature",
+          "kind": "feature",
+          "name": "卖点信息图",
+          "order": 3,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000014",
+          "key": "size",
+          "kind": "size",
+          "name": "尺寸图",
+          "order": 4,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "key": "detail",
+          "kind": "detail",
+          "name": "材质与连接细节",
+          "order": 5,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000016",
+          "key": "use",
+          "kind": "use",
+          "name": "使用场景",
+          "order": 6,
+          "enabled": true,
+          "referenceAssetIds": []
+        }
+      ]
+    },
+    "slotHeads": [
+      {
+        "slotId": "00000000-0000-4000-8000-000000000010",
+        "activeVersionId": null,
+        "headRevision": 0
+      },
+      {
+        "slotId": "00000000-0000-4000-8000-000000000011",
+        "activeVersionId": null,
+        "headRevision": 0
+      },
+      {
+        "slotId": "00000000-0000-4000-8000-000000000012",
+        "activeVersionId": null,
+        "headRevision": 0
+      },
+      {
+        "slotId": "00000000-0000-4000-8000-000000000013",
+        "activeVersionId": null,
+        "headRevision": 0
+      },
+      {
+        "slotId": "00000000-0000-4000-8000-000000000014",
+        "activeVersionId": "00000000-0000-4000-8000-000000000050",
+        "headRevision": 1
+      },
+      {
+        "slotId": "00000000-0000-4000-8000-000000000015",
+        "activeVersionId": null,
+        "headRevision": 0
+      },
+      {
+        "slotId": "00000000-0000-4000-8000-000000000016",
+        "activeVersionId": null,
+        "headRevision": 0
+      }
+    ],
+    "createdAt": "2026-10-17T00:00:00Z",
+    "updatedAt": "2026-10-17T00:00:00Z",
+    "deletedAt": null
+  },
+  "asset": {
+    "assetId": "00000000-0000-4000-8000-000000000003",
+    "projectId": "00000000-0000-4000-8000-000000000002",
+    "actor": {
+      "userId": "00000000-0000-4000-8000-000000000001",
+      "runtimeScope": "local"
+    },
+    "objectKey": "suite-assets/local/00000000-0000-4000-8000-000000000001/00000000-0000-4000-8000-000000000002/00000000-0000-4000-8000-000000000003.png",
+    "mimeType": "image/png",
+    "size": {
+      "width": 2048,
+      "height": 2048
+    },
+    "bytes": 1024,
+    "checksum": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "upload": {
+    "requestId": "00000000-0000-4000-8000-000000000005",
+    "name": "contract-only.png",
+    "mimeType": "image/png",
+    "bytes": 1024
+  },
+  "uploadComplete": {
+    "assetId": "00000000-0000-4000-8000-000000000003",
+    "uploadId": "00000000-0000-4000-8000-000000000006"
+  },
+  "assetAccess": {
+    "assetIds": [
+      "00000000-0000-4000-8000-000000000003"
+    ]
+  },
+  "quoteRequest": {
+    "expectedRevision": 0,
+    "slots": [
+      {
+        "slotId": "00000000-0000-4000-8000-000000000011",
+        "mode": "image_edit",
+        "modelProfileId": "fixture:image-edit-only",
+        "resolution": "2k",
+        "count": 2,
+        "note": "测试场景"
+      }
+    ]
+  },
+  "quote": {
+    "id": "00000000-0000-4000-8000-000000000030",
+    "projectId": "00000000-0000-4000-8000-000000000002",
+    "expectedRevision": 0,
+    "planFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "items": [
+      {
+        "operationId": "00000000-0000-4000-8000-000000000033",
+        "slotId": "00000000-0000-4000-8000-000000000011",
+        "slotKind": "scene",
+        "sourceAssetId": "00000000-0000-4000-8000-000000000003",
+        "mode": "image_edit",
+        "modelProfileId": "fixture:image-edit-only",
+        "resolution": "2k",
+        "count": 2,
+        "unitCredits": 7,
+        "credits": 14,
+        "size": {
+          "width": 2048,
+          "height": 2048
+        },
+        "promptSnapshot": "保持原商品外观，修改背景为测试场景。",
+        "referenceAssetIds": [],
+        "factsSnapshot": [
+          {
+            "id": "00000000-0000-4000-8000-000000000020",
+            "kind": "dimension",
+            "axis": "length",
+            "name": "长度",
+            "value": 210,
+            "unit": "cm",
+            "originalText": "长 210cm",
+            "source": "user",
+            "confirmed": true,
+            "subject": "product"
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000021",
+            "kind": "dimension",
+            "axis": "width",
+            "name": "宽度",
+            "value": 85,
+            "unit": "cm",
+            "originalText": "宽 85cm",
+            "source": "tag_parse",
+            "confirmed": true,
+            "subject": "product"
+          }
+        ]
+      }
+    ],
+    "totalCredits": 14,
+    "createdAt": "2026-10-17T00:00:00Z",
+    "expiresAt": "2026-10-17T00:10:00Z"
+  },
+  "createBatch": {
+    "requestId": "00000000-0000-4000-8000-000000000032",
+    "quoteId": "00000000-0000-4000-8000-000000000030",
+    "expectedRevision": 0,
+    "planFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "maxCredits": 14
+  },
+  "version": {
+    "id": "00000000-0000-4000-8000-000000000050",
+    "projectId": "00000000-0000-4000-8000-000000000002",
+    "slotId": "00000000-0000-4000-8000-000000000014",
+    "versionNumber": 1,
+    "parentVersionId": null,
+    "assetId": "00000000-0000-4000-8000-000000000003",
+    "source": "reuse",
+    "composition": {
+      "renderSize": {
+        "width": 2048,
+        "height": 2048
+      },
+      "layersSnapshot": [
+        {
+          "id": "00000000-0000-4000-8000-000000000060",
+          "type": "dimension",
+          "factId": "00000000-0000-4000-8000-000000000020",
+          "start": {
+            "x": 0.1,
+            "y": 0.9
+          },
+          "end": {
+            "x": 0.9,
+            "y": 0.9
+          },
+          "labelPosition": {
+            "x": 0.4,
+            "y": 0.86
+          },
+          "color": "#17171a",
+          "strokeWidth": 2,
+          "fontSize": 36,
+          "zIndex": 0
+        }
+      ],
+      "factsSnapshot": [
+        {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "kind": "dimension",
+          "axis": "length",
+          "name": "长度",
+          "value": 210,
+          "unit": "cm",
+          "originalText": "长 210cm",
+          "source": "user",
+          "confirmed": true,
+          "subject": "product"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000021",
+          "kind": "dimension",
+          "axis": "width",
+          "name": "宽度",
+          "value": 85,
+          "unit": "cm",
+          "originalText": "宽 85cm",
+          "source": "tag_parse",
+          "confirmed": true,
+          "subject": "product"
+        }
+      ],
+      "copyLanguage": "zh-CN",
+      "unitSystem": "metric",
+      "templateVersion": "home-kitchen-v1",
+      "rendererVersion": "composition-v1"
+    },
+    "createdAt": "2026-10-17T00:00:00Z"
+  },
+  "saveVersion": {
+    "requestId": "00000000-0000-4000-8000-000000000051",
+    "baseVersionId": "00000000-0000-4000-8000-000000000050",
+    "expectedHeadRevision": 1,
+    "composition": {
+      "renderSize": {
+        "width": 2048,
+        "height": 2048
+      },
+      "layersSnapshot": [
+        {
+          "id": "00000000-0000-4000-8000-000000000060",
+          "type": "dimension",
+          "factId": "00000000-0000-4000-8000-000000000020",
+          "start": {
+            "x": 0.1,
+            "y": 0.9
+          },
+          "end": {
+            "x": 0.9,
+            "y": 0.9
+          },
+          "labelPosition": {
+            "x": 0.4,
+            "y": 0.86
+          },
+          "color": "#17171a",
+          "strokeWidth": 2,
+          "fontSize": 36,
+          "zIndex": 0
+        }
+      ],
+      "factsSnapshot": [
+        {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "kind": "dimension",
+          "axis": "length",
+          "name": "长度",
+          "value": 210,
+          "unit": "cm",
+          "originalText": "长 210cm",
+          "source": "user",
+          "confirmed": true,
+          "subject": "product"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000021",
+          "kind": "dimension",
+          "axis": "width",
+          "name": "宽度",
+          "value": 85,
+          "unit": "cm",
+          "originalText": "宽 85cm",
+          "source": "tag_parse",
+          "confirmed": true,
+          "subject": "product"
+        }
+      ],
+      "copyLanguage": "zh-CN",
+      "unitSystem": "metric",
+      "templateVersion": "home-kitchen-v1",
+      "rendererVersion": "composition-v1"
+    }
+  },
+  "setCurrent": {
+    "versionId": "00000000-0000-4000-8000-000000000050",
+    "expectedHeadRevision": 1
+  },
+  "origin": {
+    "entry": "ecommerce",
+    "tool": "ecommerce-suite",
+    "projectId": "00000000-0000-4000-8000-000000000002",
+    "slotId": "00000000-0000-4000-8000-000000000011",
+    "batchId": "00000000-0000-4000-8000-000000000034",
+    "operationId": "00000000-0000-4000-8000-000000000033"
+  },
+  "createBridge": {
+    "slotId": "00000000-0000-4000-8000-000000000014",
+    "sourceVersionId": "00000000-0000-4000-8000-000000000050",
+    "expectedHeadRevision": 1,
+    "tool": "repaint",
+    "inputMode": "base"
+  },
+  "bridgeResult": {
+    "requestId": "00000000-0000-4000-8000-000000000072",
+    "result": {
+      "sourceKind": "sync_credit",
+      "sourceId": "00000000-0000-4000-8000-000000000070",
+      "ordinal": 0
+    }
+  },
+  "precheck": {
+    "versionIds": [
+      "00000000-0000-4000-8000-000000000050"
+    ],
+    "output": {
+      "platform": "amazon",
+      "width": 2000,
+      "height": 2000,
+      "format": "jpeg",
+      "background": "#ffffff",
+      "jpegQuality": 0.92
+    }
+  },
+  "saveDraft": {
+    "expectedDraftRevision": 0,
+    "baseVersionId": "00000000-0000-4000-8000-000000000050",
+    "promptNote": "",
+    "count": 1,
+    "resolution": "2k",
+    "modelProfileId": null,
+    "layers": [
+      {
+        "id": "00000000-0000-4000-8000-000000000060",
+        "type": "dimension",
+        "factId": "00000000-0000-4000-8000-000000000020",
+        "start": {
+          "x": 0.1,
+          "y": 0.9
+        },
+        "end": {
+          "x": 0.9,
+          "y": 0.9
+        },
+        "labelPosition": {
+          "x": 0.4,
+          "y": 0.86
+        },
+        "color": "#17171a",
+        "strokeWidth": 2,
+        "fontSize": 36,
+        "zIndex": 0
+      }
+    ]
+  },
+  "batch": {
+    "id": "00000000-0000-4000-8000-000000000034",
+    "actor": {
+      "userId": "00000000-0000-4000-8000-000000000001",
+      "runtimeScope": "local"
+    },
+    "projectId": "00000000-0000-4000-8000-000000000002",
+    "requestId": "00000000-0000-4000-8000-000000000032",
+    "quoteId": "00000000-0000-4000-8000-000000000030",
+    "planFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "configSnapshot": {
+      "schemaVersion": 1,
+      "title": "契约样例：三人沙发（非真实商品）",
+      "sku": "CONTRACT-ONLY-001",
+      "category": "home-kitchen",
+      "subcategory": "furniture",
+      "platform": "amazon",
+      "marketplace": "US",
+      "ruleProfile": {
+        "id": "amazon-us-home",
+        "version": "draft-2026-10-17"
+      },
+      "baseAssetId": "00000000-0000-4000-8000-000000000003",
+      "tags": [
+        "现代简约",
+        "自然光"
+      ],
+      "facts": [
+        {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "kind": "dimension",
+          "axis": "length",
+          "name": "长度",
+          "value": 210,
+          "unit": "cm",
+          "originalText": "长 210cm",
+          "source": "user",
+          "confirmed": true,
+          "subject": "product"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000021",
+          "kind": "dimension",
+          "axis": "width",
+          "name": "宽度",
+          "value": 85,
+          "unit": "cm",
+          "originalText": "宽 85cm",
+          "source": "tag_parse",
+          "confirmed": true,
+          "subject": "product"
+        }
+      ],
+      "copyLanguage": "zh-CN",
+      "unitSystem": "metric",
+      "style": {
+        "palette": [
+          "#ffffff",
+          "#21cfa0"
+        ],
+        "sceneTone": "自然光",
+        "templateId": "furniture",
+        "templateVersion": "home-kitchen-v1"
+      },
+      "slots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "key": "main",
+          "kind": "main",
+          "name": "白底主图",
+          "order": 0,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000011",
+          "key": "scene",
+          "kind": "scene",
+          "name": "居室场景",
+          "order": 1,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000012",
+          "key": "secondary",
+          "kind": "atmosphere",
+          "name": "氛围场景",
+          "order": 2,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000013",
+          "key": "feature",
+          "kind": "feature",
+          "name": "卖点信息图",
+          "order": 3,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000014",
+          "key": "size",
+          "kind": "size",
+          "name": "尺寸图",
+          "order": 4,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000015",
+          "key": "detail",
+          "kind": "detail",
+          "name": "材质与连接细节",
+          "order": 5,
+          "enabled": true,
+          "referenceAssetIds": []
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000016",
+          "key": "use",
+          "kind": "use",
+          "name": "使用场景",
+          "order": 6,
+          "enabled": true,
+          "referenceAssetIds": []
+        }
+      ]
+    },
+    "state": "queued",
+    "maxCredits": 14,
+    "operationIds": [
+      "00000000-0000-4000-8000-000000000033"
+    ],
+    "createdAt": "2026-10-17T00:00:00Z",
+    "dispatchDeadlineAt": "2026-10-17T00:30:00Z",
+    "completedAt": null,
+    "blockedReason": null
+  },
+  "operation": {
+    "id": "00000000-0000-4000-8000-000000000033",
+    "actor": {
+      "userId": "00000000-0000-4000-8000-000000000001",
+      "runtimeScope": "local"
+    },
+    "projectId": "00000000-0000-4000-8000-000000000002",
+    "batchId": "00000000-0000-4000-8000-000000000034",
+    "slotId": "00000000-0000-4000-8000-000000000011",
+    "requestId": "00000000-0000-4000-8000-000000000080",
+    "mode": "image_edit",
+    "phase": "waiting",
+    "expectedHeadRevision": 0,
+    "task": null,
+    "terminalState": null,
+    "appliedVersionIds": [],
+    "createdAt": "2026-10-17T00:00:00Z",
+    "updatedAt": "2026-10-17T00:00:00Z"
+  },
+  "bridge": {
+    "id": "00000000-0000-4000-8000-000000000071",
+    "actor": {
+      "userId": "00000000-0000-4000-8000-000000000001",
+      "runtimeScope": "local"
+    },
+    "projectId": "00000000-0000-4000-8000-000000000002",
+    "slotId": "00000000-0000-4000-8000-000000000014",
+    "sourceVersionId": "00000000-0000-4000-8000-000000000050",
+    "sourceAssetId": "00000000-0000-4000-8000-000000000003",
+    "sourceHeadRevision": 1,
+    "tool": "repaint",
+    "inputMode": "base",
+    "createdAt": "2026-10-17T00:00:00Z",
+    "expiresAt": "2026-10-24T00:00:00Z"
+  }
+}

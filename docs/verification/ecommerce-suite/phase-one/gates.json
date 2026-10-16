@@ -1,0 +1,57 @@
+{
+  "kind": "local_phase_one_gates",
+  "checkedAt": "2026-10-16T21:58:08.040339+00:00",
+  "worktreeBaseCommit": "55e60401ea6ae268cdc516e8036eac047893125d",
+  "sourceHashes": {
+    "shared/ecommerce-suite.ts": "c00a45940d499d1b933d286e10d425fe8f52340df499f88827603282d1109329",
+    "shared/ecommerce-suite-templates.ts": "85ac2f1bd1951e53b9a8747592a21ed6ce15076fca9966d3ecf19d71fb7709c3",
+    "shared/ecommerce-suite.test.ts": "4f157954f55086be816fbe1e8f45ee7a489d0ffe82bab7d460f2ab1fade3cdc3"
+  },
+  "gates": {
+    "npm test": {
+      "passed": true,
+      "files": 273,
+      "tests": 1834,
+      "unhandledErrors": 0
+    },
+    "phaseOneContractTests": {
+      "passed": true,
+      "tests": 23
+    },
+    "npm run build": {
+      "passed": true
+    },
+    "npm run lint": {
+      "passed": true
+    },
+    "npm run check:ecommerce-suite:phase-one": {
+      "passed": true,
+      "examples": 21,
+      "templates": 3
+    },
+    "git diff --check": {
+      "passed": true
+    }
+  },
+  "warnings": {
+    "tests": [
+      "部分已有组件测试有 React act 提示"
+    ],
+    "build": [
+      "依赖注释标记、混合静态动态导入与大包提示"
+    ]
+  },
+  "realSamples": {
+    "required": 9,
+    "received": 0,
+    "accepted": 0
+  },
+  "realSampleGatePassed": false,
+  "runtimeVerification": {
+    "http": "not_implemented",
+    "postgresRls": "design_only",
+    "billing": "not_executed",
+    "scheduler": "not_implemented",
+    "provider": "not_executed"
+  }
+}
