@@ -54,6 +54,31 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={client}>{children}</QueryClientProvider>
 )
 describe('共享单任务轮询', () => {
+  it('查询耗时已经计入服务端间隔时，按剩余等待调度，不再叠加完整间隔', async () => {
+    vi.useFakeTimers()
+    try {
+      const log = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+      mocks.get.mockImplementationOnce(async () => {
+        await new Promise(resolve => setTimeout(resolve, 1_200))
+        return { ...task, status: 'processing', pollAfterMs: 1_800 }
+      }).mockResolvedValue(task)
+      renderHook(() => { useTaskPolling(task.id); useTaskPolling(task.id) }, { wrapper })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_200) })
+      // 先交付 React Query 的异步通知，再推进剩余等待，避免把渲染批次延迟混入间隔。
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_798) })
+      expect(mocks.get).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(mocks.get).toHaveBeenCalledTimes(2)
+      const requests = log.mock.calls.map(([entry]) => entry).filter(entry => entry.evt === 'task-poll-request')
+      expect(requests[1]).toMatchObject({ source: 'server', pollAfterMs: 1_800, actualIntervalMs: 3_000 })
+    } finally {
+      cleanup()
+      client.clear()
+      await vi.runOnlyPendingTimersAsync()
+      vi.useRealTimers()
+    }
+  })
   it('重复渲染不把同间隔的计划时间向后覆盖，仍记录真实定时等待', async () => {
     vi.useFakeTimers()
     try {

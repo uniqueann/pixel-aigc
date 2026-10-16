@@ -944,7 +944,7 @@ export async function finalizeJob(
   runtime: ImageJobRuntime,
   lateDelivery: boolean,
   outcomes: SubmitOutcome[] = [],
-  options?: { keepScheduledPoll?: boolean; keepLease?: boolean },
+  options?: { keepScheduledPoll?: boolean; keepLease?: boolean; statusStartedAt?: number },
 ) {
   if (job.capability !== 'text_to_video' && (!job.lease_token || !await store.assertLease(job.id,job.lease_token))) throw new ImageLeaseLost()
   const reduced = reduceJobStatus(items, runtime.now(), new Date(job.deadline_at).getTime())
@@ -976,8 +976,10 @@ export async function finalizeJob(
   const providerParams = outcomes.some(outcome => outcome.vendor)
     ? mergeVendorUsage(job.provider_params, outcomes)
     : job.provider_params
+  // 从最后一次上游查询开始计间隔，避免把查询和写回耗时再次叠加到等待中。
+  const pollBase = job.capability === 'text_to_video' ? runtime.now() : options?.statusStartedAt ?? runtime.now()
   const scheduledPoll = deferredPoll ?? (options?.keepScheduledPoll
-    ? job.next_poll_at : nextPollAt(runtime.now(), nextPollInterval(job, runtime)))
+    ? job.next_poll_at : nextPollAt(pollBase, nextPollInterval(job, runtime)))
   // 短事务可能刚写入平台退避；收尾不得把已持久化的下次执行时间提前。
   const imagePoll = new Date(Math.max(new Date(scheduledPoll).getTime(),new Date(job.next_poll_at).getTime()))
   const next = await store.updateJob(job.id, {
@@ -1093,6 +1095,7 @@ export async function collectAdvancePatches(
   job: ImageJobRow,
   items: ImageJobItemRow[],
   runtime: ImageJobRuntime,
+  observation?: { statusStartedAt?: number },
 ): Promise<SubmitOutcome[]> {
   const provider = runtime.providerFor(job.provider)
   if (!provider?.getStatus || !provider.fetchResult) return []
@@ -1127,6 +1130,7 @@ export async function collectAdvancePatches(
     const shared = job.provider_params.batch === true || group.length > 1
     const lead = group.reduce((best, item) => item.ordinal < best.ordinal ? item : best)
     try {
+      if (observation) observation.statusStartedAt = runtime.now()
       const state = await measureImagePhase(runtime, job, 'status', () => provider.getStatus!(taskId, ctx), {
         ordinal: lead.ordinal,
         scheduledLateMs: Math.max(0, runtime.now() - new Date(job.next_poll_at).getTime()),
@@ -1209,7 +1213,7 @@ export async function advanceJobInStore(
   store: ImageJobStore,
   bundle: ImageJobBundle,
   runtime: ImageJobRuntime,
-  options?: { alreadyLeased?: boolean; outcomes?: SubmitOutcome[] },
+  options?: { alreadyLeased?: boolean; outcomes?: SubmitOutcome[]; statusStartedAt?: number },
 ) {
   let job = bundle.job
   if (!options?.alreadyLeased) {
@@ -1225,7 +1229,8 @@ export async function advanceJobInStore(
     return { job: (await store.findById(job.id)) ?? job,items: await store.listItems(job.id) }
   }
   if (store.kind === 'sql' && !options?.outcomes) throw new Error('数据库事务内禁止执行图片网络操作')
-  const outcomes = options?.outcomes ?? await collectAdvancePatches(current,await store.listItems(job.id),runtime)
+  const observation = { statusStartedAt: options?.statusStartedAt }
+  const outcomes = options?.outcomes ?? await collectAdvancePatches(current,await store.listItems(job.id),runtime,observation)
   // 网络完成后再次核对；SQL 调用持有任务行锁直到事务提交。
   let fresh = await store.assertLease(job.id,job.lease_token!)
   if (!fresh) {
@@ -1237,7 +1242,7 @@ export async function advanceJobInStore(
   }
   const items = await applyItemPatches(store,job.id,await store.listItems(job.id),outcomes)
   const late = fresh.billing_state !== 'reserved' || runtime.now() >= new Date(fresh.deadline_at).getTime()
-  return finalizeJob(store,fresh,items,runtime,late,outcomes)
+  return finalizeJob(store,fresh,items,runtime,late,outcomes,{ statusStartedAt: observation.statusStartedAt })
 }
 
 /** 回执与缓存恢复只有读取；无可靠发送协议的旧明细一律标为待确认。 */
@@ -1283,6 +1288,8 @@ async function reconcileImageAttempts(bundle: ImageJobBundle,runtime: ImageJobRu
       }
     }
   }
+  // 没有恢复补丁时无需再开启写回事务；最终发布仍会重新检查租约。
+  if (!patches.length) return bundle
   return runtime.execution.transaction(async store => {
     const current = await store.assertLease(bundle.job.id,bundle.job.lease_token!)
     if (!current) throw new ImageLeaseLost()
@@ -1305,6 +1312,7 @@ export async function advanceImageClaim(bundle: ImageJobBundle,runtime: ImageJob
     return { job: current,items }
   }))
   let outcomes: SubmitOutcome[] = []
+  const observation: { statusStartedAt?: number } = {}
   try {
     const reconciled = await measureImagePhase(runtime, bundle.job, 'reconcile', () => reconcileImageAttempts(prepared,runtime))
     const provider = runtime.providerFor(reconciled.job.provider)
@@ -1312,9 +1320,9 @@ export async function advanceImageClaim(bundle: ImageJobBundle,runtime: ImageJob
       outcomes = await runProviderSubmits(reconciled,provider,reconciled.job.user_id,runtime)
       if (provider.capabilities(String(reconciled.job.provider_params.model ?? '')).execution === 'sync-inline') {
         const submitted = reconciled.items.map(item => ({ ...item,...outcomes.find(outcome => outcome.ordinal === item.ordinal)?.patch }))
-        outcomes.push(...await collectAdvancePatches(reconciled.job,submitted,{ ...runtime,allowSubmit: false }))
+        outcomes.push(...await collectAdvancePatches(reconciled.job,submitted,{ ...runtime,allowSubmit: false },observation))
       }
-    } else outcomes = await collectAdvancePatches(reconciled.job,reconciled.items,runtime)
+    } else outcomes = await collectAdvancePatches(reconciled.job,reconciled.items,runtime,observation)
   } catch (error) {
     if (error instanceof ImageLeaseLost) {
       runtime.log({ stage: 'fence-rejected',jobId: bundle.job.id })
@@ -1324,7 +1332,7 @@ export async function advanceImageClaim(bundle: ImageJobBundle,runtime: ImageJob
     } else runtime.log({ stage: 'advance-retry',jobId: bundle.job.id,code: 'IO_FAILED' })
   }
   return measureImagePhase(runtime, bundle.job, 'persist', () => execution.transaction((store,billing) => advanceJobInStore(store,bundle,
-    { ...runtime,billing: runtime.billing === noopBilling ? billing : runtime.billing },{ alreadyLeased: true,outcomes })))
+    { ...runtime,billing: runtime.billing === noopBilling ? billing : runtime.billing },{ alreadyLeased: true,outcomes,statusStartedAt: observation.statusStartedAt })))
 }
 
 export async function toClientImageTask(bundle: ImageJobBundle, runtime: ImageJobRuntime, mode: 'advance' | 'snapshot' = 'snapshot') {
