@@ -2,16 +2,44 @@ import { randomUUID } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll,beforeAll,describe,expect,it } from 'vitest'
 import { bootstrapImageTestDatabase } from './database-fixture.js'
+import { createSqlStore } from './repository.js'
+import type { Transaction } from '../db.js'
 
 const users = ['00000000-0000-4000-8000-000000000031','00000000-0000-4000-8000-000000000032']
 let db: PGlite
+const previousScope = process.env.AIGC_RUNTIME_SCOPE
 beforeAll(async () => {
   db = new PGlite()
   await bootstrapImageTestDatabase(sql => db.exec(sql),users)
 },30_000)
-afterAll(async () => { await db.close() })
+afterAll(async () => {
+  if (previousScope === undefined) delete process.env.AIGC_RUNTIME_SCOPE
+  else process.env.AIGC_RUNTIME_SCOPE = previousScope
+  await db.close()
+})
+
+/** 保留仓库原 SQL 与嵌套片段，在本地 PostgreSQL 引擎执行参数化查询。 */
+function transactionTag(): Transaction {
+  interface Fragment { strings: TemplateStringsArray; values: unknown[] }
+  const tag = (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values,
+    then: (resolve: (rows: Record<string, unknown>[]) => unknown, reject: (error: unknown) => unknown) => {
+      const params: unknown[] = []
+      const compile = (fragment: Fragment): string => fragment.strings.reduce((text, part, index) => {
+        if (!index) return part
+        const value = fragment.values[index - 1]
+        if (value && typeof value === 'object' && 'strings' in value && 'values' in value)
+          return text + compile(value as Fragment) + part
+        params.push(value)
+        return text + `$${params.length}` + part
+      }, '')
+      return db.query<Record<string, unknown>>(compile({ strings, values }), params).then(result => result.rows).then(resolve, reject)
+    },
+  })
+  return Object.assign(tag, { json: (value: unknown) => JSON.stringify(value) }) as unknown as Transaction
+}
 
 async function identity<T>(user: string,scope: string,action: () => Promise<T>) {
+  process.env.AIGC_RUNTIME_SCOPE = scope || 'local'
   await db.exec('begin; set local role aigc_api')
   try {
     await db.query<Record<string,unknown>>("select set_config('aigc.user_id',$1,true),set_config('aigc.scope',$2,true)",[user,scope])
@@ -35,6 +63,58 @@ async function job(user = users[0],scope = 'local',model = 'mock:image-stage2',c
 }
 
 describe('图片执行迁移、权限与账本',() => {
+  it('转存确认与结果发布一起提交或回滚，只确认当前序号和对象的原意图', async () => {
+    const j = await job()
+    const ids = [randomUUID(), randomUUID(), randomUUID()]
+    const key = `generated/${j.id}/published.png`
+    await identity(j.user, j.scope, async () => {
+      const store = createSqlStore(transactionTag(), j.user)
+      await store.startTransfer(j.id, j.token, 0, ids[0], { object_key: key, mime_type: 'image/png', width: 1, height: 1, checksum: 'a'.repeat(64) })
+      await store.startTransfer(j.id, j.token, 1, ids[1], { object_key: key, mime_type: 'image/png', width: 1, height: 1, checksum: 'a'.repeat(64) })
+      await store.startTransfer(j.id, j.token, 0, ids[2], { object_key: `${key}.unused`, mime_type: 'image/png', width: 1, height: 1, checksum: 'a'.repeat(64) })
+    })
+    const publish = async () => {
+      const store = createSqlStore(transactionTag(), j.user)
+      expect(await store.assertLease(j.id, j.token)).toBeDefined()
+      await store.updateItem(j.id, 0, { status: 'succeeded', result_object_key: key, result_mime_type: 'image/png' })
+    }
+    await expect(identity(j.user, j.scope, async () => { await publish(); throw new Error('模拟提交前崩溃') })).rejects.toThrow('模拟提交前崩溃')
+    expect((await db.query<{ outcome: string | null }>('select outcome from aigc.image_job_attempts where id=any($1::uuid[])', [ids])).rows.every(row => row.outcome === null)).toBe(true)
+    expect((await db.query<{ result_object_key: string | null }>('select result_object_key from aigc.image_job_items where job_id=$1', [j.id])).rows[0].result_object_key).toBeNull()
+    await identity(j.user, j.scope, publish)
+    await identity(j.user, j.scope, publish)
+    const attempts = (await db.query<{ id: string; outcome: string | null }>('select id,outcome from aigc.image_job_attempts where id=any($1::uuid[])', [ids])).rows
+    expect(attempts.find(row => row.id === ids[0])?.outcome).toBe('accepted')
+    expect(attempts.filter(row => row.id !== ids[0]).every(row => row.outcome === null)).toBe(true)
+  })
+
+  it('租约失效、账号或环境不符时不能确认转存；清理中的意图不被标为成功', async () => {
+    const j = await job()
+    const attemptId = randomUUID()
+    const key = `generated/${j.id}/orphan.png`
+    await identity(j.user, j.scope, () => createSqlStore(transactionTag(), j.user).startTransfer(j.id, j.token, 0, attemptId,
+      { object_key: key, mime_type: 'image/png', width: 1, height: 1, checksum: 'b'.repeat(64) }))
+    for (const [owner, scope] of [[users[1], j.scope], [j.user, 'preview']]) {
+      await identity(owner, scope, async () => {
+        await createSqlStore(transactionTag(), owner).updateItem(j.id, 0, { status: 'succeeded', result_object_key: key })
+      })
+    }
+    const nextToken = randomUUID()
+    await db.query("update aigc.image_jobs set lease_token=$2,lease_until=now()+interval '120 seconds' where id=$1", [j.id, nextToken])
+    await expect(identity(j.user, j.scope, async () => {
+      await db.query("select set_config('aigc.image_lease_token',$1,true)", [j.token])
+      await createSqlStore(transactionTag(), j.user).updateItem(j.id, 0, { status: 'succeeded', result_object_key: key })
+    })).rejects.toThrow('租约已失效')
+    expect((await db.query<{ outcome: string | null }>('select outcome from aigc.image_job_attempts where id=$1', [attemptId])).rows[0].outcome).toBeNull()
+    await db.query('update aigc.image_job_attempts set cleanup_token=$2 where id=$1', [attemptId, randomUUID()])
+    await identity(j.user, j.scope, async () => {
+      const store = createSqlStore(transactionTag(), j.user)
+      await store.assertLease(j.id, nextToken)
+      await store.updateItem(j.id, 0, { status: 'succeeded', result_object_key: key })
+    })
+    expect((await db.query<{ outcome: string | null }>('select outcome from aigc.image_job_attempts where id=$1', [attemptId])).rows[0].outcome).toBeNull()
+  })
+
   it('发送意图只申请一次；同一百炼批次所有序号共享尝试',async () => {
     const j = await job(users[0],'local','bailian:qwen-image-3.0',3)
     const attempt = randomUUID()

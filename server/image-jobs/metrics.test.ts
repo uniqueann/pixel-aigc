@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
-import { measureImagePhase } from './metrics.js'
+import { measureImagePhase, observeImagePollHint } from './metrics.js'
 
 const job = { id: 'job', request_id: 'request', provider: 'bailian', model_profile_id: 'bailian:qwen-image-3.0', scope: 'preview' as const }
 describe('图片任务分段观测', () => {
+  it('记录响应实际提示，终态不记录，观测异常不改变响应', () => {
+    const runtime = { now: () => 0, log: vi.fn() }
+    observeImagePollHint(runtime, job, 3_000)
+    observeImagePollHint(runtime, job, undefined)
+    expect(runtime.log).toHaveBeenCalledTimes(1)
+    expect(runtime.log).toHaveBeenCalledWith({ evt: 'image-job-poll-hint', jobId: 'job', requestId: 'request',
+      provider: 'bailian', modelProfileId: 'bailian:qwen-image-3.0', scope: 'preview', pollAfterMs: 3_000 })
+    runtime.log.mockImplementation(() => { throw new Error('观测失败') })
+    expect(() => observeImagePollHint(runtime, job, 1_000)).not.toThrow()
+  })
   it('返回原结果并记录完整异步阶段，日志不读取业务结果', async () => {
     let now = 0
     const runtime = { now: () => now, log: vi.fn() }
