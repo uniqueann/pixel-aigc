@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, App, Button, Modal, Select, Spin, Tabs, Tag } from 'antd'
+import { Alert, App, Button, Dropdown, Modal, Select, Spin, Tabs, Tag } from 'antd'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { SuiteActor, SuiteBridge } from '@shared/ecommerce-suite'
 import { suiteMainLocked } from '@shared/ecommerce-suite-annotations'
@@ -116,39 +116,53 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       tool: bridgeTool, inputMode: bridgeMode, ...(compositeAssetId ? { compositeAssetId } : {}) })
     client.assertCurrent(); navigate(`/image-workstation/${bridge.tool}?bridgeId=${bridge.id}`)
   }
-  return <div className="suite-workspace">
-    <div className="suite-page-heading"><div><Button type="text" onClick={() => { void workspace.run(async () => { await flushEditing(); navigate('/ecommerce') }).catch(reportError) }}>‹ 返回项目</Button>
-      <h2>{config.title}</h2><p>{config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'} · {saveLabel}</p></div>
-      <div className="suite-actions"><Button type="primary" disabled={blocked || active} onClick={() => { setRetrySelection(undefined); setPlanOpen(true) }}>整套计划／风格重生成</Button><Button onClick={() => setProductOpen(true)}>商品资料</Button><Button disabled={workspace.busy} onClick={() => { void workspace.run(async () => { await flushEditing(); return workspace.completeBackup() }).then(() => message.success('历史版本与图片已完整备份到当前账号环境')).catch(reportError) }}>更新完整本地备份</Button>
-        <Button disabled={workspace.busy || workspace.offline} onClick={() => { void workspace.run(async () => { await flushEditing(); const zip = await exportSuiteRecovery(client, id, actor, signal); downloadBlob(zip, `${suiteFilename(config.title, '恢复包', 1, { width: 1, height: 1 }, 'image/png').replace(/\.png$/, '')}.zip`) }).catch(reportError) }}>下载含图片恢复包</Button></div>
-    </div>
-    {(workspace.error || actionError) && <Alert showIcon type="warning" message={actionError || workspace.error} />}
-    {workspace.offline && <Alert type="warning" showIcon message="正在使用本地备份，可继续编辑；联网并保存成功后才能生成。" action={<Button onClick={() => { void workspace.run(workspace.reloadCloud).catch(reportError) }}>重新连接云端</Button>} />}
-    {workspace.conflict && <Alert type="warning" showIcon message="云端配置已更新，本机副本已保留。" action={<div className="suite-actions">
-      <Button onClick={() => { void workspace.run(workspace.reloadCloud).catch(reportError) }}>读取云端</Button>
-      <Button onClick={() => { void workspace.run(async () => { const copy = await copySuite(client, data, config); navigate(`/ecommerce/${copy.id}`) }).catch(reportError) }}>另存为新项目</Button>
-    </div>} />}
-    {workspace.pending && <Alert type="warning" showIcon message="提交结果待确认，保留原编号，不重复生成。" description={`原请求：${workspace.pending.requestId}`} action={<Button loading={workspace.busy} onClick={() => { void workspace.run(workspace.recoverPending).catch(reportError) }}>查询原批次</Button>} />}
-    <div className="suite-body">
-      <div ref={previewRef} className={`suite-preview${sticky ? ' suite-preview-sticky' : ''}`}>
-        <div className="suite-preview-heading"><strong>{slot.name}</strong><div className="suite-actions">
-          <Button size="small" onClick={() => setOriginal(value => !value)}>{original ? '查看当前成品' : '对照商品原图'}</Button>
-          <Button size="small" disabled={!version || original || blocked} onClick={() => setExportSelection({ slotId: slot.id })}>下载当前成品</Button>
-          <Button size="small" disabled={!version || blocked} onClick={() => setBridgeOpen(true)}>工作站编辑</Button>
-        </div></div>
-        <div className="suite-stage">{asset && composition && !original ? <SuiteCanvas asset={asset} composition={composition} client={client} signal={signal}
-          selectedId={selectedLayerId} onSelect={setSelectedLayerId} background={mainLocked ? '#ffffff' : 'transparent'} editable={tab === 'layers' && !workspace.busy && !mainLocked && !staleDraft}
-          onChange={layers => slotEditor.edit(slot.id, { layers })} /> : <SuiteImage asset={asset} client={client} offline={workspace.offline} alt={original ? '商品原图' : `${slot.name}当前版本`} />}</div>
-        <div className="suite-slot-strip" aria-label="套图槽位">{config.slots.map(item => {
-          const slotHead = data.project.slotHeads.find(head => head.slotId === item.id)
-          const current = data.versions.find(version => version.id === slotHead?.activeVersionId)
-          const thumbnail = data.assets.find(asset => asset.assetId === current?.assetId)
-          const operation = data.operations.filter(operation => operation.slotId === item.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]
-          const state = !item.enabled ? '已跳过' : current ? '已有底图' : operation?.phase === 'stopped' ? '本次已停止' : operation?.phase === 'blocked' ? '待重新确认' : operation && !operation.terminalState ? '处理中' : operation?.appliedVersionIds.length ? '待选用' : operation?.terminalState ? '未完成' : '待处理'
-          return <button type="button" key={item.id} aria-pressed={item.id === slot.id} aria-label={`${item.name}，${state}`} onClick={() => selectSlot(item.id)}>
-            <span className="suite-thumbnail">{thumbnail ? <SuiteImage asset={thumbnail} client={client} offline={workspace.offline} alt={item.name} /> : <span>{item.order + 1}</span>}</span><strong>{item.name}</strong><small>{state}</small>
-          </button>
-        })}</div>
+  const backupMenuItems = [
+      { key: 'backup', label: '更新本地数据备份', onClick: () => { void workspace.run(async () => { await flushEditing(); return workspace.completeBackup() }).then(() => message.success('历史版本与图片已完整备份')).catch(reportError) } },
+      { key: 'export', label: '导出项目恢复包 (ZIP)', onClick: () => { void workspace.run(async () => { await flushEditing(); const zip = await exportSuiteRecovery(client, id, actor, signal); downloadBlob(zip, `${suiteFilename(config.title, '恢复包', 1, { width: 1, height: 1 }, 'image/png').replace(/\.png$/, '')}.zip`) }).catch(reportError) } },
+    ]
+    return <div className="suite-workspace">
+      <div className="suite-page-heading"><div><Button type="text" onClick={() => { void workspace.run(async () => { await flushEditing(); navigate('/ecommerce') }).catch(reportError) }}>‹ 返回项目列表</Button>
+        <h2>{config.title}</h2><p>{config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'} · {saveLabel}</p></div>
+        <div className="suite-actions"><Button type="primary" disabled={blocked || active} onClick={() => { setRetrySelection(undefined); setPlanOpen(true) }}>整套批量生成</Button><Button onClick={() => setProductOpen(true)}>商品信息与规格</Button>
+          <Dropdown menu={{ items: backupMenuItems }} disabled={workspace.busy}>
+            <Button>备份与恢复 ▾</Button>
+          </Dropdown>
+        </div>
+      </div>
+      {(workspace.error || actionError) && <Alert showIcon type="warning" message={actionError || workspace.error} />}
+      {workspace.offline && <Alert type="warning" showIcon message="正在使用本地备份，可继续编辑；联网并保存成功后才能生成。" action={<Button onClick={() => { void workspace.run(workspace.reloadCloud).catch(reportError) }}>重新连接云端</Button>} />}
+      {workspace.conflict && <Alert type="warning" showIcon message="云端配置已更新，本机副本已保留。" action={<div className="suite-actions">
+        <Button onClick={() => { void workspace.run(workspace.reloadCloud).catch(reportError) }}>读取云端</Button>
+        <Button onClick={() => { void workspace.run(async () => { const copy = await copySuite(client, data, config); navigate(`/ecommerce/${copy.id}`) }).catch(reportError) }}>另存为新项目</Button>
+      </div>} />}
+      {workspace.pending && <Alert type="warning" showIcon message="提交结果待确认，保留原编号，不重复生成。" description={`原请求：${workspace.pending.requestId}`} action={<Button loading={workspace.busy} onClick={() => { void workspace.run(workspace.recoverPending).catch(reportError) }}>查询原批次</Button>} />}
+      <div className="suite-body">
+        <div ref={previewRef} className={`suite-preview${sticky ? ' suite-preview-sticky' : ''}`}>
+          <div className="suite-preview-heading"><strong>{slot.name}</strong><div className="suite-actions">
+            <Button size="small" onClick={() => setOriginal(value => !value)}>{original ? '查看当前成品' : '对照商品原图'}</Button>
+            <Button size="small" disabled={!version || original || blocked} onClick={() => setExportSelection({ slotId: slot.id })}>下载当前成品</Button>
+            <Button size="small" disabled={!version || blocked} onClick={() => setBridgeOpen(true)}>工作站编辑</Button>
+          </div></div>
+          <div className="suite-stage">{asset && composition && !original ? <SuiteCanvas asset={asset} composition={composition} client={client} signal={signal}
+            selectedId={selectedLayerId} onSelect={setSelectedLayerId} background={mainLocked ? '#ffffff' : 'transparent'} editable={tab === 'layers' && !workspace.busy && !mainLocked && !staleDraft}
+            onChange={layers => slotEditor.edit(slot.id, { layers })} /> : <SuiteImage asset={asset} client={client} offline={workspace.offline} alt={original ? '商品原图' : `${slot.name}当前版本`} />}</div>
+          <div className="suite-slot-strip" aria-label="套图槽位">{config.slots.map(item => {
+            const slotHead = data.project.slotHeads.find(head => head.slotId === item.id)
+            const current = data.versions.find(version => version.id === slotHead?.activeVersionId)
+            const thumbnail = data.assets.find(asset => asset.assetId === current?.assetId)
+            const operation = data.operations.filter(operation => operation.slotId === item.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]
+            const isDone = Boolean(current)
+            const isRunning = Boolean(operation && !operation.terminalState)
+            const isFailed = Boolean(operation?.terminalState && !current)
+            const dotColor = isDone ? '#21cfa0' : isRunning ? '#eab308' : isFailed ? '#ef4444' : '#cbd5e1'
+            const state = !item.enabled ? '已跳过' : current ? '已生成' : operation?.phase === 'stopped' ? '已停止' : operation?.phase === 'blocked' ? '待重新确认' : isRunning ? '生成中' : operation?.appliedVersionIds.length ? '有新版本' : isFailed ? '失败' : '未生成'
+            return <button type="button" key={item.id} aria-pressed={item.id === slot.id} aria-label={`${item.name}，${state}`} onClick={() => selectSlot(item.id)}>
+              <span className="suite-thumbnail" style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', top: 5, right: 5, width: 8, height: 8, borderRadius: '50%', background: dotColor, zIndex: 2 }} />
+                {thumbnail ? <SuiteImage asset={thumbnail} client={client} offline={workspace.offline} alt={item.name} /> : <span>{item.order + 1}</span>}
+              </span><strong>{item.name}</strong><small>{state}</small>
+            </button>
+          })}</div>
         <p className="suite-muted">{workspace.backupState}。单图与成品包共用固定字体和完整图层，导出前检查实际文件。</p>
       </div>
       <section className="suite-settings">
@@ -168,22 +182,22 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
           <label className="suite-file-button">上传{slot.kind === 'detail' ? '细节照片' : '参考图'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active || slot.kind === 'main'} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, false)).catch(reportError) }} /></label>
           {slot.referenceAssetIds.length > 0 && <><Tag>已保存 {slot.referenceAssetIds.length} 张</Tag><Button size="small" disabled={blocked || active} onClick={() => workspace.edit({ ...config, slots: config.slots.map(item => item.id === slot.id ? { ...item, referenceAssetIds: [] } : item) })}>移除引用</Button></>}
         </div>
-        <Button block disabled={workspace.busy || workspace.offline} onClick={() => { void workspace.run(workspace.settleOriginals).catch(reportError) }}>读取原任务并恢复已生成结果</Button>
+        <Button block disabled={workspace.busy || workspace.offline} onClick={() => { void workspace.run(workspace.settleOriginals).catch(reportError) }}>刷新生成进度与结果</Button>
         {data.operations.filter(operation => operation.slotId === slot.id).map(operation => {
           const task = data.tasks.find(task => task.sourceId === operation.task?.sourceId)
           const billing = operation.mode === 'reuse' ? '原图复用，无生成费用' : !task ? operation.task ? '原任务账本暂不可查，费用未知' : '尚未派发，无预扣'
             : task.billingState === 'reserved' ? `预扣 ${task.creditsReserved} 积分，等待结算` : task.creditsCharged === null ? '结算状态待确认'
               : `已扣 ${task.creditsCharged} 积分${task.creditsReturned ? `，退回 ${task.creditsReturned} 积分` : ''}`
-          return <div className="suite-task-line" key={operation.id}><strong>{task ? `${task.completedCount}/${task.requestedCount} 张候选成功` : operation.mode === 'reuse' ? '原图复用' : operation.phase === 'stopped' ? '本次已停止' : operation.phase === 'blocked' ? '等待重新确认' : operation.terminalState ? terminalLabels[operation.terminalState] : operation.task ? '正在读取原任务' : '等待服务端派发'}</strong><span>{billing}</span>
-            <small>原请求 {operation.requestId}</small>{task?.errorCode && <span>{task.errorCode}；可在收口后手动确认新尝试</span>}
-            {operation.appliedVersionIds.some(id => id !== head?.activeVersionId) && <Button size="small" onClick={() => setTab('versions')}>查看候选版本</Button>}
+          return <div className="suite-task-line" key={operation.id}><strong>{task ? `${task.completedCount}/${task.requestedCount} 张候选成功` : operation.mode === 'reuse' ? '原图复用' : operation.phase === 'stopped' ? '本次已停止' : operation.phase === 'blocked' ? '等待重新确认' : operation.terminalState ? terminalLabels[operation.terminalState] : operation.task ? '正在读取生成任务' : '等待服务端生成'}</strong><span>{billing}</span>
+            <small>原请求 {operation.requestId}</small>{task?.errorCode && <span>{task.errorCode}</span>}
+            {operation.appliedVersionIds.some(id => id !== head?.activeVersionId) && <Button size="small" onClick={() => setTab('versions')}>查看备选版本</Button>}
           </div>
         })}
       </section>
     </div>
-    <div ref={footerRef} className="suite-footer"><span>{data.project.slotHeads.filter(head => head.activeVersionId && config.slots.some(slot => slot.id === head.slotId && slot.enabled)).length} / {config.slots.filter(slot => slot.enabled).length} 个启用槽位有底图</span>
-      <span>{active ? '服务端批次处理中，可查看已有成品' : '槽位独立版本 · 失败仅手动重试'}</span><Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).catch(reportError) }}>立即保存草稿</Button>
-      <Button type="primary" disabled={blocked} onClick={() => setExportSelection({})}>平台预检／批量导出</Button></div>
+    <div ref={footerRef} className="suite-footer"><span>{data.project.slotHeads.filter(head => head.activeVersionId && config.slots.some(slot => slot.id === head.slotId && slot.enabled)).length} / {config.slots.filter(slot => slot.enabled).length} 个槽位已完成出图</span>
+      <span>{active ? '后台正在批量出图中，可切换槽位查看效果' : '槽位独立保存版本 · 支持随时调整'}</span><Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).catch(reportError) }}>保存草稿</Button>
+      <Button type="primary" disabled={blocked} onClick={() => setExportSelection({})}>合规预检与批量导出</Button></div>
     {exportSelection && <ExportPanel actor={actor} data={data} client={client} signal={signal} initialSlotId={exportSelection.slotId}
       liveKey={JSON.stringify([config, data.project.slotHeads, [...slotEditor.records].map(([id, record]) => [id, record.value])])}
       prepare={prepareExport} onClose={() => setExportSelection(undefined)} />}
@@ -191,14 +205,14 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       onRetry={selection => { setRetrySelection(selection); setPlanOpen(true) }} />
     {planOpen && <BatchPlanPanel data={data} client={client} retry={retrySelection} blocked={blocked} flush={flushEditing}
       onSubmit={quote => workspace.run(() => workspace.submit(quote)).then(() => undefined)} onClose={() => setPlanOpen(false)} onError={reportError} />}
-    <Modal title="进入图片工作站" open={bridgeOpen} onCancel={() => setBridgeOpen(false)}
-      footer={<Button type="primary" disabled={blocked || !version} loading={workspace.busy} onClick={() => { void workspace.run(openBridge).catch(reportError) }}>保存当前版本并进入</Button>}>
+    <Modal title="进入图片工作站精修" open={bridgeOpen} onCancel={() => setBridgeOpen(false)}
+      footer={<Button type="primary" disabled={blocked || !version} loading={workspace.busy} onClick={() => { void workspace.run(openBridge).catch(reportError) }}>进入工作站</Button>}>
       <div className="suite-product-fields"><label>编辑工具<Select value={bridgeTool} onChange={setBridgeTool} options={[{ value: 'repaint', label: '重绘' }, { value: 'smart-edit', label: '智能编辑' }, { value: 'retouch', label: '精修' }, { value: 'relight', label: '重新打光' }]} /></label>
-      <label>输入内容<Select value={bridgeMode} onChange={setBridgeMode} options={[{ value: 'base', label: '无叠加图层的底图（推荐）' }, { value: 'composite', label: '包含文字与标注的合成图' }]} /></label></div>
-      <p>{bridgeMode === 'base' ? '独立图层留在套图，回填后可继续编辑。' : '文字和标注将烘焙进输入图片，回填不会重复叠加原图层。'}</p>
-      <p>原工具按原规则确认并收费，回填不再次收费。会话保留七天；结果先保存候选，手动设为当前。尺寸变化后请重新核对图层位置。</p>
+      <label>传入内容<Select value={bridgeMode} onChange={setBridgeMode} options={[{ value: 'base', label: '底图（推荐，文字标注仍可在套图中随时修改）' }, { value: 'composite', label: '合并图（文字与标注合并为一张图）' }]} /></label></div>
+      <p className="suite-muted">{bridgeMode === 'base' ? '独立文字标注保留在套图中，从工作站回填新版本后仍可自由编辑。' : '文字与标注将合并进图片中作为整体进行精修。'}</p>
+      <p className="suite-muted">工作站中编辑完成后，可一键回填生成新版本，回填不额外扣费。</p>
     </Modal>
-    <Modal title="商品资料与确认事实" open={productOpen} onCancel={() => setProductOpen(false)} width={740} footer={<Button type="primary" loading={workspace.busy} onClick={() => { void workspace.run(async () => { await workspace.flush(); setProductOpen(false) }).catch(reportError) }}>保存资料</Button>}>
+    <Modal title="商品信息与规格" open={productOpen} onCancel={() => setProductOpen(false)} width={740} footer={<Button type="primary" loading={workspace.busy} onClick={() => { void workspace.run(async () => { await workspace.flush(); setProductOpen(false) }).catch(reportError) }}>保存资料</Button>}>
       <ProductFields value={config} onChange={workspace.edit} disabled={workspace.busy} />
       <label className="suite-file-button">{data.assets.some(asset => asset.assetId === config.baseAssetId) ? '更换商品主体图' : '完成商品主体图上传'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, true)).catch(reportError) }} /></label>
     </Modal>
