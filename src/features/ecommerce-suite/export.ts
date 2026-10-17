@@ -1,5 +1,5 @@
 import { detectImageMime } from '@shared/image-format'
-import { scaleSuiteComposition } from '@shared/ecommerce-suite-annotations'
+import { scaleSuiteComposition, suiteRendererSupported } from '@shared/ecommerce-suite-annotations'
 import { checkSuiteEncoded, suiteCheck, suiteChecksFailed, type SuiteCheckedVersion, type SuiteCheck, type SuiteEncodedMetadata, type SuitePrecheck } from '@shared/ecommerce-suite-precheck'
 import { MAX_ZIP_BYTES } from '@/pages/Toolbox/shared/inspect'
 import { createResultZip } from '@/pages/Toolbox/shared/zip'
@@ -42,6 +42,7 @@ export async function encodeSuiteSelection(report: SuitePrecheck, read: (item: S
     const file: SuiteExportedFile = { slotId: item.slot.id, versionId: item.version.id, name: suiteExportName(report, item), checks: [...item.checks] }
     try {
       if (suiteChecksFailed([...report.checks, ...item.checks])) throw new Error('存在确定性失败，请修复后重新预检')
+      if (!suiteRendererSupported(item.version.composition)) throw new Error('当前客户端不支持该渲染器，请更新客户端')
       const composition = scaleSuiteComposition(item.version.composition, { width: report.output.width, height: report.output.height })
       const blob = await encodeSuiteImage(await read(item), composition, report.output.format, report.output.background, report.output.jpegQuality ?? .94, signal)
       signal.throwIfAborted()

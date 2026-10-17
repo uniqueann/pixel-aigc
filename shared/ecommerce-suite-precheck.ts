@@ -1,3 +1,4 @@
+import { suiteRendererSupported } from './ecommerce-suite-annotations.js'
 import { suiteCompositionSchema, type SuiteAssetRef, type SuiteProject, type SuiteSlotConfig, type SuiteSlotVersion } from './ecommerce-suite.js'
 import type { z } from 'zod'
 import type { suiteExportConfigSchema } from './ecommerce-suite.js'
@@ -53,7 +54,7 @@ export function checkSuiteVersion(project: SuiteProject, slot: SuiteSlotConfig, 
   checks.push(suiteCheck('snapshot.composition', suiteCompositionSchema.safeParse(version.composition).success ? 'pass' : 'fail', '图层与确认规格', '按该版本的图层及事实快照检查，不读取后来修改的规格', '补齐已确认事实并保存版本'))
   const hasSize = version.composition.factsSnapshot.some(fact => ['dimension', 'capacity'].includes(fact.kind) && fact.confirmed)
   if (slot.kind === 'size') checks.push(suiteCheck('facts.size', hasSize ? 'pass' : 'fail', '尺寸与容量事实', hasSize ? '本版本含已确认尺寸或容量' : '本版本缺少已确认尺寸或容量', '补充事实后保存新版本，或跳过此槽位'))
-  if (version.composition.rendererVersion !== 'suite-canvas-v1') checks.push(suiteCheck('renderer.version', 'fail', '渲染器版本', version.composition.rendererVersion, '当前客户端不支持该渲染器，请更新客户端'))
+  if (!suiteRendererSupported(version.composition)) checks.push(suiteCheck('renderer.version', 'fail', '渲染器版本', version.composition.rendererVersion, '当前客户端不支持该渲染器，请更新客户端'))
   if (output.platform !== project.config.platform) checks.push(suiteCheck('output.platform', 'fail', '输出平台', '输出平台与已保存项目不一致', '按项目平台重新预检'))
   if (output.width * output.height > 40_000_000) checks.push(suiteCheck('output.memory', 'fail', '画板像素上限', `${output.width}×${output.height} 超过 4000 万像素`, '减小输出尺寸'))
   if (output.width / output.height !== version.composition.renderSize.width / version.composition.renderSize.height)
