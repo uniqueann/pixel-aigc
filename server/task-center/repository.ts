@@ -8,7 +8,7 @@ import type {
 import { taskHistorySchema } from '../../shared/task-center.js'
 import { taskCenterPollAfterMs } from '../../shared/task-polling.js'
 import { HttpError } from '../errors.js'
-import { TASK_PROJECTION } from './projection.js'
+import { taskProjection, visibleTaskRows } from './suite-projection.js'
 
 export interface TaskQuery {
   query(text: string, values?: unknown[]): Promise<Record<string, unknown>[]>
@@ -17,6 +17,7 @@ const tables: Record<TaskSourceKind, string> = {
   image_job: 'image_jobs',
   sync_credit: 'sync_credit_jobs',
   email_task: 'email_tasks',
+  suite_batch: 'suite_batches',
 }
 const instant = (value: unknown) =>
   value == null ? null : new Date(value as string).toISOString()
@@ -40,7 +41,7 @@ const cursorSchema = z
     state: z.string(),
     snapshot: exactTimestamp,
     time: exactTimestamp,
-    kind: z.enum(['image_job', 'sync_credit', 'email_task']),
+    kind: z.enum(['image_job', 'sync_credit', 'email_task', 'suite_batch']),
     id: z.uuid(),
   })
   .strict()
@@ -97,22 +98,25 @@ export function taskSummary(row: Record<string, unknown>): TaskCenterSummary {
     outcomeVersion: row.outcome_version as string | null,
     seen: !!row.seen,
     dismissed: !!row.dismissed,
+    ...(row.source_kind === 'suite_batch' ? { suite: { projectId: String(row.suite_project_id), batchId: String(row.source_id) }, knownCreditsCharged: Number(row.known_charge ?? 0) } : {}),
   }
 }
 
 export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
   const base = [owner, scope]
+  const projection = taskProjection()
   const retained = `(task_expires_at is null or task_expires_at>now())`
-  const recent = `created_at>=now()-interval '30 days' and ${retained}`
+  const recent = `created_at>=now()-interval '30 days' and ${retained} and ${visibleTaskRows()}`
   const get = async (kind: TaskSourceKind, id: string, byRequest = false) => {
+    if (kind === 'suite_batch' && process.env.ECOMMERCE_SUITE_ENABLED !== 'true') throw new HttpError(404, '批次尚未开放', 'TASK_NOT_FOUND')
     const rows = await db.query(
-      `${TASK_PROJECTION} select * from presented where source_kind=$3 and ${byRequest ? 'request_id' : 'source_id'}=$4::uuid and ${retained}`,
+      `${projection} select * from presented where source_kind=$3 and ${byRequest ? 'request_id' : 'source_id'}=$4::uuid and ${retained}`,
       [...base, kind, id],
     )
     if (rows[0]) return rows[0]
     const idColumn = byRequest && kind !== 'sync_credit' ? 'request_id' : 'id'
     const native = await db.query(
-      `select id${kind === 'sync_credit' ? '' : ',expires_at'} from aigc.${tables[kind]} where user_id=$1::uuid and scope=$2 and ${idColumn}=$3::uuid`,
+      `select id${['sync_credit', 'suite_batch'].includes(kind) ? '' : ',expires_at'} from aigc.${tables[kind]} where user_id=$1::uuid and scope=$2 and ${idColumn}=$3::uuid`,
       [...base, id],
     )
     if (native.length) throw new HttpError(410, '原任务已过期', 'TASK_EXPIRED')
@@ -136,6 +140,18 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
   }
   return {
     get,
+    async batchChildren(id: string) {
+      return (await db.query(`${projection} select * from presented where source_kind='image_job' and source_id in (
+        select source_job_id from aigc.suite_operations where user_id=$1::uuid and scope=$2 and batch_id=$3::uuid)
+        order by created_at,source_id`, [...base, id])).map(taskSummary)
+    },
+    async projectChildren(id: string) {
+      return (await db.query(`${projection} select * from presented where source_kind='image_job'
+        and (task_expires_at is null or task_expires_at>now()) and source_id in (
+          select source_job_id from aigc.suite_operations where user_id=$1::uuid and scope=$2 and project_id=$3::uuid
+          and batch_id in (select id from aigc.suite_batches where user_id=$1::uuid and scope=$2 and project_id=$3::uuid order by created_at desc limit 30))
+        order by created_at,source_id`, [...base, id])).map(taskSummary)
+    },
     async items(kind: TaskSourceKind, id: string) {
       return kind === 'image_job'
         ? db.query(
@@ -145,6 +161,7 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
         : []
     },
     async native(kind: TaskSourceKind, id: string, lock = false) {
+      if (kind === 'suite_batch' && process.env.ECOMMERCE_SUITE_ENABLED !== 'true') throw new HttpError(404, '批次尚未开放', 'TASK_NOT_FOUND')
       if (lock && kind === 'sync_credit') {
         try {
           const [row] = await db.query('select aigc.lock_task_center_sync($1::uuid) as owned', [id])
@@ -167,7 +184,7 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
     },
     async sidebar() {
       const [data] = await db.query(
-        `${TASK_PROJECTION}, recent as (select * from presented where ${recent}), chosen as (
+        `${projection}, recent as (select * from presented where ${recent}), chosen as (
         select * from recent where not dismissed
         order by (state in ('queued','processing')) desc,created_at desc,source_kind desc,source_id desc limit 5
       ) select (select count(*)::int from recent where state in ('queued','processing')) as active,
@@ -220,7 +237,7 @@ export function taskRepository(db: TaskQuery, owner: string, scope: TaskScope) {
         failed: "state in ('failed','expired')",
       }
       const rows = await db.query(
-        `${TASK_PROJECTION} select * from presented where created_at>=($3::timestamptz-interval '30 days') and ${retained} and created_at<=$3::timestamptz
+        `${projection} select * from presented where created_at>=($3::timestamptz-interval '30 days') and ${retained} and created_at<=$3::timestamptz and ${visibleTaskRows()}
         and ($4::text is null or tool=$4) and ${states[filters.state]}
         ${cursor ? 'and (created_at,source_kind,source_id)<($5::timestamptz,$6::text,$7::uuid)' : ''}
         order by created_at desc,source_kind desc,source_id desc limit ${filters.limit + 1}`,

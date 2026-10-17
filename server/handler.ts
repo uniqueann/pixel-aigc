@@ -157,6 +157,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (jobId) waitUntil(maintainVideoJobs(jobId).catch(() => console.error(JSON.stringify({ evt: 'video-maintenance', code: 'CALLBACK_ADVANCE_FAILED' }))))
       return
     }
+    if (path.join('/') === 'internal/ecommerce-suite-maintenance' && method === 'POST') {
+      const { authorizeSuiteMaintenance } = await import('./ecommerce-suite/maintenance-route.js')
+      authorizeSuiteMaintenance(req.headers.authorization, typeof req.body === 'string' ? JSON.parse(req.body) : req.body)
+      const { maintainSuiteBatches } = await import('./ecommerce-suite/maintenance.js')
+      const runId = randomUUID()
+      res.status(202).json({ received: true, runId, scope: runtimeScope() })
+      waitUntil(maintainSuiteBatches(undefined, runId).catch(() => console.error(JSON.stringify({ evt: 'suite-maintenance', runId, scope: runtimeScope(), code: 'MAINTENANCE_FAILED' }))))
+      return
+    }
     if (path.join('/') === 'internal/image-jobs-maintenance' && method === 'POST') {
       const secret = process.env.IMAGE_CRON_SECRET
       const supplied = req.headers.authorization?.replace(/^Bearer /,'') ?? ''

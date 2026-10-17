@@ -14,14 +14,20 @@ import SuiteImage from './SuiteImage'
 import GenerationPanel from './GenerationPanel'
 import ProductFields from './ProductFields'
 import VersionPanel from './VersionPanel'
+import BatchPlanPanel, { type SuiteRetrySelection } from './BatchPlanPanel'
+import BatchPanel from './BatchPanel'
 import { exportSuiteRecovery } from './recoveryPackage'
 
 export default function SuiteWorkspace({ id, actor, client, signal }: { id: string; actor: SuiteActor; client: SuiteClient; signal: AbortSignal }) {
-  const workspace = useSuiteWorkspace(id, actor, client, signal)
+  const [params, setParams] = useSearchParams()
+  const requestedBatch = params.get('batch')
+  const focusedBatchId = requestedBatch && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedBatch) ? requestedBatch : undefined
+  const workspace = useSuiteWorkspace(id, actor, client, signal, focusedBatchId)
   const { message } = App.useApp()
   const navigate = useNavigate()
-  const [params, setParams] = useSearchParams()
   const [productOpen, setProductOpen] = useState(false)
+  const [planOpen, setPlanOpen] = useState(false)
+  const [retrySelection, setRetrySelection] = useState<SuiteRetrySelection>()
   const [tab, setTab] = useState('generate')
   const [original, setOriginal] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -40,6 +46,10 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
     const requested = params.get('slot')
     if (requested && config?.slots.some(slot => slot.id === requested)) workspace.store.getState().selectSlot(requested)
   }, [config?.slots, params, workspace.store])
+  const focusedBatchPresent = Boolean(focusedBatchId && data?.batches.some(batch => batch.id === focusedBatchId))
+  useEffect(() => {
+    if (focusedBatchId && focusedBatchPresent) document.getElementById(`batch-${focusedBatchId}`)?.scrollIntoView({ block: 'nearest' })
+  }, [focusedBatchId, focusedBatchPresent])
   if (!data || !config || !slot) return <div className="suite-loading">{workspace.error ? <Alert type="error" message={workspace.error} action={<Button onClick={() => { void workspace.load().catch(reportError) }}>重试读取</Button>} /> : <div><Spin /><p role="status">正在恢复项目与原任务身份</p></div>}</div>
   const selectSlot = (slotId: string) => {
     workspace.store.getState().selectSlot(slotId)
@@ -66,7 +76,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
   return <div className="suite-workspace">
     <div className="suite-page-heading"><div><Button type="text" onClick={() => { void workspace.run(async () => { await workspace.flush(); navigate('/ecommerce') }).catch(reportError) }}>‹ 返回项目</Button>
       <h2>{config.title}</h2><p>{config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'} · {workspace.saveState}</p></div>
-      <div className="suite-actions"><Button onClick={() => setProductOpen(true)}>商品资料</Button><Button disabled={workspace.busy} onClick={() => { void workspace.run(() => workspace.completeBackup()).then(() => message.success('历史版本与图片已完整备份到当前账号环境')).catch(reportError) }}>更新完整本地备份</Button>
+      <div className="suite-actions"><Button type="primary" disabled={blocked || active} onClick={() => { setRetrySelection(undefined); setPlanOpen(true) }}>整套计划／风格重生成</Button><Button onClick={() => setProductOpen(true)}>商品资料</Button><Button disabled={workspace.busy} onClick={() => { void workspace.run(() => workspace.completeBackup()).then(() => message.success('历史版本与图片已完整备份到当前账号环境')).catch(reportError) }}>更新完整本地备份</Button>
         <Button disabled={workspace.busy || workspace.offline} onClick={() => { void workspace.run(async () => { await workspace.flush(); const zip = await exportSuiteRecovery(client, id, actor, signal); downloadBlob(zip, `${suiteFilename(config.title, '恢复包', 1, { width: 1, height: 1 }, 'image/png').replace(/\.png$/, '')}.zip`) }).catch(reportError) }}>下载含图片恢复包</Button></div>
     </div>
     {(workspace.error || actionError) && <Alert showIcon type="warning" message={actionError || workspace.error} />}
@@ -87,8 +97,8 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
           const slotHead = data.project.slotHeads.find(head => head.slotId === item.id)
           const current = data.versions.find(version => version.id === slotHead?.activeVersionId)
           const thumbnail = data.assets.find(asset => asset.assetId === current?.assetId)
-          const operation = [...data.operations].reverse().find(operation => operation.slotId === item.id)
-          const state = !item.enabled ? '已跳过' : current ? '已有底图' : operation && !operation.terminalState ? '处理中' : operation?.appliedVersionIds.length ? '待选用' : operation?.terminalState ? '未完成' : '待处理'
+          const operation = data.operations.filter(operation => operation.slotId === item.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]
+          const state = !item.enabled ? '已跳过' : current ? '已有底图' : operation?.phase === 'stopped' ? '本次已停止' : operation?.phase === 'blocked' ? '待重新确认' : operation && !operation.terminalState ? '处理中' : operation?.appliedVersionIds.length ? '待选用' : operation?.terminalState ? '未完成' : '待处理'
           return <button type="button" key={item.id} aria-pressed={item.id === slot.id} aria-label={`${item.name}，${state}`} onClick={() => selectSlot(item.id)}>
             <span className="suite-thumbnail">{thumbnail ? <SuiteImage asset={thumbnail} client={client} offline={workspace.offline} alt={item.name} /> : <span>{item.order + 1}</span>}</span><strong>{item.name}</strong><small>{state}</small>
           </button>
@@ -104,17 +114,17 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
             onError={reportError} onSelect={async selected => { await workspace.run(async () => { await workspace.flush();
               await client.select(id, slot.id, selected.id, data.project.slotHeads.find(head => head.slotId === slot.id)!.headRevision); await workspace.load() }) }} /> },
         ]} />
-        <div className="suite-upload-controls"><strong>{slot.kind === 'detail' ? '真实细节照片' : '场景参考图（选填）'}</strong>
-          <label className="suite-file-button">上传{slot.kind === 'detail' ? '细节照片' : '参考图'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active || ['main', 'size'].includes(slot.kind)} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, false)).catch(reportError) }} /></label>
+        <div className="suite-upload-controls"><strong>{slot.kind === 'size' ? '已核对规格的尺寸成品' : slot.kind === 'detail' ? '真实细节照片' : '场景参考图（选填）'}</strong>
+          <label className="suite-file-button">上传{slot.kind === 'detail' ? '细节照片' : '参考图'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active || slot.kind === 'main'} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, false)).catch(reportError) }} /></label>
           {slot.referenceAssetIds.length > 0 && <><Tag>已保存 {slot.referenceAssetIds.length} 张</Tag><Button size="small" disabled={blocked || active} onClick={() => workspace.edit({ ...config, slots: config.slots.map(item => item.id === slot.id ? { ...item, referenceAssetIds: [] } : item) })}>移除引用</Button></>}
         </div>
         <Button block disabled={workspace.busy || workspace.offline} onClick={() => { void workspace.run(workspace.settleOriginals).catch(reportError) }}>读取原任务并恢复已生成结果</Button>
         {data.operations.filter(operation => operation.slotId === slot.id).map(operation => {
           const task = data.tasks.find(task => task.sourceId === operation.task?.sourceId)
-          const billing = operation.mode === 'reuse' ? '原图复用，无生成费用' : !task ? '原任务账本暂不可查，费用未知'
+          const billing = operation.mode === 'reuse' ? '原图复用，无生成费用' : !task ? operation.task ? '原任务账本暂不可查，费用未知' : '尚未派发，无预扣'
             : task.billingState === 'reserved' ? `预扣 ${task.creditsReserved} 积分，等待结算` : task.creditsCharged === null ? '结算状态待确认'
               : `已扣 ${task.creditsCharged} 积分${task.creditsReturned ? `，退回 ${task.creditsReturned} 积分` : ''}`
-          return <div className="suite-task-line" key={operation.id}><strong>{task ? `${task.completedCount}/${task.requestedCount} 张候选成功` : operation.mode === 'reuse' ? '原图复用' : operation.terminalState ? terminalLabels[operation.terminalState] : '正在确认原任务'}</strong><span>{billing}</span>
+          return <div className="suite-task-line" key={operation.id}><strong>{task ? `${task.completedCount}/${task.requestedCount} 张候选成功` : operation.mode === 'reuse' ? '原图复用' : operation.phase === 'stopped' ? '本次已停止' : operation.phase === 'blocked' ? '等待重新确认' : operation.terminalState ? terminalLabels[operation.terminalState] : operation.task ? '正在读取原任务' : '等待服务端派发'}</strong><span>{billing}</span>
             <small>原请求 {operation.requestId}</small>{task?.errorCode && <span>{task.errorCode}；可在收口后手动确认新尝试</span>}
             {operation.appliedVersionIds.some(id => id !== head?.activeVersionId) && <Button size="small" onClick={() => setTab('versions')}>查看候选版本</Button>}
           </div>
@@ -122,7 +132,11 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       </section>
     </div>
     <div ref={footerRef} className="suite-footer"><span>{data.project.slotHeads.filter(head => head.activeVersionId && config.slots.some(slot => slot.id === head.slotId && slot.enabled)).length} / {config.slots.filter(slot => slot.enabled).length} 个启用槽位有底图</span>
-      <span>{active ? '原任务处理中，可查看已有成品' : '单槽位处理 · 失败仅手动重试'}</span><Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(workspace.flush).catch(reportError) }}>立即保存资料</Button></div>
+      <span>{active ? '服务端批次处理中，可查看已有成品' : '槽位独立版本 · 失败仅手动重试'}</span><Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(workspace.flush).catch(reportError) }}>立即保存资料</Button></div>
+    <BatchPanel data={data} disabled={blocked} focusedBatchId={focusedBatchId} onStop={batchId => { void workspace.run(async () => { await client.stop(id, batchId); await workspace.load() }).catch(reportError) }}
+      onRetry={selection => { setRetrySelection(selection); setPlanOpen(true) }} />
+    {planOpen && <BatchPlanPanel data={data} client={client} retry={retrySelection} blocked={blocked} flush={workspace.flush}
+      onSubmit={quote => workspace.run(() => workspace.submit(quote)).then(() => undefined)} onClose={() => setPlanOpen(false)} onError={reportError} />}
     <Modal title="商品资料与确认事实" open={productOpen} onCancel={() => setProductOpen(false)} width={740} footer={<Button type="primary" loading={workspace.busy} onClick={() => { void workspace.run(async () => { await workspace.flush(); setProductOpen(false) }).catch(reportError) }}>保存资料</Button>}>
       <ProductFields value={config} onChange={workspace.edit} disabled={workspace.busy} />
       <label className="suite-file-button">{data.assets.some(asset => asset.assetId === config.baseAssetId) ? '更换商品主体图' : '完成商品主体图上传'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, true)).catch(reportError) }} /></label>

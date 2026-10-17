@@ -164,7 +164,7 @@ const selection = z.discriminatedUnion('mode', [
   z.object({ slotId: id, mode: z.literal('reuse') }).strict(),
   z.object({ slotId: id, mode: z.literal('image_edit'), modelProfileId: label, resolution: z.enum(['1k', '2k', '4k']), count: z.number().int().min(1).max(4), note: z.string().trim().max(PROMPT_MAX_LENGTH) }).strict(),
 ])
-export const suiteQuoteRequestSchema = z.object({ expectedRevision: revision, slots: z.array(selection).min(1).max(SUITE_LIMITS.slots) }).strict()
+export const suiteQuoteRequestSchema = z.object({ expectedRevision: revision, slots: z.array(selection).min(1).max(SUITE_LIMITS.slots), retryOfBatchId: id.optional() }).strict()
   .refine(request => unique(request.slots.map(slot => slot.slotId)), '不能重复报价同一槽位')
 const quoteItemBase = { operationId: id, slotId: id, slotKind: z.enum(SUITE_SLOT_KINDS), sourceAssetId: id }
 export const suiteQuoteItemSchema = z.discriminatedUnion('mode', [
@@ -210,6 +210,7 @@ export const suiteOperationSchema = z.object({
   task: z.object({ sourceKind: z.literal('image_job'), sourceId: id, requestId: id }).strict().nullable(),
   terminalState: z.enum(['succeeded', 'failed', 'expired', 'cancelled']).nullable(),
   appliedVersionIds: z.array(id).max(4).refine(unique, '同操作版本不能重复'),
+  retryOfOperationId: id.optional(), errorCode: label.nullable().optional(),
   createdAt: instant, updatedAt: instant,
 }).strict().superRefine((operation, ctx) => {
   if (operation.phase === 'stopped' && operation.task)

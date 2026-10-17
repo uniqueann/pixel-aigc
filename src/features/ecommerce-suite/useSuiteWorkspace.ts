@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import { CloudError } from '@/cloud/client'
-import { getTask } from '@/services/api/task'
 import type { SuiteActor, SuiteProjectConfig, SuiteQuote } from '@shared/ecommerce-suite'
 import type { SuiteProjectDetail } from '@shared/ecommerce-suite-runtime'
 import type { SuiteClient } from './api'
@@ -9,8 +8,9 @@ import { clearPendingSuite, readPendingSuite, readSuiteBackup, saveSuiteBackup, 
 import { createSuiteEditorStore } from './store'
 import { submitSuiteOnce } from './recovery'
 import { backupAssetBlob, loadFullSuite } from './recoveryPackage'
+import { emitTaskCenter } from '@/features/task-center/receipts'
 
-export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteClient, signal: AbortSignal) {
+export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteClient, signal: AbortSignal, focusedBatchId?: string) {
   const [store] = useState(createSuiteEditorStore)
   const editor = useStore(store)
   const [detail, setDetail] = useState<SuiteProjectDetail>()
@@ -35,6 +35,12 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
   const load = useCallback(async (replace = false) => {
     const sequence = ++loading.current
     const data = await client.get(id)
+    if (focusedBatchId && !data.batches.some(batch => batch.id === focusedBatchId)) {
+      const focused = await client.batch(id, focusedBatchId)
+      data.batches.push(focused.batch); data.operations.push(...focused.operations)
+      const known = new Set(data.tasks.map(task => task.taskKey))
+      data.tasks.push(...focused.tasks.filter(task => !known.has(task.taskKey)))
+    }
     if (sequence !== loading.current) return
     accept(data, replace)
     setOffline(false)
@@ -42,7 +48,7 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
       if (!signal.aborted) setBackupState(backup?.complete ? '本地完整备份已就绪' : '元数据已备份，部分图片尚未落盘')
     }).catch(() => { if (!signal.aborted) setBackupState('本地存储不可用，可下载恢复包') })
     return data
-  }, [accept, actor, client, id, signal])
+  }, [accept, actor, client, focusedBatchId, id, signal])
   useEffect(() => {
     void (async () => {
       const backup = await readSuiteBackup(actor, id).catch(() => undefined)
@@ -121,28 +127,27 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
   const settleOriginals = useCallback(async () => {
     const data = latest.current
     if (!data) return
-    for (const operation of data.operations.filter(operation => !operation.terminalState)) {
-      if (operation.task) await getTask(operation.task.sourceId, { signal })
+    for (const batch of data.batches) {
       client.assertCurrent()
-      await client.results(id, operation.batchId)
+      await client.results(id, batch.id)
     }
     return load()
-  }, [client, id, load, signal])
+  }, [client, id, load])
   useEffect(() => {
-    if (!detail?.batches.some(batch => batch.state === 'running')) return
+    if (!detail?.batches.some(batch => ['queued', 'running', 'blocked'].includes(batch.state))) return
     let disposed = false, timer: ReturnType<typeof setTimeout>
     let failures = 0
     const poll = async () => {
       if (disposed || signal.aborted) return
       if (!document.hidden) {
-        try { await settleOriginals(); failures = 0 }
+        try { await load(); failures = 0 }
         catch (error) { if (!disposed && !signal.aborted) { failures++; setError(error instanceof Error ? error.message : '原结果读取失败，可手动重试读取') } }
       }
       if (!disposed && !signal.aborted && failures < 3) timer = setTimeout(() => { void poll() }, failures ? 10000 : 5000)
     }
     timer = setTimeout(() => { void poll() }, 3000)
     return () => { disposed = true; clearTimeout(timer) }
-  }, [detail?.batches, settleOriginals, signal])
+  }, [detail?.batches, load, signal])
   const run = useCallback(async <T,>(action: () => Promise<T>) => {
     setBusy(true); setError('')
     try { client.assertCurrent(); return await action() }
@@ -153,8 +158,9 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     await flush()
     if (store.getState().dirty) throw new Error('请先保存所有编辑再提交')
     try {
-      const batch = await submitSuiteOnce(client, actor, id, quote)
-      await client.results(id, batch.id)
+      await submitSuiteOnce(client, actor, id, quote)
+      client.assertCurrent()
+      emitTaskCenter({ type: 'refresh' })
       await load()
       setPending(undefined)
     } finally { if (!signal.aborted) setPending(await readPendingSuite(actor, id)) }

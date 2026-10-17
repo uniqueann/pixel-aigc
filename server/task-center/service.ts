@@ -50,6 +50,7 @@ export interface TaskDetailSnapshot {
   task: ReturnType<typeof taskSummary>
   native: Record<string, unknown>
   items: Record<string, unknown>[]
+  children?: TaskCenterDetail['children']
 }
 export async function detailSnapshot(
   db: TaskQuery,
@@ -68,7 +69,7 @@ export async function detailSnapshot(
           [owner, scope, id],
         )
       : []
-  return { task, native, items }
+  return { task, native, items, ...(kind === 'suite_batch' ? { children: await repository.batchChildren(id) } : {}) }
 }
 
 export async function presentTaskDetail(
@@ -77,6 +78,11 @@ export async function presentTaskDetail(
   storage = { head: headObject, sign: signRead, safe: isSafeObjectKey },
 ): Promise<TaskCenterDetail> {
   const { task, native, items } = snapshot
+  if (task.sourceKind === 'suite_batch') return {
+    task, params: { projectId: task.suite?.projectId },
+    errorMessage: (native.snapshot as { blockedReason?: string | null }).blockedReason ?? null,
+    results: [], children: snapshot.children ?? [],
+  }
   if (task.sourceKind === 'email_task')
     return {
       task,
@@ -201,7 +207,7 @@ async function detailSnapshotFromRepository(
     native = await repository.native(kind, id)
   // 该调用仍在外层同一只读快照中，使用当前事务的接口读取明细。
   const items = await repository.items(kind, id)
-  return { task, native, items }
+  return { task, native, items, ...(kind === 'suite_batch' ? { children: await repository.batchChildren(id) } : {}) }
 }
 
 export function writePresentation(

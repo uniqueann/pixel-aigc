@@ -1,0 +1,15 @@
+{
+  "kind": "synthetic_browser_http_fixtures_phase_three",
+  "checks": [
+    "七槽位逐项报价与显式费用确认",
+    "接受一次 POST，活动轮询仅 GET",
+    "停止未派发项与重开恢复",
+    "父批次深链接独立读取旧批次，保持原项目定位",
+    "仅选择未执行项预览重试，预览不提交",
+    "深浅主题、900px 正常流与390px无横溢"
+  ],
+  "submissions": 1,
+  "consoleErrors": [],
+  "requestCount": 49,
+  "realProductSamples": 0
+}

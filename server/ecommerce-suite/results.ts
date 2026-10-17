@@ -2,24 +2,28 @@ import { randomUUID } from 'node:crypto'
 import { suiteBatchSchema, suiteOperationSchema, suiteQuoteSchema, suiteVersionSchema, type SuiteAssetRef, type SuiteSlotVersion } from '../../shared/ecommerce-suite.js'
 import { HttpError } from '../errors.js'
 import { inspectSuiteImage, suiteObjectKey, suiteStorage } from './assets.js'
+import { refreshSuiteBatch } from './batches.js'
 import { actor, fingerprint, readyAsset, requireSuite, suiteTransaction, type SuiteUser } from './repository.js'
 
 /** 结果登记只读取原任务和复制图片，任何恢复路径都不调用供应商或创建收费任务。 */
-export async function registerSuiteResults(user: SuiteUser, projectId: string, batchId: string, storage = suiteStorage) {
+export async function registerSuiteOperationResults(user: SuiteUser, projectId: string, batchId: string, operationId: string, storage = suiteStorage, leaseToken?: string) {
   const input = await suiteTransaction(user, async sql => {
-    await requireSuite(sql, projectId)
+    await requireSuite(sql, projectId, false, true)
     const [row] = await sql`select b.snapshot,q.snapshot as quote from aigc.suite_batches b join aigc.suite_quotes q on q.id=b.quote_id and q.project_id=b.project_id
       where b.id=${batchId} and b.project_id=${projectId}`
     if (!row) throw new HttpError(404, '原批次不存在或无权访问', 'SUITE_NOT_FOUND')
     const batch = suiteBatchSchema.parse(row.snapshot), quote = suiteQuoteSchema.parse(row.quote)
-    const [op] = await sql`select snapshot from aigc.suite_operations where batch_id=${batchId} and project_id=${projectId}`
+    const [op] = await sql`select *,lease_until>clock_timestamp() as lease_valid from aigc.suite_operations where id=${operationId} and batch_id=${batchId} and project_id=${projectId}`
+    if (!op || (leaseToken ? op.lease_token !== leaseToken || !op.lease_valid : op.lease_valid)) return null
     const operation = suiteOperationSchema.parse(op.snapshot)
+    if (operation.phase === 'stopped' || !operation.task && operation.phase !== 'bound') return null
     const existing = (await sql`select application_key from aigc.suite_versions where project_id=${projectId} and slot_id=${operation.slotId}`).map(row => String(row.application_key))
     const job = operation.task ? (await sql`select * from aigc.image_jobs where id=${operation.task.sourceId} and request_id=${operation.requestId}`)[0] : null
     const results = job ? await sql`select * from aigc.image_job_items where job_id=${job.id} and status='succeeded' and result_object_key is not null order by ordinal` : []
     return { batch, quote, operation, existing, job, results }
   })
-  const item = input.quote.items[0]
+  if (!input) return null
+  const item = input.quote.items.find(item => item.operationId === operationId)!
   const prepared: { ordinal: number; asset: SuiteAssetRef; application: string; generated: boolean }[] = []
   if (item.mode === 'reuse') {
     const asset = await suiteTransaction(user, sql => readyAsset(sql, projectId, item.sourceAssetId))
@@ -38,8 +42,10 @@ export async function registerSuiteResults(user: SuiteUser, projectId: string, b
     }
   }
   return suiteTransaction(user, async sql => {
-    await requireSuite(sql, projectId, true)
-    const [op] = await sql`select snapshot from aigc.suite_operations where batch_id=${batchId} and project_id=${projectId} for update`
+    await requireSuite(sql, projectId, true, true)
+    await sql`select id from aigc.suite_batches where id=${batchId} and project_id=${projectId} for update`
+    const [op] = await sql`select *,lease_until>clock_timestamp() as lease_valid from aigc.suite_operations where id=${operationId} and batch_id=${batchId} and project_id=${projectId} for update`
+    if (!op || (leaseToken ? op.lease_token !== leaseToken || !op.lease_valid : op.lease_valid)) return null
     const operation = suiteOperationSchema.parse(op.snapshot)
     const [slot] = await sql`select * from aigc.suite_slots where project_id=${projectId} and id=${operation.slotId} for update`
     const created: SuiteSlotVersion[] = []
@@ -63,19 +69,28 @@ export async function registerSuiteResults(user: SuiteUser, projectId: string, b
     }
     const all = (await sql`select id from aigc.suite_versions where project_id=${projectId} and slot_id=${operation.slotId}
       and application_key like ${item.mode === 'reuse' ? `reuse:${operation.id}` : `image_job:${operation.task!.sourceId}:%`} order by version_number`).map(row => String(row.id))
-    // 旧成品和编辑草稿存在时只保存候选，任何晚到结果都不能越过当前指针修订。
-    if (all.length === 1 && item.count === 1 && !slot.active_version_id && slot.head_revision === operation.expectedHeadRevision && slot.draft_revision === 0)
-      await sql`update aigc.suite_slots set active_version_id=${all[0]},head_revision=head_revision+1 where id=${operation.slotId} and project_id=${projectId}`
+    // 后台无法观察本机未同步草稿；统一只保存候选，当前指针由用户显式选择。
     const terminal = operation.terminalState ?? (item.mode === 'reuse' ? 'succeeded'
       : input.job && !['queued', 'processing'].includes(input.job.status) ? input.job.status
         : !input.job && operation.task ? 'expired' : null)
     const updated = suiteOperationSchema.parse({ ...operation, phase: item.mode === 'reuse' && terminal ? 'bound' : operation.phase,
       terminalState: terminal, appliedVersionIds: all, updatedAt: new Date().toISOString() })
-    const state = terminal ? all.length === item.count ? 'succeeded' : all.length ? 'partial' : 'failed' : 'running'
-    const batch = suiteBatchSchema.parse({ ...input.batch, state, completedAt: terminal ? input.batch.completedAt ?? new Date().toISOString() : null })
     await sql`update aigc.suite_operations set snapshot=${sql.json(updated as never)} where id=${operation.id}`
-    await sql`update aigc.suite_batches set state=${state},snapshot=${sql.json(batch as never)} where id=${batchId} and project_id=${projectId}`
+    const batch = await refreshSuiteBatch(sql, batchId)
     if (created.length) await sql`update aigc.suite_projects set updated_at=now() where id=${projectId}`
     return { batch, operation: updated, createdVersionIds: created.map(version => version.id) }
   })
+}
+
+/** 页面只能登记已有结果，不能领取等待项或提交供应商。 */
+export async function registerSuiteResults(user: SuiteUser, projectId: string, batchId: string, storage = suiteStorage) {
+  const ids = await suiteTransaction(user, async sql => {
+    await requireSuite(sql, projectId)
+    const [batch] = await sql`select id from aigc.suite_batches where id=${batchId} and project_id=${projectId}`
+    if (!batch) throw new HttpError(404, '原批次不存在或无权访问', 'SUITE_NOT_FOUND')
+    return (await sql`select id from aigc.suite_operations where batch_id=${batchId} order by id`).map(row => String(row.id))
+  })
+  const results = []
+  for (const id of ids) results.push(await registerSuiteOperationResults(user, projectId, batchId, id, storage))
+  return { operations: results.filter(Boolean) }
 }

@@ -2,7 +2,7 @@ import { cloudRequest, CloudError } from '@/cloud/client'
 import { useUserStore } from '@/store/useUserStore'
 import { normalizeImageBlob } from '@shared/image-format'
 import type { SuiteActor, SuiteAssetRef, SuiteBatch, SuiteProject, SuiteProjectConfig, SuiteQuote, SuiteQuoteRequest, SuiteSlotDraft, SuiteSlotVersion } from '@shared/ecommerce-suite'
-import type { SuiteProjectDetail, SuiteProjectList } from '@shared/ecommerce-suite-runtime'
+import type { SuiteBatchDetail, SuiteProjectDetail, SuiteProjectList } from '@shared/ecommerce-suite-runtime'
 
 export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
   const assertCurrent = () => {
@@ -45,6 +45,8 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
     submit: (id: string, requestId: string, quote: SuiteQuote) => request<SuiteBatch>(`/${id}/batches`, 'POST', {
       requestId, quoteId: quote.id, expectedRevision: quote.expectedRevision, planFingerprint: quote.planFingerprint, maxCredits: quote.totalCredits,
     }, 120000),
+    stop: (id: string, batchId: string) => request<SuiteBatch>(`/${id}/batches/${batchId}/stop`, 'POST', {}),
+    batch: (id: string, batchId: string) => request<SuiteBatchDetail>(`/${id}/batches/${batchId}`),
     findBatch: (id: string, requestId: string) => request<SuiteBatch | null>(`/${id}/batches/by-request/${requestId}`),
     results: (id: string, batchId: string) => request(`/${id}/batches/${batchId}/results`, 'POST', {}),
     recycle: (id: string) => request(`/${id}`, 'DELETE'),
