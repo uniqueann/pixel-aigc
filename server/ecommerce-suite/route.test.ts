@@ -6,6 +6,11 @@ import { handleEcommerceSuiteRoute } from './route.js'
 const user = { id: crypto.randomUUID(), email: 'fixture@example.invalid', suggestedName: '测试', avatarUrl: null, providers: [] }
 vi.stubEnv('ECOMMERCE_SUITE_ENABLED', 'true')
 describe('套图 HTTP 路径契约', () => {
+  it('预检与高级导出关闭时不读取版本或提交生成', async () => {
+    vi.stubEnv('ECOMMERCE_SUITE_EXPORT_ENABLED', 'false')
+    await expect(handleEcommerceSuiteRoute(user, 'POST', ['ecommerce', 'suites', crypto.randomUUID(), 'prechecks'], {}, new URLSearchParams())).rejects.toMatchObject({ code: 'SUITE_EXPORT_DISABLED' })
+    expect(mock.submit).not.toHaveBeenCalled()
+  })
   it('创建成功使用 201，原创建查找只调用读服务', async () => {
     expect(await handleEcommerceSuiteRoute(user, 'POST', ['ecommerce', 'suites'], {}, new URLSearchParams())).toMatchObject({ status: 201 })
     const id = crypto.randomUUID()

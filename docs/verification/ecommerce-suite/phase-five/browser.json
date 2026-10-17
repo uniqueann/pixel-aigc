@@ -1,0 +1,42 @@
+{
+  "kind": "local_http_postgres_browser_phase_five",
+  "identity": "本地测试身份，未验证真实 Auth",
+  "database": "独立 PostgreSQL 完整迁移链与实际 aigc_api",
+  "storage": "内存对象存储，真实 HTTP 读取",
+  "provider": "未调用",
+  "checks": [
+    "导出前未保存图层先形成完整新版本；真实本地 HTTP→独立 PostgreSQL→预检响应→逐张编码；单图对象失败保留成功项，重试只读取失败项，实际两张 PNG ZIP 与五条跳过清单正确，预览逐像素一致",
+    "输出参数变化使旧检查与文件失效；下载前重新读取服务端指纹，云端配置变化阻止旧检查下载",
+    "Amazon 最长边不足与主图透明底被确定性阻止，其他槽位仍可导出；实际 JPEG 为 2000×2000 且边角白底，白底占比与类目内容保留未知和人工确认",
+    "深浅主题及 1440、1280×720、900、390、375×667 视口，导出抽屉无横向溢出且末项操作可滚动到可视区",
+    "通用模板真实 4K WebP 解码为 4096×3413；取消处理不下载半成品，可重新预检"
+  ],
+  "uncaughtErrors": [],
+  "consoleErrors": [],
+  "controlledObject503": 1,
+  "taskSubmissions": 0,
+  "realProductSamples": 0,
+  "encodedFiles": {
+    "png": {
+      "width": 1200,
+      "height": 1000,
+      "previewPixelsIdentical": true
+    },
+    "jpeg": {
+      "width": 2000,
+      "height": 2000,
+      "cornerWhite": true
+    },
+    "webp": {
+      "width": 4096,
+      "height": 3413
+    }
+  },
+  "viewports": [
+    "1440x1000",
+    "1280x720",
+    "900x800",
+    "390x844",
+    "375x667"
+  ]
+}

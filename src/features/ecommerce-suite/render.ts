@@ -95,14 +95,16 @@ export async function paintSuite(canvas: HTMLCanvasElement, base: Blob, composit
     return drawSuiteLayers(ctx, composition)
   } finally { image.close() }
 }
-export async function encodeSuiteImage(base: Blob, composition: SuiteComposition, format: 'png' | 'jpeg' = 'png', background?: string) {
+export async function encodeSuiteImage(base: Blob, composition: SuiteComposition, format: 'png' | 'jpeg' | 'webp' = 'png', background?: string, quality = .94, signal?: AbortSignal) {
   suiteCompositionSchema.parse(composition)
   const canvas = document.createElement('canvas')
   try {
-    const boxes = await paintSuite(canvas, base, composition, background ?? (format === 'jpeg' ? '#ffffff' : 'transparent'))
+    signal?.throwIfAborted()
+    const boxes = await paintSuite(canvas, base, composition, background ?? (format === 'jpeg' ? '#ffffff' : 'transparent'), signal)
     const outside = boxes.filter(box => box.x < 0 || box.y < 0 || box.x + box.width > canvas.width + .1 || box.y + box.height > canvas.height + .1)
     if (outside.length) throw new Error('部分文字或标注超出画板，请调整后再导出')
-    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('图片编码失败')), `image/${format}`, .94))
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('图片编码失败')), `image/${format}`, quality))
+    signal?.throwIfAborted()
     if (blob.type !== `image/${format}`) throw new Error('浏览器未返回所选图片格式')
     const decoded = await createImageBitmap(blob)
     try { if (decoded.width !== composition.renderSize.width || decoded.height !== composition.renderSize.height) throw new Error('实际文件像素与画板不一致') }

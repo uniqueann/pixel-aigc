@@ -2,6 +2,7 @@ import { Button, Checkbox, Input, InputNumber, Select } from 'antd'
 import { SUITE_CATEGORY_TEMPLATES } from '@shared/ecommerce-suite-templates'
 import type { SuiteFact, SuiteProjectConfig, SuiteSubcategory } from '@shared/ecommerce-suite'
 import { changeSuiteCategory } from './config'
+import { SUITE_RULE_VERSION } from '@shared/ecommerce-suite-precheck'
 
 export default function ProductFields({ value, onChange, creating = false, disabled = false }: {
   value: SuiteProjectConfig; onChange: (value: SuiteProjectConfig) => void; creating?: boolean; disabled?: boolean
@@ -19,8 +20,9 @@ export default function ProductFields({ value, onChange, creating = false, disab
       onChange={(category: SuiteSubcategory) => onChange(changeSuiteCategory(value, category))} /></label>}
     <label>目标平台<Select aria-label="目标平台" value={value.platform} disabled={disabled} options={[{ value: 'amazon', label: 'Amazon 美国站' }, { value: 'general', label: '通用模板' }]}
       onChange={platform => onChange({ ...value, platform, marketplace: platform === 'amazon' ? 'US' : undefined,
-        ruleProfile: { id: platform === 'amazon' ? 'amazon-us-home-kitchen' : 'general', version: 'draft-v1' },
+        ruleProfile: { id: platform === 'amazon' ? 'amazon-us-home-kitchen' : 'general', version: SUITE_RULE_VERSION },
         slots: value.slots.map(slot => slot.kind === 'main' && platform === 'amazon' ? { ...slot, enabled: true } : slot) })} /></label>
+    <p className="suite-muted">预检规则：{value.ruleProfile.version}。{value.ruleProfile.version !== SUITE_RULE_VERSION && <Button size="small" disabled={disabled} onClick={() => onChange({ ...value, ruleProfile: { id: value.platform === 'amazon' ? 'amazon-us-home-kitchen' : 'general', version: SUITE_RULE_VERSION } })}>更新为当前预检规则</Button>}</p>
     <label>文案语言<Select aria-label="成品文案语言" value={value.copyLanguage} disabled={disabled} options={[{ value: 'zh-CN', label: '中文' }, { value: 'en-US', label: '英文' }]} onChange={copyLanguage => onChange({ ...value, copyLanguage })} /></label>
     <label>规格单位<Select aria-label="规格单位" value={value.unitSystem} disabled={disabled} options={[{ value: 'metric', label: '公制' }, { value: 'imperial', label: '英制' }]} onChange={unitSystem => onChange({ ...value, unitSystem })} /></label>
     <label>统一场景风格<Input aria-label="统一场景风格" value={value.style.sceneTone} maxLength={100} disabled={disabled} onChange={event => onChange({ ...value, style: { ...value.style, sceneTone: event.target.value } })} /></label>

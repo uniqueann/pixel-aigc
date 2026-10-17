@@ -23,7 +23,7 @@ export function suiteTransaction<T>(user: SuiteUser, action: (sql: Transaction) 
 }
 export async function requireSuite(sql: Transaction, projectId: string, lock = false, includeDeleted = false) {
   const [row] = await sql`select * from aigc.suite_projects where id=${projectId}
-    and (${includeDeleted} or deleted_at is null) ${lock ? sql`for update` : sql``}`
+    and purge_started_at is null and (${includeDeleted} or deleted_at is null) ${lock ? sql`for update` : sql``}`
   if (!row) throw new HttpError(404, '套图项目不存在或无权访问', 'SUITE_NOT_FOUND')
   return row
 }
@@ -42,7 +42,7 @@ export function toSuiteAsset(row: Record<string, unknown>) {
     size: { width: row.width, height: row.height }, bytes: Number(row.bytes), checksum: row.checksum })
 }
 export async function readyAsset(sql: Transaction, projectId: string, assetId: string) {
-  const [row] = await sql`select * from aigc.suite_assets where project_id=${projectId} and id=${assetId} and status='ready'`
+  const [row] = await sql`select * from aigc.suite_assets where project_id=${projectId} and id=${assetId} and status='ready' and purged_at is null`
   if (!row) throw new HttpError(409, '商品图片尚未持久保存或资源不可用，请上传后重试', 'SUITE_ASSET_UNAVAILABLE')
   return toSuiteAsset(row)
 }

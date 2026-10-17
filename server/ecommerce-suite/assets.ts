@@ -4,6 +4,7 @@ import { suiteAssetAccessRequestSchema, suiteUploadCompleteRequestSchema, suiteU
 import { HttpError } from '../errors.js'
 import { getObjectLimited, putObject, signRead, signUpload } from '../storage.js'
 import { actor, fingerprint, readyAsset, requireSuite, suiteTransaction, toSuiteAsset, type SuiteUser } from './repository.js'
+import { beginSuiteObjectWrite } from './object-writes.js'
 
 export interface SuiteStorage {
   read(key: string): Promise<{ bytes: Uint8Array; contentType?: string }>
@@ -65,7 +66,8 @@ export async function completeSuiteUpload(user: SuiteUser, projectId: string, bo
   if (object.bytes.length !== Number(pending.bytes)) throw new HttpError(400, '上传文件大小不匹配', 'INVALID_IMAGE')
   const inspected = await inspectSuiteImage(object.bytes, String(pending.mime_type))
   const key = suiteObjectKey(user, projectId, request.assetId, inspected.checksum, inspected.mimeType)
-  await storage.put(key, object.bytes, inspected.mimeType)
+  await beginSuiteObjectWrite(user, projectId, key)
+  await storage.put(key, object.bytes, inspected.mimeType, AbortSignal.timeout(20_000))
   const asset = await suiteTransaction(user, async sql => {
     await requireSuite(sql, projectId, true)
     const [row] = await sql`update aigc.suite_assets set object_key=${key},width=${inspected.size.width},height=${inspected.size.height},checksum=${inspected.checksum},status='ready'

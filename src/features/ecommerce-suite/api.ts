@@ -5,6 +5,7 @@ import type { SuiteActor, SuiteAssetRef, SuiteBatch, SuiteProject, SuiteProjectC
 import type { SuiteBatchDetail, SuiteProjectDetail, SuiteProjectList } from '@shared/ecommerce-suite-runtime'
 import type { SuiteBridgeDetail } from '@shared/ecommerce-suite-runtime'
 import type { SuiteRestoreSnapshotRequest } from '@shared/ecommerce-suite-recovery'
+import type { SuitePrecheck, SuiteExportConfig } from '@shared/ecommerce-suite-precheck'
 import type { z } from 'zod'
 import type { suiteCreateBridgeRequestSchema, suiteSaveVersionRequestSchema, SuiteBridge, SuiteTaskResult } from '@shared/ecommerce-suite'
 
@@ -41,6 +42,7 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
     restoreSnapshot: (id: string, value: SuiteRestoreSnapshotRequest) => request<SuiteProject>(`/${id}/restore-snapshot`, 'POST', value, 120000),
     findCreate: (requestId: string) => request<SuiteProject | null>(`/by-request/${requestId}`),
     get: (id: string) => request<SuiteProjectDetail>(`/${id}`),
+    precheck: (id: string, versionIds: string[], output: SuiteExportConfig) => request<SuitePrecheck>(`/${id}/prechecks`, 'POST', { versionIds, output }),
     update: (id: string, expectedRevision: number, config: SuiteProjectConfig) => request<SuiteProject>(`/${id}`, 'PATCH', { expectedRevision, config }),
     access: (id: string, assetIds: string[]) => request<{ items: { assetId: string; url: string; expiresAt: number }[] }>(`/${id}/assets/access`, 'POST', { assetIds }),
     draft: (id: string, slotId: string, value: SuiteSlotDraft) => request<{ slotId: string; revision: number; value: SuiteSlotDraft }>(`/${id}/slots/${slotId}/draft`, 'PATCH', value),

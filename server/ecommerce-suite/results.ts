@@ -5,6 +5,7 @@ import { inspectSuiteImage, suiteObjectKey, suiteStorage } from './assets.js'
 import { refreshSuiteBatch } from './batches.js'
 import { actor, fingerprint, readyAsset, requireSuite, suiteTransaction, type SuiteUser } from './repository.js'
 import { SUITE_RENDERER_VERSION } from '../../shared/ecommerce-suite-annotations.js'
+import { beginSuiteObjectWrite } from './object-writes.js'
 
 /** 结果登记只读取原任务和复制图片，任何恢复路径都不调用供应商或创建收费任务。 */
 export async function registerSuiteOperationResults(user: SuiteUser, projectId: string, batchId: string, operationId: string, storage = suiteStorage, leaseToken?: string) {
@@ -38,7 +39,8 @@ export async function registerSuiteOperationResults(user: SuiteUser, projectId: 
       const digest = fingerprint({ projectId, application })
       const assetId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`
       const objectKey = suiteObjectKey(user, projectId, assetId, inspected.checksum, inspected.mimeType)
-      await storage.put(objectKey, bytes, inspected.mimeType)
+      await beginSuiteObjectWrite(user, projectId, objectKey)
+      await storage.put(objectKey, bytes, inspected.mimeType, AbortSignal.timeout(20_000))
       prepared.push({ ordinal: Number(result.ordinal), asset: { assetId, projectId, actor: actor(user), objectKey, ...inspected }, application, generated: true })
     }
   }

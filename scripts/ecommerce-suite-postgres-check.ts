@@ -11,8 +11,11 @@ import { queryPort, withTaskCenterRead } from '../server/task-center/service.js'
 import { taskRepository } from '../server/task-center/repository.js'
 import { sqlImageExecution } from '../server/image-jobs/execution.js'
 import { advanceImageClaim } from '../server/image-jobs/service.js'
-import { createSuite, findSuiteByRequest, getSuite, listSuites, selectSuiteVersion, saveSuiteDraft, updateSuite } from '../server/ecommerce-suite/projects.js'
-import { beginSuiteUpload, completeSuiteUpload, type SuiteStorage } from '../server/ecommerce-suite/assets.js'
+import { createSuite, findSuiteByRequest, getSuite, listSuites, recycleSuite, selectSuiteVersion, saveSuiteDraft, updateSuite } from '../server/ecommerce-suite/projects.js'
+import { precheckSuite } from '../server/ecommerce-suite/precheck.js'
+import { cleanupSuiteAssets } from '../server/ecommerce-suite/cleanup.js'
+import { beginSuiteObjectWrite } from '../server/ecommerce-suite/object-writes.js'
+import { beginSuiteUpload, completeSuiteUpload, suiteObjectKey, type SuiteStorage } from '../server/ecommerce-suite/assets.js'
 import { saveSuiteVersion } from '../server/ecommerce-suite/versions.js'
 import { createSuiteBridge, readSuiteBridge, returnSuiteBridge } from '../server/ecommerce-suite/bridges.js'
 import { restoreSuiteSnapshot } from '../server/ecommerce-suite/restore.js'
@@ -527,6 +530,98 @@ try {
   for(const table of ['suite_bridges','suite_bridge_returns','suite_restore_receipts'])
     assert.equal((await identity(other.id,'local',tx=>tx.unsafe(`select 1 from aigc.${table} where user_id=$1`,[user.id]))).length,0)
   checks.push('恢复快照重放幂等，图片与图层历史完整、原任务身份与可执行队列为空；跨账号新表 RLS 和恢复权限隔离')
-  console.log(JSON.stringify({ kind: 'isolated_postgres_phase_four_mock_provider', postgresVersion: (await sql`select version() as version`)[0].version, checks,
+  const exportOutput = { platform: 'general', width: 1200, height: 1000, format: 'png', background: 'transparent' }
+  const exportRequest = { versionIds: [currentAnnotation.id], output: exportOutput }
+  const ledgerBeforePrecheck = (await sql`select count(*)::int as n from aigc.credit_ledger`)[0].n
+  const submissionsBeforePrecheck = submissions
+  const checked = await precheckSuite(user, editable.id, exportRequest)
+  assert.equal(checked.items[0].version.id, currentAnnotation.id)
+  assert.equal(checked.items[0].version.composition.factsSnapshot[0].value, 20)
+  assert.equal((await precheckSuite(user, editable.id, exportRequest)).fingerprint, checked.fingerprint)
+  assert.notEqual((await precheckSuite(user, editable.id, { ...exportRequest, output: { ...exportOutput, width: 2000 } })).fingerprint, checked.fingerprint)
+  await assert.rejects(precheckSuite(other, editable.id, exportRequest), /不存在或无权/)
+  await assert.rejects(precheckSuite(user, editable.id, { ...exportRequest, versionIds: [currentAnnotation.id, baseVersion.id] }), /同一槽位/)
+  assert.equal((await sql`select count(*)::int as n from aigc.credit_ledger`)[0].n, ledgerBeforePrecheck)
+  assert.equal(submissions, submissionsBeforePrecheck)
+  checks.push('服务端预检冻结版本与历史事实，配置变化使指纹失效；跨账号和同槽多版本拒绝，零任务、零账本写入')
+
+  const trash = await fixture()
+  const trashQuote = await quoteSuite(user, trash.id, selection(trash, [0, 1]), runtime)
+  const trashBatch = await createSuiteBatch(user, trash.id, acceptQuote(trashQuote), runtime)
+  await recycleSuite(user, trash.id, false)
+  assert.ok((await sql`select snapshot from aigc.suite_operations where batch_id=${trashBatch.id}`).every(row => row.snapshot.phase === 'stopped'))
+  await recycleSuite(user, trash.id, true)
+  assert.equal((await getSuite(user, trash.id)).project.deletedAt, null)
+  assert.ok((await sql`select snapshot from aigc.suite_operations where batch_id=${trashBatch.id}`).every(row => row.snapshot.phase === 'stopped'), '恢复不自动恢复执行队列')
+  await recycleSuite(user, trash.id, false)
+  await sql`update aigc.suite_projects set deleted_at=now()-interval '8 days' where id=${trash.id}`
+  await assert.rejects(recycleSuite(user, trash.id, true), /七天恢复/)
+  const disabledCleanup = await cleanupSuiteAssets({ delete: async () => { throw new Error('关闭开关不应调用') } })
+  assert.equal(disabledCleanup.disabled, true)
+  checks.push('回收站停止未派发项，七天内可恢复且不恢复执行队列，超期拒绝；清理默认关闭且零对象删除')
+
+  const cleanupProject = await fixture()
+  const cleanupAsset = (await getSuite(user, cleanupProject.id)).assets[0]
+  const originalInput = { sourceImageKey: cleanupAsset.objectKey, sourceWidth: 1, sourceHeight: 1, prompt: '清理引用保护', resolution: '1k', count: 1 }
+  const retainedImage = await submitImageTask(user, { requestId: randomUUID(), capability: 'image_edit', modelProfileId: 'mock:image-stage2', params: originalInput, origin: { entry: 'workstation', tool: 'smart-edit' } }, runtime)
+  await due(); await loadImageTask(user, retainedImage.id, runtime)
+  const retainedSync = randomUUID()
+  await withSyncCredits(user, 'repaint', { requestId: retainedSync, priceVersion: SYNC_PRICE_VERSION, maxCredits: 5 }, { sourceImageKey: cleanupAsset.objectKey, prompt: '同步输入保护' },
+    async () => ({ kind: 'object', objectKey: `generated/${user.id}/${randomUUID()}.png`, bytes: MOCK_PNG_1X1.length, mimeType: 'image/png', signed: { url: 'https://fixture.invalid', expiresAt: Date.now() + 10000 } }))
+  const orphanKey = suiteObjectKey(user, cleanupProject.id, randomUUID(), cleanupAsset.checksum, 'image/png')
+  await beginSuiteObjectWrite(user, cleanupProject.id, orphanKey)
+  await storage.put(orphanKey, MOCK_PNG_1X1, 'image/png')
+  await recycleSuite(user, cleanupProject.id, false)
+  await sql`update aigc.suite_projects set deleted_at=now()-interval '8 days' where id in (${trash.id},${cleanupProject.id})`
+  await sql`update aigc.suite_object_writes set last_write_at=now()-interval '2 days' where project_id in (${trash.id},${cleanupProject.id})`
+  process.env.ECOMMERCE_SUITE_CLEANUP_ENABLED = 'true'
+  const ledgerBeforeCleanup = (await sql`select count(*)::int as n from aigc.credit_ledger`)[0].n
+  const submissionsBeforeCleanup = submissions
+  let failDelete = true
+  const deleting = { delete: async (key: string) => { if (key === orphanKey && failDelete) throw new Error('对象桶暂不可用'); objects.delete(key) } }
+  const firstCleanup = await cleanupSuiteAssets(deleting)
+  assert.equal(firstCleanup.failures, 1)
+  assert.ok(objects.has(orphanKey)); assert.ok(objects.has(cleanupAsset.objectKey))
+  await sql`update aigc.suite_object_writes set next_attempt_at=now()-interval '1 second' where project_id=${cleanupProject.id}`
+  failDelete = false
+  await cleanupSuiteAssets(deleting)
+  assert.equal(objects.has(orphanKey), false, '登记失败的持久对象也可在到期项目中清理')
+  assert.ok(objects.has(cleanupAsset.objectKey), '原图片与同步记录仍引用时必须保留')
+  await assert.rejects(getSuite(user, cleanupProject.id), /不存在或无权/)
+  await assert.rejects(beginSuiteObjectWrite(user, cleanupProject.id, orphanKey), /不存在或无权/)
+  await assert.rejects(submitImageTask(user, { requestId: randomUUID(), capability: 'image_edit', modelProfileId: 'mock:image-stage2', params: originalInput }, runtime), /套图图片未登记/)
+  await assert.rejects(withSyncCredits(user, 'repaint', { requestId: randomUUID(), priceVersion: SYNC_PRICE_VERSION, maxCredits: 5 }, { sourceImageKey: cleanupAsset.objectKey }, async () => { throw new Error('不应调用供应商') }), /套图输入不存在/)
+  checks.push('清理先隔离到期项目；原图片和无桥接同步输入保护仍有效，孤儿删除失败可重试，隔离后禁止新读写或原任务预扣')
+
+  await sql`delete from aigc.image_jobs where id=${retainedImage.id}`
+  await sql`update aigc.suite_object_writes set next_attempt_at=now()-interval '1 second' where project_id=${cleanupProject.id}`
+  await cleanupSuiteAssets(deleting)
+  assert.ok(objects.has(cleanupAsset.objectKey), '同步任务仍在原留存期内')
+  await sql`delete from aigc.sync_credit_jobs where id=${retainedSync}`
+  await sql`update aigc.suite_object_writes set next_attempt_at=now()-interval '1 second' where project_id=${cleanupProject.id}`
+  const claims = (await Promise.all([withImageMaintenance(tx => tx`select * from aigc.claim_suite_object_cleanup('local')`), withImageMaintenance(tx => tx`select * from aigc.claim_suite_object_cleanup('local')`)])).flat()
+  assert.equal(claims.length, 1, '并发执行器不得重复领取同对象')
+  const oldCleanupToken = claims[0].lease_token
+  await sql`update aigc.suite_object_writes set lease_until=now()-interval '1 second' where object_key=${cleanupAsset.objectKey}`
+  const [reclaimed] = await withImageMaintenance(tx => tx`select * from aigc.claim_suite_object_cleanup('local')`)
+  assert.ok(reclaimed); assert.notEqual(reclaimed.lease_token, oldCleanupToken)
+  assert.equal((await withImageMaintenance(tx => tx`select aigc.finish_suite_object_cleanup(${cleanupAsset.objectKey},${oldCleanupToken}::uuid,true) as done`))[0].done, false)
+  await sql`update aigc.suite_object_writes set lease_until=now()-interval '1 second' where object_key=${cleanupAsset.objectKey}`
+  await cleanupSuiteAssets(deleting)
+  assert.equal(objects.has(cleanupAsset.objectKey), false)
+  assert.ok((await sql`select purged_at from aigc.suite_projects where id=${cleanupProject.id}`)[0].purged_at)
+  assert.equal((await sql`select count(*)::int as n from aigc.credit_ledger`)[0].n, ledgerBeforeCleanup)
+  assert.equal(submissions, submissionsBeforeCleanup)
+  checks.push('原任务按自身留存结束后才清理输入；并发领取互斥、旧令牌拒绝，完成标记幂等且原账本与供应商调用数不变')
+
+  await assert.rejects(identity(user.id, 'local', tx => tx`select aigc.start_expired_suite_cleanup('local')`), /范围无效/)
+  await assert.rejects(withImageMaintenance(tx => tx`select aigc.claim_suite_object_cleanup('production')`), /范围无效/)
+  await assert.rejects(identity(user.id, 'local', tx => tx`update aigc.suite_projects set purge_started_at=null where id=${cleanupProject.id}`), /permission denied/)
+  for (const table of ['suite_object_writes', 'suite_sync_inputs']) {
+    assert.equal((await identity(other.id, 'local', tx => tx.unsafe(`select 1 from aigc.${table} where user_id=$1`, [user.id]))).length, 0)
+    assert.equal((await sql`select has_table_privilege('anon',${`aigc.${table}`},'select') as allowed`)[0].allowed, false)
+  }
+  checks.push('清理仅接受同环境内部维护身份，用户身份、跨环境、越权修改清理标记及读取引用表均拒绝')
+  console.log(JSON.stringify({ kind: 'isolated_postgres_phase_five_mock_provider', postgresVersion: (await sql`select version() as version`)[0].version, checks,
     provider: 'mock', realProductSamples: 0, realProviderBillingVerified: false }, null, 2))
 } finally { if (runtimeConnected) await database().end(); await sql.end() }

@@ -157,6 +157,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (jobId) waitUntil(maintainVideoJobs(jobId).catch(() => console.error(JSON.stringify({ evt: 'video-maintenance', code: 'CALLBACK_ADVANCE_FAILED' }))))
       return
     }
+    if (path.join('/') === 'internal/ecommerce-suite-cleanup' && method === 'POST') {
+      const { authorizeSuiteCleanup } = await import('./ecommerce-suite/maintenance-route.js')
+      authorizeSuiteCleanup(req.headers.authorization, typeof req.body === 'string' ? JSON.parse(req.body) : req.body)
+      const { cleanupSuiteAssets } = await import('./ecommerce-suite/cleanup.js')
+      const runId = randomUUID()
+      res.status(202).json({ received: true, runId, scope: runtimeScope() })
+      waitUntil(cleanupSuiteAssets(undefined, undefined, runId).then(report => console.info(JSON.stringify({ evt: 'suite-cleanup', ...report })))
+        .catch(() => console.error(JSON.stringify({ evt: 'suite-cleanup', runId, scope: runtimeScope(), code: 'CLEANUP_FAILED' }))))
+      return
+    }
     if (path.join('/') === 'internal/ecommerce-suite-maintenance' && method === 'POST') {
       const { authorizeSuiteMaintenance } = await import('./ecommerce-suite/maintenance-route.js')
       authorizeSuiteMaintenance(req.headers.authorization, typeof req.body === 'string' ? JSON.parse(req.body) : req.body)
