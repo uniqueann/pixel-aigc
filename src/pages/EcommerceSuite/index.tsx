@@ -36,23 +36,23 @@ function SuiteList({ actor, client, signal }: { actor: SuiteActor; client: Suite
     finally { if (!signal.aborted) setBusy(false) }
   }
   return <div className="suite-list-page">
-    <div className="suite-page-heading"><div><h2>电商套图</h2><p>从真实商品图开始，逐槽位制作场景和商品展示底图。</p></div><div className="suite-actions">
-      <Button onClick={() => { setCursor('1'); setDeleted(value => !value) }}>{deleted ? '返回项目' : '回收站'}</Button>
+    <div className="suite-page-heading"><div><h2>电商套图</h2><p>基于真实商品图，制作全套电商展示图与场景图。</p></div><div className="suite-actions">
+      <Button onClick={() => { setCursor('1'); setDeleted(value => !value) }}>{deleted ? '返回项目列表' : '回收站'}</Button>
       <Button type="primary" disabled={busy} onClick={() => setCreating(true)}>新建套图项目</Button>
       <RecoveryImport actor={actor} client={client} onImported={id => navigate(`/ecommerce/${id}`)} />
     </div></div>
-    <Alert type="info" showIcon message="从商品资料到成品导出" description="先确认槽位计划与费用，再选择结果、编辑文字和尺寸线；可进入工作站处理并显式回填，最后进行平台预检与成品导出。" />
+    <Alert type="info" showIcon message="电商套图制作流程" description="设置商品规格与卖点标签，一键生成多槽位场景图，支持文字标注、工作站精修与合规批量导出。" />
     {error && <Alert type="error" message={error} action={<Button onClick={() => { void run(refresh) }}>重试读取</Button>} />}
     {!list ? <Spin /> : !list.items.length ? <Empty description={deleted ? '回收站为空' : '还没有套图项目'} /> : <div className="suite-project-grid">
       {list.items.map(({ project, readySlots, enabledSlots, baseReady }) => <article className="suite-project-card" key={project.id}>
         <div><Tag>{project.config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'}</Tag><Tag>{SUITE_CATEGORY_TEMPLATES[project.config.subcategory].label}</Tag></div>
-        <h3>{project.config.title}</h3><p>{readySlots}/{enabledSlots} 个启用槽位有底图</p>
-        {!baseReady && <p className="suite-muted">待完成主体图上传</p>}<p className="suite-muted">更新于 {new Date(project.updatedAt).toLocaleString()}</p>
-        {deleted && <p className="suite-muted">{project.deletedAt && observedAt - Date.parse(project.deletedAt) >= 7 * 86400000 ? '恢复期已结束，图片将在无原任务引用后清理' : `可恢复至 ${new Date(Date.parse(project.deletedAt!) + 7 * 86400000).toLocaleString()}`}</p>}
+        <h3>{project.config.title}</h3><p>{readySlots}/{enabledSlots} 张图片已就绪</p>
+        {!baseReady && <p className="suite-muted">待上传主体图</p>}<p className="suite-muted">更新于 {new Date(project.updatedAt).toLocaleString()}</p>
+        {deleted && <p className="suite-muted">{project.deletedAt && observedAt - Date.parse(project.deletedAt) >= 7 * 86400000 ? '已超过 7 天保留期' : `保留至 ${new Date(Date.parse(project.deletedAt!) + 7 * 86400000).toLocaleString()}`}</p>}
         <div className="suite-actions">{deleted ? <Button disabled={busy || Boolean(project.deletedAt && observedAt - Date.parse(project.deletedAt) >= 7 * 86400000)} onClick={() => { void run(() => client.restore(project.id)) }}>恢复项目</Button> : <>
           <Button type="primary" onClick={() => navigate(`/ecommerce/${project.id}`)}>打开项目</Button>
-          <Button disabled={busy || !baseReady} onClick={() => { void run(async () => { const copy = await copySuite(client, await client.get(project.id)); message.success('配置和图片已复制，未生成或扣费'); navigate(`/ecommerce/${copy.id}`) }) }}>复制配置</Button>
-          <Button danger disabled={busy} onClick={() => Modal.confirm({ title: '移入回收站？', content: '七天内可恢复；已提交原任务继续按原规则收口与结算。', okText: '移入回收站', cancelText: '取消', onOk: () => run(() => client.recycle(project.id)) })}>移入回收站</Button>
+          <Button disabled={busy || !baseReady} onClick={() => { void run(async () => { const copy = await copySuite(client, await client.get(project.id)); message.success('项目配置与图片已成功复制'); navigate(`/ecommerce/${copy.id}`) }) }}>复制配置</Button>
+          <Button danger disabled={busy} onClick={() => Modal.confirm({ title: '移入回收站？', content: '可在回收站保留 7 天；正在生成的图片任务不受影响。', okText: '移入回收站', cancelText: '取消', onOk: () => run(() => client.recycle(project.id)) })}>移入回收站</Button>
         </>}</div>
       </article>)}
     </div>}
@@ -74,7 +74,7 @@ export default function EcommerceSuite() {
   const runtimeScope = useUserStore(state => state.account?.runtimeScope)
   const enabled = useUserStore(state => state.account?.features?.ecommerceSuite)
   const actor = useMemo(() => userId && runtimeScope ? { userId, runtimeScope } : null, [userId, runtimeScope])
-  if (!actor) return <div className="suite-list-page"><Alert type="info" showIcon message="请先登录并等待账号环境就绪" description="套图使用云端项目与平台模型，需要当前账号信息才能保存和生成。" /></div>
-  if (!enabled) return <div className="suite-list-page"><Alert type="info" showIcon message="电商套图暂未开放，请稍后再试" /></div>
+  if (!actor) return <div className="suite-list-page"><Alert type="info" showIcon message="请先登录账号" description="登录后即可保存套图项目并使用 AI 批量生成展示图。" /></div>
+  if (!enabled) return <div className="suite-list-page"><Alert type="info" showIcon message="电商套图功能正在内测中，敬请期待" /></div>
   return <SuiteSession key={`${actor.userId}:${actor.runtimeScope}`} actor={actor} />
 }

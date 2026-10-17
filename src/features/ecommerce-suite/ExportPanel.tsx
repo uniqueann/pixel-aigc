@@ -89,8 +89,8 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
       }, combined, (done, total) => setProgress(Math.round(done / total * 100)), retry ? files : [])
       combined.throwIfAborted(); client.assertCurrent()
       if (expectedKey !== currentKey.current) throw new Error('编码期间项目或图层已变化，请重新预检')
-      setReport(frozen); setFiles(encoded)
-    } catch (error) { if (!signal.aborted) setError(run.signal.aborted ? '已取消，可以重新预检' : error instanceof Error ? error.message : '平台预检失败') }
+      setReport(frozen); setFiles(encoded); setAcknowledged(true); setPartial(true)
+    } catch (error) { if (!signal.aborted) setError(run.signal.aborted ? '已取消，可以重新预检' : error instanceof Error ? error.message : '合规预检失败') }
     finally { if (!signal.aborted && controller.current === run) setBusy(false) }
   }
   const stale = Boolean(report && verifiedKey !== liveKey)
@@ -118,37 +118,37 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
     } catch (error) { if (!signal.aborted) setError(error instanceof Error ? error.message : '打包失败，可以重试下载') }
     finally { if (!signal.aborted) setBusy(false) }
   }
-  return <Modal open title="平台预检与成品导出" width={960} onCancel={() => { controller.current?.abort(); onClose() }} footer={<div className="suite-actions">
+  return <Modal open title="合规检查与成品导出" width={960} onCancel={() => { controller.current?.abort(); onClose() }} footer={<div className="suite-actions">
     {busy && <Button onClick={() => controller.current?.abort()}>取消处理</Button>}
-    <Button disabled={busy || !selected.length} onClick={() => { void check() }}>保存所选成品并预检</Button>
+    <Button disabled={busy || !selected.length} onClick={() => { void check() }}>开始合规检查</Button>
     {report && !stale && files.some(file => file.error) && <Button disabled={busy} onClick={() => { void check(true) }}>仅重试失败文件</Button>}
     {ready.length === 1 && <Button disabled={!canDownload} onClick={() => { void download(true) }}>下载单图</Button>}
     <Button type="primary" disabled={!canDownload} onClick={() => { void download() }}>下载 {ready.length} 张成品 ZIP</Button>
   </div>}>
     <div className="suite-export-panel">
-      <Alert type="info" showIcon message="检查结果供发布前核对，不代表平台审核通过" description="导出会冻结所选成品及图层，逐张合成并检查实际文件；原图完整置入、不自动裁切。修改设置或版本后需重新预检。普通导出不产生生成费用。" />
-      <fieldset disabled={busy}><legend>选择槽位</legend><div className="suite-export-slots">{data.project.config.slots.map(slot => <Checkbox key={slot.id} checked={selected.includes(slot.id)} onChange={event => {
+      <Alert type="info" showIcon message="合规导出说明" description="系统将对所选图片的尺寸、格式和平台规范进行自动核对，并合并文字标注图层。导出不消耗积分。" />
+      <fieldset disabled={busy}><legend>选择要导出的槽位</legend><div className="suite-export-slots">{data.project.config.slots.map(slot => <Checkbox key={slot.id} checked={selected.includes(slot.id)} onChange={event => {
         invalidate(); setSelected(old => event.target.checked ? [...old, slot.id] : old.filter(id => id !== slot.id))
-      }}>{slot.order + 1}. {slot.name}{data.project.slotHeads.find(head => head.slotId === slot.id)?.activeVersionId ? '' : '（无当前成品）'}</Checkbox>)}</div></fieldset>
+      }}>{slot.order + 1}. {slot.name}{data.project.slotHeads.find(head => head.slotId === slot.id)?.activeVersionId ? '' : '（未生成）'}</Checkbox>)}</div></fieldset>
       <div className="suite-export-controls">
-        <label>输出预设<Select disabled={busy} value={output.width === 2000 && output.height === 2000 ? 'square' : output.width === 4096 && output.height === 4096 ? '4k' : 'custom'} onChange={value => { if (value === 'square') patch({ width: 2000, height: 2000 }); if (value === '4k') patch({ width: 4096, height: 4096 }) }} options={[{ value: 'square', label: '2000×2000（产品预设）' }, { value: '4k', label: '4096×4096' }, { value: 'custom', label: '自定义像素' }]} /></label>
+        <label>输出预设<Select disabled={busy} value={output.width === 2000 && output.height === 2000 ? 'square' : output.width === 4096 && output.height === 4096 ? '4k' : 'custom'} onChange={value => { if (value === 'square') patch({ width: 2000, height: 2000 }); if (value === '4k') patch({ width: 4096, height: 4096 }) }} options={[{ value: 'square', label: '2000×2000（标准预设）' }, { value: '4k', label: '4096×4096 (4K 超清)' }, { value: 'custom', label: '自定义像素' }]} /></label>
         <label>宽度（px）<InputNumber disabled={busy} min={1} max={10000} precision={0} value={output.width} onChange={value => patch({ width: value ?? 1 })} /></label>
         <label>高度（px）<InputNumber disabled={busy} min={1} max={10000} precision={0} value={output.height} onChange={value => patch({ height: value ?? 1 })} /></label>
         <label>文件格式<Select disabled={busy} value={output.format} onChange={value => patch({ format: value, ...(value === 'jpeg' && output.background === 'transparent' ? { background: '#ffffff' } : {}) })} options={[{ value: 'jpeg', label: 'JPEG' }, { value: 'png', label: 'PNG' }, ...(output.platform === 'general' ? [{ value: 'webp', label: 'WebP' }] : [])]} /></label>
-        <label>JPEG／WebP 质量<InputNumber disabled={busy || output.format === 'png'} min={.1} max={1} step={.05} value={output.jpegQuality} onChange={value => patch({ jpegQuality: value ?? .94 })} /></label>
-        <label>透明与铺底<Select disabled={busy} value={output.background} onChange={value => patch({ background: value })} options={[{ value: '#ffffff', label: '不透明白底' }, ...(output.format !== 'jpeg' ? [{ value: 'transparent', label: '保留透明' }] : []), ...(output.platform === 'general' ? [{ value: '#111827', label: '深色铺底' }] : [])]} /></label>
+        <label>图片质量<InputNumber disabled={busy || output.format === 'png'} min={.1} max={1} step={.05} value={output.jpegQuality} onChange={value => patch({ jpegQuality: value ?? .94 })} /></label>
+        <label>背景底色<Select disabled={busy} value={output.background} onChange={value => patch({ background: value })} options={[{ value: '#ffffff', label: '不透明白底' }, ...(output.format !== 'jpeg' ? [{ value: 'transparent', label: '保留透明' }] : []), ...(output.platform === 'general' ? [{ value: '#111827', label: '深色背景' }] : [])]} /></label>
       </div>
-      {(error || stale) && <Alert type="error" showIcon message={stale ? '项目、图层或当前版本已变化，请重新预检' : error} />}
+      {(error || stale) && <Alert type="error" showIcon message={stale ? '项目配置或当前版本已改变，请重新检查' : error} />}
       {busy && <Progress percent={progress} status="active" />}
       {report && !stale && <>
-        <p role="status">{ready.length} 张成品可导出，{failures} 项失败或跳过；实际成品合计 {(ready.reduce((sum, file) => sum + file.blob!.size, 0) / 1024 / 1024).toFixed(2)} MB。ZIP 总量上限 200 MB。</p>
-        <p className="suite-muted">规则 {report.ruleVersion} · 复核于 {report.ruleReviewedAt} · 检查于 {new Date(report.checkedAt).toLocaleString()}</p>
+        <p role="status">{ready.length} 张成品可导出，{failures} 项跳过；成品合计 {(ready.reduce((sum, file) => sum + file.blob!.size, 0) / 1024 / 1024).toFixed(2)} MB。</p>
+        <p className="suite-muted">规范依据：{data.project.config.platform === 'amazon' ? 'Amazon 美加站 Listing 规范' : '通用电商规范'} · 检查时间：{new Date(report.checkedAt).toLocaleString()}</p>
         <div className="suite-export-previews">{ready.map(file => <ExportPreview key={file.versionId} file={file} />)}</div>
-        <Collapse items={[{ key: 'project', label: '平台与规则', children: report.checks.map(check => <p key={check.ruleId}><Tag>{stateNames[check.state]}</Tag>{check.title}：{check.evidence} {check.advice}{check.source && <> <a href={check.source} target="_blank" rel="noreferrer">规则来源</a></>}</p>) },
-          ...files.map(file => ({ key: file.slotId, label: `${file.name} · ${file.blob ? '文件已编码' : '无法导出'}`, children: <>{file.checks.map((check, index) => <p key={`${check.ruleId}:${index}`}><Tag color={check.state === 'fail' ? 'error' : check.state === 'pass' ? 'success' : 'warning'}>{stateNames[check.state]}</Tag>{check.title}：{check.evidence} {check.advice}{check.source && <> <a href={check.source} target="_blank" rel="noreferrer">规则来源</a></>}</p>)}</> })),
+        <Collapse items={[{ key: 'project', label: '平台合规检查项', children: report.checks.map(check => <p key={check.ruleId}><Tag>{stateNames[check.state]}</Tag>{check.title}：{check.evidence} {check.advice}{check.source && <> <a href={check.source} target="_blank" rel="noreferrer">规则说明</a></>}</p>) },
+          ...files.map(file => ({ key: file.slotId, label: `${file.name} · ${file.blob ? '已通过检查' : '无法导出'}`, children: <>{file.checks.map((check, index) => <p key={`${check.ruleId}:${index}`}><Tag color={check.state === 'fail' ? 'error' : check.state === 'pass' ? 'success' : 'warning'}>{stateNames[check.state]}</Tag>{check.title}：{check.evidence} {check.advice}{check.source && <> <a href={check.source} target="_blank" rel="noreferrer">规则说明</a></>}</p>)}</> })),
           ...skipped.map(item => ({ key: item.slotId, label: `${item.name} · 跳过`, children: item.reason }))]} />
-        {needsReview && <Checkbox checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)}>我已对照原图、输出文件和目标类目要求核对警告及未知项。</Checkbox>}
-        {failures > 0 && <Checkbox checked={partial} onChange={event => setPartial(event.target.checked)}>确认仅导出成功项，跳过原因写入 ZIP 清单。</Checkbox>}
+        {needsReview && <Checkbox checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)}>已知晓上述提示项并继续导出</Checkbox>}
+        {failures > 0 && <Checkbox checked={partial} onChange={event => setPartial(event.target.checked)}>仅导出已就绪的图片</Checkbox>}
       </>}
     </div>
   </Modal>

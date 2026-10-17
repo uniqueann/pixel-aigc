@@ -56,17 +56,17 @@ export default function CreateSuite({ actor, client, onClose, onCreated }: { act
   }
   return <Modal open title="新建电商套图" width={780} onCancel={busy ? undefined : onClose} maskClosable={false} footer={<div className="suite-actions">
     {step > 0 && <Button disabled={busy} onClick={() => setStep(0)}>上一步</Button>}
-    {step === 0 ? <Button type="primary" disabled={!image} onClick={() => setStep(1)}>下一步：确认商品资料</Button>
-      : <Button type="primary" loading={busy} onClick={() => { void create() }}>保存项目并进入</Button>}
+    {step === 0 ? <Button type="primary" disabled={!image} onClick={() => setStep(1)}>下一步：设置商品信息</Button>
+      : <Button type="primary" loading={busy} onClick={() => { void create() }}>创建并进入工作台</Button>}
   </div>}>
-    <Steps size="small" current={step} items={[{ title: '商品图片' }, { title: '商品资料与槽位' }]} />
+    <Steps size="small" current={step} items={[{ title: '上传商品图' }, { title: '商品信息与规格' }]} />
     {error && <Alert showIcon type="error" message={error} />}
     {step === 0 ? <div className="suite-create-image">
-      <p>上传一张真实商品照片。建议主体清晰、配件完整；生成后仍需核对外观与细节。</p>
+      <p>请上传一张清晰的商品主体照片（白底图或实拍图均可）。</p>
       {image && <img ref={img} alt="待保存的商品主体照片" />}
       <label className="suite-file-button">选择本地图片<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void choose(file); event.target.value = '' }} /></label>
       <Button disabled={busy} onClick={() => setPicker(true)}>从我的资产选择</Button>
-      <p className="suite-muted">静态 JPEG、PNG、WebP，最多 20 MiB。保存项目不会开始生成或扣除积分。</p>
+      <p className="suite-muted">支持 JPG、PNG、WebP 格式，最大 20 MB。创建项目暂不消耗积分。</p>
     </div> : <ProductFields value={config} onChange={next => { requestId.current = crypto.randomUUID(); setConfig(next) }} creating disabled={busy} />}
     {picker && <CanvasAssetPicker ownerId={actor.userId} targetLabel="套图" busy={busy} onClose={() => setPicker(false)} onSelect={async record => {
       try {
