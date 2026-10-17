@@ -446,9 +446,16 @@ function TaskDrawerPanel({
                   <Alert
                     type="info"
                     showIcon
-                    message={`部分生成成功（${task.completedCount}/${task.requestedCount} 张），仅按实际成功张数扣费`}
+                    message={task.sourceKind === 'suite_batch' ? `部分槽位完成（${task.completedCount}/${task.requestedCount}），成功候选费用见原任务` : `部分生成成功（${task.completedCount}/${task.requestedCount} 张），仅按实际成功张数扣费`}
                   />
                 ) : null}
+                {value?.children && <div className="task-detail-section">
+                  <div className="task-detail-section-title">原图片任务与费用</div>
+                  <p>完成数按目标槽位计算；候选张数及实际费用分别保留在原任务中。未派发项和原图复用不创建图片任务。</p>
+                  {value.children.map(child => <Button key={child.taskKey} block onClick={() => center.show(child)}>
+                    {taskStateLabel(child)} · {child.completedCount}/{child.requestedCount} 张候选 · {taskBillingLabel(child)} · 查看原任务
+                  </Button>)}
+                </div>}
                 {value?.errorMessage && task.state !== 'succeeded' ? (
                   <Alert type="warning" showIcon message={value.errorMessage} />
                 ) : null}

@@ -37,7 +37,7 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
   const actualCount = Math.min(count, model?.ui.maxCount ?? 1)
   const strategy = SUITE_CATEGORY_TEMPLATES[project.config.subcategory].slots.find(item => item.key === slot.key)!.strategy
   const reuse = strategy !== 'image_edit'
-  const unavailable = slot.kind === 'size' || (!reuse && !model) || !slot.enabled
+  const unavailable = (!reuse && !model) || !slot.enabled
   useEffect(() => {
     const abort = new AbortController(); alive.current = true
     void listImageModels('image_edit', abort.signal).then(items => { client.assertCurrent(); setModels(items) })
@@ -137,7 +137,7 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
         if (cloud?.value) await saveLocalSuiteDraft(project.actor, project.id, slot.id, { value: { ...cloud.value, expectedDraftRevision: cloud.revision }, dirty: false })
       }).catch(onError) }}>读取云端要求</Button>
     </div>} />}
-    <p className="suite-muted">{reuse ? slot.kind === 'size' ? '尺寸与标注将在图层阶段接入，目前可以先填写确认规格。' : strategy === 'detail_reference' ? '上传真实细节照片后保存为底图，不生成未知结构。' : '将已确认商品照片保存为主图底图，不调用图片模型。发布前仍需核对白底、留边与底图内容。'
+    <p className="suite-muted">{reuse ? slot.kind === 'size' ? '请先确认规格并上传已核对标注的尺寸成品，本次仅复用图片；自动标注在第四阶段接入。' : strategy === 'detail_reference' ? '上传真实细节照片后保存为底图，不生成未知结构。' : '将已确认商品照片保存为主图底图，不调用图片模型。发布前仍需核对白底、留边与底图内容。'
       : '以原商品图为参考，生成后请核对外观与细节。每次只处理当前槽位。'}</p>
     {!reuse && <>
       <label>图片模型<ModelChoice ariaLabel="套图图片模型" models={models} value={model?.id} loading={loading} disabled={blocked || busy} placeholder={loading ? '正在加载模型' : '暂无可用模型'} hintScope="image_input" onChange={id => change({ modelId: id })} /></label>
@@ -148,7 +148,7 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
     </>}
     {!slot.enabled && <Alert type="info" message="该槽位已跳过，可在商品资料中重新启用" />}
     <Button block type="primary" loading={busy || loading && !reuse} disabled={blocked || unavailable || draftConflict || (!reuse && loading)} onClick={() => { void prepare() }}>{reuse ? '预览原图复用计划' : '保存并获取当前槽位报价'}</Button>
-    <p className="suite-muted">已提交原任务会按原任务规则继续；本阶段不提供整套后台派发。</p>
+    <p className="suite-muted">确认后等待服务端派发，结果先保存候选供显式选用；费用按原账本处理，失败仅手动重试。</p>
     <Modal open={Boolean(quote)} title={reuse ? '确认复用原图' : '确认单槽位生成'} onCancel={busy ? undefined : () => setQuote(undefined)} maskClosable={false}
       footer={<Button type="primary" loading={busy} disabled={!agreed || !quote || expired} onClick={() => { void submit() }}>{expired ? '报价已过期，请重新获取' : `确认${quote?.totalCredits ? `并提交 · ${quote.totalCredits} 积分上限` : '保存底图'}`}</Button>}>
       {quote?.items.map(item => <div key={item.operationId} className="suite-quote">

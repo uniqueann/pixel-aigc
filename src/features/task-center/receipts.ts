@@ -128,7 +128,7 @@ export function submittedReceipt(
 
 /** 提交响应或全局原请求查询均写入同一任务绑定，不另存第二份待确认凭据。 */
 export function rememberWorkstationSubmission(receipt:TaskReceipt,sourceId:string) {
-  if(!sameTaskActor(receipt)||receipt.origin?.entry!=='workstation'||receipt.sourceKind==='email_task')return
+  if(!sameTaskActor(receipt)||receipt.origin?.entry!=='workstation'||(receipt.sourceKind!=='image_job'&&receipt.sourceKind!=='sync_credit'))return
   const tool=receipt.origin.tool
   if((readWorkstationSession(receipt,tool)?.lastRequestAt??0)>receipt.createdAt)return
   if(readReceipts(receipt).some(other=>other.origin?.entry==='workstation'&&other.origin.tool===tool&&other.createdAt>receipt.createdAt))return

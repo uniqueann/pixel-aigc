@@ -81,12 +81,7 @@ export function getSuite(user: SuiteUser, id: string): Promise<SuiteProjectDetai
     const operations = (await sql`select snapshot from aigc.suite_operations where project_id=${id}
       and batch_id in ${sql(batches.map(batch => batch.id).length ? batches.map(batch => batch.id) : ['00000000-0000-4000-8000-000000000000'])}`).map(row => suiteOperationSchema.parse(row.snapshot))
     const repository = taskRepository({ query: (text, params) => sql.unsafe(text, params as never[]) }, user.id, actor(user).runtimeScope)
-    const tasks: SuiteProjectDetail['tasks'] = []
-    const { taskSummary } = await import('../task-center/repository.js')
-    for (const operation of operations) if (operation.task) {
-      try { tasks.push(taskSummary(await repository.get('image_job', operation.task.sourceId))) }
-      catch (error) { if (!(error instanceof HttpError && [404, 410].includes(error.status))) throw error }
-    }
+    const tasks = await repository.projectChildren(id)
     return { project, assets, versions, drafts, batches, operations, tasks }
   })
 }
@@ -131,6 +126,11 @@ export function recycleSuite(user: SuiteUser, id: string, restore: boolean) {
     if (restore && row.deleted_at && Date.now() - new Date(row.deleted_at).getTime() > 7 * 86400000)
       throw new HttpError(410, '项目已超过七天恢复期限', 'SUITE_NOT_FOUND')
     await sql`update aigc.suite_projects set deleted_at=${restore ? null : row.deleted_at ?? new Date()},updated_at=now() where id=${id}`
+    if (!restore) {
+      const { stopUnsubmittedOperations } = await import('./batches.js')
+      const batches = await sql`select id from aigc.suite_batches where project_id=${id} and state in ('queued','running','blocked') order by id for update`
+      for (const batch of batches) await stopUnsubmittedOperations(sql, String(batch.id), 'PROJECT_DELETED')
+    }
     return { restored: restore }
   })
 }

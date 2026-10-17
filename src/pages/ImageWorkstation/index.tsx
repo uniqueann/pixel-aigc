@@ -486,7 +486,7 @@ export default function ImageWorkstation() {
         onUseImage={async (result,image,detail,context) => {
           if (!await confirmRecovery('基于此图继续编辑将替换当前原图和蒙版，是否继续？')) return
           await applyRecoveredInput(result,image,detail,context)
-          if(detail.task.sourceKind!=='email_task'&&!saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:{sourceKind:detail.task.sourceKind,sourceId:detail.task.sourceId,ordinal:result.ordinal}}))message.warning('图片已载入，但未同步本地缓存，刷新后可从历史任务中重新载入')
+          if((detail.task.sourceKind==='image_job'||detail.task.sourceKind==='sync_credit')&&!saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:{sourceKind:detail.task.sourceKind,sourceId:detail.task.sourceId,ordinal:result.ordinal}}))message.warning('图片已载入，但未同步本地缓存，刷新后可从历史任务中重新载入')
           await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)
         }}
         onLoadParameters={['smart-edit','relight','fusion','retouch','variation'].includes(activeTool.slug)?async (prepared,detail,context) => {

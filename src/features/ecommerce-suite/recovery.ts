@@ -33,7 +33,7 @@ async function submit(client: SuiteClient, actor: SuiteActor, projectId: string,
     return batch
   } catch (error) {
     client.assertCurrent()
-    if (error instanceof CloudError && [400, 401, 402, 403, 404, 409, 422, 429].includes(error.status)) {
+    if (error instanceof CloudError && ([400, 401, 402, 403, 404, 409, 422, 429].includes(error.status) || error.code === 'SUITE_DISPATCH_DISABLED')) {
       await clearPendingSuite(actor, projectId)
       throw error
     }

@@ -4,6 +4,7 @@ export const taskSourceKinds = [
   'image_job',
   'sync_credit',
   'email_task',
+  'suite_batch',
 ] as const
 export type TaskSourceKind = (typeof taskSourceKinds)[number]
 export const taskTools = [
@@ -150,6 +151,8 @@ export interface TaskCenterSummary {
   outcomeVersion: string | null
   seen: boolean
   dismissed: boolean
+  suite?: { projectId: string; batchId: string }
+  knownCreditsCharged?: number
 }
 export interface TaskCenterMedia {
   kind: 'image' | 'video'
@@ -174,6 +177,7 @@ export interface TaskCenterDetail {
   params: Record<string, unknown> | null
   errorMessage: string | null
   results: (TaskCenterMedia | TaskCenterText)[]
+  children?: TaskCenterSummary[]
 }
 export interface TaskCenterSidebar {
   items: TaskCenterSummary[]
@@ -221,15 +225,16 @@ export function taskStateLabel(
 export function taskBillingLabel(
   task: Pick<
     TaskCenterSummary,
-    'billingState' | 'creditsReserved' | 'creditsCharged' | 'creditsReturned'
-  >,
+    'billingState' | 'creditsReserved' | 'creditsCharged' | 'creditsReturned' | 'knownCreditsCharged'
+  > & { sourceKind?: TaskSourceKind },
 ) {
+  if (task.sourceKind === 'suite_batch' && task.billingState === 'none') return '未预扣'
   if (task.billingState === 'none') return '免费'
   if (task.billingState === 'reserved')
     return task.creditsReserved === 0
       ? '免费额度处理中'
       : `预计消耗 ${task.creditsReserved} 积分`
-  if (task.billingState === 'unknown') return '结算中'
+  if (task.billingState === 'unknown') return task.knownCreditsCharged ? `结算中，已知扣费 ${task.knownCreditsCharged} 积分` : '结算中'
   if (task.billingState === 'refunded')
     return task.creditsReturned
       ? `已退还 ${task.creditsReturned} 积分`

@@ -160,11 +160,11 @@ describe('电商套图阶段一：冻结契约与边界', () => {
     }
   })
 
-  it('单槽位来源已接入，整套聚合来源仍未开放', () => {
+  it('子任务来源和只读父批次身份均已接入', () => {
     expect(suiteOriginSchema.safeParse(examples.origin).success).toBe(true)
     expect(taskOriginSchema.safeParse(examples.origin).success).toBe(true)
     expect([...taskTools]).toContain('ecommerce-suite')
-    expect([...taskSourceKinds]).not.toContain('suite_batch')
+    expect([...taskSourceKinds]).toContain('suite_batch')
   })
 
   it('操作不能改写已绑定任务为停止、串联其他请求或让复用步骤扣费', () => {

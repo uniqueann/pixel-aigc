@@ -5,7 +5,8 @@ import { createSuiteBatch, findSuiteBatch, quoteSuite } from './generation.js'
 import { createSuite, findSuiteByRequest, getSuite, listSuites, listSuiteVersions, recycleSuite, saveSuiteDraft, selectSuiteVersion, updateSuite } from './projects.js'
 import { registerSuiteResults } from './results.js'
 import type { SuiteUser } from './repository.js'
-import { ecommerceSuiteEnabled } from './config.js'
+import { ecommerceSuiteDispatchReady, ecommerceSuiteEnabled } from './config.js'
+import { readSuiteBatch, stopSuiteBatch } from './batches.js'
 
 export async function handleEcommerceSuiteRoute(user: SuiteUser, method: string, path: string[], body: unknown, query: URLSearchParams) {
   if (!ecommerceSuiteEnabled()) throw new HttpError(503, '电商套图暂未开放，请稍后再试', 'SUITE_DISABLED')
@@ -26,7 +27,10 @@ export async function handleEcommerceSuiteRoute(user: SuiteUser, method: string,
     if (path[3] === 'restore' && method === 'POST') return { body: await recycleSuite(user, id, true) }
     if (path[3] === 'assets' && method === 'POST') return { body: await beginSuiteUpload(user, id, body) }
     if (path[3] === 'quotes' && method === 'POST') return { body: await quoteSuite(user, id, body) }
-    if (path[3] === 'batches' && method === 'POST') return { status: 202, body: await createSuiteBatch(user, id, body) }
+    if (path[3] === 'batches' && method === 'POST') {
+      if (!ecommerceSuiteDispatchReady()) throw new HttpError(503, '服务端派发尚未启用，暂不接受新生成计划', 'SUITE_DISPATCH_DISABLED')
+      return { status: 202, body: await createSuiteBatch(user, id, body) }
+    }
   }
   if (path[3] === 'assets' && path.length === 5 && method === 'POST') {
     if (path[4] === 'complete') return { body: await completeSuiteUpload(user, id, body) }
@@ -34,6 +38,11 @@ export async function handleEcommerceSuiteRoute(user: SuiteUser, method: string,
   }
   if (path[3] === 'batches' && path[4] === 'by-request' && path.length === 6 && method === 'GET')
     return { body: await findSuiteBatch(user, id, uuid(path[5])) }
+  if (path[3] === 'batches' && path.length === 5 && method === 'GET') return { body: await readSuiteBatch(user, id, uuid(path[4])) }
+  if (path[3] === 'batches' && path.length === 6 && path[5] === 'stop' && method === 'POST') {
+    z.object({}).strict().parse(body)
+    return { body: await stopSuiteBatch(user, id, uuid(path[4])) }
+  }
   if (path[3] === 'batches' && path.length === 6 && path[5] === 'results' && method === 'POST') {
     z.object({}).strict().parse(body)
     return { body: await registerSuiteResults(user, id, uuid(path[4])) }

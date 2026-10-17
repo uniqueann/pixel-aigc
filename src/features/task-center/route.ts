@@ -12,6 +12,7 @@ const workstation: TaskTool[] = ['smart-edit','relight','fusion','retouch','vari
 export function taskDestination(task: TaskCenterSummary): string | null {
   const origin = task.origin
   const tool = task.tool
+  if (task.sourceKind === 'suite_batch' && task.suite) return `/ecommerce/${task.suite.projectId}?batch=${task.suite.batchId}`
   if (!tool) return null
   const params = new URLSearchParams({ task: task.taskKey })
   if (origin?.entry === 'ecommerce') {

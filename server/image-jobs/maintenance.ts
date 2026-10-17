@@ -20,7 +20,7 @@ export async function withImageMaintenance<T>(action: (sql: Transaction) => Prom
 }
 
 /** 每轮有固定上限；领取、外部 I/O 和收尾使用各自的短事务。 */
-export async function maintainImageJobs(runtime = defaultImageJobRuntime(),runId = randomUUID()) {
+export async function maintainImageJobs(runtime = defaultImageJobRuntime(),runId = randomUUID(),cleanup = { delete: deleteObject }) {
   const scope = runtimeScope()
   const started = runtime.now()
   const bounded = boundedImageRuntime({ ...runtime,allowSubmit: process.env.IMAGE_BACKGROUND_SUBMIT_ENABLED === 'true' },IMAGE_MAINTENANCE_BUDGET_MS)
@@ -69,7 +69,7 @@ export async function maintainImageJobs(runtime = defaultImageJobRuntime(),runId
       const orphans = await withImageMaintenance(sql => sql`select * from aigc.claim_image_orphans(${scope})`) as unknown as Array<{ id: string; object_key: string; cleanup_token: string }>
       for (const orphan of orphans) {
         if (bounded.signal?.aborted) break
-        await deleteObject(orphan.object_key,bounded.signal)
+        await cleanup.delete(orphan.object_key,bounded.signal)
         await withImageMaintenance(sql => sql`select aigc.finish_image_orphan(${orphan.id}::uuid,${orphan.cleanup_token}::uuid)`)
         report.orphansDeleted += 1
       }

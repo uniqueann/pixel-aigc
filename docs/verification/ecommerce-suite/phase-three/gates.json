@@ -1,0 +1,106 @@
+{
+  "kind": "local_phase_three_gates",
+  "checkedAt": "2026-10-17T05:52:56.584914+00:00",
+  "worktreeBaseCommit": "fb046e7723e285fdf503b8f24bc8363c2826b461",
+  "branch": "feat/ecommerce-suite-phase-three",
+  "gates": {
+    "npm test": {
+      "passed": true,
+      "files": 281,
+      "tests": 1866,
+      "unhandledErrors": 0
+    },
+    "npm run build": {
+      "passed": true
+    },
+    "npm run lint": {
+      "passed": true
+    },
+    "npm run check:ecommerce-suite:phase-one": {
+      "passed": true,
+      "examples": 21,
+      "templates": 3,
+      "localLinks": 68
+    },
+    "isolatedPostgres": {
+      "passed": true,
+      "cases": 20,
+      "actualApplicationRole": "aigc_api",
+      "actualImageMaintenance": true,
+      "dueTimesAcceleratedForTests": true
+    },
+    "browserSyntheticHttp": {
+      "passed": true,
+      "submissions": 1,
+      "consoleErrors": 0
+    },
+    "diffAndNewFileWhitespace": {
+      "passed": true
+    }
+  },
+  "warnings": {
+    "tests": [
+      "部分既有 React act 与查询缓存提示"
+    ],
+    "build": [
+      "依赖注释、混合导入及大包提示"
+    ],
+    "advisorsExistingFindings": 21
+  },
+  "realSamples": {
+    "required": 9,
+    "received": 0,
+    "accepted": 0
+  },
+  "phaseThreeExitPassed": false,
+  "runtimeVerification": {
+    "database": "isolated_postgres_actual_role_verified",
+    "browser": "synthetic_http_fixtures",
+    "billing": "isolated_mock_provider_real_sql_ledger",
+    "maintenance": "local_actual_handlers_with_accelerated_due_times",
+    "targetMigration": "not_applied",
+    "targetScheduler": "not_verified",
+    "authenticatedHttp": "not_verified_in_target",
+    "r2": "coded_not_verified_in_target",
+    "provider": "mock_only",
+    "releaseFlags": "default_off"
+  },
+  "sourceHashes": {
+    ".env.example": "e92d0de8871e07dbfb38db124c4fcb15e3340559e9b14f1a8db2066b418ff350",
+    "scripts/ecommerce-suite-postgres-check.ts": "cf6245fd314712808ef3060da090e9d3885edff9eae555459eabe4f0931cb923",
+    "server/ecommerce-suite/batches.ts": "19b4a8362847c7f543a7e6e38a4341d0ed58657872809dcb9c676f3ab08dd62f",
+    "server/ecommerce-suite/config.ts": "d3981e55630d126e382871efdfce63f3255b9bb67517b299771e9161caabeab8",
+    "server/ecommerce-suite/generation.ts": "56f0a79ebd5007843903052fa7aaaada370722231e570472600412cf6a2a497c",
+    "server/ecommerce-suite/maintenance-route.test.ts": "3b652704b2f98d64011a28bf50f1eea2e4781549f059a8eaeffc9f7769aaf4e5",
+    "server/ecommerce-suite/maintenance-route.ts": "e6c009a1c41bb4e4c8e3baa47edddc7ca1ef6b37a377f38f4a06c269c33f9ca2",
+    "server/ecommerce-suite/maintenance.ts": "9043631dae74d9754fde796acfe7860ae289d1b1920e593c00d203598b91bdf7",
+    "server/ecommerce-suite/projects.ts": "c90d721789087042d85ce169df1e6a7d7633fc786cbe92b0ed1db6f3027eaef3",
+    "server/ecommerce-suite/results.ts": "89fc5a2cea390c3a27205eb8b315a89bab45198613d34e7a60d453ca4f9ffca8",
+    "server/ecommerce-suite/route.test.ts": "07e3ad28d3671d9e4603c2665c0f434945cb186bf3be142663d730a92a7b28e6",
+    "server/ecommerce-suite/route.ts": "3e0184c3ce01c39de8786292df4d06e3d1ba57cde98361c6ceb74a1793bf87c6",
+    "server/handler.ts": "0e42a839c1d7554c758360e663551f5ceb6e7235a645334c389d2777c18609b1",
+    "server/image-jobs/maintenance.ts": "74ddc0f6057e7b0fd9e23b70117c7ac0a3b92d59bfee2abc4e2e6573aece2867",
+    "server/task-center/repository.ts": "f1900e57138de15d580dc0bedd83a6f6eecaeba94a74884a1b600ebf576a2f24",
+    "server/task-center/service.ts": "ab0b441a3508dcedc3ebef4b4d2ea17aa445b7356b00e887ca8189638b7898d9",
+    "server/task-center/suite-projection.ts": "f23c7d9d4bc2248f471d62c0b002c61e15b5aaaa6480977460c81cc790a45de3",
+    "shared/ecommerce-suite-runtime.ts": "02368ec43662d55f857958fbd076dce667604217e75eaeee2b1fab7b6862ea59",
+    "shared/ecommerce-suite-state.test.ts": "c422a9f4028e36229586b26fb9fe44b9ed9b6ec11767f5e3806fa06e320a55b5",
+    "shared/ecommerce-suite-state.ts": "b610f5610df74bea9b73b8cd72cefb44fd6627d4c6fbc417cfd7ea6b382fce13",
+    "shared/ecommerce-suite.test.ts": "9d3294c3ec275fbc9b45dc8eb0ffc50bd0d6e4dc5495e29d6b09cf06a5504109",
+    "shared/ecommerce-suite.ts": "cf82a1a23e58826cddd1313cf7602d8dc8636903cc741d29d008a3af1bfcb59b",
+    "shared/task-center.ts": "ed24738ba1a117b19fe5e5aa7db3c31e6f31cae60e39fb598a345914eaa3b139",
+    "src/features/ecommerce-suite/BatchPanel.tsx": "10eca7496dd0b13f4afe1c354df18208aed0673164cade628ebcefb2fa00c5df",
+    "src/features/ecommerce-suite/BatchPlanPanel.tsx": "ab622552a82dba762736f4ffbe69a641d8bd4e427a4658dcece8416bb31a6f9d",
+    "src/features/ecommerce-suite/GenerationPanel.tsx": "5d3eba91addab4fda6fd41edbfb9482bb6b1bc35093a4cd4b387e32778bf4eba",
+    "src/features/ecommerce-suite/SuiteWorkspace.tsx": "22e9c020de5fe879c3e37b9fcedb8c5653cc26e0238a3f3ae0b21c891db2f7e2",
+    "src/features/ecommerce-suite/api.ts": "f66b0eceac24eb634eb0edcef1ff2dd1aaa341cf0fcb427a82262618e8c16c0e",
+    "src/features/ecommerce-suite/recovery.ts": "32930fe08d1e205a113da7764bc1f4f3b7325d74131e5d48f9e23894cc5603d2",
+    "src/features/ecommerce-suite/useSuiteWorkspace.ts": "3180ec3aa3e0ef7fc4c3caedbca5b99311c6ba8c8fce1796a4a4f03be57c9447",
+    "src/features/task-center/TaskCenterDrawer.tsx": "43be35eaa6cbc1de1d5dd01b1841a6b5ee74f579477c2855f4ae2ac736541659",
+    "src/features/task-center/receipts.ts": "f43eb55491160a32f4fbfff6c243ce38dd90b5547b54b16febdf4d25738bea96",
+    "src/features/task-center/route.ts": "a693bb70de2a6cdc5853f00a3d7b6deaccf2df8845fdde17a81f53468b4debab",
+    "src/pages/EcommerceSuite/style.css": "f6f3755b5efb014a427c6e27d11ab360388f8cb10d81e3c7d85a4a862865928a",
+    "src/pages/ImageWorkstation/index.tsx": "248fb3d4a87a6902421219371f6df4a75ce05e6240af3022143cf808f6dff322",
+    "supabase/migrations/20261017052816_ecommerce_suite_phase_three.sql": "9d664642ccb5fce2ffce9c83f4122ae075fa8bb2498089832368f8f213ecfb88"
+  }
+}

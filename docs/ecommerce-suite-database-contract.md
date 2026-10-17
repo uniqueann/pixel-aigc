@@ -102,3 +102,5 @@ foreign key (user_id, scope, project_id, id, active_version_id)
 创建正式迁移时先使用已安装 CLI 的帮助确认命令，再通过 `supabase migration new` 生成文件；阶段一不把设计片段写成可自动部署迁移。数据库验收要使用真实 PostgreSQL 和应用角色，PGlite／Schema 测试只能作为补充，不能声称验证生产权限或调度。
 
 已复核 [Supabase 变更索引](https://supabase.com/changelog)中数据库和连接相关变更；本阶段没有数据库连接、扩展、TLS 或远程状态变更。后续实施迁移前需重新核对目标 PostgreSQL／CLI 版本、变更公告和角色权限。
+
+阶段三实施新增冻结计划、持久租约与受限领取函数，扩展父批次展示权限和清理；详见[阶段三实施](ecommerce-suite-phase-three.md)。实际独立 PostgreSQL 并发与应用角色验证保留于[阶段三证据](verification/ecommerce-suite/phase-three/README.md)，远端迁移与调度尚未执行。
