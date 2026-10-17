@@ -2,7 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "regions": ["pdx1"],
-  "functions": { "api/**/*.ts": { "maxDuration": 120 } },
+  "functions": {
+    "api/**/*.ts": {
+      "maxDuration": 120,
+      "excludeFiles": "{node_modules/@img/sharp-linuxmusl-x64/**,node_modules/@img/sharp-libvips-linuxmusl-x64/**}"
+    }
+  },
   "crons": [
     { "path": "/api/internal/email-cleanup", "schedule": "0 1 * * *" },
     { "path": "/api/internal/image-jobs-sweep", "schedule": "5 1 * * *" },
