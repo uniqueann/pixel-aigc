@@ -1,7 +1,15 @@
 import type { SuiteComposition, SuiteFact, SuiteLayer, SuiteProjectConfig, SuiteSlotConfig } from './ecommerce-suite.js'
 
 export const SUITE_RENDERER_VERSION = 'suite-canvas-v1'
+/** 阶段四之前的生成与复用结果。当时没有图层渲染器，快照里的图层列表始终为空。 */
+export const SUITE_BASE_RENDERER_VERSION = 'suite-base-v1'
 export const SUITE_TEXT_BACKGROUNDS = ['#ffffff', '#111827', '#fef3c7', '#dbeafe'] as const
+
+/** 空图层的历史渲染器与当前画布只绘制底图的像素相同。带图层的旧快照不能按当前客户端重放。 */
+export function suiteRendererSupported(composition: Pick<SuiteComposition, 'rendererVersion' | 'layersSnapshot'>) {
+  return composition.rendererVersion === SUITE_RENDERER_VERSION
+    || (composition.rendererVersion === SUITE_BASE_RENDERER_VERSION && composition.layersSnapshot.length === 0)
+}
 
 /** 主图规则按语义判断；未知 Amazon 规则同样采取保守锁定。 */
 export function suiteMainLocked(config: Pick<SuiteProjectConfig, 'platform' | 'marketplace' | 'ruleProfile'>, slot: Pick<SuiteSlotConfig, 'kind'>) {

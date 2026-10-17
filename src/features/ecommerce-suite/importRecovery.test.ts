@@ -24,6 +24,16 @@ describe('图片恢复包导入边界', () => {
     await expect(readSuiteRecovery(await zip({...manifest,assets:[{...asset,checksum:'0'.repeat(64)}]}),inspect)).rejects.toThrow('校验值')
     await expect(readSuiteRecovery(await zip(manifest),async()=>({...await inspect(),width:101}))).rejects.toThrow('真实格式或像素')
   })
+  it('恢复清单保留历史无图层 suite-base-v1，不改写渲染器', () => {
+    const version = structuredClone(fixture.version)
+    version.assetId = asset.assetId
+    version.composition.rendererVersion = 'suite-base-v1'
+    version.composition.layersSnapshot = []
+    const parsed = suiteRecoveryManifestSchema.parse({ ...manifest, versions: [version],
+      slotHeads: manifest.slotHeads.map((head: { slotId: string; activeVersionId: string | null }) => head.slotId === version.slotId ? { ...head, activeVersionId: version.id } : head) })
+    expect(parsed.versions[0].composition.rendererVersion).toBe('suite-base-v1')
+    expect(parsed.versions[0].composition.layersSnapshot).toEqual([])
+  })
   it('同一恢复包的重试复用创建、上传和导入身份，提交不携带原任务', async () => {
     const project={...fixture.project,id:crypto.randomUUID()}
     const client={assertCurrent:vi.fn(),create:vi.fn().mockResolvedValue(project),upload:vi.fn().mockResolvedValue({}),restoreSnapshot:vi.fn().mockResolvedValue(project)}

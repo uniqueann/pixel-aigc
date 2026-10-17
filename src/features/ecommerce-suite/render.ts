@@ -1,5 +1,5 @@
 import { suiteCompositionSchema, type SuiteComposition, type SuiteLayer } from '@shared/ecommerce-suite'
-import { formatSuiteFact, orderSuiteLayers } from '@shared/ecommerce-suite-annotations'
+import { formatSuiteFact, orderSuiteLayers, suiteRendererSupported } from '@shared/ecommerce-suite-annotations'
 import { suiteFontCoverage } from './fontCoverage'
 
 export interface SuiteLayerBox { id: string; x: number; y: number; width: number; height: number }
@@ -97,6 +97,7 @@ export async function paintSuite(canvas: HTMLCanvasElement, base: Blob, composit
 }
 export async function encodeSuiteImage(base: Blob, composition: SuiteComposition, format: 'png' | 'jpeg' | 'webp' = 'png', background?: string, quality = .94, signal?: AbortSignal) {
   suiteCompositionSchema.parse(composition)
+  if (!suiteRendererSupported(composition)) throw new Error('当前客户端不支持该渲染器，请更新客户端')
   const canvas = document.createElement('canvas')
   try {
     signal?.throwIfAborted()

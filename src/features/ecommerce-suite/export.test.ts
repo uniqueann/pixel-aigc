@@ -13,7 +13,7 @@ function report(): SuitePrecheck {
     ruleVersion: SUITE_RULE_VERSION, ruleReviewedAt: '2026-10-17', checkedAt: new Date().toISOString(), fingerprint: 'a'.repeat(64),
     checkedVersionIds: [], output: { platform: 'general', width: 1200, height: 1000, format: 'png', background: 'transparent' }, checks: [],
     items: [0, 1].map(index => ({ slot: { ...fixture.project.config.slots[index], name: '同名/槽位', order: index },
-      version: { ...fixture.version, id: crypto.randomUUID(), composition: { ...fixture.version.composition, layersSnapshot: [] } }, asset: fixture.asset, checks: [] })) }
+      version: { ...fixture.version, id: crypto.randomUUID(), composition: { ...fixture.version.composition, layersSnapshot: [], rendererVersion: 'suite-canvas-v1' } }, asset: fixture.asset, checks: [] })) }
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); mocks.encode.mockReset(); mocks.zip.mockReset() })
 describe('冻结成品与逐文件失败恢复', () => {
@@ -42,6 +42,35 @@ describe('冻结成品与逐文件失败恢复', () => {
     expect(new Set(final.map(file => file.name)).size).toBe(2)
     expect(final.every(file => !/[\n/\\]/.test(file.name))).toBe(true)
     expect(JSON.stringify(frozen)).toBe(before)
+  })
+  it('无图层的历史 suite-base-v1 会编码且不改写冻结版本，未知渲染器在读取前失败', async () => {
+    const frozen = report()
+    frozen.items = [frozen.items[0]]
+    frozen.items[0].version.composition.rendererVersion = 'suite-base-v1'
+    frozen.items[0].version.composition.layersSnapshot = []
+    const before = JSON.stringify(frozen.items[0].version)
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 1200, height: 1000, close: vi.fn() })))
+    mocks.encode.mockResolvedValue(new Blob([png], { type: 'image/png' }))
+    const read = vi.fn(async () => new Blob([png]))
+    const files = await encodeSuiteSelection(frozen, read, new AbortController().signal)
+    expect(files[0].blob).toBeDefined()
+    expect(files[0].error).toBeUndefined()
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(mocks.encode.mock.calls[0][1].layersSnapshot).toEqual([])
+    expect(JSON.stringify(frozen.items[0].version)).toBe(before)
+    mocks.encode.mockClear()
+    read.mockClear()
+    frozen.items[0].version.composition.rendererVersion = 'suite-unknown-v9'
+    const rejected = await encodeSuiteSelection(frozen, read, new AbortController().signal)
+    expect(rejected[0].blob).toBeUndefined()
+    expect(rejected[0].error).toContain('不支持该渲染器')
+    expect(read).not.toHaveBeenCalled()
+    expect(mocks.encode).not.toHaveBeenCalled()
+    frozen.items[0].version.composition.rendererVersion = 'suite-base-v1'
+    frozen.items[0].version.composition.layersSnapshot = fixture.version.composition.layersSnapshot
+    const layered = await encodeSuiteSelection(frozen, read, new AbortController().signal)
+    expect(layered[0].error).toContain('不支持该渲染器')
+    expect(mocks.encode).not.toHaveBeenCalled()
   })
   it('确定失败不读取底图，取消停止后续文件', async () => {
     const frozen = report(), read = vi.fn(async () => new Blob([png]))

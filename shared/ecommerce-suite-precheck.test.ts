@@ -41,6 +41,23 @@ describe('平台预检证据与确定性阻止', () => {
     expect(checks.find(check => check.ruleId === 'output.upscale')?.state).toBe('warning')
     expect(suiteChecksFailed(checkSuiteVersion(project, slot, version, asset, { ...output, width: 10000, height: 10000 }))).toBe(true)
   })
+  it('阶段四之前的无图层 suite-base-v1 可以通过预检，带图层或未知渲染器仍然失败', () => {
+    const { project, version, asset, slot } = sample()
+    version.composition.rendererVersion = 'suite-base-v1'
+    version.composition.layersSnapshot = []
+    const legacy = checkSuiteVersion(project, slot, version, asset, output)
+    expect(legacy.find(check => check.ruleId === 'renderer.version')).toBeUndefined()
+    expect(suiteChecksFailed(legacy)).toBe(false)
+    version.composition.layersSnapshot = fixture.version.composition.layersSnapshot
+    const layered = checkSuiteVersion(project, slot, version, asset, output)
+    expect(layered.find(check => check.ruleId === 'renderer.version')).toMatchObject({ state: 'fail', evidence: 'suite-base-v1' })
+    expect(suiteChecksFailed(layered)).toBe(true)
+    version.composition.layersSnapshot = []
+    version.composition.rendererVersion = 'suite-unknown-v9'
+    const unknown = checkSuiteVersion(project, slot, version, asset, output)
+    expect(unknown.find(check => check.ruleId === 'renderer.version')).toMatchObject({ state: 'fail', evidence: 'suite-unknown-v9', advice: '当前客户端不支持该渲染器，请更新客户端' })
+    expect(suiteChecksFailed(unknown)).toBe(true)
+  })
   it('实际编码结果不能使用请求中的格式或像素代替，错误文件确定失败', () => {
     const actual = { mimeType: 'image/jpeg', width: 2000, height: 2000, bytes: 1000, checksum: 'a'.repeat(64) }
     expect(suiteChecksFailed(checkSuiteEncoded(output, actual))).toBe(false)
