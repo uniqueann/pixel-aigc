@@ -16,12 +16,18 @@ function SuiteList({ actor, client, signal }: { actor: SuiteActor; client: Suite
   const [list, setList] = useState<SuiteProjectList>()
   const [cursor, setCursor] = useState('1')
   const [deleted, setDeleted] = useState(false)
+  const [observedAt, setObservedAt] = useState(Date.now)
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const navigate = useNavigate()
   const { message } = App.useApp()
-  const refresh = useCallback(() => client.list(cursor, deleted).then(result => { if (!signal.aborted) setList(result) }), [client, cursor, deleted, signal])
+  const refresh = useCallback(() => client.list(cursor, deleted).then(result => { if (!signal.aborted) { setList(result); setObservedAt(Date.now()) } }), [client, cursor, deleted, signal])
+  useEffect(() => {
+    if (!deleted) return
+    const timer = setInterval(() => setObservedAt(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [deleted])
   useEffect(() => { void refresh().catch(error => { if (!signal.aborted) setError(error.message) }) }, [refresh, signal])
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true); setError('')
@@ -35,14 +41,15 @@ function SuiteList({ actor, client, signal }: { actor: SuiteActor; client: Suite
       <Button type="primary" disabled={busy} onClick={() => setCreating(true)}>新建套图项目</Button>
       <RecoveryImport actor={actor} client={client} onImported={id => navigate(`/ecommerce/${id}`)} />
     </div></div>
-    <Alert type="info" showIcon message="从商品资料到完整成品版本" description="先确认槽位计划与费用，再选择结果、编辑文字和尺寸线；可进入工作站处理并显式回填。平台预检与批量导出将在后续阶段接入。" />
+    <Alert type="info" showIcon message="从商品资料到成品导出" description="先确认槽位计划与费用，再选择结果、编辑文字和尺寸线；可进入工作站处理并显式回填，最后进行平台预检与成品导出。" />
     {error && <Alert type="error" message={error} action={<Button onClick={() => { void run(refresh) }}>重试读取</Button>} />}
     {!list ? <Spin /> : !list.items.length ? <Empty description={deleted ? '回收站为空' : '还没有套图项目'} /> : <div className="suite-project-grid">
       {list.items.map(({ project, readySlots, enabledSlots, baseReady }) => <article className="suite-project-card" key={project.id}>
         <div><Tag>{project.config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'}</Tag><Tag>{SUITE_CATEGORY_TEMPLATES[project.config.subcategory].label}</Tag></div>
         <h3>{project.config.title}</h3><p>{readySlots}/{enabledSlots} 个启用槽位有底图</p>
         {!baseReady && <p className="suite-muted">待完成主体图上传</p>}<p className="suite-muted">更新于 {new Date(project.updatedAt).toLocaleString()}</p>
-        <div className="suite-actions">{deleted ? <Button disabled={busy} onClick={() => { void run(() => client.restore(project.id)) }}>恢复项目</Button> : <>
+        {deleted && <p className="suite-muted">{project.deletedAt && observedAt - Date.parse(project.deletedAt) >= 7 * 86400000 ? '恢复期已结束，图片将在无原任务引用后清理' : `可恢复至 ${new Date(Date.parse(project.deletedAt!) + 7 * 86400000).toLocaleString()}`}</p>}
+        <div className="suite-actions">{deleted ? <Button disabled={busy || Boolean(project.deletedAt && observedAt - Date.parse(project.deletedAt) >= 7 * 86400000)} onClick={() => { void run(() => client.restore(project.id)) }}>恢复项目</Button> : <>
           <Button type="primary" onClick={() => navigate(`/ecommerce/${project.id}`)}>打开项目</Button>
           <Button disabled={busy || !baseReady} onClick={() => { void run(async () => { const copy = await copySuite(client, await client.get(project.id)); message.success('配置和图片已复制，未生成或扣费'); navigate(`/ecommerce/${copy.id}`) }) }}>复制配置</Button>
           <Button danger disabled={busy} onClick={() => Modal.confirm({ title: '移入回收站？', content: '七天内可恢复；已提交原任务继续按原规则收口与结算。', okText: '移入回收站', cancelText: '取消', onOk: () => run(() => client.recycle(project.id)) })}>移入回收站</Button>

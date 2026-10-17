@@ -21,7 +21,8 @@ export function createSqlStore(sql: Transaction, userId: string, media: 'image' 
     async suiteAssetReady(key) {
       const [row] = await sql`select 1 from aigc.suite_assets a join aigc.suite_projects p
         on p.id=a.project_id and p.user_id=a.user_id and p.scope=a.scope
-        where a.user_id=${userId} and a.scope=${scope} and a.object_key=${key} and a.status='ready' and p.deleted_at is null`
+        where a.user_id=${userId} and a.scope=${scope} and a.object_key=${key} and a.status='ready' and a.purged_at is null
+          and p.deleted_at is null and p.purge_started_at is null for update of p`
       return Boolean(row)
     },
     async findById(id) {

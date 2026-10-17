@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { authorizeSuiteMaintenance } from './maintenance-route'
+import { authorizeSuiteCleanup, authorizeSuiteMaintenance } from './maintenance-route'
 import { ecommerceSuiteDispatchReady } from './config'
 
 beforeEach(() => {
@@ -12,6 +12,14 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 describe('套图内部维护范围与首发保护', () => {
+  it('清理使用独立开关与密钥校验，入口关闭不影响显式启用的清理', () => {
+    expect(() => authorizeSuiteCleanup('Bearer 套图维护密钥', { scope: 'preview' })).toThrow('尚未启用')
+    vi.stubEnv('ECOMMERCE_SUITE_CLEANUP_ENABLED', 'true')
+    vi.stubEnv('ECOMMERCE_SUITE_ENABLED', 'false')
+    expect(() => authorizeSuiteCleanup('Bearer 套图维护密钥', { scope: 'preview' })).not.toThrow()
+    expect(() => authorizeSuiteCleanup('Bearer 用户令牌', { scope: 'preview' })).toThrow('未授权')
+    expect(() => authorizeSuiteCleanup('Bearer 套图维护密钥', { scope: 'production' })).toThrow('环境不匹配')
+  })
   it('正确独立密钥与同环境可以通过，不接受普通账号令牌', () => {
     expect(() => authorizeSuiteMaintenance('Bearer 套图维护密钥', { scope: 'preview' })).not.toThrow()
     expect(() => authorizeSuiteMaintenance('Bearer 用户令牌', { scope: 'preview' })).toThrow('未授权')

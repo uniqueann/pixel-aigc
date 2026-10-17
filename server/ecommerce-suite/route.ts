@@ -5,7 +5,8 @@ import { createSuiteBatch, findSuiteBatch, quoteSuite } from './generation.js'
 import { createSuite, findSuiteByRequest, getSuite, listSuites, listSuiteVersions, recycleSuite, saveSuiteDraft, selectSuiteVersion, updateSuite } from './projects.js'
 import { registerSuiteResults } from './results.js'
 import type { SuiteUser } from './repository.js'
-import { ecommerceSuiteDispatchReady, ecommerceSuiteEnabled } from './config.js'
+import { ecommerceSuiteDispatchReady, ecommerceSuiteEnabled, ecommerceSuiteExportEnabled } from './config.js'
+import { precheckSuite } from './precheck.js'
 import { readSuiteBatch, stopSuiteBatch } from './batches.js'
 import { saveSuiteVersion } from './versions.js'
 import { createSuiteBridge, readSuiteBridge, returnSuiteBridge } from './bridges.js'
@@ -29,6 +30,10 @@ export async function handleEcommerceSuiteRoute(user: SuiteUser, method: string,
     if (method === 'DELETE') return { body: await recycleSuite(user, id, false) }
   }
   if (path.length === 4) {
+    if (path[3] === 'prechecks' && method === 'POST') {
+      if (!ecommerceSuiteExportEnabled()) throw new HttpError(503, '平台预检与批量导出暂未开放', 'SUITE_EXPORT_DISABLED')
+      return { body: await precheckSuite(user, id, body) }
+    }
     if (path[3] === 'restore-snapshot' && method === 'POST') return { body: await restoreSuiteSnapshot(user, id, body) }
     if (path[3] === 'bridges' && method === 'POST') return { status: 201, body: await createSuiteBridge(user, id, body) }
     if (path[3] === 'restore' && method === 'POST') return { body: await recycleSuite(user, id, true) }

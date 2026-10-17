@@ -58,7 +58,7 @@ export function findSuiteByRequest(user: SuiteUser, requestId: string) {
 }
 export function listSuites(user: SuiteUser, page: number, deleted = false): Promise<SuiteProjectList> {
   return suiteTransaction(user, async sql => {
-    const rows = await sql`select id from aigc.suite_projects where (deleted_at is not null)=${deleted}
+    const rows = await sql`select id from aigc.suite_projects where (deleted_at is not null)=${deleted} and purge_started_at is null
       order by updated_at desc,id desc limit 21 offset ${(page - 1) * 20}`
     const items: SuiteProjectList['items'] = []
     for (const row of rows.slice(0, 20)) {
@@ -132,7 +132,8 @@ export function listSuiteVersions(user: SuiteUser, id: string, slotId: string, b
 export function recycleSuite(user: SuiteUser, id: string, restore: boolean) {
   return suiteTransaction(user, async sql => {
     const row = await requireSuite(sql, id, true, true)
-    if (restore && row.deleted_at && Date.now() - new Date(row.deleted_at).getTime() > 7 * 86400000)
+    const [valid] = await sql`select deleted_at is null or deleted_at>clock_timestamp()-interval '7 days' as restorable from aigc.suite_projects where id=${id}`
+    if (restore && !valid.restorable)
       throw new HttpError(410, '项目已超过七天恢复期限', 'SUITE_NOT_FOUND')
     await sql`update aigc.suite_projects set deleted_at=${restore ? null : row.deleted_at ?? new Date()},updated_at=now() where id=${id}`
     if (!restore) {

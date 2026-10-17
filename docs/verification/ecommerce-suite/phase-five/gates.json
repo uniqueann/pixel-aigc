@@ -1,0 +1,143 @@
+{
+  "kind": "phase_five_local_gates",
+  "checkedAt": "2026-10-17T11:08:38.709991+00:00",
+  "worktreeBaseCommit": "6cac7f9aa1d5dd3413958618c8e0f563e50c8e42",
+  "branch": "feat/ecommerce-suite-phase-five",
+  "fullTests": {
+    "command": "npm test",
+    "files": 287,
+    "tests": 1890,
+    "exitCode": 0,
+    "unhandledErrors": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "exitCode": 0,
+    "notes": "保留既有 Rollup 注释、混合导入与大包提示"
+  },
+  "lint": {
+    "command": "npm run lint",
+    "exitCode": 0
+  },
+  "contracts": {
+    "command": "npm run check:ecommerce-suite:phase-one",
+    "examples": 21,
+    "templates": 3,
+    "localLinks": 81,
+    "prototypeSha256": "4a100dba9c3dc120c2c9d8bb1639b653cdfaf365bebf0e44b304a5986670e048",
+    "exitCode": 0
+  },
+  "postgres": {
+    "checks": 31,
+    "actualApplicationRole": "aigc_api",
+    "fullMigrationChain": true,
+    "provider": "mock",
+    "objectStorage": "in_memory",
+    "timeBoundariesAccelerated": true,
+    "exitCode": 0
+  },
+  "advisors": {
+    "exitCode": 0,
+    "existingWarnings": 21,
+    "suiteFindings": 0
+  },
+  "browser": {
+    "checks": 5,
+    "identity": "local_fixture",
+    "http": "real_local_business_routes",
+    "database": "isolated_postgres",
+    "objectStorage": "in_memory",
+    "uncaughtErrors": 0,
+    "unexpectedConsoleErrors": 0,
+    "controlledObject503": 1,
+    "taskSubmissions": 0,
+    "encodedFiles": {
+      "png": {
+        "width": 1200,
+        "height": 1000,
+        "previewPixelsIdentical": true
+      },
+      "jpeg": {
+        "width": 2000,
+        "height": 2000,
+        "cornerWhite": true
+      },
+      "webp": {
+        "width": 4096,
+        "height": 3413
+      }
+    },
+    "viewports": [
+      "1440x1000",
+      "1280x720",
+      "900x800",
+      "390x844",
+      "375x667"
+    ]
+  },
+  "phaseFiveExitPassed": false,
+  "realProductSamples": {
+    "required": 9,
+    "received": 0,
+    "accepted": 0
+  },
+  "officialRules": {
+    "publicTechnicalReviewedAt": "2026-10-17",
+    "source": "https://sell.amazon.com/blog/product-photos",
+    "sellerCategoryVerified": false,
+    "unverifiedContentState": "unknown"
+  },
+  "targetEnvironment": {
+    "verified": false,
+    "migrationAppliedByThisRun": false,
+    "realAuthVerified": false,
+    "realR2Verified": false,
+    "realProviderBillingVerified": false,
+    "schedulerVerified": false,
+    "rollbackDrillVerified": false,
+    "featureEnabled": null,
+    "featureDefaults": "disabled",
+    "remoteConfigurationChanged": false,
+    "paidTaskSubmissions": 0,
+    "testCreditBudgetConfirmed": false
+  },
+  "sourceHashes": {
+    ".env.example": "34e097311ce02f802a88bd48b2b697ddc5d30c75b7fa9fcac77e01dfc0f108f3",
+    "public/fonts/NotoSans.woff2": "e3a326bcaefd5b63320939d4cadbcd0a49a2243bf74ed8320dd12be1373384c5",
+    "public/fonts/NotoSansSC.woff2": "d47a208f209133cfe6b3a4cb64308908dfb092ab5377b7d834a92ab18c30d19b",
+    "public/fonts/OFL-NotoSans.txt": "e2e177a32561584d4fc13aaa3cd8e53758a12910f013fe9ca125419111722029",
+    "public/fonts/OFL-NotoSansSC.txt": "babcfe66c8a098b2fa279bc724a3a342f8124f77ce18941fbcc1bbb39823cded",
+    "public/fonts/README.md": "0d3c1430835d73e0286b15515cb9accb8267076aa46abe16a6a754ce18510558",
+    "scripts/ecommerce-suite-postgres-check.ts": "57a351e1b1c124db7e604a6ddcea1cf64933738130fa975773760b8c19d1feb6",
+    "server/ecommerce-suite/assets.ts": "7c5c21a692b246a267a2d4ec060287e3a147012a708c63230f8b24f9084205fd",
+    "server/ecommerce-suite/bridge-task.ts": "90a9b875a33cf72c703ee8c067be832fe2c19844f25083953dfe7ac6f62c321b",
+    "server/ecommerce-suite/bridges.ts": "dc19b24a53fdcd8bca6ea1c00a506e75646ae119c62f2cba28c46b6193b87a77",
+    "server/ecommerce-suite/cleanup.ts": "e2d0add232eeee300843de97ddcb7da8f2859ae5336590e8c5f042ddb8f7ad58",
+    "server/ecommerce-suite/config.ts": "a4cc38b01d403c9072bc43fe7cd0dc9a5af4b63bc92517e0f3f01e0b63710de9",
+    "server/ecommerce-suite/maintenance-route.test.ts": "78aae2f4f5e0c3ddeac7a6afe95d2b268eaa9e4b60f153bad4b2f8ebeaa67549",
+    "server/ecommerce-suite/maintenance-route.ts": "37c8404d411797eeef22ab5ef26e78807134cdc7e189c9a0b45814001c474e51",
+    "server/ecommerce-suite/object-writes.ts": "68cf3865e1b6ccd5fe19e743beb98e25adc267bd222bb7e1008c74bea9fffc05",
+    "server/ecommerce-suite/precheck.ts": "7a0c1f12bc14327237bdb6d492421532b77b08e8c2b1733dd8b2fc8c020e6d1e",
+    "server/ecommerce-suite/projects.ts": "e21e695820da49e7422ea0887921c7bf29971876b688e221ca5ebc14136af752",
+    "server/ecommerce-suite/repository.ts": "ce2ee484a2010adb9f0508fadc1a903f1ef33d7fdae455b626923af489d42242",
+    "server/ecommerce-suite/results.ts": "6f794d217eeec9e15c612f4d6586b1b25fcace0dd1122f78f82a64257f0a7bea",
+    "server/ecommerce-suite/route.test.ts": "5aff049b76087559c67d9d2c46ae20a4626ffd6b02f84a79abf48c1226df1e07",
+    "server/ecommerce-suite/route.ts": "ac73eb6735d9e12010f5b06a074477a1cd50445e7844afd6f7e022f7fe16264d",
+    "server/handler.ts": "26b4dde00ea12b81b48194234f521b7519b2eca089eac0b6426e83f80a78ffcf",
+    "server/image-jobs/repository.ts": "1b711ddbb59606cccb9d58d4c114068055ea1f4a973199b290ff1dbf4323e9e5",
+    "server/sync-billing.ts": "0e1d67574e4cfdab4a21c4cf7b5b4e4c1fd680863d60c0bda7d676d70fa00750",
+    "shared/ecommerce-suite-precheck.test.ts": "ebd589c744c8e3fab4b32d7e4a319aa538f5a9beb2a96e2cb65b0d48b035833c",
+    "shared/ecommerce-suite-precheck.ts": "4e60782e11f1dd7f1a521f8a689636acebb4ba85d1dbc30b1a865e3651259c76",
+    "src/features/ecommerce-suite/ExportPanel.tsx": "2bd7222bc1c523c7b7bf776c79f66516a4c66c00c5001d34ae69611397f968cd",
+    "src/features/ecommerce-suite/ProductFields.tsx": "7a26750af6e4192b883a9431cbb60795ecfc40e5520032b3af80ec807488e3d7",
+    "src/features/ecommerce-suite/SuiteWorkspace.tsx": "66a156c2151013c9ffcfe4735b7bfc39a61bb777f50ee92cca3fb637abdeb22b",
+    "src/features/ecommerce-suite/api.ts": "d36a9ceafb2796710dac77c1a21a1eac1a98dfb82bfaff33c17c23b305ccfadc",
+    "src/features/ecommerce-suite/config.ts": "158c65d41e5afed6d01be6122ec6f72f04eaf745f7288c8c16aba55e0f616917",
+    "src/features/ecommerce-suite/export.test.ts": "78a5ce1e7be10d0fdee08fad34d1469591674ad210ed78cbdac2b125825ea294",
+    "src/features/ecommerce-suite/export.ts": "08bd348b20922a63974534887946d74ff2d7968e7d2b08a43f7f8b46a9489a65",
+    "src/features/ecommerce-suite/render.ts": "320117caaf16e88be671262208bdf3ae0c5d92778f5d1efbd3b86e42953a14a4",
+    "src/pages/EcommerceSuite/index.tsx": "819172748aa79b91fc0bcd940d0963eeee23c52f97c4f367977b09b8a093efde",
+    "src/pages/EcommerceSuite/style.css": "9f77894e452d05052c1d3dcd14686c1c388966c4dc3cd6c5026fa9742b4c504e",
+    "supabase/migrations/20261017104906_ecommerce_suite_phase_five.sql": "b98333bb62e36e86fad0f2220b0721382e13a12afa6562019f6cefd598d2e200"
+  }
+}

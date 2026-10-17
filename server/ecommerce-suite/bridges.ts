@@ -4,6 +4,7 @@ import { scaleSuiteComposition, suiteMainLocked } from '../../shared/ecommerce-s
 import { HttpError } from '../errors.js'
 import { inspectSuiteImage, suiteObjectKey, suiteStorage } from './assets.js'
 import { actor, assertRevision, fingerprint, readSuite, readyAsset, requireSuite, suiteTransaction, type SuiteUser } from './repository.js'
+import { beginSuiteObjectWrite } from './object-writes.js'
 
 export function createSuiteBridge(user: SuiteUser, projectId: string, body: unknown) {
   const request = suiteCreateBridgeRequestSchema.parse(body)
@@ -92,7 +93,8 @@ export async function returnSuiteBridge(user: SuiteUser, bridgeId: string, body:
   const digest = fingerprint({ projectId: bridge.projectId, application })
   const assetId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`
   const objectKey = suiteObjectKey(user, bridge.projectId, assetId, inspected.checksum, inspected.mimeType)
-  await storage.put(objectKey, bytes, inspected.mimeType)
+  await beginSuiteObjectWrite(user, bridge.projectId, objectKey)
+  await storage.put(objectKey, bytes, inspected.mimeType, AbortSignal.timeout(20_000))
   return suiteTransaction(user, async sql => {
     await requireSuite(sql, bridge.projectId, true)
     const [lease] = await sql`select expires_at>clock_timestamp() as valid from aigc.suite_bridges where id=${bridge.id}`

@@ -21,6 +21,7 @@ import { useSuiteSlotEditor, suiteDraftComposition } from './useSuiteSlotEditor'
 import SuiteCanvas from './SuiteCanvas'
 import LayerPanel from './LayerPanel'
 import { encodeSuiteImage } from './render'
+import ExportPanel from './ExportPanel'
 
 export default function SuiteWorkspace({ id, actor, client, signal }: { id: string; actor: SuiteActor; client: SuiteClient; signal: AbortSignal }) {
   const [params, setParams] = useSearchParams()
@@ -34,7 +35,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
   const [retrySelection, setRetrySelection] = useState<SuiteRetrySelection>()
   const [tab, setTab] = useState('generate')
   const [selectedLayerId, setSelectedLayerId] = useState<string>()
-  const [exportFormat, setExportFormat] = useState<'png' | 'jpeg'>('png')
+  const [exportSelection, setExportSelection] = useState<{ slotId?: string }>()
   const [bridgeOpen, setBridgeOpen] = useState(false)
   const [bridgeTool, setBridgeTool] = useState<SuiteBridge['tool']>('smart-edit')
   const [bridgeMode, setBridgeMode] = useState<'base' | 'composite'>('base')
@@ -91,15 +92,15 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
     await workspace.load()
     return saved
   }
-  const download = async () => {
-    if (original) throw new Error('请选择成品版本')
-    const saved = await saveComposition()
-    const source = data.assets.find(item => item.assetId === saved.assetId)
-    if (!source) throw new Error('成品底图不可用，请重新读取')
-    if (mainLocked && saved.composition.layersSnapshot.length) throw new Error('Amazon 主图禁止叠加图层')
-    const blob = await encodeSuiteImage(await backupAssetBlob(actor, source, signal), saved.composition, exportFormat, mainLocked ? '#ffffff' : undefined)
-    client.assertCurrent()
-    downloadBlob(blob, suiteFilename(config.title, slot.name, saved.versionNumber, saved.composition.renderSize, `image/${exportFormat}`))
+  const prepareExport = async (slotIds: string[]) => {
+    await flushEditing()
+    for (const id of slotIds) {
+      const current = data.project.slotHeads.find(head => head.slotId === id)?.activeVersionId
+      if (current) await slotEditor.saveVersion(id)
+    }
+    const saved = await workspace.load()
+    if (!saved) throw new Error('项目已变化，请重新读取后导出')
+    return saved
   }
   const openBridge = async () => {
     const saved = await saveComposition()
@@ -132,8 +133,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       <div ref={previewRef} className={`suite-preview${sticky ? ' suite-preview-sticky' : ''}`}>
         <div className="suite-preview-heading"><strong>{slot.name}</strong><div className="suite-actions">
           <Button size="small" onClick={() => setOriginal(value => !value)}>{original ? '查看当前成品' : '对照商品原图'}</Button>
-          <Button size="small" disabled={!version || original || workspace.busy} onClick={() => { void workspace.run(download).catch(reportError) }}>下载当前成品</Button>
-          <Select aria-label="单图导出格式" size="small" value={exportFormat} options={[{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }]} onChange={setExportFormat} />
+          <Button size="small" disabled={!version || original || blocked} onClick={() => setExportSelection({ slotId: slot.id })}>下载当前成品</Button>
           <Button size="small" disabled={!version || blocked} onClick={() => setBridgeOpen(true)}>工作站编辑</Button>
         </div></div>
         <div className="suite-stage">{asset && composition && !original ? <SuiteCanvas asset={asset} composition={composition} client={client} signal={signal}
@@ -149,7 +149,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
             <span className="suite-thumbnail">{thumbnail ? <SuiteImage asset={thumbnail} client={client} offline={workspace.offline} alt={item.name} /> : <span>{item.order + 1}</span>}</span><strong>{item.name}</strong><small>{state}</small>
           </button>
         })}</div>
-        <p className="suite-muted">{workspace.backupState}。单图下载使用完整图层快照与固定字体；平台预检和批量导出将在第五阶段接入。</p>
+        <p className="suite-muted">{workspace.backupState}。单图与成品包共用固定字体和完整图层，导出前检查实际文件。</p>
       </div>
       <section className="suite-settings">
         <Tabs activeKey={tab} onChange={setTab} items={[
@@ -182,7 +182,11 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       </section>
     </div>
     <div ref={footerRef} className="suite-footer"><span>{data.project.slotHeads.filter(head => head.activeVersionId && config.slots.some(slot => slot.id === head.slotId && slot.enabled)).length} / {config.slots.filter(slot => slot.enabled).length} 个启用槽位有底图</span>
-      <span>{active ? '服务端批次处理中，可查看已有成品' : '槽位独立版本 · 失败仅手动重试'}</span><Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).catch(reportError) }}>立即保存草稿</Button></div>
+      <span>{active ? '服务端批次处理中，可查看已有成品' : '槽位独立版本 · 失败仅手动重试'}</span><Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).catch(reportError) }}>立即保存草稿</Button>
+      <Button type="primary" disabled={blocked} onClick={() => setExportSelection({})}>平台预检／批量导出</Button></div>
+    {exportSelection && <ExportPanel actor={actor} data={data} client={client} signal={signal} initialSlotId={exportSelection.slotId}
+      liveKey={JSON.stringify([config, data.project.slotHeads, [...slotEditor.records].map(([id, record]) => [id, record.value])])}
+      prepare={prepareExport} onClose={() => setExportSelection(undefined)} />}
     <BatchPanel data={data} disabled={blocked} focusedBatchId={focusedBatchId} onStop={batchId => { void workspace.run(async () => { await client.stop(id, batchId); await workspace.load() }).catch(reportError) }}
       onRetry={selection => { setRetrySelection(selection); setPlanOpen(true) }} />
     {planOpen && <BatchPlanPanel data={data} client={client} retry={retrySelection} blocked={blocked} flush={flushEditing}

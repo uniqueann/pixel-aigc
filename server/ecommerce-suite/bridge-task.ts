@@ -10,7 +10,7 @@ export async function validateSuiteBridgeTask(sql: Transaction, origin: TaskOrig
   if (!ecommerceSuiteEnabled()) throw new HttpError(503, '电商套图暂未开放', 'SUITE_DISABLED')
   const [row] = await sql`select b.snapshot,a.object_key,p.deleted_at,b.expires_at>clock_timestamp() as valid
     from aigc.suite_bridges b join aigc.suite_assets a on a.project_id=b.project_id and a.id=b.source_asset_id and a.status='ready'
-    join aigc.suite_projects p on p.id=b.project_id where b.id=${origin.suiteBridgeId}`
+    join aigc.suite_projects p on p.id=b.project_id where b.id=${origin.suiteBridgeId} and p.purge_started_at is null for update of p`
   if (!row || row.deleted_at) throw new HttpError(404, '桥接来源不可用，请先恢复项目或重新进入工作站', 'SUITE_NOT_FOUND')
   const bridge = suiteBridgeSchema.parse(row.snapshot)
   if (!row.valid) throw new HttpError(410, '工作站会话已过期，请回套图重新创建会话', 'SUITE_BRIDGE_EXPIRED')
