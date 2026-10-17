@@ -1,5 +1,6 @@
 import quickstart from '../../../docs/help/quickstart.md?raw'
 import credits from '../../../docs/help/credits.md?raw'
+import ecommerceSuite from '../../../docs/help/ecommerce-suite.md?raw'
 import bgRemove from '../../../docs/help/bg-remove.md?raw'
 import workstation from '../../../docs/help/workstation.md?raw'
 import emailAssistant from '../../../docs/help/email-assistant.md?raw'
@@ -21,6 +22,7 @@ export const HELP_ARTICLE_GROUPS = ['快速上手', '使用指南', '费用与�
 export const HELP_ARTICLES: HelpArticle[] = [
   { slug: 'quickstart', title: '快速上手', group: '快速上手', body: quickstart },
   { slug: 'credits', title: '积分与计费说明', group: '费用与账号', body: credits },
+  { slug: 'ecommerce-suite', title: '电商套图使用指南', group: '使用指南', body: ecommerceSuite },
   { slug: 'bg-remove', title: '智能抠图使用指南', group: '使用指南', body: bgRemove },
   { slug: 'workstation', title: '图片工作站总览', group: '使用指南', body: workstation },
   { slug: 'toolbox', title: '工具箱使用指南', group: '使用指南', body: toolbox },
