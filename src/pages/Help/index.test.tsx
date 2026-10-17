@@ -48,6 +48,13 @@ describe('帮助中心', () => {
     expect(screen.getByText(/只按实际成功的张数结算/)).toBeTruthy()
   })
 
+  it('渲染电商套图使用指南并包含关键步骤', () => {
+    renderHelp('/help/ecommerce-suite')
+    expect(screen.getByRole('heading', { name: '电商套图使用指南' })).toBeTruthy()
+    expect(screen.getByText(/完整业务流程/)).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '第五步：合规预检与成品导出' })).toBeTruthy()
+  })
+
   it('未知 slug 回退到第一篇', () => {
     renderHelp('/help/not-exist')
     expect(screen.getByRole('heading', { name: HELP_ARTICLES[0].title })).toBeTruthy()
