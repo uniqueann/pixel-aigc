@@ -9,6 +9,7 @@ import { suiteClient, type SuiteClient } from '@/features/ecommerce-suite/api'
 import { copySuite } from '@/features/ecommerce-suite/copy'
 import CreateSuite from '@/features/ecommerce-suite/CreateSuite'
 import SuiteWorkspace from '@/features/ecommerce-suite/SuiteWorkspace'
+import RecoveryImport from '@/features/ecommerce-suite/RecoveryImport'
 import './style.css'
 
 function SuiteList({ actor, client, signal }: { actor: SuiteActor; client: SuiteClient; signal: AbortSignal }) {
@@ -32,8 +33,9 @@ function SuiteList({ actor, client, signal }: { actor: SuiteActor; client: Suite
     <div className="suite-page-heading"><div><h2>电商套图</h2><p>从真实商品图开始，逐槽位制作场景和商品展示底图。</p></div><div className="suite-actions">
       <Button onClick={() => { setCursor('1'); setDeleted(value => !value) }}>{deleted ? '返回项目' : '回收站'}</Button>
       <Button type="primary" disabled={busy} onClick={() => setCreating(true)}>新建套图项目</Button>
+      <RecoveryImport actor={actor} client={client} onImported={id => navigate(`/ecommerce/${id}`)} />
     </div></div>
-    <Alert type="info" showIcon message="当前支持单槽位处理" description="先保存商品资料，再逐项确认生成费用。整套后台派发、图层编辑与平台预检将按计划接入。" />
+    <Alert type="info" showIcon message="从商品资料到完整成品版本" description="先确认槽位计划与费用，再选择结果、编辑文字和尺寸线；可进入工作站处理并显式回填。平台预检与批量导出将在后续阶段接入。" />
     {error && <Alert type="error" message={error} action={<Button onClick={() => { void run(refresh) }}>重试读取</Button>} />}
     {!list ? <Spin /> : !list.items.length ? <Empty description={deleted ? '回收站为空' : '还没有套图项目'} /> : <div className="suite-project-grid">
       {list.items.map(({ project, readySlots, enabledSlots, baseReady }) => <article className="suite-project-card" key={project.id}>

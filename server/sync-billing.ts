@@ -6,6 +6,7 @@ import { insufficientCreditsMessage } from '../shared/credits.js'
 import { withIdentity } from './db.js'
 import { HttpError } from './errors.js'
 import { signRead } from './storage.js'
+import { validateSuiteBridgeTask } from './ecommerce-suite/bridge-task.js'
 
 export const syncQuoteSchema = z.object({ requestId: z.uuid(), priceVersion: z.string().max(80), maxCredits: z.number().int().min(0).max(10) }).strict()
 interface BillingUser { id: string; email: string }
@@ -34,6 +35,7 @@ export async function withSyncCredits(
   if (quote.maxCredits < amount || (operation === 'outpaint' && amount !== 5 && amount !== 10))
     throw new HttpError(409,'本次操作的积分报价不一致，请重新确认','PRICE_CHANGED')
   const job = await withIdentity(user.id,user.email,async sql => {
+    await validateSuiteBridgeTask(sql, origin, input.sourceImageKey, quote.requestId, 'sync_credit')
     await sql`select aigc.expire_sync_credits()`
     const [row] = await sql`select aigc.reserve_sync_credits(${quote.requestId},${operation},${fingerprint(input)},${quote.priceVersion},${amount},${origin ? sql.json(origin) : null}) as job`
     return row.job as Record<string,unknown>

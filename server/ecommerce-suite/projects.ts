@@ -5,6 +5,7 @@ import type { SuiteProjectDetail, SuiteProjectList } from '../../shared/ecommerc
 import { taskRepository } from '../task-center/repository.js'
 import { HttpError } from '../errors.js'
 import { actor, assertRevision, fingerprint, readSuite, requireSuite, suiteTransaction, toSuiteAsset, validateTemplate, type SuiteUser } from './repository.js'
+import { suiteMainLocked } from '../../shared/ecommerce-suite-annotations.js'
 
 export async function createSuite(user: SuiteUser, body: unknown) {
   const request = suiteCreateProjectRequestSchema.parse(body)
@@ -75,6 +76,7 @@ export function getSuite(user: SuiteUser, id: string): Promise<SuiteProjectDetai
     const assets = (await sql`select * from aigc.suite_assets where project_id=${id} and status='ready'`).map(toSuiteAsset)
     const versions = (await sql`select snapshot from aigc.suite_versions where project_id=${id}
       and (id in (select active_version_id from aigc.suite_slots where project_id=${id})
+        or id in (select nullif(draft->>'baseVersionId','')::uuid from aigc.suite_slots where project_id=${id})
         or id in (select id from aigc.suite_versions where project_id=${id} order by created_at desc limit 28)) order by created_at desc`).map(row => suiteVersionSchema.parse(row.snapshot))
     const drafts = (await sql`select id,draft,draft_revision from aigc.suite_slots where project_id=${id}`).map(row => ({ slotId: String(row.id), revision: Number(row.draft_revision), value: row.draft ? suiteSaveDraftRequestSchema.parse(row.draft) : null }))
     const batches = (await sql`select snapshot from aigc.suite_batches where project_id=${id} order by created_at desc limit 30`).map(row => suiteBatchSchema.parse(row.snapshot))
@@ -89,9 +91,12 @@ export function saveSuiteDraft(user: SuiteUser, id: string, slotId: string, body
   const request = suiteSaveDraftRequestSchema.parse(body)
   return suiteTransaction(user, async sql => {
     await requireSuite(sql, id, true)
-    const [slot] = await sql`select draft_revision from aigc.suite_slots where project_id=${id} and id=${slotId} for update`
+    const project = await readSuite(sql, id)
+    const [slot] = await sql`select draft_revision,draft from aigc.suite_slots where project_id=${id} and id=${slotId} for update`
     if (!slot) throw new HttpError(404, '槽位不存在', 'SUITE_NOT_FOUND')
     assertRevision(slot.draft_revision, request.expectedDraftRevision)
+    if (suiteMainLocked(project.config, project.config.slots.find(item => item.id === slotId)!) && request.layers.length && fingerprint(slot.draft?.layers ?? []) !== fingerprint(request.layers))
+      throw new HttpError(409, 'Amazon 主图的叠加图层已锁定，原草稿仍保留', 'SUITE_MAIN_LOCKED')
     if (request.baseVersionId && !(await sql`select 1 from aigc.suite_versions where project_id=${id} and slot_id=${slotId} and id=${request.baseVersionId}`).length)
       throw new HttpError(400, '草稿基准不属于当前槽位', 'SUITE_RESULT_CONFLICT')
     await sql`update aigc.suite_slots set draft=${sql.json(request as never)},draft_revision=draft_revision+1 where id=${slotId} and project_id=${id}`
@@ -108,6 +113,10 @@ export function selectSuiteVersion(user: SuiteUser, id: string, slotId: string, 
     if (!(await sql`select 1 from aigc.suite_versions v join aigc.suite_assets a on a.id=v.asset_id and a.project_id=v.project_id
       where v.id=${request.versionId} and v.project_id=${id} and v.slot_id=${slotId} and a.status='ready'`).length)
       throw new HttpError(409, '候选版本不可用或不属于当前槽位', 'SUITE_RESULT_CONFLICT')
+    const project = await readSuite(sql, id)
+    const [candidate] = await sql`select snapshot from aigc.suite_versions where id=${request.versionId} and project_id=${id} and slot_id=${slotId}`
+    if (suiteMainLocked(project.config, project.config.slots.find(item => item.id === slotId)!) && suiteVersionSchema.parse(candidate.snapshot).composition.layersSnapshot.length)
+      throw new HttpError(409, 'Amazon 主图不能选用带叠加图层的版本，历史仍保留', 'SUITE_MAIN_LOCKED')
     await sql`update aigc.suite_slots set active_version_id=${request.versionId},head_revision=head_revision+1 where id=${slotId} and project_id=${id}`
     return readSuite(sql, id)
   })

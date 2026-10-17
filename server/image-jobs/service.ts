@@ -68,6 +68,7 @@ import { createSqlStore } from './repository.js'
 import { ImageLeaseLost, sqlImageExecution, type ImageExecutionPort } from './execution.js'
 import { getDeadline } from '@vercel/functions'
 import { taskOriginSchema, validTaskOrigin } from '../../shared/task-center.js'
+import { validateSuiteBridgeTask } from '../ecommerce-suite/bridge-task.js'
 import { imageTaskPollAfterMs } from '../../shared/task-polling.js'
 import { measureImagePhase, observeImagePollHint } from './metrics.js'
 import {
@@ -542,6 +543,11 @@ export async function createImageJobInStore(
   const isFusion = referenceKey.length > 0
   const relight = parsed.capability === 'image_edit' ? readRelight(parsed.params) : undefined
   const isRelight = relight !== undefined
+  if (parsed.origin?.entry === 'workstation' && parsed.origin.suiteBridgeId && (
+    parsed.origin.tool === 'retouch' ? !isRetouch || isRelight || isFusion
+      : parsed.origin.tool === 'relight' ? !isRelight || isRetouch || isFusion
+        : parsed.origin.tool !== 'smart-edit' || isRetouch || isRelight || isFusion))
+    throw new HttpError(400, '桥接工具与实际生成参数不一致', 'INVALID_ORIGIN')
   const sourceKey = parsed.capability === 'text_to_image' ? undefined : parsed.params.sourceImageKey
   for (const key of [sourceKey, referenceKey]) {
     if (key?.startsWith('suite-assets/') && (!isSafeObjectKey(user.id, key) || !await store.suiteAssetReady?.(key)))
@@ -1423,6 +1429,7 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
   const created = await withIdentity(user.id,user.email,async sql => {
     await sql`select set_config('statement_timeout','8000',true),set_config('lock_timeout','5000',true)`
     await requireActive(sql,user.id)
+    await validateSuiteBridgeTask(sql, parsed.origin, parsed.capability === 'text_to_image' ? undefined : parsed.params.sourceImageKey, parsed.requestId, 'image_job')
     await sql`select pg_advisory_xact_lock(91517002)`
     const billingRuntime = { ...bounded,billing: runtime.billing === noopBilling ? createSqlBilling(sql) : runtime.billing }
     return createImageJobInStore(createSqlStore(sql,user.id),user,parsed,billingRuntime)

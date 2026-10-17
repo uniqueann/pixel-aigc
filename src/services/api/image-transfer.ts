@@ -1,6 +1,7 @@
 import { authEnabled, supabase } from '@/cloud/client'
 import { readOwnedImage, OwnedImageReadError } from './ownedImages'
 import type { SyncImageObjectResult } from '@shared/sync-image'
+import type { TaskOrigin } from '@shared/task-center'
 
 export const INLINE_IMAGE_BYTES = Math.floor(3.5 * 1024 * 1024)
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024
@@ -89,6 +90,7 @@ export async function downloadImageResult(payload: SyncImageObjectResult, tool: 
 }
 
 export interface ImageResultReadOptions {
+  origin?: TaskOrigin
   /** 在在线 POST 前传递真实同步请求编号，不改变返回 Blob 的旧接口。 */
   onTaskIdentity?: (requestId: string) => void
   sourceSize?: {width:number;height:number}

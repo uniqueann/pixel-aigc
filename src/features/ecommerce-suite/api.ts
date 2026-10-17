@@ -3,6 +3,10 @@ import { useUserStore } from '@/store/useUserStore'
 import { normalizeImageBlob } from '@shared/image-format'
 import type { SuiteActor, SuiteAssetRef, SuiteBatch, SuiteProject, SuiteProjectConfig, SuiteQuote, SuiteQuoteRequest, SuiteSlotDraft, SuiteSlotVersion } from '@shared/ecommerce-suite'
 import type { SuiteBatchDetail, SuiteProjectDetail, SuiteProjectList } from '@shared/ecommerce-suite-runtime'
+import type { SuiteBridgeDetail } from '@shared/ecommerce-suite-runtime'
+import type { SuiteRestoreSnapshotRequest } from '@shared/ecommerce-suite-recovery'
+import type { z } from 'zod'
+import type { suiteCreateBridgeRequestSchema, suiteSaveVersionRequestSchema, SuiteBridge, SuiteTaskResult } from '@shared/ecommerce-suite'
 
 export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
   const assertCurrent = () => {
@@ -12,7 +16,7 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
   }
   const request = async <T>(path: string, method = 'GET', body?: unknown, timeoutMs?: number): Promise<T> => {
     assertCurrent()
-    const result = await cloudRequest<T>(`/ecommerce/suites${path}`, method, body, { expectedUserId: actor.userId, signal, timeoutMs })
+    const result = await cloudRequest<T>(path.startsWith('/bridges/') ? `/ecommerce${path}` : `/ecommerce/suites${path}`, method, body, { expectedUserId: actor.userId, signal, timeoutMs })
     assertCurrent()
     return result
   }
@@ -34,6 +38,7 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
     assertCurrent, upload,
     list: (cursor = '1', deleted = false) => request<SuiteProjectList>(`?cursor=${cursor}${deleted ? '&deleted=1' : ''}`),
     create: (requestId: string, config: SuiteProjectConfig) => request<SuiteProject>('', 'POST', { requestId, config }),
+    restoreSnapshot: (id: string, value: SuiteRestoreSnapshotRequest) => request<SuiteProject>(`/${id}/restore-snapshot`, 'POST', value, 120000),
     findCreate: (requestId: string) => request<SuiteProject | null>(`/by-request/${requestId}`),
     get: (id: string) => request<SuiteProjectDetail>(`/${id}`),
     update: (id: string, expectedRevision: number, config: SuiteProjectConfig) => request<SuiteProject>(`/${id}`, 'PATCH', { expectedRevision, config }),
@@ -41,6 +46,10 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
     draft: (id: string, slotId: string, value: SuiteSlotDraft) => request<{ slotId: string; revision: number; value: SuiteSlotDraft }>(`/${id}/slots/${slotId}/draft`, 'PATCH', value),
     versions: (id: string, slotId: string, before = '2147483647') => request<{ items: SuiteSlotVersion[]; nextCursor: string | null }>(`/${id}/slots/${slotId}/versions?before=${before}`),
     select: (id: string, slotId: string, versionId: string, expectedHeadRevision: number) => request<SuiteProject>(`/${id}/slots/${slotId}/current`, 'PATCH', { versionId, expectedHeadRevision }),
+    saveVersion: (id: string, slotId: string, value: z.infer<typeof suiteSaveVersionRequestSchema>) => request<{ version: SuiteSlotVersion; project: SuiteProject }>(`/${id}/slots/${slotId}/versions`, 'POST', value),
+    createBridge: (id: string, value: z.infer<typeof suiteCreateBridgeRequestSchema>) => request<SuiteBridge>(`/${id}/bridges`, 'POST', value),
+    bridge: (id: string) => request<SuiteBridgeDetail>(`/bridges/${id}`),
+    returnBridge: (id: string, requestId: string, result: SuiteTaskResult) => request<{ version: SuiteSlotVersion; candidateOnly: boolean; sourceChanged: boolean; sizeChanged?: boolean }>(`/bridges/${id}/results`, 'POST', { requestId, result }),
     quote: (id: string, value: SuiteQuoteRequest) => request<SuiteQuote>(`/${id}/quotes`, 'POST', value),
     submit: (id: string, requestId: string, quote: SuiteQuote) => request<SuiteBatch>(`/${id}/batches`, 'POST', {
       requestId, quoteId: quote.id, expectedRevision: quote.expectedRevision, planFingerprint: quote.planFingerprint, maxCredits: quote.totalCredits,

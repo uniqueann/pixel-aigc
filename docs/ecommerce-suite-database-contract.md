@@ -25,7 +25,7 @@
 | `suite_quotes` | `expected_revision`、`plan_fingerprint`、不可变计划 JSON、`total_credits / expires_at`、`accepted_batch_id` | 报价只接受一次，原请求重放返回原批次；归属＋项目＋ID；过期未接受项可清理 |
 | `suite_batches` | 原请求号／指纹、`quote_id`、配置快照、预算、状态、`dispatch_deadline_at` | 归属＋请求号唯一；quote ID 唯一；项目活动状态局部唯一索引 |
 | `suite_operations` | `batch_id / slot_id / ordinal`、模式、冻结输入、稳定原请求号、阶段、原任务软引用、终态／结果登记快照、租约字段 | 批次＋槽位唯一，归属＋原请求号唯一；待领取时间与状态索引；原结果应用幂等 |
-| `suite_bridges` | 来源槽位／版本、输入资产、来源 head 修订、工具、过期时间、回填记录 JSON | 按归属＋ID 查找；回填事件在 `suite_versions.application_key` 再次唯一保护 |
+| `suite_bridges` | 来源槽位／版本、输入资产、来源 head 修订、工具、过期时间、不可变会话快照 | 按归属＋ID 查找；回填事件在 `suite_versions.application_key` 再次唯一保护 |
 
 `suite_quotes` 是阶段一对总计划表草案的补齐：报价必须由服务端持久保存，批次接受只提交报价身份／指纹，不能接受前端传入的收费计划。报价表不预扣或结算积分。
 
@@ -104,3 +104,11 @@ foreign key (user_id, scope, project_id, id, active_version_id)
 已复核 [Supabase 变更索引](https://supabase.com/changelog)中数据库和连接相关变更；本阶段没有数据库连接、扩展、TLS 或远程状态变更。后续实施迁移前需重新核对目标 PostgreSQL／CLI 版本、变更公告和角色权限。
 
 阶段三实施新增冻结计划、持久租约与受限领取函数，扩展父批次展示权限和清理；详见[阶段三实施](ecommerce-suite-phase-three.md)。实际独立 PostgreSQL 并发与应用角色验证保留于[阶段三证据](verification/ecommerce-suite/phase-three/README.md)，远端迁移与调度尚未执行。
+
+## 6. 阶段四实施
+
+[正式迁移](../supabase/migrations/20261017091705_ecommerce_suite_phase_four.sql)新增 `suite_bridges`、`suite_bridge_returns`、`suite_restore_receipts`，不新增计费状态。会话冻结来源版本、输入资产、工具及七天有效期；回填事件用会话＋原结果＋序号唯一、账号／环境＋回填请求号唯一双重保护；恢复收据保存请求指纹并限制每个新项目仅导入一次。三表仅允许 `aigc_api` 读取与追加，所有关联包含账号、环境和项目，外键引用侧建有索引。
+
+图层保存锁项目及槽位后追加版本，以 `annotation:<requestId>` 去重；相同资产可形成不同图层版本，实质内容不变不新增版本。工作站原任务创建事务在预扣前验证会话与实际输入，来源仍为 workstation；回填 I/O 在事务外，最终追加版本与回填收据处于同一事务，所有回填仅作候选。同步表显式重建依赖旧来源函数 OID 的 CHECK，使可选桥接来源与原 SQL 账本兼容。
+
+本机独立 PostgreSQL 完整迁移链、实际角色、原账本及并发证据见[阶段四验收记录](verification/ecommerce-suite/phase-four/README.md)。未修改远端数据库或公共 Auth 权限。

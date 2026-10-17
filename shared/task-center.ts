@@ -51,6 +51,7 @@ export const taskOriginSchema = z.discriminatedUnion('entry', [
   z
     .object({
       entry: z.literal('workstation'),
+      suiteBridgeId: z.uuid().optional(),
       tool: z.enum([
         'smart-edit',
         'relight',

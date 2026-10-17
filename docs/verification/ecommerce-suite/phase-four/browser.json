@@ -1,0 +1,473 @@
+{
+  "checks": [
+    "文字和尺寸线保存为不可变版本；实际PNG为1200x1000，解码像素与预览画板一致",
+    "深浅主题仅影响界面，成品像素不变",
+    "4K单图JPEG实际解码为4096x3413，使用相同图层与固定字体绘制",
+    "拖拽端点与键盘微调同步草稿；20层上限生效；切历史恢复全部图层，切换前草稿归档保留",
+    "1280x720短屏、900px正常文档流、390/375px无横向溢出，末项图层保存可滚动到可视区",
+    "真实工作站会话刷新仅GET恢复；显式提交一次保留workstation来源与bridgeId；重复回填仅追加一个候选且不覆盖当前版本",
+    "真实下载恢复ZIP并再次导入，新副本保留图片/版本/图层，原任务执行身份不迁移"
+  ],
+  "consoleErrors": [],
+  "requests": [
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/image-models",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/draft",
+      "method": "PATCH"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/versions",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/draft",
+      "method": "PATCH"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/versions",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/draft",
+      "method": "PATCH"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/draft",
+      "method": "PATCH"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/current",
+      "method": "PATCH"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/draft",
+      "method": "PATCH"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/current",
+      "method": "PATCH"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/draft",
+      "method": "PATCH"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/versions",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/bridges",
+      "method": "POST"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/capabilities",
+      "method": "GET"
+    },
+    {
+      "path": "/api/credits/catalog",
+      "method": "GET"
+    },
+    {
+      "path": "/api/credits/catalog",
+      "method": "GET"
+    },
+    {
+      "path": "/api/image-models",
+      "method": "GET"
+    },
+    {
+      "path": "/api/image-models",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/bridges/32cda975-732f-48cd-897e-b6cd460fbb23",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/capabilities",
+      "method": "GET"
+    },
+    {
+      "path": "/api/credits/catalog",
+      "method": "GET"
+    },
+    {
+      "path": "/api/credits/catalog",
+      "method": "GET"
+    },
+    {
+      "path": "/api/image-models",
+      "method": "GET"
+    },
+    {
+      "path": "/api/image-models",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/bridges/32cda975-732f-48cd-897e-b6cd460fbb23",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tasks",
+      "method": "POST"
+    },
+    {
+      "path": "/api/me",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/bridges/32cda975-732f-48cd-897e-b6cd460fbb23",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tasks/f2a8baa7-efe1-43a0-ae96-8ff5f15aa9f6",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/bridges/32cda975-732f-48cd-897e-b6cd460fbb23/results",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/bridges/32cda975-732f-48cd-897e-b6cd460fbb23",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/bridges/32cda975-732f-48cd-897e-b6cd460fbb23/results",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/bridges/32cda975-732f-48cd-897e-b6cd460fbb23",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/image-models",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000010/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000011/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000012/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000013/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000014/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000015/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002/slots/00000000-0000-4000-8000-000000000016/versions",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/00000000-0000-4000-8000-000000000002",
+      "method": "GET"
+    },
+    {
+      "path": "/api/objects",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/ade22d12-1c9f-48aa-8e15-03235a24529a/assets",
+      "method": "POST"
+    },
+    {
+      "path": "/api/fixture-upload/243261e6-0a9f-43a6-abbb-0c3dcf317c23",
+      "method": "PUT"
+    },
+    {
+      "path": "/api/ecommerce/suites/ade22d12-1c9f-48aa-8e15-03235a24529a/assets/complete",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/ade22d12-1c9f-48aa-8e15-03235a24529a/restore-snapshot",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/ade22d12-1c9f-48aa-8e15-03235a24529a",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/ade22d12-1c9f-48aa-8e15-03235a24529a",
+      "method": "GET"
+    },
+    {
+      "path": "/api/ecommerce/suites/ade22d12-1c9f-48aa-8e15-03235a24529a/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/ecommerce/suites/ade22d12-1c9f-48aa-8e15-03235a24529a/assets/access",
+      "method": "POST"
+    },
+    {
+      "path": "/api/image-models",
+      "method": "GET"
+    },
+    {
+      "path": "/api/fixture-image.png",
+      "method": "GET"
+    }
+  ],
+  "taskSubmissions": 1,
+  "realProvider": false,
+  "export": {
+    "format": "png",
+    "width": 1200,
+    "height": 1000,
+    "previewPixelsIdentical": true
+  },
+  "identity": "本地测试身份",
+  "transport": "合成 HTTP 数据，真实 React 组件与文件编码",
+  "realProductSamples": 0
+}

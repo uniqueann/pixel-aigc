@@ -20,9 +20,9 @@ export async function planSuiteSlot(sql: Transaction, project: SuiteProject, sel
   if (template.requires.includes('confirmed_facts' as never) && !facts.length)
     throw new HttpError(409, '请先补充并确认本槽位的商品事实', 'SUITE_FACTS_REQUIRED')
   if (slot.kind === 'size' && !facts.some(fact => ['dimension', 'capacity'].includes(fact.kind)))
-    throw new HttpError(409, '请先确认尺寸或容量规格，并上传已标注的尺寸成品', 'SUITE_FACTS_REQUIRED')
-  const sourceId = template.strategy === 'detail_reference' || slot.kind === 'size' ? slot.referenceAssetIds[0] : project.config.baseAssetId
-  if (!sourceId) throw new HttpError(409, slot.kind === 'size' ? '请上传已核对规格和标注的尺寸成品，或跳过此槽位；自动标注在第四阶段接入' : '请先上传该槽位的真实细节照片', 'SUITE_ASSET_UNAVAILABLE')
+    throw new HttpError(409, '请先确认尺寸或容量规格，再添加可编辑标注', 'SUITE_FACTS_REQUIRED')
+  const sourceId = template.strategy === 'detail_reference' ? slot.referenceAssetIds[0] : slot.kind === 'size' ? slot.referenceAssetIds[0] ?? project.config.baseAssetId : project.config.baseAssetId
+  if (!sourceId) throw new HttpError(409, '请先上传该槽位的真实细节照片', 'SUITE_ASSET_UNAVAILABLE')
   const source = await readyAsset(sql, project.id, sourceId)
   if (template.strategy !== 'image_edit') {
     if (selection.mode !== 'reuse') throw new HttpError(400, '该槽位使用原图，不默认重造商品', 'INVALID_REQUEST')

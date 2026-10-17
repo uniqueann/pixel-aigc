@@ -64,11 +64,16 @@ import { bindRuntimeImage,releaseRuntimeImageUser,setRuntimeImageUsers,withRunti
 import {taskIsActive,type TaskTool,type TaskCenterMedia,type TaskCenterDetail,type TaskCenterSummary} from '@shared/task-center'
 import { readRelight } from '@shared/relight'
 import { readRetouchDirections } from '@shared/retouch'
+import WorkstationBridge, { type WorkstationSuiteBinding } from '@/features/ecommerce-suite/WorkstationBridge'
+import type { SuiteActor } from '@shared/ecommerce-suite'
+import type { SuiteBridgeDetail } from '@shared/ecommerce-suite-runtime'
 
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
   const location=useContext(UNSAFE_LocationContext)
+  const bridgeId = new URLSearchParams(location?.location.search).get('bridgeId')
+  const [suiteBinding, setSuiteBinding] = useState<WorkstationSuiteBinding>()
   const account=useUserStore(state=>state.account)
   const [observedTask,setObservedTask]=useState<{task:TaskCenterSummary;owner:string;scope:string}>()
   const observeRecoveredTask=useCallback(async(detail:TaskCenterDetail,context:RecoveryActionContext)=>{
@@ -146,6 +151,7 @@ export default function ImageWorkstation() {
     ?? activeModels.find(model => model.defaultFor?.includes(variationTool ? 'variation' : 'image_edit')) ?? activeModels[0]
   const activeModelId = activeModel?.id
   const controller = useImageWorkstationController({
+    suiteBridge: bridgeId === suiteBinding?.id ? suiteBinding : undefined,
     activeTool,
     initialAsset: fusionTool ? fusionProduct : sourceAsset,
     prompt: activePrompt,
@@ -350,6 +356,10 @@ export default function ImageWorkstation() {
   }
 
   const handleGenerate = async () => {
+    if (bridgeId && (!suiteBinding || (controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey) !== suiteBinding.inputObjectKey)) {
+      message.warning('请先恢复本会话输入；如需改用其他图片，请返回套图重新创建会话')
+      return
+    }
     if (creditQuoteBlocked(generateQuote)) {
       message.warning('正在计算所需积分，请稍候...')
       return
@@ -447,7 +457,9 @@ export default function ImageWorkstation() {
   const inputRetryQuote = workstationRequestQuote(controller.inputRetryRequest, imageModels, { mock: mockGateway, loading: imageConfiguration.loading })
   const creditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: generateQuote, balance: knownBalance })
   const retryCreditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
-  const blockReason = generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
+  const bridgeBlock = bridgeId && (!suiteBinding || (controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey) !== suiteBinding.inputObjectKey)
+    ? '请恢复本会话输入后再提交，已有结果可以显式回填' : undefined
+  const blockReason = bridgeBlock ?? generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
   const example = toolExample(activeTool.slug)
   const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
   const { previewRef, footerRef, sticky } = useStickyPreview(true)
@@ -462,6 +474,12 @@ export default function ImageWorkstation() {
         : '请先上传需要处理的图片'
   const recoveryRuntime = useRef({})
   useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) }, [])
+  useEffect(() => useUserStore.subscribe((state, previous) => {
+    if (state.userId !== previous.userId || state.account?.runtimeScope !== previous.account?.runtimeScope) {
+      setSourceAsset(undefined); setSuiteBinding(undefined); setHasMaskPaint(false)
+      releaseRuntimeImageUser(recoveryRuntime.current)
+    }
+  }), [])
   const isDraftDirty = Boolean(activePrompt.trim() || hasMaskPaint)
   const confirmRecovery = useTaskDraftGuard({ dirty: isDraftDirty,
     reason:'当前包含未保存的提示词或涂抹蒙版，切换后将放弃草稿，是否继续？',
@@ -478,10 +496,23 @@ export default function ImageWorkstation() {
     else {setSourceAsset(visibleAsset);replaceSourceAsset(asset)}
     setHasMaskPaint(false)
   }
+  const applySuiteInput = useCallback((detail: SuiteBridgeDetail, blob: Blob, actor: SuiteActor) => {
+    const current = useUserStore.getState().account
+    if (current?.userId !== actor.userId || current.runtimeScope !== actor.runtimeScope) throw new Error('账号或环境已切换')
+    const asset = createImageAsset({ id: `asset:suite-bridge:${detail.bridge.id}`, name: `套图版本 ${detail.version.versionNumber}`,
+      url: `/local-image/suite-bridge-${detail.bridge.id}`, objectKey: detail.asset.objectKey,
+      width: detail.asset.size.width, height: detail.asset.size.height, mimeType: detail.asset.mimeType, source: 'upload' })
+    bindRuntimeImage(actor.userId, asset, blob, recoveryRuntime.current)
+    useEditorStore.getState().registerAsset(asset)
+    setRuntimeImageUsers(recoveryRuntime.current, [asset.id])
+    setSourceAsset(withRuntimeImage(asset, actor.userId)); replaceSourceAsset(asset); setHasMaskPaint(false)
+  }, [replaceSourceAsset])
   return (
     <div className="image-workstation-page">
-      <WorkstationRecovery tool={activeTool.slug as TaskTool} nativeBusy={controller.formLocked||uploading||fusionLoading}
-        hasDraft={isDraftDirty} onRestoreInput={applyRecoveredInput}/>
+      {bridgeId && <WorkstationBridge key={`${account?.userId}:${account?.runtimeScope}:${bridgeId}:${activeTool.slug}`} id={bridgeId} tool={activeTool.slug}
+        task={controller.activeTask} disabled={controller.formLocked || uploading || fusionLoading} onInput={applySuiteInput} onBinding={setSuiteBinding} />}
+      {!bridgeId && <WorkstationRecovery tool={activeTool.slug as TaskTool} nativeBusy={controller.formLocked||uploading||fusionLoading}
+        hasDraft={isDraftDirty} onRestoreInput={applyRecoveredInput}/>}
       <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} onObserve={observeRecoveredTask} blockedReason={controller.formLocked || uploading || fusionLoading ? '当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。':undefined}
         onUseImage={async (result,image,detail,context) => {
           if (!await confirmRecovery('基于此图继续编辑将替换当前原图和蒙版，是否继续？')) return

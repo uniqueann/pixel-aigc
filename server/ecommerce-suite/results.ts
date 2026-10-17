@@ -4,6 +4,7 @@ import { HttpError } from '../errors.js'
 import { inspectSuiteImage, suiteObjectKey, suiteStorage } from './assets.js'
 import { refreshSuiteBatch } from './batches.js'
 import { actor, fingerprint, readyAsset, requireSuite, suiteTransaction, type SuiteUser } from './repository.js'
+import { SUITE_RENDERER_VERSION } from '../../shared/ecommerce-suite-annotations.js'
 
 /** 结果登记只读取原任务和复制图片，任何恢复路径都不调用供应商或创建收费任务。 */
 export async function registerSuiteOperationResults(user: SuiteUser, projectId: string, batchId: string, operationId: string, storage = suiteStorage, leaseToken?: string) {
@@ -61,8 +62,13 @@ export async function registerSuiteOperationResults(user: SuiteUser, projectId: 
         parentVersionId: slot.active_version_id, assetId: asset.assetId, source: ready.generated ? 'generated' : 'reuse',
         ...(item.mode === 'image_edit' ? { sourceTask: { sourceKind: 'image_job', sourceId: operation.task!.sourceId, ordinal: ready.ordinal },
           sourceRequestId: operation.requestId, modelProfileId: item.modelProfileId, resolution: item.resolution, promptSnapshot: item.promptSnapshot } : {}),
-        composition: { renderSize: asset.size, layersSnapshot: [], factsSnapshot: config.facts.filter(fact => fact.confirmed),
-          copyLanguage: config.copyLanguage, unitSystem: config.unitSystem, templateVersion: config.style.templateVersion, rendererVersion: 'suite-base-v1' }, createdAt: new Date().toISOString() })
+        composition: { renderSize: asset.size,
+          layersSnapshot: item.slotKind === 'size' && !config.slots.find(slot => slot.id === operation.slotId)!.referenceAssetIds.length
+            ? config.facts.filter(fact => fact.confirmed && ['dimension','capacity'].includes(fact.kind)).slice(0,3).map((fact, index) => ({
+              id: randomUUID(), type: 'dimension', factId: fact.id, start: { x: .15, y: .72 + index * .08 }, end: { x: .85, y: .72 + index * .08 }, labelPosition: { x: .5, y: .72 + index * .08 },
+              color: '#111827', strokeWidth: Math.min(100, asset.size.width * .002), fontSize: Math.min(1000, asset.size.width * .035), zIndex: index })) : [],
+          factsSnapshot: config.facts.filter(fact => fact.confirmed),
+          copyLanguage: config.copyLanguage, unitSystem: config.unitSystem, templateVersion: config.style.templateVersion, rendererVersion: SUITE_RENDERER_VERSION }, createdAt: new Date().toISOString() })
       await sql`insert into aigc.suite_versions(id,user_id,scope,project_id,slot_id,asset_id,parent_version_id,version_number,application_key,snapshot)
         values(${version.id},${user.id},${actor(user).runtimeScope},${projectId},${operation.slotId},${asset.assetId},${version.parentVersionId},${version.versionNumber},${ready.application},${sql.json(version as never)})`
       created.push(version)

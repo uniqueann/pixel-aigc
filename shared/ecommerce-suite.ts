@@ -151,13 +151,14 @@ export const suiteVersionSchema = z.object({
     ctx.addIssue({ code: 'custom', message: '复用或图层编辑通过父版本保留来源，不能伪造新的模型或收费任务' })
 })
 export const suiteSaveVersionRequestSchema = z.object({
-  requestId: id, baseVersionId: id, expectedHeadRevision: revision, composition: suiteCompositionSchema,
+  requestId: id, baseVersionId: id, expectedHeadRevision: revision, expectedDraftRevision: revision.optional(), composition: suiteCompositionSchema,
 }).strict()
 export const suiteSetCurrentRequestSchema = z.object({ versionId: id, expectedHeadRevision: revision }).strict()
 export const suiteSaveDraftRequestSchema = z.object({
   expectedDraftRevision: revision, baseVersionId: id.nullable(),
   promptNote: z.string().max(PROMPT_MAX_LENGTH), count: z.number().int().min(1).max(4),
   resolution: z.enum(['1k', '2k', '4k']), modelProfileId: label.nullable(), layers,
+  factsSnapshot: confirmedFacts.optional(), copyLanguage: z.enum(['zh-CN', 'en-US']).optional(), unitSystem: z.enum(['metric', 'imperial']).optional(),
 }).strict()
 
 const selection = z.discriminatedUnion('mode', [
@@ -227,6 +228,7 @@ export const suiteOriginSchema = z.object({
 export const suiteCreateBridgeRequestSchema = z.object({
   slotId: id, sourceVersionId: id, expectedHeadRevision: revision,
   tool: z.enum(['repaint', 'smart-edit', 'retouch', 'relight']), inputMode: z.enum(['base', 'composite']),
+  compositeAssetId: id.optional(),
 }).strict()
 export const suiteBridgeResultRequestSchema = z.object({ requestId: id, result: suiteTaskResultSchema }).strict()
 export const suiteBridgeSchema = z.object({
@@ -262,3 +264,4 @@ export type SuiteQuoteRequest = z.infer<typeof suiteQuoteRequestSchema>
 export type SuiteCreateBatchRequest = z.infer<typeof suiteCreateBatchRequestSchema>
 export type SuiteSlotDraft = z.infer<typeof suiteSaveDraftRequestSchema>
 export type SuiteTaskResult = z.infer<typeof suiteTaskResultSchema>
+export type SuiteComposition = z.infer<typeof suiteCompositionSchema>
