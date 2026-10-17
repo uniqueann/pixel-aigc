@@ -16,7 +16,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
   const [models, setModels] = useState<PublicImageModel[]>([])
   const [modelId, setModelId] = useState('')
   const [resolution, setResolution] = useState<'1k' | '2k' | '4k'>('1k')
-  const [selected, setSelected] = useState<string[]>(retry?.slotIds ?? data.project.config.slots.filter(slot => slot.enabled && slot.kind !== 'size' && (slot.kind !== 'detail' || slot.referenceAssetIds.length)).map(slot => slot.id))
+  const [selected, setSelected] = useState<string[]>(retry?.slotIds ?? data.project.config.slots.filter(slot => slot.enabled && (slot.kind !== 'size' || data.project.config.facts.some(fact => fact.confirmed && ['dimension','capacity'].includes(fact.kind))) && (slot.kind !== 'detail' || slot.referenceAssetIds.length)).map(slot => slot.id))
   const [quote, setQuote] = useState<SuiteQuote>()
   const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -67,12 +67,12 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
     <Alert type="info" message="每槽位默认一张候选，按原任务的成功候选计费" description="已接收的计划等待服务端派发，结果先保存候选供显式选用。停止只影响未创建原任务的项；失败仅在手动重新确认后发起新尝试。" />
     <p>统一风格：{data.project.config.style.sceneTone}；配色 {data.project.config.style.palette.join('、')}。需修改时先在商品资料保存新风格，重生成保留旧版本。</p>
     <div className="suite-plan-slots">{data.project.config.slots.map(slot => {
-      const sourceRequired = slot.kind === 'detail' || slot.kind === 'size'
-      const reason = !slot.enabled ? '已跳过' : sourceRequired && !slot.referenceAssetIds.length ? slot.kind === 'size' ? '需上传已核对标注的尺寸成品' : '需真实细节照片' : ''
+      const sourceRequired = slot.kind === 'detail'
+      const reason = !slot.enabled ? '已跳过' : sourceRequired && !slot.referenceAssetIds.length ? '需真实细节照片' : slot.kind === 'size' && !data.project.config.facts.some(fact => fact.confirmed && ['dimension','capacity'].includes(fact.kind)) ? '需确认尺寸或容量规格' : ''
       return <label key={slot.id}><Checkbox checked={selected.includes(slot.id)} disabled={busy || Boolean(reason) || Boolean(retry && !retry.slotIds.includes(slot.id))}
         onChange={event => { invalidate(); setSelected(ids => event.target.checked ? [...ids, slot.id] : ids.filter(id => id !== slot.id)) }}>{slot.name}</Checkbox>{reason && <small>{reason}</small>}</label>
     })}</div>
-    <p className="suite-muted">尺寸图仅复用已上传、已核对的标注成品，不会自动绘制标注。缺少已确认事实的槽位会在报价时提示补充，不猜测商品参数。</p>
+    <p className="suite-muted">尺寸图优先复用已标注成品；无参考图时在商品原图上添加已确认规格的可编辑尺寸线，不调用图片模型。缺少已确认事实时需先补充资料。</p>
     <label className="suite-plan-field">本批次图片模型<ModelChoice ariaLabel="批次图片模型" models={models} value={model?.id} disabled={busy} hintScope="image_input" onChange={id => { invalidate(); setModelId(id) }} /></label>
     <label className="suite-plan-field">生成分辨率<Select aria-label="批次分辨率" value={actualResolution} disabled={busy || !model} options={model?.ui.resolutions.map(value => ({ value, label: value.toUpperCase() }))}
       onChange={value => { invalidate(); setResolution(value) }} /></label>

@@ -44,6 +44,7 @@ import type {
 } from '../types'
 
 interface ControllerOptions {
+  suiteBridge?: { id: string; inputObjectKey: string }
   activeTool: WorkstationToolDefinition
   initialAsset?: ImageAsset
   prompt?: string
@@ -127,6 +128,7 @@ export function useImageWorkstationController({
   referenceAsset,
   useProductAsset = false,
   capabilityReady = liveCapabilityReady,
+  suiteBridge,
 }: ControllerOptions) {
   const project = useEditorStore((state) => state.project)
   const createProject = useEditorStore((state) => state.createProject)
@@ -186,7 +188,7 @@ export function useImageWorkstationController({
     const epochState = epochRef
     const readState = readAbortRef
     const unsubscribe = useUserStore.subscribe((state, previous) => {
-      if (state.userId !== previous.userId) {
+      if (state.userId !== previous.userId || state.account?.runtimeScope !== previous.account?.runtimeScope) {
         fusionInputsRef.current.clear()
         beginOperation(); setTask(undefined); setActiveTaskId(undefined); setOutputAssetIds([]); setInputAssetId(undefined)
       }
@@ -365,7 +367,9 @@ export function useImageWorkstationController({
         if (current()) syncRecoveryRef.current = undefined
         return completed
       }
-      const result = await prepared.execute({ ownerId, signal, onTaskIdentity: requestId => { id=requestId;completed.id=requestId;completed.requestId=requestId }, onObjectResult: object => {
+      const result = await prepared.execute({ ownerId, signal,
+        ...(suiteBridge && imageObjectKey(input.sourceAsset) === suiteBridge.inputObjectKey ? { origin: { entry: 'workstation' as const, tool: 'repaint' as const, suiteBridgeId: suiteBridge.id } } : {}),
+        onTaskIdentity: requestId => { id=requestId;completed.id=requestId;completed.requestId=requestId }, onObjectResult: object => {
         descriptor = object
         if (!current()) return
         syncRecoveryRef.current = { descriptor: object, complete, epoch, ownerId }
@@ -382,7 +386,7 @@ export function useImageWorkstationController({
       }
       throw error
     } finally { if (current()) { setSubmitting(false); setReadingResults(false) } }
-  }, [applyCompletedTask, beginOperation, service, upsertTask])
+  }, [applyCompletedTask, beginOperation, service, suiteBridge, upsertTask])
 
   const completeRepaint = useCallback((sourceAsset: ImageAsset, promptText: string, maskDataUrl: string, parentGenerationId?: GenerationId) => completeSync({
     sourceAsset, capability: Capability.Inpaint, params: { sourceImageUrl: sourceAsset.url, maskUrl: maskDataUrl, mode: 'repaint', prompt: promptText }, parentGenerationId,
@@ -479,6 +483,8 @@ export function useImageWorkstationController({
         requestId: crypto.randomUUID(),
         params: prepared.params,
         modelProfileId: prepared.modelProfileId ?? modelProfileId,
+        ...(suiteBridge && imageObjectKey(sourceAsset) === suiteBridge.inputObjectKey && ['smart-edit','retouch','relight'].includes(activeTool.slug)
+          ? { origin: { entry: 'workstation' as const, tool: activeTool.slug as 'smart-edit' | 'retouch' | 'relight', suiteBridgeId: suiteBridge.id } } : {}),
       }, { ...options, deferAssets: true, canApply: isCurrent })
       if (!isCurrent()) throw fusionAbortError()
       if (inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, phase: 'submitted' })
@@ -506,7 +512,7 @@ export function useImageWorkstationController({
     } finally {
       if (epoch === epochRef.current) { submissionGateRef.current = undefined; setSubmitting(false) }
     }
-  }, [applyCompletedTask, beginOperation, modelProfileId, service, updateInputPreparation, upsertTask])
+  }, [activeTool.slug, suiteBridge, applyCompletedTask, beginOperation, modelProfileId, service, updateInputPreparation, upsertTask])
 
   const retryInputPreparation = useCallback(async () => {
     const snapshot = inputRetryRef.current

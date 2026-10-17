@@ -11,8 +11,13 @@ import { queryPort, withTaskCenterRead } from '../server/task-center/service.js'
 import { taskRepository } from '../server/task-center/repository.js'
 import { sqlImageExecution } from '../server/image-jobs/execution.js'
 import { advanceImageClaim } from '../server/image-jobs/service.js'
-import { createSuite, findSuiteByRequest, getSuite, listSuites, selectSuiteVersion, updateSuite } from '../server/ecommerce-suite/projects.js'
+import { createSuite, findSuiteByRequest, getSuite, listSuites, selectSuiteVersion, saveSuiteDraft, updateSuite } from '../server/ecommerce-suite/projects.js'
 import { beginSuiteUpload, completeSuiteUpload, type SuiteStorage } from '../server/ecommerce-suite/assets.js'
+import { saveSuiteVersion } from '../server/ecommerce-suite/versions.js'
+import { createSuiteBridge, readSuiteBridge, returnSuiteBridge } from '../server/ecommerce-suite/bridges.js'
+import { restoreSuiteSnapshot } from '../server/ecommerce-suite/restore.js'
+import { withSyncCredits } from '../server/sync-billing.js'
+import { SYNC_PRICE_VERSION } from '../shared/billing.js'
 import { createSuiteBatch, findSuiteBatch, quoteSuite } from '../server/ecommerce-suite/generation.js'
 import { registerSuiteOperationResults, registerSuiteResults } from '../server/ecommerce-suite/results.js'
 import { createMockImageProvider, MOCK_PNG_1X1 } from '../server/image-providers/mock.js'
@@ -399,6 +404,129 @@ try {
   assert.equal((await getSuite(user, transfer.id)).versions.length, 1)
   assert.equal(submissions, beforeTransfer)
   checks.push('对象转存失败仅重做登记；转存后旧租约晚到不应用，新租约修复只创建一个版本且零再次提交')
-  console.log(JSON.stringify({ kind: 'isolated_postgres_phase_three_mock_provider', postgresVersion: (await sql`select version() as version`)[0].version, checks,
+  const editable = await fixture()
+  const editableQuote = await quoteSuite(user, editable.id, selection(editable,[0]), runtime)
+  await createSuiteBatch(user,editable.id,acceptQuote(editableQuote),runtime)
+  await drain(); await drain()
+  let editableDetail = await getSuite(user,editable.id)
+  const baseVersion = editableDetail.versions[0], editableSlot = baseVersion.slotId
+  await selectSuiteVersion(user,editable.id,editableSlot,{versionId:baseVersion.id,expectedHeadRevision:0})
+  const textLayer = {id:randomUUID(),type:'text' as const,text:'已确认商品展示',position:{x:.1,y:.1},width:.6,fontFamily:'Noto Sans SC' as const,fontSize:.035,fontWeight:500 as const,color:'#111827',background:'#ffffff',align:'left' as const,zIndex:0}
+  const dimensionLayer = {id:randomUUID(),type:'dimension' as const,factId:editable.config.facts[0].id,start:{x:.1,y:.8},end:{x:.9,y:.8},labelPosition:{x:.5,y:.8},color:'#111827',strokeWidth:.002,fontSize:.035,zIndex:1}
+  const draft = {expectedDraftRevision:0,baseVersionId:baseVersion.id,promptNote:'生成要求与图层共存',count:1,resolution:'1k',modelProfileId:null,layers:[textLayer,dimensionLayer],factsSnapshot:baseVersion.composition.factsSnapshot}
+  const draftSaves = await Promise.allSettled([saveSuiteDraft(user,editable.id,editableSlot,draft),saveSuiteDraft(user,editable.id,editableSlot,{...draft,promptNote:'另一个编辑者'})])
+  assert.equal(draftSaves.filter(result=>result.status==='fulfilled').length,1)
+  const annotationRequest = {requestId:randomUUID(),baseVersionId:baseVersion.id,expectedHeadRevision:1,expectedDraftRevision:1,
+    composition:{...baseVersion.composition,layersSnapshot:[textLayer,dimensionLayer],rendererVersion:'suite-canvas-v1'}}
+  const annotated = await Promise.all([saveSuiteVersion(user,editable.id,editableSlot,annotationRequest),saveSuiteVersion(user,editable.id,editableSlot,annotationRequest)])
+  assert.equal(annotated[0].version.id,annotated[1].version.id)
+  assert.equal(annotated[0].version.versionNumber,2)
+  assert.equal(annotated[0].version.source,'annotation_edit')
+  assert.equal(annotated[0].version.sourceTask,undefined)
+  await assert.rejects(saveSuiteVersion(user,editable.id,editableSlot,{...annotationRequest,composition:{...annotationRequest.composition,layersSnapshot:[{...textLayer,text:'请求内容改变'}]}}),/保存编号/)
+  await assert.rejects(saveSuiteVersion(user,editable.id,editableSlot,{...annotationRequest,requestId:randomUUID()}),/云端已有更新/)
+  const currentAnnotation = annotated[0].version
+  await assert.rejects(saveSuiteVersion(user,editable.id,editableSlot,{...annotationRequest,requestId:randomUUID(),baseVersionId:currentAnnotation.id,expectedHeadRevision:2,
+    composition:{...currentAnnotation.composition,factsSnapshot:[{...editable.config.facts[0],value:999}]}}),/规格尚未确认或已变化/)
+  const noChange = await saveSuiteVersion(user,editable.id,editableSlot,{...annotationRequest,requestId:randomUUID(),baseVersionId:currentAnnotation.id,expectedHeadRevision:2,composition:currentAnnotation.composition})
+  assert.equal(noChange.version.id,currentAnnotation.id)
+  checks.push('图层草稿并发乐观锁只允许一方；保存重放只有一个不可变版本；同键异参、过时指针与伪造规格拒绝；无变化不建空版本')
+
+  const originalSubmissions = submissions
+  const bridgeSessions=[]
+  for(const tool of ['smart-edit','retouch','relight','repaint'] as const) {
+    const bridge=await createSuiteBridge(user,editable.id,{slotId:editableSlot,sourceVersionId:currentAnnotation.id,expectedHeadRevision:2,tool,inputMode:'base'})
+    bridgeSessions.push(bridge)
+    const recovered=await readSuiteBridge(user,bridge.id)
+    assert.equal(recovered.asset.assetId,currentAnnotation.assetId)
+    await assert.rejects(readSuiteBridge(other,bridge.id),/不存在或无权/)
+  }
+  assert.equal(submissions,originalSubmissions)
+  const smartBridge=bridgeSessions[0], bridgeAsset=(await readSuiteBridge(user,smartBridge.id)).asset
+  const params={sourceImageKey:bridgeAsset.objectKey,sourceWidth:1,sourceHeight:1,prompt:'套图来源的工作站合成验证',resolution:'1k',count:1}
+  await assert.rejects(submitImageTask(user,{requestId:randomUUID(),capability:'image_edit',modelProfileId:'mock:image-stage2',params:{...params,sourceImageKey:competingAsset.objectKey},origin:{entry:'workstation',tool:'smart-edit',suiteBridgeId:smartBridge.id}},runtime),/来源不一致/)
+  await assert.rejects(returnSuiteBridge(user,smartBridge.id,{requestId:randomUUID(),result:{sourceKind:'image_job',sourceId:String(transferJob.id),ordinal:0}},storage),/本会话原工具/)
+  const workstation = await submitImageTask(user,{requestId:randomUUID(),capability:'image_edit',modelProfileId:'mock:image-stage2',params,origin:{entry:'workstation',tool:'smart-edit',suiteBridgeId:smartBridge.id}},runtime)
+  await due(); await loadImageTask(user,workstation.id,runtime)
+  assert.ok((await readSuiteBridge(user,smartBridge.id)).availableResults.some(result=>result.sourceId===workstation.id))
+  const headBeforeReturn=(await getSuite(user,editable.id)).project.slotHeads.find(head=>head.slotId===editableSlot)!
+  const returnRequest={requestId:randomUUID(),result:{sourceKind:'image_job',sourceId:workstation.id,ordinal:0}}
+  const beforeReturns=submissions
+  const returned=await Promise.all([returnSuiteBridge(user,smartBridge.id,returnRequest,storage),returnSuiteBridge(user,smartBridge.id,returnRequest,storage)])
+  assert.equal(returned[0].version.id,returned[1].version.id)
+  assert.deepEqual(returned[0].version.composition.layersSnapshot,currentAnnotation.composition.layersSnapshot)
+  assert.equal(returned[0].version.sourceTool,'smart-edit')
+  assert.deepEqual((await getSuite(user,editable.id)).project.slotHeads.find(head=>head.slotId===editableSlot),headBeforeReturn)
+  assert.equal(submissions,beforeReturns)
+  await selectSuiteVersion(user,editable.id,editableSlot,{versionId:baseVersion.id,expectedHeadRevision:2})
+  const staleReturn=await returnSuiteBridge(user,smartBridge.id,{...returnRequest,requestId:randomUUID()},storage)
+  assert.equal(staleReturn.version.id,returned[0].version.id)
+  assert.equal((await getSuite(user,editable.id)).project.slotHeads.find(head=>head.slotId===editableSlot)?.activeVersionId,baseVersion.id)
+  process.env.AIGC_RUNTIME_SCOPE='preview'
+  await assert.rejects(readSuiteBridge(user,smartBridge.id),/不存在或无权/)
+  process.env.AIGC_RUNTIME_SCOPE='local'
+  checks.push('四工具会话恢复隔离；伪造输入与无关联原结果拒绝；真实原图片任务回填并发幂等且零再次提交、零指针覆盖，过时来源保留候选')
+
+  for (const bridge of bridgeSessions.slice(1,3)) {
+    const extra = bridge.tool === 'retouch' ? {retouchDirections:['texture']} : {relight:{direction:'front',quality:'soft',temperature:'neutral'}}
+    const task = await submitImageTask(user,{requestId:randomUUID(),capability:'image_edit',modelProfileId:'mock:image-stage2',params:{...params,...extra},origin:{entry:'workstation',tool:bridge.tool,suiteBridgeId:bridge.id}},runtime)
+    await due();await loadImageTask(user,task.id,runtime)
+    const beforeLedger=(await sql`select count(*)::int as n from aigc.credit_ledger where job_id=${task.id}`)[0].n
+    const result=await returnSuiteBridge(user,bridge.id,{requestId:randomUUID(),result:{sourceKind:'image_job',sourceId:task.id,ordinal:0}},storage)
+    assert.equal(result.version.sourceTool,bridge.tool)
+    assert.equal((await sql`select count(*)::int as n from aigc.credit_ledger where job_id=${task.id}`)[0].n,beforeLedger)
+  }
+  checks.push('精修与重新打光实际走原图片服务，按真实工具参数绑定会话，回填不新增原账本流水')
+  const repaintBridge=bridgeSessions[3], repaintRequest=randomUUID()
+  const repaintInput={sourceImageKey:bridgeAsset.objectKey,prompt:'合成重绘',origin:{entry:'workstation',tool:'repaint',suiteBridgeId:repaintBridge.id}}
+  await withSyncCredits(user,'repaint',{requestId:repaintRequest,priceVersion:SYNC_PRICE_VERSION,maxCredits:5},repaintInput,async()=>({kind:'object',objectKey:bridgeAsset.objectKey,mimeType:'image/png',bytes:MOCK_PNG_1X1.length,signed:{url:'https://fixture.invalid/result',expiresAt:Date.now()+10000}}))
+  const repaintReturn=await returnSuiteBridge(user,repaintBridge.id,{requestId:randomUUID(),result:{sourceKind:'sync_credit',sourceId:repaintRequest,ordinal:0}},storage)
+  assert.equal(repaintReturn.version.sourceTool,'repaint')
+  assert.equal(repaintReturn.version.sourceRequestId,repaintRequest)
+  assert.equal((await sql`select charged from aigc.credit_ledger where job_id=${repaintRequest} and kind='settle'`)[0].charged,5)
+  const compositeBridge=await createSuiteBridge(user,editable.id,{slotId:editableSlot,sourceVersionId:baseVersion.id,expectedHeadRevision:3,tool:'smart-edit',inputMode:'composite',compositeAssetId:bridgeAsset.assetId})
+  const compositeJob=await submitImageTask(user,{requestId:randomUUID(),capability:'image_edit',modelProfileId:'mock:image-stage2',params,origin:{entry:'workstation',tool:'smart-edit',suiteBridgeId:compositeBridge.id}},runtime)
+  await due();await loadImageTask(user,compositeJob.id,runtime)
+  const compositeReturn=await returnSuiteBridge(user,compositeBridge.id,{requestId:randomUUID(),result:{sourceKind:'image_job',sourceId:compositeJob.id,ordinal:0}},storage)
+  assert.deepEqual(compositeReturn.version.composition.layersSnapshot,[])
+  await sql`update aigc.suite_bridges set expires_at=now()-interval '1 second' where id=${smartBridge.id}`
+  await assert.rejects(readSuiteBridge(user,smartBridge.id),/已过期/)
+  await assert.rejects(returnSuiteBridge(user,smartBridge.id,returnRequest,storage),/已过期/)
+  checks.push('同步重绘沿用原五积分账本且回填不重复扣费；合成图回填清空已烘焙图层；七天过期拒绝会话与回填')
+
+  editableDetail=await getSuite(user,editable.id)
+  const amazonConfig={...editableDetail.project.config,platform:'amazon',marketplace:'US',ruleProfile:{id:'amazon-us-home-kitchen',version:'draft-v1'}}
+  await updateSuite(user,editable.id,{expectedRevision:editableDetail.project.revision,config:amazonConfig})
+  await assert.rejects(selectSuiteVersion(user,editable.id,editableSlot,{versionId:currentAnnotation.id,expectedHeadRevision:3}),/Amazon 主图/)
+  await assert.rejects(saveSuiteVersion(user,editable.id,editableSlot,{requestId:randomUUID(),baseVersionId:baseVersion.id,expectedHeadRevision:3,composition:annotationRequest.composition}),/Amazon 主图/)
+  const beforeHistorical=JSON.stringify(currentAnnotation.composition)
+  await updateSuite(user,editable.id,{expectedRevision:editableDetail.project.revision+1,config:{...editableDetail.project.config,facts:editableDetail.project.config.facts.map(fact=>({...fact,value:40}))}})
+  assert.equal(JSON.stringify((await getSuite(user,editable.id)).versions.find(version=>version.id===currentAnnotation.id)!.composition),beforeHistorical)
+  checks.push('平台切换按主图语义锁定接口，历史图层不变；项目规格修改不会改写历史尺寸快照')
+
+  const sourceDetail=await getSuite(user,editable.id), recoveredId=randomUUID(), recoveredAsset=randomUUID()
+  const restoredSlots=sourceDetail.project.config.slots.map(slot=>({...slot,id:randomUUID(),referenceAssetIds:[]}))
+  const restoredConfig={...sourceDetail.project.config,baseAssetId:recoveredAsset,slots:restoredSlots}
+  const restoredProject=await createSuite(user,{requestId:randomUUID(),config:restoredConfig})
+  const restoreUpload=await beginSuiteUpload(user,restoredProject.id,{requestId:recoveredAsset,name:'恢复图片',mimeType:'image/png',bytes:MOCK_PNG_1X1.length},storage)
+  objects.set(restoreUpload.uploadUrl!,{bytes:Buffer.from(MOCK_PNG_1X1),contentType:'image/png'})
+  await completeSuiteUpload(user,restoredProject.id,{assetId:recoveredAsset,uploadId:restoreUpload.uploadId},storage)
+  const restoreRequest={requestId:randomUUID(),config:restoredConfig,versions:[{id:recoveredId,slotId:restoredSlots[0].id,parentVersionId:null,assetId:recoveredAsset,versionNumber:1,composition:currentAnnotation.composition}],
+    heads:restoredSlots.map((slot,index)=>({slotId:slot.id,activeVersionId:index===0?recoveredId:null})),drafts:[]}
+  const beforeRestore=submissions
+  await restoreSuiteSnapshot(user,restoredProject.id,restoreRequest)
+  await restoreSuiteSnapshot(user,restoredProject.id,restoreRequest)
+  const restored=await getSuite(user,restoredProject.id)
+  assert.equal(restored.versions.length,1)
+  assert.equal(restored.versions[0].sourceTask,undefined)
+  assert.equal(restored.batches.length,0)
+  assert.equal(restored.operations.length,0)
+  assert.equal(submissions,beforeRestore)
+  await assert.rejects(restoreSuiteSnapshot(user,restoredProject.id,{...restoreRequest,config:{...restoredConfig,title:'不同内容'}}),/恢复编号/)
+  await assert.rejects(restoreSuiteSnapshot(other,restoredProject.id,restoreRequest),/不存在或无权/)
+  for(const table of ['suite_bridges','suite_bridge_returns','suite_restore_receipts'])
+    assert.equal((await identity(other.id,'local',tx=>tx.unsafe(`select 1 from aigc.${table} where user_id=$1`,[user.id]))).length,0)
+  checks.push('恢复快照重放幂等，图片与图层历史完整、原任务身份与可执行队列为空；跨账号新表 RLS 和恢复权限隔离')
+  console.log(JSON.stringify({ kind: 'isolated_postgres_phase_four_mock_provider', postgresVersion: (await sql`select version() as version`)[0].version, checks,
     provider: 'mock', realProductSamples: 0, realProviderBillingVerified: false }, null, 2))
 } finally { if (runtimeConnected) await database().end(); await sql.end() }

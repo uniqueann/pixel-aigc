@@ -60,4 +60,29 @@ export const readSuiteCreation = (actor: SuiteActor) => read<SuiteCreationDraft>
 export const saveSuiteCreation = (actor: SuiteActor, value: SuiteCreationDraft | undefined) => write('creation', key(actor, 'creation'), value)
 export interface LocalSuiteDraft { value: import('@shared/ecommerce-suite').SuiteSlotDraft; dirty: boolean }
 export const readLocalSuiteDraft = (actor: SuiteActor, projectId: string, slotId: string) => read<LocalSuiteDraft>('projects', key(actor, `slot-draft:${projectId}:${slotId}`))
-export const saveLocalSuiteDraft = (actor: SuiteActor, projectId: string, slotId: string, value: LocalSuiteDraft) => write('projects', key(actor, `slot-draft:${projectId}:${slotId}`), value)
+const localDraftWrites = new Map<string, Promise<void>>()
+export function saveLocalSuiteDraft(actor: SuiteActor, projectId: string, slotId: string, value: LocalSuiteDraft) {
+  const recordKey = key(actor, `slot-draft:${projectId}:${slotId}`), snapshot = structuredClone(value)
+  const action = (localDraftWrites.get(recordKey) ?? Promise.resolve()).catch(() => undefined).then(() => write('projects', recordKey, snapshot))
+  localDraftWrites.set(recordKey, action)
+  void action.finally(() => { if (localDraftWrites.get(recordKey) === action) localDraftWrites.delete(recordKey) }).catch(() => undefined)
+  return action
+}
+export const archiveSuiteDraft = (actor: SuiteActor, projectId: string, slotId: string, value: LocalSuiteDraft) => write('projects', key(actor, `archived-draft:${projectId}:${slotId}:${Date.now()}:${crypto.randomUUID()}`), { ...structuredClone(value), slotId, savedAt: Date.now() })
+export async function listArchivedSuiteDrafts(actor: SuiteActor, projectId: string, slotId?: string) {
+  const db = await open()
+  try { return await new Promise<(LocalSuiteDraft & { slotId: string; savedAt: number })[]>((resolve,reject) => {
+    const result: (LocalSuiteDraft & { slotId: string; savedAt: number })[] = []
+    const tx = db.transaction('projects'), cursor = tx.objectStore('projects').openCursor()
+    cursor.onsuccess = () => {
+      const item = cursor.result
+      if (!item) return
+      try {
+        const identity = JSON.parse(String(item.key))
+        if (identity[0] === actor.userId && identity[1] === actor.runtimeScope && String(identity[2]).startsWith(`archived-draft:${projectId}:${slotId ? `${slotId}:` : ''}`)) result.push(item.value)
+      } catch { /* 忽略不属于当前账号环境的旧缓存键。 */ }
+      item.continue()
+    }
+    tx.oncomplete = () => resolve(result.sort((a,b) => b.savedAt-a.savedAt)); tx.onerror = () => reject(tx.error)
+  }) } finally { db.close() }
+}

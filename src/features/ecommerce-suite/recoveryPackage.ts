@@ -1,10 +1,10 @@
 import type { SuiteActor, SuiteAssetRef, SuiteSlotVersion } from '@shared/ecommerce-suite'
 import type { SuiteClient } from './api'
-import { readSuiteBlob } from './backup'
+import { listArchivedSuiteDrafts, readSuiteBlob } from './backup'
 import { fetchOwnedObject } from '@/services/api/objects'
 import { createResultZip } from '@/pages/Toolbox/shared/zip'
 
-export async function verifySuiteBlob(blob: Blob, asset: SuiteAssetRef) {
+export async function verifySuiteBlob(blob: Blob, asset: Pick<SuiteAssetRef, 'bytes' | 'checksum'>) {
   if (blob.size !== asset.bytes) return false
   const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())
   return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('') === asset.checksum
@@ -45,7 +45,9 @@ export async function exportSuiteRecovery(client: SuiteClient, id: string, actor
     assets.push({ assetId: asset.assetId, mimeType: asset.mimeType, bytes: asset.bytes, size: asset.size, checksum: asset.checksum, file: name })
   }
   const manifest = { format: 'pixel-suite-recovery', formatVersion: 1, config: detail.project.config, slotHeads: detail.project.slotHeads,
-    versions: detail.versions, assets, note: '仅保存商品配置、成品和图片，不授予云端权限；不恢复或执行收费任务。恢复包导入在图层阶段接入。' }
+    draftArchives: (await listArchivedSuiteDrafts(actor, id)).map(draft => ({ slotId: draft.slotId, value: draft.value })),
+    versions: detail.versions, assets, drafts: detail.drafts.filter(draft => draft.value).map(draft => ({ slotId: draft.slotId, value: draft.value })),
+    note: '仅保存商品配置、成品、图层草稿和图片。导入会在当前账号创建新项目并重新上传图片，不授予原云端权限、不恢复原任务或收费队列。' }
   files.push({ name: 'manifest.json', blob: new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }) })
   client.assertCurrent()
   return createResultZip(files)

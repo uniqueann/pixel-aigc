@@ -24,7 +24,10 @@ export function taskDestination(task: TaskCenterSummary): string | null {
     params.set('projectId', origin.projectId); params.set('projectSource', origin.projectSource); params.set('sceneId', origin.sceneId)
     return `/canvas/${origin.tool}?${params}`
   }
-  if (workstation.includes(tool)) return `/image-workstation/${tool}?${params}`
+  if (workstation.includes(tool)) {
+    if (origin?.entry === 'workstation' && origin.suiteBridgeId) params.set('bridgeId', origin.suiteBridgeId)
+    return `/image-workstation/${tool}?${params}`
+  }
   if (tool === 'bg-remove' || tool === 'aspect-ratio') return `/toolbox/${tool}?${params}`
   if (tool === 'email-assist') { params.set('mode','single'); return `/email?${params}` }
   // 没有原项目来源的画布任务只留在详情，不猜测项目或创建新画布。

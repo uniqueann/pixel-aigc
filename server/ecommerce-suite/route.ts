@@ -7,9 +7,14 @@ import { registerSuiteResults } from './results.js'
 import type { SuiteUser } from './repository.js'
 import { ecommerceSuiteDispatchReady, ecommerceSuiteEnabled } from './config.js'
 import { readSuiteBatch, stopSuiteBatch } from './batches.js'
+import { saveSuiteVersion } from './versions.js'
+import { createSuiteBridge, readSuiteBridge, returnSuiteBridge } from './bridges.js'
+import { restoreSuiteSnapshot } from './restore.js'
 
 export async function handleEcommerceSuiteRoute(user: SuiteUser, method: string, path: string[], body: unknown, query: URLSearchParams) {
   if (!ecommerceSuiteEnabled()) throw new HttpError(503, '电商套图暂未开放，请稍后再试', 'SUITE_DISABLED')
+  if (path[1] === 'bridges' && path.length === 3 && method === 'GET') return { body: await readSuiteBridge(user, z.uuid().parse(path[2])) }
+  if (path[1] === 'bridges' && path.length === 4 && path[3] === 'results' && method === 'POST') return { body: await returnSuiteBridge(user, z.uuid().parse(path[2]), body) }
   if (path[1] !== 'suites') throw new HttpError(404, '接口不存在', 'NOT_FOUND')
   const uuid = (value: string) => z.uuid().parse(value)
   if (path.length === 2) {
@@ -24,6 +29,8 @@ export async function handleEcommerceSuiteRoute(user: SuiteUser, method: string,
     if (method === 'DELETE') return { body: await recycleSuite(user, id, false) }
   }
   if (path.length === 4) {
+    if (path[3] === 'restore-snapshot' && method === 'POST') return { body: await restoreSuiteSnapshot(user, id, body) }
+    if (path[3] === 'bridges' && method === 'POST') return { status: 201, body: await createSuiteBridge(user, id, body) }
     if (path[3] === 'restore' && method === 'POST') return { body: await recycleSuite(user, id, true) }
     if (path[3] === 'assets' && method === 'POST') return { body: await beginSuiteUpload(user, id, body) }
     if (path[3] === 'quotes' && method === 'POST') return { body: await quoteSuite(user, id, body) }
@@ -50,6 +57,7 @@ export async function handleEcommerceSuiteRoute(user: SuiteUser, method: string,
   if (path[3] === 'slots' && path.length === 6) {
     const slotId = uuid(path[4])
     if (path[5] === 'versions' && method === 'GET') return { body: await listSuiteVersions(user, id, slotId, z.coerce.number().int().positive().max(2147483647).parse(query.get('before') ?? '2147483647')) }
+    if (path[5] === 'versions' && method === 'POST') return { body: await saveSuiteVersion(user, id, slotId, body) }
     if (path[5] === 'current' && method === 'PATCH') return { body: await selectSuiteVersion(user, id, slotId, body) }
     if (path[5] === 'draft' && method === 'PATCH') return { body: await saveSuiteDraft(user, id, slotId, body) }
   }

@@ -1012,4 +1012,21 @@ describe('useImageWorkstationController 集成流程', () => {
     expect(mocks.createTask).toHaveBeenCalledTimes(1)
   })
 
+  it('同账号切换运行环境时拒绝旧环境的任务创建晚到响应', async () => {
+    let finish!: (task: GenerationTask) => void
+    mocks.createTask.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    await mountFusion()
+    let pending!: Promise<unknown>
+    await act(async () => { pending = currentController.generate(null).catch(error => error) })
+    await vi.waitFor(() => expect(mocks.createTask).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      useUserStore.setState({ account: { ...useUserStore.getState().account, runtimeScope: 'preview' } as NonNullable<ReturnType<typeof useUserStore.getState>['account']> })
+      finish(submittedFusion)
+      await pending
+    })
+    expect(currentController.activeTask).toBeUndefined()
+    expect(currentController.outputAssets).toEqual([])
+    expect(useEditorStore.getState().project?.generations['generation:fusion-task']).toBeUndefined()
+  })
+
 })

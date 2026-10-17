@@ -1,0 +1,129 @@
+{
+  "kind": "phase_four_local_gates",
+  "checkedAt": "2026-10-17T09:56:27.364791+00:00",
+  "worktreeBaseCommit": "aa76488eaedef96283f57b28c805e8a5deb17bc6",
+  "branch": "feat/ecommerce-suite-phase-four",
+  "fullTests": {
+    "command": "npm test",
+    "files": 285,
+    "tests": 1879,
+    "exitCode": 0,
+    "unhandledErrors": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "exitCode": 0,
+    "notes": "保留既有 Rollup 注释、混合导入与大包提示"
+  },
+  "lint": {
+    "command": "npm run lint",
+    "exitCode": 0
+  },
+  "contracts": {
+    "command": "npm run check:ecommerce-suite:phase-one",
+    "examples": 21,
+    "templates": 3,
+    "localLinks": 78,
+    "prototypeSha256": "4a100dba9c3dc120c2c9d8bb1639b653cdfaf365bebf0e44b304a5986670e048"
+  },
+  "postgres": {
+    "checks": 26,
+    "version": "PostgreSQL 18.4 on x86_64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit",
+    "actualApplicationRole": "aigc_api",
+    "provider": "mock",
+    "objectStorage": "内存对象存储",
+    "targetSchedulerVerified": false
+  },
+  "advisors": {
+    "exitCode": 0,
+    "existingWarnings": 21,
+    "suiteFindings": 0
+  },
+  "browser": {
+    "consoleErrors": 0,
+    "taskSubmissions": 1,
+    "identity": "本地测试身份",
+    "http": "合成fixture",
+    "realCanvasAndEncodedFiles": true,
+    "previewPngPixelsIdentical": true,
+    "fourKJpeg": {
+      "width": 4096,
+      "height": 3413
+    },
+    "viewports": [
+      "1440x1000",
+      "1280x720",
+      "900x800",
+      "390x844",
+      "375x667"
+    ]
+  },
+  "phaseFourExitPassed": false,
+  "realProductSamples": {
+    "required": 9,
+    "received": 0,
+    "accepted": 0
+  },
+  "targetEnvironment": {
+    "migrationApplied": false,
+    "realAuthVerified": false,
+    "realR2Verified": false,
+    "realProviderBillingVerified": false,
+    "schedulerVerified": false,
+    "featureEnabled": null,
+    "featureDefault": "disabled",
+    "remoteConfigurationChanged": false
+  },
+  "sourceHashes": {
+    "public/fonts/NotoSans.woff2": "e3a326bcaefd5b63320939d4cadbcd0a49a2243bf74ed8320dd12be1373384c5",
+    "public/fonts/NotoSansSC.woff2": "d47a208f209133cfe6b3a4cb64308908dfb092ab5377b7d834a92ab18c30d19b",
+    "public/fonts/OFL-NotoSans.txt": "e2e177a32561584d4fc13aaa3cd8e53758a12910f013fe9ca125419111722029",
+    "public/fonts/OFL-NotoSansSC.txt": "babcfe66c8a098b2fa279bc724a3a342f8124f77ce18941fbcc1bbb39823cded",
+    "public/fonts/README.md": "0d3c1430835d73e0286b15515cb9accb8267076aa46abe16a6a754ce18510558",
+    "scripts/ecommerce-suite-postgres-check.ts": "1667170543c5f079b249ee5b795beb3145fbd23fe50d25d1636b1d36d9965bc7",
+    "server/ecommerce-suite/bridge-task.ts": "95a85a6f902ef179294bf90616a4f0943ba4b41cfa0d9b1811009d0924292d15",
+    "server/ecommerce-suite/bridges.ts": "b7395b8520da5bb41cf900e6d2ab512ce12ab64cf0d1cd2d8affc01bbd44c5da",
+    "server/ecommerce-suite/generation.ts": "aab933e0b1cbb8fefd2ac32e94cee87607cddc90bc46dcefcf38c3271ad5460f",
+    "server/ecommerce-suite/projects.ts": "d17636c2ab35f9f29c99d8d9cd0e10b51c67c63a291920cbf6b51876a38127dc",
+    "server/ecommerce-suite/restore.ts": "0e435da176df08011299591527b07bfe97c97227c9493ea1668289f26e4750f2",
+    "server/ecommerce-suite/results.ts": "30eb1b96fe81162134f9684837a6d9c0595c1e225db556c767537127bbe4064c",
+    "server/ecommerce-suite/route.ts": "8f319bc7da75d61c1222df6fc112334ced292e063a1a2d428ee3efb70023a0a4",
+    "server/ecommerce-suite/versions.ts": "ec4afeb4876e3f94732852a2a6f4e32332688efe4b65f621338c1d751f61a5a4",
+    "server/image-jobs/service.ts": "0a55571ba27a79d5dc55a968d2bfcdb4e7aaad3b0684f47d2cf2e8fd3a3108c4",
+    "server/sync-billing.ts": "0e5985af62dad6b34aaf5ae88058f60a3a4733d0b4abb23f2c8ea04a18d2e419",
+    "shared/ecommerce-suite-annotations.test.ts": "83c184446f71343aa91f0713c9508b858ba4549f0661f293e2661dad03746055",
+    "shared/ecommerce-suite-annotations.ts": "57872cc013794eb1d274c20a9c052ad3f54677d5663cd1356b0c13d2a7e28771",
+    "shared/ecommerce-suite-recovery.ts": "861ae775adfcb6a47bbbc2b12762719576163d893b5a0b3a0565fadb3e3cbdb5",
+    "shared/ecommerce-suite-runtime.ts": "bf5132b9c073982f4a1fe985ed76699b75cf75f9239bb9ac257fd713ed22233c",
+    "shared/ecommerce-suite.ts": "5e913fb015bc4b5f32cada1bb9e618c80641494356e463a6a5e00ff36743a87b",
+    "shared/task-center.ts": "5381462d1152675be1f7f540fee1d2844c90303929c35e5f915c67e1519cb5f1",
+    "src/features/ecommerce-suite/BatchPlanPanel.tsx": "96a890e5a5c6f244b960f949fbe6fbeb307e560232bb92eb8bfbbb6b7ba0ae25",
+    "src/features/ecommerce-suite/GenerationPanel.tsx": "5a47a8c7e0dee41268180c436e88f244b3bdd1ce18325174bfeea0f8b922680a",
+    "src/features/ecommerce-suite/LayerPanel.tsx": "37d003dd10b246c24d0568701bba9910c0f220dfe04b54b7446d2b684786aa9f",
+    "src/features/ecommerce-suite/RecoveryImport.tsx": "9e56698e287eb72aab2c6dec202b88c63498a89a936b46b956e96a9f59034e29",
+    "src/features/ecommerce-suite/SuiteCanvas.tsx": "c619fb2cd710b79df544bf2e0d18b1e2ff89319ed7020d52b05ab25084a3e90c",
+    "src/features/ecommerce-suite/SuiteWorkspace.tsx": "c8dd353638aeb263e7e4fbd188cbe78694eda151140db4e05769da3859df788b",
+    "src/features/ecommerce-suite/VersionPanel.tsx": "5f1c36243eee94fb6bd5537325bc9bf3b49c70315507e24d461bf1add1b761c4",
+    "src/features/ecommerce-suite/WorkstationBridge.tsx": "511b0db50fffeeadf2a882664daac70d22445cbb0fbbc997919dfa154b854647",
+    "src/features/ecommerce-suite/api.ts": "9794c72ecd7c78aeeeb109b1d9b7ff9a296cb1271f0b8cd7f787218fcd6b7d2f",
+    "src/features/ecommerce-suite/backup.ts": "04c9f8ffcc20fb6bc118d392b065b7b309919201e025b0bc3501cbd834ff4617",
+    "src/features/ecommerce-suite/fontCoverage.ts": "4778ec2ec2ef5efa58e98688c64d265085d4ecedcd938d72d983b530bd5478f1",
+    "src/features/ecommerce-suite/importRecovery.test.ts": "92f9655534f126aba543183e8cf24620c9eb30fbe3d0d35e63089bf52b07646a",
+    "src/features/ecommerce-suite/importRecovery.ts": "d3a4a2e63215063fffd41ec8e09dad5b15f6ff5cf190e96208e13b2822e8df00",
+    "src/features/ecommerce-suite/recoveryPackage.ts": "444ed97545ff9491e999f8dd3f201036c1c0a74d3d12c8f7dce3c1622a232c41",
+    "src/features/ecommerce-suite/render.ts": "d08da1cef46384cf500de6eca2f53c982b17333bacb7bdb669dde20268ccc5f8",
+    "src/features/ecommerce-suite/useSuiteSlotEditor.test.tsx": "f7496a7b94b0697d7776514eec4eb6b3ffc339864210a0ce31f57a3eac847f36",
+    "src/features/ecommerce-suite/useSuiteSlotEditor.ts": "44fe5e93c614a913312ed06bf1d630deca710b83a99f1229987efcd8fd4db6c2",
+    "src/features/image-workstation/hooks/useImageWorkstationController.test.tsx": "124e68611ef4cd08044780e9c3f6790afcae2f64a2b39d3f7a37a9c2e40875b1",
+    "src/features/image-workstation/hooks/useImageWorkstationController.ts": "e917a31ffa41b7737e96e8c6fcedceafb9cda6b9e3ca74d93c1559678d04d4fe",
+    "src/features/task-center/route.test.ts": "d3837ded225bc48a437210c6984b0507aadf76a413251ace54ff71796db099d1",
+    "src/features/task-center/route.ts": "01f5f5396652a86083b15799e700d9e4a8403b1ba670aa23b52760b5575140d7",
+    "src/pages/EcommerceSuite/index.tsx": "7ee7c9ab047fe1a5e3d9cbf718e5237848dc3c908625e7e3cc615a03e1287d0b",
+    "src/pages/EcommerceSuite/style.css": "52725a533352ca0155f177ac88862207716769c27916facf66590bed0a2c4b8d",
+    "src/pages/ImageWorkstation/index.tsx": "5b5542baff046152fb081fe88eb100b67dfaf92cd3d3669b2faf8b0a10d6df0f",
+    "src/services/api/image-transfer.ts": "7db4e2b40a5faa584a66390b24bbbdf761c6c29b3390f72fa32ce18c0648df12",
+    "src/services/api/repaint.ts": "e3b98e156d2a2c5462d3d67271d728ed0c9a0a26c5a8f98f8b10dda16325ccef",
+    "supabase/migrations/20261017091705_ecommerce_suite_phase_four.sql": "e0678dfd36ad4b9c0fb65a7dab461d544be0f0bfa8cad3495659d504db051f53"
+  },
+  "deliveryNotes": "提交前仅清理两份 OFL 许可的行尾空格，许可正文、源码与字体二进制未变；沿用上述本地门槛。"
+}
