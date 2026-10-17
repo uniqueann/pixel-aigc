@@ -27,8 +27,8 @@ function PickerSkeleton() {
   )
 }
 
-export default function CanvasAssetPicker({ ownerId, busy, onSelect, onClose }: {
-  ownerId: string; busy: boolean; onSelect: (record: WorkstationHistoryListItem) => Promise<void>; onClose: () => void
+export default function CanvasAssetPicker({ ownerId, busy, onSelect, onClose, targetLabel = '画布' }: {
+  ownerId: string; busy: boolean; onSelect: (record: WorkstationHistoryListItem) => Promise<void>; onClose: () => void; targetLabel?: string
 }) {
   const [items, setItems] = useState<WorkstationHistoryListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -90,10 +90,10 @@ export default function CanvasAssetPicker({ ownerId, busy, onSelect, onClose }: 
   }, [readLocal, hydrateInBackground])
 
   return <Modal title="从我的资产添加图片" open onCancel={onClose} footer={null} width={680}>
-    <p>选择一张图片，加入当前画布。资产列表按当前账号显示最近的图片结果。{syncing && !loading && <span className="canvas-asset-picker-syncing">云端同步中…</span>}</p>
+    <p>选择一张图片，加入当前{targetLabel}。资产列表按当前账号显示最近的图片结果。{syncing && !loading && <span className="canvas-asset-picker-syncing">云端同步中…</span>}</p>
     {error && <Alert type="warning" showIcon message={error} action={<Button size="small" onClick={retry}>重试读取</Button>} />}
     {loading ? <PickerSkeleton /> : items.length === 0 ? <Empty description="暂无图片资产，可以先上传本地图片" /> : <div className="canvas-asset-picker-grid">
-      {items.map(item => <button key={item.id} className="canvas-asset-picker-item" disabled={busy} onClick={() => { void onSelect(item) }} aria-label={`添加${workstationToolLabel(item.toolSlug)} ${item.width}×${item.height}到画布`}>
+      {items.map(item => <button key={item.id} className="canvas-asset-picker-item" disabled={busy} onClick={() => { void onSelect(item) }} aria-label={`添加${workstationToolLabel(item.toolSlug)} ${item.width}×${item.height}到${targetLabel}`}>
         {item.thumbnail ? <HistoryThumbnail blob={item.thumbnail} label={workstationToolLabel(item.toolSlug)} /> : <span>图片</span>}
         <strong>{workstationToolLabel(item.toolSlug)}</strong><span>{item.width} × {item.height}</span>
       </button>)}

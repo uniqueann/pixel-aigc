@@ -9,6 +9,7 @@ import Toolbox from '@/pages/Toolbox'
 import CanvasProjectRoute from '@/features/dashboard/CanvasProjectRoute'
 import Assets from '@/pages/Assets'
 import Help from '@/pages/Help'
+const loadEcommerceSuite = async () => ({ Component: (await import('@/pages/EcommerceSuite')).default })
 
 export const router = createBrowserRouter([
   {
@@ -17,6 +18,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'email', element: <EmailAssistant /> },
+      { path: 'ecommerce', lazy: loadEcommerceSuite },
+      { path: 'ecommerce/:id', lazy: loadEcommerceSuite },
       {
         path: 'image-workstation',
         children: [

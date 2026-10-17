@@ -21,7 +21,8 @@
     "aigc:member": "tsx --env-file-if-exists=.env.local scripts/aigc-admin.ts member",
     "aigc:credits": "tsx --env-file-if-exists=.env.local scripts/aigc-admin.ts credits",
     "aigc:bootstrap": "tsx --env-file-if-exists=.env.local scripts/aigc-admin.ts bootstrap",
-    "aigc:payments": "tsx --env-file-if-exists=.env.local scripts/aigc-payments.ts"
+    "aigc:payments": "tsx --env-file-if-exists=.env.local scripts/aigc-payments.ts",
+    "test:ecommerce-suite:postgres": "tsx scripts/ecommerce-suite-postgres-check.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^5.4.0",

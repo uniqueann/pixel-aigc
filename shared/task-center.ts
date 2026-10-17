@@ -21,6 +21,7 @@ export const taskTools = [
   'text-to-video',
   'image-to-video',
   'email-assist',
+  'ecommerce-suite',
 ] as const
 export type TaskTool = (typeof taskTools)[number]
 export type TaskScope = 'local' | 'preview' | 'production'
@@ -39,9 +40,13 @@ export const taskToolLabels: Record<TaskTool, string> = {
   'text-to-video': '文生视频',
   'image-to-video': '图生视频',
   'email-assist': '邮件助手',
+  'ecommerce-suite': '电商套图',
 }
 const projectId = z.string().trim().min(1).max(150)
 export const taskOriginSchema = z.discriminatedUnion('entry', [
+  z.object({ entry: z.literal('ecommerce'), tool: z.literal('ecommerce-suite'),
+    projectId: z.uuid(), slotId: z.uuid(), batchId: z.uuid(), operationId: z.uuid(),
+  }).strict(),
   z
     .object({
       entry: z.literal('workstation'),
@@ -91,7 +96,7 @@ export function validTaskOrigin(
 ) {
   if (!origin) return true
   const allowed: Record<string, readonly TaskTool[]> = {
-    image_edit: ['smart-edit', 'relight', 'fusion', 'retouch'],
+    image_edit: ['smart-edit', 'relight', 'fusion', 'retouch', 'ecommerce-suite'],
     variation: ['variation'],
     text_to_image: ['text-to-image'],
     text_to_video: ['text-to-video', 'image-to-video'],

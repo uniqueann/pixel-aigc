@@ -1,0 +1,15 @@
+{
+  "kind": "synthetic_browser_http_fixtures",
+  "checks": [
+    "创建向导完成上传与打开",
+    "单槽位费用确认后仅一次 POST",
+    "候选选择与刷新不重提",
+    "深浅主题",
+    "900px 预览正常文档流",
+    "390px 无横向溢出"
+  ],
+  "submissions": 1,
+  "consoleErrors": [],
+  "requestCount": 51,
+  "realProductSamples": 0
+}

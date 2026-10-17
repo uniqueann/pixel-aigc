@@ -1,0 +1,17 @@
+{
+  "kind": "isolated_postgres_mock_provider",
+  "postgresVersion": "PostgreSQL 18.4 on x86_64-apple-darwin24.6.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit",
+  "checks": [
+    "创建与原请求查找幂等；主体图未就绪不能报价",
+    "真实 PNG 解码、内容校验与持久对象完成可重入",
+    "实际 aigc_api 角色跨账号、环境读取为空，伪造归属写入拒绝，旧修订返回冲突",
+    "篡改预算与过期报价被拒绝，报价内容不可更新；七张套图表均无 Data API 角色直接读权限",
+    "主图复用无供应商调用、无预扣，重复登记只创建一个版本",
+    "原任务、两候选和一次预扣同事务绑定；同请求重放、GET 与原请求查找不重复提交；通用任务入口拒绝伪造套图来源",
+    "Mock 原任务结算两张成功费用；并发登记两候选不重复；多候选不自动覆盖；版本不可更新，跨槽位指针外键拒绝",
+    "原任务清理后长期资产、不可变版本与执行凭据仍保留，查询不重新生成"
+  ],
+  "provider": "mock",
+  "realProductSamples": 0,
+  "realProviderBillingVerified": false
+}

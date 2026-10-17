@@ -160,10 +160,10 @@ describe('电商套图阶段一：冻结契约与边界', () => {
     }
   })
 
-  it('冻结来源契约不等于开放现有 API 或任务中心', () => {
+  it('单槽位来源已接入，整套聚合来源仍未开放', () => {
     expect(suiteOriginSchema.safeParse(examples.origin).success).toBe(true)
-    expect(taskOriginSchema.safeParse(examples.origin).success).toBe(false)
-    expect([...taskTools]).not.toContain('ecommerce-suite')
+    expect(taskOriginSchema.safeParse(examples.origin).success).toBe(true)
+    expect([...taskTools]).toContain('ecommerce-suite')
     expect([...taskSourceKinds]).not.toContain('suite_batch')
   })
 

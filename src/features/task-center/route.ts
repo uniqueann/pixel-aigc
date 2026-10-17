@@ -14,6 +14,11 @@ export function taskDestination(task: TaskCenterSummary): string | null {
   const tool = task.tool
   if (!tool) return null
   const params = new URLSearchParams({ task: task.taskKey })
+  if (origin?.entry === 'ecommerce') {
+    params.set('slot', origin.slotId)
+    params.set('batch', origin.batchId)
+    return `/ecommerce/${origin.projectId}?${params}`
+  }
   if (origin?.entry === 'canvas') {
     params.set('projectId', origin.projectId); params.set('projectSource', origin.projectSource); params.set('sceneId', origin.sceneId)
     return `/canvas/${origin.tool}?${params}`
