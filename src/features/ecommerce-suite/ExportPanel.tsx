@@ -126,7 +126,7 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
     <Button type="primary" disabled={!canDownload} onClick={() => { void download() }}>下载 {ready.length} 张成品 ZIP</Button>
   </div>}>
     <div className="suite-export-panel">
-      <Alert type="info" showIcon message="合规导出说明" description="系统将对所选图片的尺寸、格式和平台规范进行自动核对，未固化的文字标注将在预检时自动保存为新版本并合成导出。导出不消耗积分。" />
+      <Alert type="info" showIcon message="合规导出说明" description="系统将对所选图片的尺寸、格式和平台规范进行自动核对；未固化的文字标注将在预检时自动保存为新版本并设为当前使用，随后合成导出。导出不消耗积分。" />
       <fieldset disabled={busy}><legend>选择要导出的槽位</legend><div className="suite-export-slots">{data.project.config.slots.map(slot => <Checkbox key={slot.id} checked={selected.includes(slot.id)} onChange={event => {
         invalidate(); setSelected(old => event.target.checked ? [...old, slot.id] : old.filter(id => id !== slot.id))
       }}>{slot.order + 1}. {slot.name}{data.project.slotHeads.find(head => head.slotId === slot.id)?.activeVersionId ? '' : '（未生成）'}</Checkbox>)}</div></fieldset>
