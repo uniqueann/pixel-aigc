@@ -1,7 +1,17 @@
 import { Fragment, type ReactNode } from 'react'
 import { Typography } from 'antd'
+import { Link as RouterLink, useInRouterContext } from 'react-router-dom'
 
-const { Title, Paragraph, Text, Link } = Typography
+const { Title, Paragraph, Text, Link: TypographyLink } = Typography
+
+function HelpLink({ href, children }: { href: string; children: ReactNode }) {
+  const inRouter = useInRouterContext()
+  const external = /^https?:\/\//.test(href)
+  if (!external && inRouter) {
+    return <RouterLink to={href} className="ant-typography">{children}</RouterLink>
+  }
+  return <TypographyLink href={href} target={external ? '_blank' : undefined} rel="noreferrer">{children}</TypographyLink>
+}
 
 /**
  * docs/help/*.md 专用的极简 markdown 渲染器。
@@ -18,8 +28,8 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const parts = text.split(pattern)
   return parts.map((part, i) => {
     const key = `${keyPrefix}-${i}`
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <Text strong key={key}>{part.slice(2, -2)}</Text>
+    if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+      return <Text strong key={key}>{renderInline(part.slice(2, -2), `${key}-s`)}</Text>
     }
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
       return <Text code key={key}>{part.slice(1, -1)}</Text>
@@ -27,8 +37,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
     const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part)
     if (linkMatch) {
       const href = linkMatch[2]
-      const external = /^https?:\/\//.test(href)
-      return <Link key={key} href={href} target={external ? '_blank' : undefined} rel="noreferrer">{linkMatch[1]}</Link>
+      return <HelpLink key={key} href={href}>{renderInline(linkMatch[1], `${key}-l`)}</HelpLink>
     }
     return <Fragment key={key}>{part}</Fragment>
   })

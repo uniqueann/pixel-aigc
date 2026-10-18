@@ -53,6 +53,24 @@ describe('帮助中心', () => {
     expect(screen.getByRole('heading', { name: '电商套图使用指南' })).toBeTruthy()
     expect(screen.getByText(/完整业务流程/)).toBeTruthy()
     expect(screen.getByRole('heading', { name: '第五步：合规预检与成品导出' })).toBeTruthy()
+    expect(screen.getByText(/导入含图片恢复包/)).toBeTruthy()
+    expect(screen.getByText(/出图完成时，顶栏积分余额自动同步刷新一次/)).toBeTruthy()
+  })
+
+  it('快速上手页渲染核心模块链接可点击', () => {
+    renderHelp('/help/quickstart')
+    const links = [
+      { name: '电商套图', href: '/help/ecommerce-suite' },
+      { name: '图片工作站', href: '/help/workstation' },
+      { name: '工具箱', href: '/help/toolbox' },
+      { name: '自由画布', href: '/help/canvas' },
+      { name: '邮件助手', href: '/help/email-assistant' },
+    ]
+    for (const item of links) {
+      const link = screen.getByRole('link', { name: item.name })
+      expect(link).toBeTruthy()
+      expect(link.getAttribute('href')).toBe(item.href)
+    }
   })
 
   it('未知 slug 回退到第一篇', () => {
