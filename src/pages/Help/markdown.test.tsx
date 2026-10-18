@@ -44,6 +44,24 @@ describe('帮助文档 markdown 渲染器', () => {
     expect(a.getAttribute('target')).toBe('_blank')
   })
 
+  it('链接：支持嵌套加粗语法与站内链接', () => {
+    render(
+      <Markdown
+        body={
+          '- **[电商套图](/help/ecommerce-suite)**：套图描述\n' +
+          '- [**图片工作站**](/help/workstation)：工作站描述\n'
+        }
+      />,
+    )
+    const link1 = screen.getByRole('link', { name: '电商套图' })
+    expect(link1.getAttribute('href')).toBe('/help/ecommerce-suite')
+    expect(link1.closest('strong')).toBeTruthy()
+
+    const link2 = screen.getByRole('link', { name: '图片工作站' })
+    expect(link2.getAttribute('href')).toBe('/help/workstation')
+    expect(link2.querySelector('strong')).toBeTruthy()
+  })
+
   it('表格：表头与行', () => {
     const { container } = render(
       <Markdown body={'| 工具 | 用途 |\n|------|------|\n| 抠图 | 去背景 |\n'} />,
