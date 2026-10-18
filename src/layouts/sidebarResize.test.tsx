@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import MainLayout from '@/layouts/MainLayout'
 import { useThemeStore } from '@/store/useThemeStore'
+import { useUserStore, type AccountContext } from '@/store/useUserStore'
 import { readSidebarState, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, writeSidebarState, writeSidebarWidth } from '@/features/preferences/storage'
 
 function installMatchMedia(desktop: boolean) {
@@ -57,6 +58,7 @@ describe('侧边栏拖拽', () => {
     cleanup()
     localStorage.clear()
     document.body.classList.remove('sidebar-resizing')
+    useUserStore.getState().setAccount(null)
     vi.unstubAllGlobals()
   })
 
@@ -208,6 +210,36 @@ describe('侧边栏拖拽', () => {
       window.dispatchEvent(new CustomEvent('pixel-sidebar-collapse'))
     })
     expect(document.querySelector('.app-sidebar.is-mobile-open')).toBeNull()
+  })
+
+  it('电商套图在展开时于标题右侧显示新徽标，收起后徽标留在被隐藏的标题里', () => {
+    installMatchMedia(true)
+    useUserStore.getState().setAccount({
+      userId: '11111111-1111-4111-8111-111111111111',
+      features: { ecommerceSuite: true },
+      credits: 0,
+      email: 'suite@example.invalid',
+      emailVerified: true,
+      displayName: '测试',
+      avatarUrl: null,
+      providers: [],
+      status: 'active',
+      workspace: { id: 'w', name: '个人', type: 'personal', role: 'admin' },
+    } satisfies AccountContext)
+    renderLayout()
+    const badge = screen.getByText('新')
+    const item = screen.getByRole('menuitem', { name: /电商套图/ })
+    expect(item.querySelector('.nav-item-badge')).toBe(badge)
+    expect(badge.closest('.ant-menu-title-content')).toBeTruthy()
+    expect(badge.compareDocumentPosition(item.querySelector('.nav-item-label-text')!)).toBe(Node.DOCUMENT_POSITION_PRECEDING)
+    expect(document.querySelector('.app-sidebar-menu')?.className).not.toContain('ant-menu-inline-collapsed')
+
+    fireEvent.click(screen.getByRole('button', { name: '收起侧边栏' }))
+    const collapsed = document.querySelector('.app-sidebar-menu.ant-menu-inline-collapsed')
+    const hidden = collapsed?.querySelector('.nav-item-badge')
+    expect(hidden?.textContent).toBe('新')
+    expect(hidden?.closest('.ant-menu-title-content')).toBeTruthy()
+    expect(collapsed?.querySelector('.ant-menu-item .ant-menu-item-icon')).toBeTruthy()
   })
 
   it('左侧边栏与导航菜单跟随主题模式设置 theme', () => {
