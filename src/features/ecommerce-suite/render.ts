@@ -78,12 +78,13 @@ export function drawSuiteLayers(ctx: CanvasRenderingContext2D, composition: Suit
   }
   return boxes
 }
-export async function paintSuite(canvas: HTMLCanvasElement, base: Blob, composition: SuiteComposition, background = 'transparent', signal?: AbortSignal) {
+/** 调用方传入的位图由调用方持有，绘制后不关闭，供槽位切换复用。 */
+export async function paintSuite(canvas: HTMLCanvasElement, base: Blob, composition: SuiteComposition, background = 'transparent', signal?: AbortSignal, decoded?: ImageBitmap) {
   await loadSuiteFonts(composition)
   signal?.throwIfAborted()
   const { width, height } = composition.renderSize
   if (width * height > 40_000_000) throw new Error('画板超过 4000 万像素，请缩小后导出')
-  const image = await createImageBitmap(base)
+  const image = decoded ?? await createImageBitmap(base)
   try {
     signal?.throwIfAborted()
     canvas.width = width; canvas.height = height
@@ -93,7 +94,7 @@ export async function paintSuite(canvas: HTMLCanvasElement, base: Blob, composit
     const scale = Math.min(width / image.width, height / image.height)
     ctx.drawImage(image, (width - image.width * scale) / 2, (height - image.height * scale) / 2, image.width * scale, image.height * scale)
     return drawSuiteLayers(ctx, composition)
-  } finally { image.close() }
+  } finally { if (!decoded) image.close() }
 }
 export async function encodeSuiteImage(base: Blob, composition: SuiteComposition, format: 'png' | 'jpeg' | 'webp' = 'png', background?: string, quality = .94, signal?: AbortSignal) {
   suiteCompositionSchema.parse(composition)
