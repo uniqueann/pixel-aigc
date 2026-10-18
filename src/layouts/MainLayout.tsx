@@ -46,10 +46,19 @@ import { PixelIcon, PixelWordmark } from '@/components/brand/PixelLogo'
 
 const { Sider, Content, Header } = Layout
 
+function EcommerceNavLabel() {
+  return (
+    <span className="nav-item-label">
+      <span className="nav-item-label-text">电商套图</span>
+      <span className="nav-item-badge">新</span>
+    </span>
+  )
+}
+
 const NAV_ITEMS = [
   { key: '/', icon: <AppstoreOutlined />, label: '工作台首页' },
   { key: '/email', icon: <MailOutlined />, label: '邮件助手' },
-  { key: '/ecommerce', icon: <ShoppingOutlined />, label: '电商套图' },
+  { key: '/ecommerce', icon: <ShoppingOutlined />, label: <EcommerceNavLabel /> },
   { key: '/image-workstation', icon: <PictureOutlined />, label: '图片工作站' },
   { key: '/toolbox', icon: <ToolOutlined />, label: '工具箱' },
   { key: '/canvas', icon: <BgColorsOutlined />, label: '自由画布' },
