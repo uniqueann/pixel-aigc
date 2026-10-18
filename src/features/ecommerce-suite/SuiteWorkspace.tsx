@@ -186,7 +186,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
           if (isRunning) {
             return <Alert style={{ marginTop: 14 }} type="info" showIcon message="该槽位正在后台生成中，完成后将自动刷新结果..." />
           }
-          if (operation?.appliedVersionIds.some(id => id !== head?.activeVersionId)) {
+          if (tab !== 'versions' && operation?.appliedVersionIds.some(id => id !== head?.activeVersionId)) {
             return <Alert style={{ marginTop: 14 }} type="success" showIcon message="该槽位已有新生成的版本" action={<Button size="small" onClick={() => setTab('versions')}>查看备选</Button>} />
           }
           return null
