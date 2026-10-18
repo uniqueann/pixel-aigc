@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { suiteBridgeResultRequestSchema, suiteBridgeSchema, suiteCreateBridgeRequestSchema, suiteVersionSchema, SUITE_LIMITS, type SuiteBridge, type SuiteTaskResult } from '../../shared/ecommerce-suite.js'
 import { scaleSuiteComposition, suiteMainLocked } from '../../shared/ecommerce-suite-annotations.js'
 import { HttpError } from '../errors.js'
-import { inspectSuiteImage, suiteObjectKey, suiteStorage } from './assets.js'
+import { inspectSuiteImage, rememberSuiteThumbnail, suiteObjectKey, suiteStorage } from './assets.js'
 import { actor, assertRevision, fingerprint, readSuite, readyAsset, requireSuite, suiteTransaction, type SuiteUser } from './repository.js'
 import { beginSuiteObjectWrite } from './object-writes.js'
 
@@ -95,7 +95,7 @@ export async function returnSuiteBridge(user: SuiteUser, bridgeId: string, body:
   const objectKey = suiteObjectKey(user, bridge.projectId, assetId, inspected.checksum, inspected.mimeType)
   await beginSuiteObjectWrite(user, bridge.projectId, objectKey)
   await storage.put(objectKey, bytes, inspected.mimeType, AbortSignal.timeout(20_000))
-  return suiteTransaction(user, async sql => {
+  const returned = await suiteTransaction(user, async sql => {
     await requireSuite(sql, bridge.projectId, true)
     const [lease] = await sql`select expires_at>clock_timestamp() as valid from aigc.suite_bridges where id=${bridge.id}`
     if (!lease?.valid) throw new HttpError(410, '会话已过期，已有工作站结果仍可独立下载', 'SUITE_BRIDGE_EXPIRED')
@@ -122,4 +122,6 @@ export async function returnSuiteBridge(user: SuiteUser, bridgeId: string, body:
     return { version, candidateOnly: true, sourceChanged: slot.active_version_id !== source.id || slot.head_revision !== bridge.sourceHeadRevision,
       sizeChanged: source.composition.renderSize.width !== inspected.size.width || source.composition.renderSize.height !== inspected.size.height }
   })
+  if (returned.version.assetId === assetId) await rememberSuiteThumbnail(user, bridge.projectId, { assetId, checksum: inspected.checksum, objectKey }, storage, bytes)
+  return returned
 }

@@ -130,6 +130,13 @@ describe('电商套图阶段一：冻结契约与边界', () => {
     expect(suiteQuoteRequestSchema.safeParse({ ...examples.quoteRequest, slots: [...examples.quoteRequest.slots, ...examples.quoteRequest.slots] }).success).toBe(false)
   })
 
+  it('读取授权可以指定缩略图，旧请求仍只签原图', () => {
+    expect(suiteAssetAccessRequestSchema.safeParse(examples.assetAccess).success).toBe(true)
+    expect(suiteAssetAccessRequestSchema.safeParse({ ...examples.assetAccess, variant: 'thumbnail' }).success).toBe(true)
+    expect(suiteAssetAccessRequestSchema.safeParse({ ...examples.assetAccess, variant: 'preview' }).success).toBe(false)
+    expect(suiteAssetAccessRequestSchema.safeParse({ ...examples.assetAccess, url: 'https://example.invalid/signed' }).success).toBe(false)
+  })
+
   it('长期资产拒绝临时路径、签名地址和目录穿越', () => {
     for (const objectKey of ['temporary/task-inputs/test', 'https://example.invalid/file', 'suite-assets/a?signature=secret', 'suite-assets/../other'])
       expect(suiteAssetSchema.safeParse({ ...examples.asset, objectKey }).success).toBe(false)
