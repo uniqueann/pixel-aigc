@@ -11,6 +11,10 @@ import { backupAssetBlob, loadFullSuite } from './recoveryPackage'
 import { emitTaskCenter } from '@/features/task-center/receipts'
 import { refreshBillingBalance } from '@/services/api/billing'
 
+export const suiteWorkspacePoll = { initialMs: 3_000, fastMs: 5_000, slowMs: 120_000, failureMs: 10_000 }
+const activeBatch = (batch: { state: string }) => batch.state === 'queued' || batch.state === 'running'
+const blockedBatch = (batch: { state: string }) => batch.state === 'blocked'
+
 export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteClient, signal: AbortSignal, focusedBatchId?: string) {
   const [store] = useState(createSuiteEditorStore)
   const editor = useStore(store)
@@ -135,27 +139,42 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     void refreshBillingBalance(actor.userId).catch(() => undefined)
     return load()
   }, [actor.userId, client, id, load])
+  const loadRef = useRef(load)
+  const signalRef = useRef(signal)
+  useEffect(() => { loadRef.current = load; signalRef.current = signal }, [load, signal])
+  const pollMode = detail?.batches.some(activeBatch) ? 'fast' : detail?.batches.some(blockedBatch) ? 'slow' : 'off'
   useEffect(() => {
-    if (!detail?.batches.some(batch => ['queued', 'running', 'blocked'].includes(batch.state))) return
-    let disposed = false, timer: ReturnType<typeof setTimeout>
+    // 排队/运行中保持短间隔。待用户处理的 blocked 大幅退避，避免签名与缩略图被轮询反复打掉。
+    if (pollMode === 'off') return
+    let disposed = false
+    let timer: ReturnType<typeof setTimeout> | undefined
     let failures = 0
+    const schedule = (delay: number) => { timer = setTimeout(() => { void poll() }, delay) }
     const poll = async () => {
-      if (disposed || signal.aborted) return
+      if (disposed || signalRef.current.aborted) return
+      let mode: 'fast' | 'slow' | 'off' = pollMode
       if (!document.hidden) {
         try {
-          const next = await load()
+          const next = await loadRef.current()
           failures = 0
-          if (next && !next.batches.some(batch => ['queued', 'running', 'blocked'].includes(batch.state))) {
-            void refreshBillingBalance(actor.userId).catch(() => undefined)
+          // 更新的读取覆盖了这次响应时保持原间隔，不能把仍在运行的批次降成慢轮询。
+          if (next) {
+            const running = next.batches.some(activeBatch)
+            const blocked = next.batches.some(blockedBatch)
+            if (!running && !blocked) {
+              void refreshBillingBalance(actor.userId).catch(() => undefined)
+              return
+            }
+            mode = running ? 'fast' : 'slow'
           }
         }
-        catch (error) { if (!disposed && !signal.aborted) { failures++; setError(error instanceof Error ? error.message : '原结果读取失败，可手动重试读取') } }
+        catch (error) { if (!disposed && !signalRef.current.aborted) { failures++; setError(error instanceof Error ? error.message : '原结果读取失败，可手动重试读取') } }
       }
-      if (!disposed && !signal.aborted && failures < 3) timer = setTimeout(() => { void poll() }, failures ? 10000 : 5000)
+      if (!disposed && !signalRef.current.aborted && failures < 3) schedule(failures ? suiteWorkspacePoll.failureMs : mode === 'slow' ? suiteWorkspacePoll.slowMs : suiteWorkspacePoll.fastMs)
     }
-    timer = setTimeout(() => { void poll() }, 3000)
+    schedule(pollMode === 'slow' ? suiteWorkspacePoll.slowMs : suiteWorkspacePoll.initialMs)
     return () => { disposed = true; clearTimeout(timer) }
-  }, [actor.userId, detail?.batches, load, signal])
+  }, [actor.userId, pollMode])
   const run = useCallback(async <T,>(action: () => Promise<T>) => {
     setBusy(true); setError('')
     try { client.assertCurrent(); return await action() }

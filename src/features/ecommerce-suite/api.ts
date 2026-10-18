@@ -44,7 +44,7 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
     get: (id: string) => request<SuiteProjectDetail>(`/${id}`),
     precheck: (id: string, versionIds: string[], output: SuiteExportConfig) => request<SuitePrecheck>(`/${id}/prechecks`, 'POST', { versionIds, output }),
     update: (id: string, expectedRevision: number, config: SuiteProjectConfig) => request<SuiteProject>(`/${id}`, 'PATCH', { expectedRevision, config }),
-    access: (id: string, assetIds: string[]) => request<{ items: { assetId: string; url: string; expiresAt: number }[] }>(`/${id}/assets/access`, 'POST', { assetIds }),
+    access: (id: string, assetIds: string[], variant: 'original' | 'thumbnail' = 'original') => request<{ items: { assetId: string; url: string; expiresAt: number; served?: 'original' | 'thumbnail' }[] }>(`/${id}/assets/access`, 'POST', variant === 'original' ? { assetIds } : { assetIds, variant }),
     draft: (id: string, slotId: string, value: SuiteSlotDraft) => request<{ slotId: string; revision: number; value: SuiteSlotDraft }>(`/${id}/slots/${slotId}/draft`, 'PATCH', value),
     versions: (id: string, slotId: string, before = '2147483647') => request<{ items: SuiteSlotVersion[]; nextCursor: string | null }>(`/${id}/slots/${slotId}/versions?before=${before}`),
     select: (id: string, slotId: string, versionId: string, expectedHeadRevision: number) => request<SuiteProject>(`/${id}/slots/${slotId}/current`, 'PATCH', { versionId, expectedHeadRevision }),

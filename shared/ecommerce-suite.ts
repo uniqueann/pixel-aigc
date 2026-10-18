@@ -97,7 +97,10 @@ export const suiteUploadRequestSchema = z.object({
   mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']), bytes: z.number().int().positive().max(SUITE_LIMITS.uploadBytes),
 }).strict()
 export const suiteUploadCompleteRequestSchema = z.object({ assetId: id, uploadId: id }).strict()
-export const suiteAssetAccessRequestSchema = z.object({ assetIds: z.array(id).min(1).max(100).refine(unique, '资产不能重复') }).strict()
+export const suiteAssetAccessRequestSchema = z.object({
+  assetIds: z.array(id).min(1).max(100).refine(unique, '资产不能重复'),
+  variant: z.enum(['original', 'thumbnail']).optional(),
+}).strict()
 
 const point = z.object({ x: z.number().finite().min(0).max(1), y: z.number().finite().min(0).max(1) }).strict()
 export const suiteLayerSchema = z.discriminatedUnion('type', [

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { suiteBatchSchema, suiteOperationSchema, suiteQuoteSchema, suiteVersionSchema, type SuiteAssetRef, type SuiteSlotVersion } from '../../shared/ecommerce-suite.js'
 import { HttpError } from '../errors.js'
-import { inspectSuiteImage, suiteObjectKey, suiteStorage } from './assets.js'
+import { inspectSuiteImage, rememberSuiteThumbnail, suiteObjectKey, suiteStorage } from './assets.js'
 import { refreshSuiteBatch } from './batches.js'
 import { actor, fingerprint, readyAsset, requireSuite, suiteTransaction, type SuiteUser } from './repository.js'
 import { SUITE_RENDERER_VERSION } from '../../shared/ecommerce-suite-annotations.js'
@@ -26,7 +26,7 @@ export async function registerSuiteOperationResults(user: SuiteUser, projectId: 
   })
   if (!input) return null
   const item = input.quote.items.find(item => item.operationId === operationId)!
-  const prepared: { ordinal: number; asset: SuiteAssetRef; application: string; generated: boolean }[] = []
+  const prepared: { ordinal: number; asset: SuiteAssetRef; application: string; generated: boolean; sourceBytes?: Uint8Array }[] = []
   if (item.mode === 'reuse') {
     const asset = await suiteTransaction(user, sql => readyAsset(sql, projectId, item.sourceAssetId))
     prepared.push({ ordinal: 0, asset, application: `reuse:${input.operation.id}`, generated: false })
@@ -41,10 +41,10 @@ export async function registerSuiteOperationResults(user: SuiteUser, projectId: 
       const objectKey = suiteObjectKey(user, projectId, assetId, inspected.checksum, inspected.mimeType)
       await beginSuiteObjectWrite(user, projectId, objectKey)
       await storage.put(objectKey, bytes, inspected.mimeType, AbortSignal.timeout(20_000))
-      prepared.push({ ordinal: Number(result.ordinal), asset: { assetId, projectId, actor: actor(user), objectKey, ...inspected }, application, generated: true })
+      prepared.push({ ordinal: Number(result.ordinal), asset: { assetId, projectId, actor: actor(user), objectKey, ...inspected }, application, generated: true, sourceBytes: bytes })
     }
   }
-  return suiteTransaction(user, async sql => {
+  const saved = await suiteTransaction(user, async sql => {
     await requireSuite(sql, projectId, true, true)
     await sql`select id from aigc.suite_batches where id=${batchId} and project_id=${projectId} for update`
     const [op] = await sql`select *,lease_until>clock_timestamp() as lease_valid from aigc.suite_operations where id=${operationId} and batch_id=${batchId} and project_id=${projectId} for update`
@@ -88,6 +88,8 @@ export async function registerSuiteOperationResults(user: SuiteUser, projectId: 
     if (created.length) await sql`update aigc.suite_projects set updated_at=now() where id=${projectId}`
     return { batch, operation: updated, createdVersionIds: created.map(version => version.id) }
   })
+  if (saved) await Promise.all(prepared.map(item => item.sourceBytes ? rememberSuiteThumbnail(user, projectId, item.asset, storage, item.sourceBytes) : null))
+  return saved
 }
 
 /** 页面只能登记已有结果，不能领取等待项或提交供应商。 */

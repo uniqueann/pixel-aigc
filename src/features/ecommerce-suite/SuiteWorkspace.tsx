@@ -157,7 +157,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
             return <button type="button" key={item.id} aria-pressed={item.id === slot.id} aria-label={`${item.name}，${state}`} onClick={() => selectSlot(item.id)}>
               <span className="suite-thumbnail" style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', top: 5, right: 5, width: 8, height: 8, borderRadius: '50%', background: dotColor, zIndex: 2 }} />
-                {thumbnail ? <SuiteImage asset={thumbnail} client={client} offline={workspace.offline} alt={item.name} /> : <span>{item.order + 1}</span>}
+                {thumbnail ? <SuiteImage asset={thumbnail} client={client} offline={workspace.offline} variant="thumbnail" alt={item.name} /> : <span>{item.order + 1}</span>}
               </span><strong>{item.name}</strong><small>{state}</small>
             </button>
           })}</div>

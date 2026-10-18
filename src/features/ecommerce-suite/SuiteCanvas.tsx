@@ -26,12 +26,21 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(0)
   const drag = useRef<{ id: string; x: number; y: number; layer: SuiteLayer; handle: 'body' | 'start' | 'end' | 'label' }>()
+  const assetRef = useRef(asset)
+  const clientRef = useRef(client)
+  const signalRef = useRef(signal)
+  const assetIdentity = `${asset.projectId}:${asset.assetId}:${asset.checksum}`
+  useEffect(() => { assetRef.current = asset; clientRef.current = client; signalRef.current = signal }, [asset, client, signal])
   useEffect(() => {
+    const current = assetRef.current
+    const currentSignal = signalRef.current
     let disposed = false
-    void backupAssetBlob(asset.actor, asset, signal).then(blob => { client.assertCurrent(); if (!disposed) { setLoaded({ assetId: asset.assetId, blob }); setError('') } })
-      .catch(error => { if (!disposed && !signal.aborted) setError(error instanceof Error ? error.message : '图片不可用') })
+    void backupAssetBlob(current.actor, current, currentSignal).then(blob => {
+      clientRef.current.assertCurrent()
+      if (!disposed) { setLoaded({ assetId: current.assetId, blob }); setError('') }
+    }).catch(error => { if (!disposed && !currentSignal.aborted) setError(error instanceof Error ? error.message : '图片不可用') })
     return () => { disposed = true }
-  }, [asset, client, signal, retry])
+  }, [assetIdentity, retry])
   useEffect(() => {
     if (!base) return
     let disposed = false
