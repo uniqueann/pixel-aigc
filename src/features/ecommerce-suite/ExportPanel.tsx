@@ -126,7 +126,7 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
     <Button type="primary" disabled={!canDownload} onClick={() => { void download() }}>下载 {ready.length} 张成品 ZIP</Button>
   </div>}>
     <div className="suite-export-panel">
-      <Alert type="info" showIcon message="合规导出说明" description="系统将对所选图片的尺寸、格式和平台规范进行自动核对，并合并文字标注图层。导出不消耗积分。" />
+      <Alert type="info" showIcon message="合规导出说明" description="系统将对所选图片的尺寸、格式和平台规范进行自动核对，未固化的文字标注将在预检时自动保存为新版本并合成导出。导出不消耗积分。" />
       <fieldset disabled={busy}><legend>选择要导出的槽位</legend><div className="suite-export-slots">{data.project.config.slots.map(slot => <Checkbox key={slot.id} checked={selected.includes(slot.id)} onChange={event => {
         invalidate(); setSelected(old => event.target.checked ? [...old, slot.id] : old.filter(id => id !== slot.id))
       }}>{slot.order + 1}. {slot.name}{data.project.slotHeads.find(head => head.slotId === slot.id)?.activeVersionId ? '' : '（未生成）'}</Checkbox>)}</div></fieldset>
@@ -142,7 +142,7 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
       {busy && <Progress percent={progress} status="active" />}
       {report && !stale && <>
         <p role="status">{ready.length} 张成品可导出，{failures} 项跳过；成品合计 {(ready.reduce((sum, file) => sum + file.blob!.size, 0) / 1024 / 1024).toFixed(2)} MB。</p>
-        <p className="suite-muted">规范依据：{data.project.config.platform === 'amazon' ? 'Amazon 美加站 Listing 规范' : '通用电商规范'} · 检查时间：{new Date(report.checkedAt).toLocaleString()}</p>
+        <p className="suite-muted">规范依据：{data.project.config.platform === 'amazon' ? 'Amazon 美国站 Listing 规范' : '通用电商规范'} · 规则版本：{report.ruleVersion} · 检查时间：{new Date(report.checkedAt).toLocaleString()}</p>
         <div className="suite-export-previews">{ready.map(file => <ExportPreview key={file.versionId} file={file} />)}</div>
         <Collapse items={[{ key: 'project', label: '平台合规检查项', children: report.checks.map(check => <p key={check.ruleId}><Tag>{stateNames[check.state]}</Tag>{check.title}：{check.evidence} {check.advice}{check.source && <> <a href={check.source} target="_blank" rel="noreferrer">规则说明</a></>}</p>) },
           ...files.map(file => ({ key: file.slotId, label: `${file.name} · ${file.blob ? '已通过检查' : '无法导出'}`, children: <>{file.checks.map((check, index) => <p key={`${check.ruleId}:${index}`}><Tag color={check.state === 'fail' ? 'error' : check.state === 'pass' ? 'success' : 'warning'}>{stateNames[check.state]}</Tag>{check.title}：{check.evidence} {check.advice}{check.source && <> <a href={check.source} target="_blank" rel="noreferrer">规则说明</a></>}</p>)}</> })),

@@ -9,6 +9,7 @@ import { createSuiteEditorStore } from './store'
 import { submitSuiteOnce } from './recovery'
 import { backupAssetBlob, loadFullSuite } from './recoveryPackage'
 import { emitTaskCenter } from '@/features/task-center/receipts'
+import { refreshBillingBalance } from '@/services/api/billing'
 
 export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteClient, signal: AbortSignal, focusedBatchId?: string) {
   const [store] = useState(createSuiteEditorStore)
@@ -131,8 +132,9 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
       client.assertCurrent()
       await client.results(id, batch.id)
     }
+    void refreshBillingBalance(actor.userId).catch(() => undefined)
     return load()
-  }, [client, id, load])
+  }, [actor.userId, client, id, load])
   useEffect(() => {
     if (!detail?.batches.some(batch => ['queued', 'running', 'blocked'].includes(batch.state))) return
     let disposed = false, timer: ReturnType<typeof setTimeout>
@@ -140,14 +142,20 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     const poll = async () => {
       if (disposed || signal.aborted) return
       if (!document.hidden) {
-        try { await load(); failures = 0 }
+        try {
+          const next = await load()
+          failures = 0
+          if (next && !next.batches.some(batch => ['queued', 'running', 'blocked'].includes(batch.state))) {
+            void refreshBillingBalance(actor.userId).catch(() => undefined)
+          }
+        }
         catch (error) { if (!disposed && !signal.aborted) { failures++; setError(error instanceof Error ? error.message : '原结果读取失败，可手动重试读取') } }
       }
       if (!disposed && !signal.aborted && failures < 3) timer = setTimeout(() => { void poll() }, failures ? 10000 : 5000)
     }
     timer = setTimeout(() => { void poll() }, 3000)
     return () => { disposed = true; clearTimeout(timer) }
-  }, [detail?.batches, load, signal])
+  }, [actor.userId, detail?.batches, load, signal])
   const run = useCallback(async <T,>(action: () => Promise<T>) => {
     setBusy(true); setError('')
     try { client.assertCurrent(); return await action() }
@@ -161,6 +169,7 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
       await submitSuiteOnce(client, actor, id, quote)
       client.assertCurrent()
       emitTaskCenter({ type: 'refresh' })
+      void refreshBillingBalance(actor.userId).catch(() => undefined)
       await load()
       setPending(undefined)
     } finally { if (!signal.aborted) setPending(await readPendingSuite(actor, id)) }
