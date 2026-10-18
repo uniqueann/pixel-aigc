@@ -67,6 +67,6 @@ export default function LayerPanel({ draft, composition, config, selectedId, loc
       </label>)}</div>)}
     </details>}
     <div className="suite-actions"><Button block disabled={!canEdit} onClick={onSave}>固化为新版本</Button></div>
-    <p className="suite-muted">图层修改实时自动暂存；点击固化或发起预检导出时均会自动生成新版本。</p>
+    <p className="suite-muted">图层修改实时自动暂存；点击固化或发起预检导出时均会自动生成新版本并设为当前使用。</p>
   </div>
 }
