@@ -60,7 +60,6 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
   const asset = data?.assets.find(asset => asset.assetId === (original ? config?.baseAssetId : draftBase?.assetId ?? version?.assetId))
   const active = data?.batches.some(batch => ['running', 'queued', 'blocked'].includes(batch.state)) ?? false
   const blocked = workspace.busy || workspace.offline || workspace.conflict || Boolean(workspace.pending)
-  const terminalLabels = { succeeded: '已成功', failed: '已失败', expired: '已过期', cancelled: '已取消' }
   useEffect(() => {
     const requested = params.get('slot')
     if (requested && config?.slots.some(slot => slot.id === requested)) workspace.store.getState().selectSlot(requested)
@@ -140,8 +139,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
         <div ref={previewRef} className={`suite-preview${sticky ? ' suite-preview-sticky' : ''}`}>
           <div className="suite-preview-heading"><strong>{slot.name}</strong><div className="suite-actions">
             <Button size="small" onClick={() => setOriginal(value => !value)}>{original ? '查看当前成品' : '对照商品原图'}</Button>
-            <Button size="small" disabled={!version || original || blocked} onClick={() => setExportSelection({ slotId: slot.id })}>下载当前成品</Button>
-            <Button size="small" disabled={!version || blocked} onClick={() => setBridgeOpen(true)}>工作站编辑</Button>
+            <Button size="small" disabled={!version || blocked} onClick={() => setBridgeOpen(true)}>工作站精修</Button>
           </div></div>
           <div className="suite-stage">{asset && composition && !original ? <SuiteCanvas asset={asset} composition={composition} client={client} signal={signal}
             selectedId={selectedLayerId} onSelect={setSelectedLayerId} background={mainLocked ? '#ffffff' : 'transparent'} editable={tab === 'layers' && !workspace.busy && !mainLocked && !staleDraft}
@@ -178,26 +176,29 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
             onError={reportError} onSelect={async selected => { await workspace.run(async () => { await flushEditing();
               await client.select(id, slot.id, selected.id, data.project.slotHeads.find(head => head.slotId === slot.id)!.headRevision); await slotEditor.reset(slot.id, selected); await workspace.load() }) }} /> },
         ]} />
-        <div className="suite-upload-controls"><strong>{slot.kind === 'size' ? '已标注尺寸成品（选填；无图时在原图添加尺寸线）' : slot.kind === 'detail' ? '真实细节照片' : '场景参考图（选填）'}</strong>
-          <label className="suite-file-button">上传{slot.kind === 'detail' ? '细节照片' : '参考图'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active || slot.kind === 'main'} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, false)).catch(reportError) }} /></label>
+        {tab === 'generate' && slot.kind !== 'main' && <div className="suite-upload-controls"><strong>{slot.kind === 'size' ? '已标注尺寸成品（选填；无图时在原图添加尺寸线）' : slot.kind === 'detail' ? '真实细节照片' : '场景参考图（选填）'}</strong>
+          <label className="suite-file-button">上传{slot.kind === 'detail' ? '细节照片' : '参考图'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, false)).catch(reportError) }} /></label>
           {slot.referenceAssetIds.length > 0 && <><Tag>已保存 {slot.referenceAssetIds.length} 张</Tag><Button size="small" disabled={blocked || active} onClick={() => workspace.edit({ ...config, slots: config.slots.map(item => item.id === slot.id ? { ...item, referenceAssetIds: [] } : item) })}>移除引用</Button></>}
-        </div>
-        <Button block disabled={workspace.busy || workspace.offline} onClick={() => { void workspace.run(workspace.settleOriginals).catch(reportError) }}>刷新生成进度与结果</Button>
-        {data.operations.filter(operation => operation.slotId === slot.id).map(operation => {
-          const task = data.tasks.find(task => task.sourceId === operation.task?.sourceId)
-          const billing = operation.mode === 'reuse' ? '原图复用，无生成费用' : !task ? operation.task ? '原任务账本暂不可查，费用未知' : '尚未派发，无预扣'
-            : task.billingState === 'reserved' ? `预扣 ${task.creditsReserved} 积分，等待结算` : task.creditsCharged === null ? '结算状态待确认'
-              : `已扣 ${task.creditsCharged} 积分${task.creditsReturned ? `，退回 ${task.creditsReturned} 积分` : ''}`
-          return <div className="suite-task-line" key={operation.id}><strong>{task ? `${task.completedCount}/${task.requestedCount} 张候选成功` : operation.mode === 'reuse' ? '原图复用' : operation.phase === 'stopped' ? '本次已停止' : operation.phase === 'blocked' ? '等待重新确认' : operation.terminalState ? terminalLabels[operation.terminalState] : operation.task ? '正在读取生成任务' : '等待服务端生成'}</strong><span>{billing}</span>
-            <small>原请求 {operation.requestId}</small>{task?.errorCode && <span>{task.errorCode}</span>}
-            {operation.appliedVersionIds.some(id => id !== head?.activeVersionId) && <Button size="small" onClick={() => setTab('versions')}>查看备选版本</Button>}
-          </div>
-        })}
+        </div>}
+        {(() => {
+          const operation = data.operations.filter(op => op.slotId === slot.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]
+          const isRunning = Boolean(operation && !operation.terminalState)
+          if (isRunning) {
+            return <Alert style={{ marginTop: 14 }} type="info" showIcon message="该槽位正在后台生成中，完成后将自动刷新结果..." />
+          }
+          if (operation?.appliedVersionIds.some(id => id !== head?.activeVersionId)) {
+            return <Alert style={{ marginTop: 14 }} type="success" showIcon message="该槽位已有新生成的版本" action={<Button size="small" onClick={() => setTab('versions')}>查看备选</Button>} />
+          }
+          return null
+        })()}
       </section>
     </div>
     <div ref={footerRef} className="suite-footer"><span>{data.project.slotHeads.filter(head => head.activeVersionId && config.slots.some(slot => slot.id === head.slotId && slot.enabled)).length} / {config.slots.filter(slot => slot.enabled).length} 个槽位已完成出图</span>
-      <span>{active ? '后台正在批量出图中，可切换槽位查看效果' : '槽位独立保存版本 · 支持随时调整'}</span><Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).catch(reportError) }}>保存草稿</Button>
-      <Button type="primary" disabled={blocked} onClick={() => setExportSelection({})}>合规预检与批量导出</Button></div>
+      <span className="suite-footer-status">{active ? '⚡ 后台正在批量出图中，可自由切换槽位查看' : workspace.busy ? '正在同步数据...' : '✓ 修改已实时自动暂存'}</span>
+      <div className="suite-actions">
+        <Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).then(() => message.success('修改已成功同步至云端')).catch(reportError) }}>立即同步</Button>
+        <Button type="primary" disabled={blocked} onClick={() => setExportSelection({})}>合规预检与批量导出</Button>
+      </div></div>
     {exportSelection && <ExportPanel actor={actor} data={data} client={client} signal={signal} initialSlotId={exportSelection.slotId}
       liveKey={JSON.stringify([config, data.project.slotHeads, [...slotEditor.records].map(([id, record]) => [id, record.value])])}
       prepare={prepareExport} onClose={() => setExportSelection(undefined)} />}

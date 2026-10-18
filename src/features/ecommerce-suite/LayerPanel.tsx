@@ -50,20 +50,23 @@ export default function LayerPanel({ draft, composition, config, selectedId, loc
     {selected?.type === 'dimension' && <>
       <label>引用规格<Select aria-label="标注规格" value={selected.factId} disabled={!canEdit} options={(draft.factsSnapshot ?? composition.factsSnapshot).filter(fact => typeof fact.value === 'number').map(fact => ({ value: fact.id, label: `${fact.name} · ${formatSuiteFact(fact, composition.unitSystem)}` }))} onChange={factId => modify({ factId })} /></label>
       <Button disabled={!canEdit} onClick={() => onEdit({ factsSnapshot: config.facts.filter(fact => fact.confirmed), unitSystem: config.unitSystem, copyLanguage: config.copyLanguage })}>同步商品最新规格</Button>
-      <p className="suite-muted">尺寸数值从商品规格中引用。画板中的端点与标签可自由拖动；修改数值请在商品信息中调整。</p>
+      <p className="suite-muted">尺寸数值从商品规格中引用。画板中的端点与标签可直接拖动；修改数值请在商品信息中调整。</p>
       <label>线宽<InputNumber min={1} max={100} value={selected.strokeWidth} disabled={!canEdit} onChange={value => value && modify({ strokeWidth: value })} /></label>
-      {(['start','end','labelPosition'] as const).map(point => <div className="suite-settings-row" key={point}>{(['x','y'] as const).map(axis => <label key={axis}>
+    </>}
+    {selected && <div className="suite-settings-row"><label>字号（画板像素）<InputNumber aria-label="图层字号" min={1} max={1000} value={selected.fontSize} disabled={!canEdit} onChange={value => value && modify({ fontSize: value })} /></label>
+      <label>文字／线条颜色<input type="color" aria-label="图层颜色" value={selected.color} disabled={!canEdit} onChange={event => modify({ color: event.target.value })} /></label></div>}
+    {selected && <details className="suite-advanced-coords">
+      <summary>高级坐标与微调 ▾</summary>
+      {selected.type === 'text' && <div className="suite-settings-row">{(['x','y'] as const).map(axis => <label key={axis}>文字{axis === 'x' ? '横向' : '纵向'}（%）
+        <InputNumber min={0} max={100} step={.1} value={Number((selected.position[axis]*100).toFixed(2))} disabled={!canEdit}
+          onChange={value => value !== null && modify({ position: { ...selected.position, [axis]: value/100 } })} /></label>)}</div>}
+      {selected.type === 'dimension' && (['start','end','labelPosition'] as const).map(point => <div className="suite-settings-row" key={point}>{(['x','y'] as const).map(axis => <label key={axis}>
         {{start:'起点',end:'终点',labelPosition:'标签'}[point]} {axis === 'x' ? '横向' : '纵向'}（%）
         <InputNumber min={0} max={100} step={.1} value={Number((selected[point][axis]*100).toFixed(2))} disabled={!canEdit}
           onChange={value => value !== null && modify({ [point]: { ...selected[point], [axis]: value/100 } })} />
       </label>)}</div>)}
-    </>}
-    {selected && <div className="suite-settings-row"><label>字号（画板像素）<InputNumber aria-label="图层字号" min={1} max={1000} value={selected.fontSize} disabled={!canEdit} onChange={value => value && modify({ fontSize: value })} /></label>
-      <label>文字／线条颜色<input type="color" aria-label="图层颜色" value={selected.color} disabled={!canEdit} onChange={event => modify({ color: event.target.value })} /></label></div>}
-    {selected?.type === 'text' && <div className="suite-settings-row">{(['x','y'] as const).map(axis => <label key={axis}>文字{axis === 'x' ? '横向' : '纵向'}（%）
-      <InputNumber min={0} max={100} step={.1} value={Number((selected.position[axis]*100).toFixed(2))} disabled={!canEdit}
-        onChange={value => value !== null && modify({ position: { ...selected.position, [axis]: value/100 } })} /></label>)}</div>}
-    <div className="suite-actions"><Button block type="primary" disabled={!canEdit} onClick={onSave}>保存图层修改</Button></div>
-    <p className="suite-muted">图层修改即时预览，保存图层不消耗积分。</p>
+    </details>}
+    <div className="suite-actions"><Button block disabled={!canEdit} onClick={onSave}>固化为新版本</Button></div>
+    <p className="suite-muted">图层修改已实时自动暂存；需要保留历史版本快照时可点击固化。</p>
   </div>
 }

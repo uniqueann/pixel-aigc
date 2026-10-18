@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Checkbox, Input, Modal, Select } from 'antd'
+import { Alert, Button, Input, Select } from 'antd'
 import type { SuiteProject, SuiteQuote, SuiteSlotConfig, SuiteSlotDraft } from '@shared/ecommerce-suite'
 import { SUITE_CATEGORY_TEMPLATES } from '@shared/ecommerce-suite-templates'
 import { listImageModels, type PublicImageModel } from '@/services/api/imageModels'
@@ -17,10 +17,7 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
   const resolution = draft?.value.resolution ?? '1k'
   const count = draft?.value.count ?? 1
   const note = draft?.value.promptNote ?? ''
-  const [quote, setQuote] = useState<SuiteQuote>()
-  const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [expired, setExpired] = useState(false)
   const draftConflict = Boolean(draft?.error)
   const sequence = useRef(0)
   const alive = useRef(true)
@@ -30,39 +27,40 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
   const strategy = SUITE_CATEGORY_TEMPLATES[project.config.subcategory].slots.find(item => item.key === slot.key)!.strategy
   const reuse = strategy !== 'image_edit'
   const unavailable = (!reuse && !model) || !slot.enabled
+
   useEffect(() => {
     const abort = new AbortController(); alive.current = true
     void listImageModels('image_edit', abort.signal).then(items => { client.assertCurrent(); setModels(items) })
       .catch(error => { if (!abort.signal.aborted) onError(error) }).finally(() => { if (!abort.signal.aborted) setLoading(false) })
     return () => { alive.current = false; abort.abort() }
   }, [client, onError])
-  useEffect(() => {
-    if (!quote) return
-    const timer = setTimeout(() => setExpired(true), Math.max(0, Date.parse(quote.expiresAt) - Date.now()))
-    return () => clearTimeout(timer)
-  }, [quote])
-  const change = (patch: Partial<SuiteSlotDraft>) => { sequence.current++; setQuote(undefined); onEdit(patch) }
-  const prepare = async () => {
+
+  const change = (patch: Partial<SuiteSlotDraft>) => { sequence.current++; onEdit(patch) }
+
+  const handleGenerate = async () => {
     setBusy(true)
     const revision = ++sequence.current
     try {
       await flush()
       await flushDraft()
       const saved = (await client.get(project.id)).project
-      const response = await client.quote(project.id, { expectedRevision: saved.revision,
-        slots: [reuse ? { slotId: slot.id, mode: 'reuse' } : { slotId: slot.id, mode: 'image_edit',
-          modelProfileId: model!.id, resolution: actualResolution, count: actualCount, note }] })
-      if (alive.current && sequence.current === revision) { setAgreed(true); setExpired(false); setQuote(response) }
-    } catch (error) { if (alive.current) onError(error) }
-    finally { if (alive.current) setBusy(false) }
+      const response = await client.quote(project.id, {
+        expectedRevision: saved.revision,
+        slots: [reuse ? { slotId: slot.id, mode: 'reuse' } : {
+          slotId: slot.id, mode: 'image_edit',
+          modelProfileId: model!.id, resolution: actualResolution, count: actualCount, note,
+        }],
+      })
+      if (alive.current && sequence.current === revision) {
+        await onSubmit(response)
+      }
+    } catch (error) {
+      if (alive.current) onError(error)
+    } finally {
+      if (alive.current) setBusy(false)
+    }
   }
-  const submit = async () => {
-    if (!quote || !agreed) return
-    setBusy(true)
-    try { await onSubmit(quote); if (alive.current) setQuote(undefined) }
-    catch (error) { if (alive.current) onError(error) }
-    finally { if (alive.current) setBusy(false) }
-  }
+
   return <div className="suite-generation">
     <h3>{slot.name}</h3>
     {draftConflict && <Alert type="warning" message={draft?.error} description="当前槽位有未保存修改，请先保存或重置后再生成。" />}
@@ -76,21 +74,9 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
       <p className="suite-muted">图片比例与商品主体图保持一致。</p>
     </>}
     {!slot.enabled && <Alert type="info" message="该槽位已跳过，可在商品资料中重新启用" />}
-    <Button block type="primary" loading={busy || loading && !reuse} disabled={blocked || unavailable || draftConflict || (!reuse && loading)} onClick={() => { void prepare() }}>{reuse ? '确认底图设置' : `生成当前图片${model ? '' : ''}`}</Button>
-    <p className="suite-muted">按实际成功张数扣除积分，失败不扣费；生成后可在备选版本中查看。</p>
-    <Modal open={Boolean(quote)} title={reuse ? '确认底图设置' : '确认生成'} onCancel={busy ? undefined : () => setQuote(undefined)} maskClosable={false}
-      footer={<Button type="primary" loading={busy} disabled={!agreed || !quote || expired} onClick={() => { void submit() }}>{expired ? '已超时，请重新生成' : `确认生成 · ${quote?.totalCredits ?? 0} 积分上限`}</Button>}>
-      {quote?.items.map(item => <div key={item.operationId} className="suite-quote">
-        <strong>{slot.name}</strong>
-        {item.mode === 'image_edit' ? <><p>{models.find(model => model.id === item.modelProfileId)?.label ?? item.modelProfileId} · {item.resolution.toUpperCase()} · {item.count} 张候选</p>
-          <p>预期尺寸 {item.size.width} × {item.size.height}；单价 {item.unitCredits} 积分／张；预计最高 {item.credits} 积分</p>
-          {item.warnings?.map(warning => <Alert key={warning} type="warning" message={warning === 'RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO'
-            ? '当前比例暂不支持 4K，将按 2K 分辨率生成' : '模型已调整输出规格，请核对分辨率与费用'} />)}
-          <details><summary>查看生成提示词详情</summary><pre>{item.promptSnapshot}</pre></details>
-        </> : <p>直接使用已保存底图，不产生生成费用。</p>}
-      </div>)}
-      <p className="suite-muted">按实际成功张数结算，失败不扣除积分。</p>
-      <Checkbox checked={agreed} disabled={busy} onChange={event => setAgreed(event.target.checked)}>确认生成参数与积分预估</Checkbox>
-    </Modal>
+    <Button block type="primary" loading={busy || (loading && !reuse)} disabled={blocked || unavailable || draftConflict || (!reuse && loading)} onClick={() => { void handleGenerate() }}>
+      {busy ? '正在提交生成任务...' : reuse ? '确认底图设置' : '生成当前图片'}
+    </Button>
+    <p className="suite-muted">{reuse ? '使用原图或已上传的底图，不产生生成费用。' : '按实际成功张数扣除积分，失败或超时全额自动退还；生成后可在备选版本中查看。'}</p>
   </div>
 }
