@@ -1684,6 +1684,49 @@ body.sidebar-resizing * {
   font-size: 11px;
 }
 
+.free-canvas-aspect-ratio-segmented {
+  padding: 3px;
+}
+
+.free-canvas-aspect-ratio-segmented .ant-segmented-item-label {
+  min-height: 44px;
+  padding-inline: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.free-canvas-aspect-ratio-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  padding: 3px 0 2px;
+  line-height: 1.15;
+}
+
+.free-canvas-aspect-ratio-label {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}
+
+.aspect-ratio-icon {
+  display: block;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.ant-segmented-item-selected .aspect-ratio-icon {
+  transform: scale(1.06);
+}
+
+.ant-segmented-item-disabled .aspect-ratio-icon {
+  opacity: 0.45;
+}
+
 .free-canvas-field .ant-radio-group {
   display: flex;
   width: 100%;

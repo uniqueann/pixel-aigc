@@ -231,4 +231,17 @@ describe('自由画布文生图侧栏', () => {
     expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
     expect((screen.getByRole('button', { name: /按原参数重试 2 张/ }) as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('画面比例选项展示微型线框图标并支持切换', () => {
+    const onPresetChange = vi.fn()
+    renderPanel({ onPresetChange })
+    const segmented = document.querySelector('.free-canvas-aspect-ratio-segmented')
+    expect(segmented).toBeTruthy()
+    const icons = segmented?.querySelectorAll('.aspect-ratio-icon')
+    expect(icons?.length).toBe(IMAGE_SIZE_PRESETS.length)
+    expect(screen.getByText('1:1')).toBeTruthy()
+    expect(screen.getByText('16:9')).toBeTruthy()
+    fireEvent.click(screen.getByText('16:9'))
+    expect(onPresetChange).toHaveBeenCalledWith('16:9')
+  })
 })

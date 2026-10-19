@@ -12,7 +12,8 @@ import type { PublicImageModel } from '@/services/api/imageModels'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { useUserStore } from '@/store/useUserStore'
 import type { CanvasGenerationTaskParams } from './requestBuilder'
-import { IMAGE_SIZE_PRESETS } from './config'
+import AspectRatioIcon from '@/components/AspectRatioIcon'
+import { IMAGE_SIZE_PRESETS, getAspectRatioTooltip } from './config'
 import { availableTextToImagePresets } from './textToImageParameters'
 import { resultAssetForTask } from './resultAsset'
 import VideoCreditEstimate from './VideoCreditEstimate'
@@ -183,7 +184,25 @@ export default function GenerationPanel({
         <span>画面比例</span>
         <Segmented
           block
-          options={IMAGE_SIZE_PRESETS.map((preset) => ({ label: preset.label, value: preset.key, disabled: !textToVideo && !supportedPresets.some(item => item.key === preset.key) }))}
+          className="free-canvas-aspect-ratio-segmented"
+          options={IMAGE_SIZE_PRESETS.map((preset) => {
+            const isSupported = textToVideo || supportedPresets.some(item => item.key === preset.key)
+            const baseTooltip = preset.tooltip ?? getAspectRatioTooltip(preset.key)
+            const tooltipTitle = isSupported ? baseTooltip : `${baseTooltip}（当前模型不支持）`
+            return {
+              value: preset.key,
+              disabled: !isSupported,
+              title: '',
+              label: (
+                <Tooltip title={tooltipTitle} mouseEnterDelay={0.25}>
+                  <span className="free-canvas-aspect-ratio-option">
+                    <AspectRatioIcon ratio={preset.key} />
+                    <span className="free-canvas-aspect-ratio-label">{preset.label}</span>
+                  </span>
+                </Tooltip>
+              ),
+            }
+          })}
           value={presetKey}
           disabled={formLocked}
           onChange={(value) => onPresetChange(String(value))}
