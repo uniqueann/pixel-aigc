@@ -1,6 +1,14 @@
 .suite-list-page,.suite-workspace{padding:20px;color:var(--color-text-primary);max-width:1800px;margin:0 auto}
 .suite-page-heading{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:18px;flex-wrap:wrap}
 .suite-page-heading h2{margin:0 0 7px;font-size:22px;font-weight:600}.suite-page-heading p{margin:0;color:var(--color-text-secondary)}
+.suite-heading-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 auto;flex-wrap:wrap}
+.suite-back-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;color:var(--color-text-secondary);font-weight:500;flex-shrink:0}
+.suite-back-btn:hover{color:var(--color-text-primary)}
+.suite-heading-divider{width:1px;height:16px;background:var(--color-border);flex-shrink:0}
+.suite-heading-left .suite-project-title{margin:0;font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px;line-height:1.3}
+.suite-platform-tag{margin:0!important;flex-shrink:0;border-radius:4px;font-size:12px}
+.suite-heading-status{color:var(--color-text-secondary);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1}
+.suite-workspace .suite-page-heading{margin-bottom:14px;gap:14px}
 .suite-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.suite-muted{font-size:12px;color:var(--color-text-muted);line-height:1.7}
 .suite-list-page>.ant-alert,.suite-workspace>.ant-alert{margin-bottom:14px}.suite-project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;margin:20px 0}
 .suite-project-card,.suite-preview,.suite-settings{background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;padding:18px;min-width:0}

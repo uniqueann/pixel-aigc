@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, App, Button, Dropdown, Modal, Select, Spin, Tabs, Tag } from 'antd'
+import { ArrowLeftOutlined } from '@ant-design/icons'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { SuiteActor, SuiteBridge } from '@shared/ecommerce-suite'
 import { suiteMainLocked } from '@shared/ecommerce-suite-annotations'
@@ -120,8 +121,23 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       { key: 'export', label: '导出项目恢复包 (ZIP)', onClick: () => { void workspace.run(async () => { await flushEditing(); const zip = await exportSuiteRecovery(client, id, actor, signal); downloadBlob(zip, `${suiteFilename(config.title, '恢复包', 1, { width: 1, height: 1 }, 'image/png').replace(/\.png$/, '')}.zip`) }).catch(reportError) } },
     ]
     return <div className="suite-workspace">
-      <div className="suite-page-heading"><div><Button type="text" onClick={() => { void workspace.run(async () => { await flushEditing(); navigate('/ecommerce') }).catch(reportError) }}>‹ 返回项目列表</Button>
-        <h2>{config.title}</h2><p>{config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'} · {saveLabel}</p></div>
+      <div className="suite-page-heading">
+        <div className="suite-heading-left">
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            className="suite-back-btn"
+            title="返回项目列表"
+            aria-label="返回项目列表"
+            onClick={() => { void workspace.run(async () => { await flushEditing(); navigate('/ecommerce') }).catch(reportError) }}
+          >
+            返回
+          </Button>
+          <span className="suite-heading-divider" aria-hidden="true" />
+          <h2 className="suite-project-title" title={config.title}>{config.title}</h2>
+          <Tag className="suite-platform-tag">{config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'}</Tag>
+          <span className="suite-heading-status" title={saveLabel}>{saveLabel}</span>
+        </div>
         <div className="suite-actions"><Button type="primary" disabled={blocked || active} onClick={() => { setRetrySelection(undefined); setPlanOpen(true) }}>整套批量生成</Button><Button onClick={() => setProductOpen(true)}>商品信息与规格</Button>
           <Dropdown menu={{ items: backupMenuItems }} disabled={workspace.busy}>
             <Button>备份与恢复 ▾</Button>
