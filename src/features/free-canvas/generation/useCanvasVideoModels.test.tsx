@@ -3,7 +3,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SEEDANCE_VIDEO_MODEL } from '@shared/video-models'
+import { MINIMAX_H3_VIDEO_MODEL, SEEDANCE_VIDEO_MODEL } from '@shared/video-models'
 import { useUserStore } from '@/store/useUserStore'
 import { listVideoModels } from '@/services/api/videoModels'
 import { canSubmitFreeCanvasVideo } from './availability'
@@ -54,6 +54,16 @@ describe('视频入口能力四态', () => {
     expect(result.current.textState).toBe('soon')
     expect(canSubmitFreeCanvasVideo()).toBe(false)
     expect(canSubmitFreeCanvasVideo('image_to_video')).toBe(true)
+  })
+  it('H3 文生可用不能充当图生可用模型，Seedance 可独立提供图生', async () => {
+    flags.textToVideo = true; flags.imageToVideo = true
+    vi.mocked(listVideoModels).mockResolvedValue([{ ...MINIMAX_H3_VIDEO_MODEL, available: true, availableModes: ['text_to_video'] },
+      { ...SEEDANCE_VIDEO_MODEL, available: true, availableModes: ['image_to_video'] }])
+    const { result } = renderHook(() => useCanvasVideoModels(), setup())
+    await waitFor(() => expect(result.current.imageReady).toBe(true))
+    expect(result.current.ready).toBe(true)
+    const { videoModelAvailableForMode } = await import('@shared/video-models')
+    expect(result.current.models.filter(model => videoModelAvailableForMode(model, 'image_to_video')).map(model => model.id)).toEqual([SEEDANCE_VIDEO_MODEL.id])
   })
 
   it('模型请求失败有重试状态，关闭能力后恢复即将上线提示', async () => {

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { createGateway } from '@ai-sdk/gateway'
 import { experimental_startVideo as startVideo, experimental_getVideoStatus as getVideoStatus, type StartVideoResult } from 'ai'
-import { MINIMAX_H3_VIDEO_MODEL } from '../../../shared/video-models.js'
+import { MINIMAX_H3_VIDEO_MODEL, type VideoResolution } from '../../../shared/video-models.js'
 import { gatewayToken } from '../../ai-gateway-auth.js'
 import type { ProviderContext } from '../../image-providers/types.js'
 import { downloadVideoResult, VIDEO_MAX_BYTES } from '../download.js'
@@ -40,18 +40,33 @@ function traceMetadata(metadata: unknown) {
     ...(cost !== undefined && Number.isFinite(cost) && cost >= 0 ? { usage: { cost } } : {}) }
 }
 
+function resultResolution(metadata: unknown): VideoResolution | undefined {
+  const minimax = metadata && typeof metadata === 'object' && 'minimax' in metadata ? metadata.minimax : undefined
+  const value = minimax && typeof minimax === 'object' && 'resolution' in minimax ? minimax.resolution : undefined
+  if (value === undefined || value === null) return undefined
+  if (typeof value === 'string' && ['768P', '2K'].includes(value.toUpperCase())) return value.toLowerCase() as VideoResolution
+  throw new VideoProviderError('VIDEO_RESULT_INVALID', '供应商返回了不支持的视频档位')
+}
+
 export const aiGatewayVideoProvider: VideoProvider = {
   id: 'ai-gateway',
   async submit(input, ctx) {
-    if (input.model !== MINIMAX_H3_VIDEO_MODEL.model || input.sourceImageUrl || !['768p', '2k'].includes(input.resolution) || input.ratio === 'adaptive') {
-      throw new VideoProviderError('VIDEO_PARAMS_INVALID', 'H3 首期仅支持文生视频与 768p、2K 档位')
+    if (input.model !== MINIMAX_H3_VIDEO_MODEL.model || !['768p', '2k'].includes(input.resolution)
+      || input.generateAudio !== true || (input.sourceImageUrl ? input.ratio !== 'adaptive' : input.ratio === 'adaptive')) {
+      throw new VideoProviderError('VIDEO_PARAMS_INVALID', 'H3 支持原生有声的文生视频或单图首帧视频，分辨率请选择 768p、2K')
+    }
+    if (input.sourceImageUrl) {
+      let image: URL
+      try { image = new URL(input.sourceImageUrl) } catch { throw new VideoProviderError('VIDEO_PARAMS_INVALID', '视频首帧地址无效') }
+      if (image.protocol !== 'https:' || image.username || image.password) throw new VideoProviderError('VIDEO_PARAMS_INVALID', '视频首帧地址无效')
     }
     try {
       const key = input.idempotencyKey ?? ctx.requestId
       if (!key) throw new VideoProviderError('VIDEO_PARAMS_INVALID', '视频请求缺少幂等标识')
       const selected = await model(ctx)
-      const result = await startVideo({ model: selected, prompt: input.prompt, n: 1,
-        aspectRatio: input.ratio, duration: input.durationSeconds, generateAudio: input.generateAudio,
+      const result = await startVideo({ model: selected,
+        prompt: input.sourceImageUrl ? { image: input.sourceImageUrl, text: input.prompt } : input.prompt, n: 1,
+        ...(!input.sourceImageUrl && input.ratio !== 'adaptive' ? { aspectRatio: input.ratio } : {}), duration: input.durationSeconds,
         providerOptions: { minimax: { resolution: input.resolution === '768p' ? '768P' : '2K' } },
         maxRetries: 0, abortSignal: AbortSignal.timeout(20_000),
         headers: { 'idempotency-key': createHash('sha256').update(key).digest('hex') } })
@@ -75,12 +90,13 @@ export const aiGatewayVideoProvider: VideoProvider = {
       if (result.status === 'pending') return { ...common, state: 'processing' }
       if (result.status === 'error') return { ...common, state: 'failed', code: 'GENERATION_FAILED', message: '供应商未完成视频生成，积分将退回' }
       if (result.warnings.some(warning => warning.type === 'unsupported') || result.videos.length !== 1) throw new VideoProviderError('VIDEO_RESULT_INVALID', '供应商结果与所选配置不匹配')
+      const resolution = resultResolution(result.providerMetadata)
       const video = result.videos[0]
-      if (video.type === 'url') return { ...common, state: 'succeeded', videoUrl: video.url }
+      if (video.type === 'url') return { ...common, resolution, state: 'succeeded', videoUrl: video.url }
       if (video.type === 'base64' && video.data.length > Math.ceil(VIDEO_MAX_BYTES / 3) * 4) throw new VideoProviderError('VIDEO_RESULT_TOO_LARGE', '视频结果超过文件大小限制')
       const bytes = video.type === 'base64' ? Buffer.from(video.data, 'base64') : video.data
       if (bytes.byteLength > VIDEO_MAX_BYTES) throw new VideoProviderError('VIDEO_RESULT_TOO_LARGE', '视频结果超过文件大小限制')
-      return { ...common, state: 'succeeded', videoBytes: bytes }
+      return { ...common, resolution, state: 'succeeded', videoBytes: bytes }
     } catch (error) { throw failure(error, false) }
   },
   fetchResult: downloadVideoResult,

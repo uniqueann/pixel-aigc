@@ -15,11 +15,13 @@ export interface VideoModelProfile {
   resolution: VideoResolution
   resolutions?: readonly VideoResolution[]
   modes?: readonly VideoMode[]
+  availableModes?: readonly VideoMode[]
   available?: boolean
   unavailableReason?: string | null
   durations: Array<5 | 10>
   ratios: readonly VideoRatio[]
   supportsAudio: boolean
+  audioMode?: 'optional' | 'native'
   pricing: {
     version: string
     /** 兼容旧客户端，表示默认分辨率的报价。 */
@@ -32,14 +34,14 @@ export const SEEDANCE_VIDEO_MODEL: VideoModelProfile = {
   id: 'seedance-2-0-fast', label: 'Seedance 2.0 fast', provider: 'seedance', vendor: 'bytedance',
   model: 'doubao-seedance-2-0-fast-260128', resolution: '720p', durations: [5, 10],
   resolutions: ['720p'], modes: ['text_to_video', 'image_to_video'],
-  ratios: VIDEO_RATIOS, supportsAudio: true,
+  ratios: VIDEO_RATIOS, supportsAudio: true, audioMode: 'optional',
   pricing: { version: 'seedance-fast-720p-v1', creditsPerVideo: { 5: 50, 10: 100 } },
 }
 
 export const MINIMAX_H3_VIDEO_MODEL: VideoModelProfile = {
   id: 'minimax-h3', label: 'MiniMax H3', provider: 'ai-gateway', vendor: 'minimax',
   model: 'minimax/minimax-h3', resolution: '768p', resolutions: ['768p', '2k'],
-  modes: ['text_to_video'], durations: [5, 10], ratios: VIDEO_RATIOS, supportsAudio: true,
+  modes: ['text_to_video', 'image_to_video'], durations: [5, 10], ratios: VIDEO_RATIOS, supportsAudio: true, audioMode: 'native',
   pricing: { version: 'minimax-h3-video-v1', creditsPerVideo: { 5: 50, 10: 100 },
     creditsByResolution: { '768p': { 5: 50, 10: 100 }, '2k': { 5: 80, 10: 160 } } },
 }
@@ -48,6 +50,13 @@ export const MINIMAX_H3_VIDEO_MODEL: VideoModelProfile = {
 export const VIDEO_MODELS = [SEEDANCE_VIDEO_MODEL, MINIMAX_H3_VIDEO_MODEL] as const
 export function videoModel(id: string | undefined) { return VIDEO_MODELS.find(model => model.id === id) }
 export function videoModelModes(model: VideoModelProfile) { return model.modes ?? ['text_to_video', 'image_to_video'] as const }
+export function videoModelAvailableForMode(model: VideoModelProfile | undefined, mode: VideoMode) {
+  return !!model && videoModelModes(model).includes(mode) && model.available !== false
+    && (model.availableModes === undefined || model.availableModes.includes(mode))
+}
+export function videoGenerateAudio(model: VideoModelProfile | undefined, requested?: boolean) {
+  return model?.audioMode === 'native' || requested === true
+}
 export function videoModelResolutions(model: VideoModelProfile) { return model.resolutions ?? [model.resolution] }
 export function videoModelCredits(model: VideoModelProfile | undefined, resolution: VideoResolution, duration: number) {
   if (!model || (duration !== 5 && duration !== 10) || !videoModelResolutions(model).includes(resolution)) return undefined

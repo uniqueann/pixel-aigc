@@ -5,7 +5,7 @@ import { MINIMAX_H3_VIDEO_MODEL } from '../../../shared/video-models.js'
 import type { VideoSubmitInput } from '../types.js'
 
 const input: VideoSubmitInput = { model: MINIMAX_H3_VIDEO_MODEL.model, prompt: '商品在柔和灯光下缓慢旋转', durationSeconds: 5,
-  resolution: '768p', ratio: '1:1', generateAudio: false, idempotencyKey: '账号与环境隔离的请求编号' }
+  resolution: '768p', ratio: '1:1', generateAudio: true, idempotencyKey: '账号与环境隔离的请求编号' }
 const context = () => ({ fetch: vi.fn(), now: Date.now, sleep: vi.fn(), log: vi.fn(), requestId: 'request-one' } satisfies ProviderContext)
 const accepted = { operation: { gatewayJobId: 'job_test' }, providerMetadata: { gateway: { asyncJob: { jobId: 'job_test' } } } }
 beforeEach(() => vi.stubEnv('AI_GATEWAY_API_KEY', 'test-gateway-key'))
@@ -23,7 +23,18 @@ describe('H3 Gateway 异步适配器', () => {
     expect(new Headers(init.headers).get('authorization')).toBe('Bearer test-gateway-key')
     expect(new Headers(init.headers).get('idempotency-key')).toMatch(/^[a-f0-9]{64}$/)
     expect(JSON.parse(init.body as string)).toMatchObject({ prompt: input.prompt, n: 1, aspectRatio: '1:1', duration: 5,
-      generateAudio: false, providerOptions: { minimax: { resolution: tier } } })
+      providerOptions: { minimax: { resolution: tier } } })
+    expect(JSON.parse(init.body as string)).not.toHaveProperty('generateAudio')
+  })
+  it('单图首帧保留 HTTPS URL，不发送比例、声音或内联图片', async () => {
+    const ctx = context()
+    ctx.fetch.mockResolvedValue(Response.json(accepted))
+    await aiGatewayVideoProvider.submit({ ...input, ratio: 'adaptive', sourceImageUrl: 'https://r2.test/input.png?signature=test' }, ctx)
+    const body = JSON.parse((ctx.fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(body).toMatchObject({ prompt: input.prompt, image: { type: 'url', url: 'https://r2.test/input.png?signature=test' } })
+    expect(body).not.toHaveProperty('aspectRatio')
+    expect(body).not.toHaveProperty('generateAudio')
+    expect(ctx.fetch).toHaveBeenCalledTimes(1)
   })
   it('状态查询使用持久化 operation，接收 URL 与内联字节，不创建新任务', async () => {
     const ctx = context()
@@ -51,13 +62,22 @@ describe('H3 Gateway 异步适配器', () => {
     await expect(aiGatewayVideoProvider.submit(input, ctx)).rejects.toMatchObject({ ambiguous: true })
     expect(ctx.fetch).toHaveBeenCalledTimes(1)
   })
-  it('不接受图生输入或非 H3 模型，参数忽略警告导致失败退款', async () => {
+  it('拒绝无声或非自适应首帧，参数忽略警告导致失败退款', async () => {
     const ctx = context()
     await expect(aiGatewayVideoProvider.submit({ ...input, sourceImageUrl: 'https://example.com/a.png' }, ctx)).rejects.toMatchObject({ code: 'VIDEO_PARAMS_INVALID' })
+    await expect(aiGatewayVideoProvider.submit({ ...input, generateAudio: false }, ctx)).rejects.toMatchObject({ code: 'VIDEO_PARAMS_INVALID' })
+    await expect(aiGatewayVideoProvider.submit({ ...input, ratio: 'adaptive', sourceImageUrl: 'data:image/png;base64,aA==' }, ctx)).rejects.toMatchObject({ code: 'VIDEO_PARAMS_INVALID' })
     expect(ctx.fetch).not.toHaveBeenCalled()
     ctx.fetch.mockResolvedValue(Response.json({ ...accepted, warnings: [{ type: 'unsupported', feature: 'resolution' }] }))
     const result = await aiGatewayVideoProvider.submit(input, ctx)
     expect(await aiGatewayVideoProvider.getStatus(result.providerTaskId, ctx, result.operation)).toMatchObject({ state: 'failed', code: 'VIDEO_PARAMS_INVALID' })
     expect(ctx.fetch).toHaveBeenCalledTimes(1)
+  })
+  it('完成结果保留实际档位，未知档位不能交付', async () => {
+    const ctx = context()
+    const completed = (resolution: string) => Response.json({ status: 'completed', videos: [{ type: 'url', url: 'https://cdn.test/a.mp4', mediaType: 'video/mp4' }], providerMetadata: { minimax: { resolution } } })
+    ctx.fetch.mockResolvedValueOnce(completed('2K')).mockResolvedValueOnce(completed('480P'))
+    expect(await aiGatewayVideoProvider.getStatus('job_test', ctx)).toMatchObject({ resolution: '2k' })
+    await expect(aiGatewayVideoProvider.getStatus('job_test', ctx)).rejects.toMatchObject({ code: 'VIDEO_RESULT_INVALID' })
   })
 })

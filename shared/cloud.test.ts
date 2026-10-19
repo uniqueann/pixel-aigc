@@ -7,6 +7,13 @@ describe('云端写入边界', () => {
     const value = { ...draft, modelProfileId: 'minimax-h3', videoResolution: '2k', generateAudio: true, durationSeconds: 10 }
     expect(projectWriteSchema.parse({ ...project, drafts: { ...project.drafts, 'text-to-video': value } }).drafts['text-to-video']).toEqual(value)
   })
+  it('H3 图生派生草稿保留视频参数，旧 Seedance 草稿兼容，裂变不接受视频档位', () => {
+    const value = { mode: 'image-to-video', sourceNode: { id: 'n', type: 'image', assetId: 'asset', x: 0, y: 0, width: 800, height: 1000, rotation: 0, zIndex: 0, opacity: 1, visible: true, locked: false },
+      sourceAssetId: 'asset', prompt: '动态描述', count: 1, durationSeconds: 10, modelProfileId: 'minimax-h3', videoResolution: '2k', generateAudio: true }
+    expect(projectWriteSchema.parse({ ...project, drafts: { ...project.drafts, derived: value } }).drafts.derived).toEqual(value)
+    expect(projectWriteSchema.safeParse({ ...project, drafts: { ...project.drafts, derived: { ...value, mode: 'variation' } } }).success).toBe(false)
+    expect(projectWriteSchema.safeParse({ ...project, drafts: { ...project.drafts, derived: { ...value, modelProfileId: 'seedance-2-0-fast', videoResolution: undefined, resolution: '720p' } } }).success).toBe(true)
+  })
   it('旧草稿可继续写入，文生图模型和分辨率随草稿完整保留', () => {
     const legacy = projectWriteSchema.parse(project)
     expect(legacy.drafts['text-to-image'].modelProfileId).toBeUndefined()

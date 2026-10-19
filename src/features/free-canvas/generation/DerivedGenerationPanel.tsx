@@ -18,12 +18,13 @@ import { resultAssetForTask } from './resultAsset'
 import VideoCreditEstimate from './VideoCreditEstimate'
 import VideoGenerationSettings from './VideoGenerationSettings'
 import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits'
-import type { VideoModelProfile } from '@shared/video-models'
+import type { VideoModelProfile, VideoResolution } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
 import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { modelProfileIdForRetry } from './retryModel'
+import { videoRetryParametersSupported } from './videoParameters'
 import type { CapabilityAvailability } from '@/components/capabilityAvailability'
 import VideoAvailabilityNotice from './VideoAvailabilityNotice'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
@@ -40,6 +41,11 @@ interface DerivedGenerationPanelProps {
   onAudioChange?: (value: boolean) => void
   videoConfigured?: boolean
   videoModel?: VideoModelProfile
+  videoModels?: VideoModelProfile[]
+  videoResolution?: VideoResolution
+  selectedVideoModelId?: string
+  onVideoModelChange?: (id: string) => void
+  onVideoResolutionChange?: (resolution: VideoResolution) => void
   videoAvailability?: CapabilityAvailability
   onReloadModels?: () => void
   task?: GenerationTask<CanvasGenerationTaskParams>
@@ -105,6 +111,7 @@ export default function DerivedGenerationPanel({
   estimatedCredits, mockGateway = true, resolutionAdjusted = false, preparationPhase,
   historyError, historySaved, onRetrySave, resultAssets,
   generateAudio = false, onAudioChange, videoConfigured = false, videoModel,
+  videoModels, videoResolution, selectedVideoModelId, onVideoModelChange, onVideoResolutionChange,
   videoAvailability, onReloadModels,
 }: DerivedGenerationPanelProps) {
   const imageToVideo = mode === 'image-to-video'
@@ -135,9 +142,12 @@ export default function DerivedGenerationPanel({
   const originalModelId = task ? modelProfileIdForRetry(task) : undefined
   const originalModel = task ? matchImageModel(models, originalModelId) : model
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
-  const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, originalResolution ?? resolution) : estimatedCredits
+  const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, (originalResolution ?? resolution) as '1k' | '2k' | '4k') : estimatedCredits
   const retryVideoDuration = task && 'durationSeconds' in task.params ? task.params.durationSeconds : durationSeconds
-  const retryVideoCredits = videoCreditsForDuration(task && originalModelId !== videoModel?.id ? undefined : videoModel, retryVideoDuration)
+  const retryVideoModel = task ? videoModels?.find(model => model.id === originalModelId) ?? (originalModelId === videoModel?.id ? videoModel : undefined) : videoModel
+  const legacySilentH3 = imageToVideo && task && retryVideoModel?.audioMode === 'native' && (!('generateAudio' in task.params) || task.params.generateAudio !== true)
+  const retryVideoCredits = videoCreditsForDuration(task && !videoRetryParametersSupported(retryVideoModel, 'image_to_video', task.params) ? undefined : retryVideoModel,
+    retryVideoDuration, task ? originalResolution as VideoResolution : videoResolution)
   const videoCreditSubmitBlocked = imageToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: estimatedCredits, balance })
   const videoRetryBlocked = imageToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: retryVideoCredits, balance })
   const videoState = mockGateway ? 'ready' : videoAvailability ?? (modelsLoading ? 'loading' : videoConfigured ? 'ready' : 'soon')
@@ -222,8 +232,10 @@ export default function DerivedGenerationPanel({
         <p className="toolbox-hint">裂变服务暂不可用，请检查网络或稍后重试。</p>
       ) : null}
       {imageToVideo && <><VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
-        loading={modelsLoading} configured={videoConfigured || mockGateway} />
-        <p>保持原图比例；首期暂不支持含真人人脸的图片。</p>
+        loading={modelsLoading} configured={videoConfigured || mockGateway} mode="image_to_video"
+        model={videoModel} models={videoModels} selectedId={selectedVideoModelId} resolution={videoResolution}
+        onModelChange={onVideoModelChange} onResolutionChange={onVideoResolutionChange} />
+        <p>保持原图比例{videoModel?.provider === 'seedance' ? '；首期暂不支持含真人人脸的图片。' : '；使用选中图片作为首帧。'}</p>
         <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} /></>}
       <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
       <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
@@ -247,7 +259,7 @@ export default function DerivedGenerationPanel({
       {!imageToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
         手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
       </p>}
-      {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
+      {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? '原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成。' : retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
       </>}
       {(task?.status === 'failed' || task?.status === 'cancelled') && showForm && <CreditQuoteNotice quote={retryQuote} onRetry={onReloadModels} />}
       <GenerationTaskStatus

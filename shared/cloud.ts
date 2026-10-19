@@ -35,7 +35,11 @@ export const draftsSchema = z.object({
   derived: z.object({ mode: z.enum(['variation', 'image-to-video']), sourceNode: baseNode.extend({ type: z.literal('image'), assetId: identifier }),
     sourceAssetId: identifier, prompt: z.string().max(20000), count: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
     durationSeconds: z.union([z.literal(5), z.literal(10)]),
-    modelProfileId: identifier.optional(), resolution: z.enum(['1k', '2k', '4k']).optional() }).optional(),
+    modelProfileId: identifier.optional(), resolution: z.enum(['720p', '1k', '2k', '4k']).optional(),
+    videoResolution: z.enum(['720p', '768p', '2k']).optional(), generateAudio: z.boolean().optional() })
+    .superRefine((value, ctx) => {
+      if (value.mode === 'variation' && (value.videoResolution !== undefined || value.resolution === '720p')) ctx.addIssue({ code: 'custom', message: '裂变分辨率无效' })
+    }).optional(),
 })
 export const projectWriteSchema = z.object({ name: z.string().trim().min(1).max(100), document: documentSchema,
   drafts: draftsSchema, schemaVersion: z.literal(1) }).strict()

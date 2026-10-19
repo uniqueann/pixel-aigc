@@ -67,6 +67,7 @@ function ImageVideoPanel({ model, configured = true, generateDisabled = false }:
 }) {
   const [duration, setDuration] = useState(5)
   const [audio, setAudio] = useState(false)
+  const [videoResolution, setVideoResolution] = useState<VideoResolution | undefined>(model?.resolution)
   return (
     <DerivedGenerationPanel
       mode="image-to-video"
@@ -78,6 +79,9 @@ function ImageVideoPanel({ model, configured = true, generateDisabled = false }:
       onAudioChange={setAudio}
       videoConfigured={configured}
       videoModel={model}
+      videoModels={model ? [model] : []}
+      videoResolution={videoResolution}
+      onVideoResolutionChange={setVideoResolution}
       submitting={false}
       autoRetrying={false}
       active={false}
@@ -91,7 +95,7 @@ function ImageVideoPanel({ model, configured = true, generateDisabled = false }:
       onRetry={() => undefined}
       onModifyParameters={() => undefined}
       onRefetch={() => undefined}
-      estimatedCredits={videoCreditsForDuration(model, duration)}
+      estimatedCredits={videoCreditsForDuration(model, duration, videoResolution)}
       mockGateway={false}
       generateDisabled={generateDisabled}
     />
@@ -106,9 +110,12 @@ function quoteButton(name: string) {
 }
 
 describe('视频面板积分预估', () => {
-  it('H3 分辨率与时长变化同步更新报价，余额不足时禁止提交', () => {
+  it.each([TextVideoPanel, ImageVideoPanel])('H3 文生与图生的分辨率、时长同步更新报价，原生有声没有无效开关', Panel => {
     useUserStore.setState({ credits: 120 })
-    render(<TextVideoPanel model={MINIMAX_H3_VIDEO_MODEL} />)
+    render(<Panel model={MINIMAX_H3_VIDEO_MODEL} />)
+    expect(screen.getByText('声音：原生有声')).toBeTruthy()
+    expect(screen.queryByRole('switch', { name: '生成声音' })).toBeNull()
+    expect(screen.queryByText(/暂不支持含真人人脸/)).toBeNull()
     expect(screen.getByText('预计消耗 50 积分')).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: '2K' }))
     expect(screen.getByText('预计消耗 80 积分')).toBeTruthy()

@@ -50,6 +50,7 @@ export interface CanvasDrafts {
     durationSeconds: number
     modelProfileId?: string
     resolution?: '1k' | '2k' | '4k' | '720p'
+    videoResolution?: import('@shared/video-models').VideoResolution
     generateAudio?: boolean
   }
 }

@@ -14,6 +14,7 @@ export function videoModelAvailable(id: string, mode: VideoMode, env = process.e
   if (!profile || !videoModelModes(profile).includes(mode)) return false
   if (profile.provider === 'seedance') return seedanceGenerationAvailable(env)
   return env.VIDEO_GENERATION_ENABLED === 'true' && env.AI_GATEWAY_VIDEO_ENABLED === 'true'
+    && (mode !== 'image_to_video' || env.AI_GATEWAY_IMAGE_TO_VIDEO_ENABLED === 'true')
     && Boolean(env.AI_GATEWAY_API_KEY?.trim() || env.VERCEL_OIDC_TOKEN?.trim() || env.VERCEL === '1')
     && ['AIGC_DATABASE_URL', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'VIDEO_CRON_SECRET'].every(key => !!env[key])
 }
@@ -24,7 +25,8 @@ export function videoGenerationAvailable(mode: VideoMode = 'text_to_video', env 
 
 export function publicVideoModels(env = process.env) {
   return VIDEO_MODELS.map(model => {
-    const available = videoModelModes(model).some(mode => videoModelAvailable(model.id, mode, env))
-    return { ...model, available, unavailableReason: available ? null : '平台暂未开放此模型或配置不完整' }
+    const availableModes = videoModelModes(model).filter(mode => videoModelAvailable(model.id, mode, env))
+    const available = availableModes.length > 0
+    return { ...model, availableModes, available, unavailableReason: available ? null : '平台暂未开放此模型或配置不完整' }
   })
 }

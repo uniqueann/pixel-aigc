@@ -142,7 +142,7 @@ export interface VariationTaskParams {
 export interface ImageToVideoTaskParams {
   mode?: 'image_to_video'
   ratio?: 'adaptive'
-  resolution?: '720p'
+  resolution?: import('@shared/video-models').VideoResolution
   generateAudio?: boolean
   sourceImageKey?: string
   sourceImageUrl?: string
