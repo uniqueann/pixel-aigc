@@ -12,6 +12,7 @@ export const HISTORY_CHANGED = 'pixel-history-changed'
 export type WorkstationHistorySlug = 'repaint' | 'remove' | 'outpaint' | 'smart-edit' | string
 
 export interface WorkstationHistoryMetadata {
+  modelProfileId?: string
   mediaType?: 'image' | 'video'
   video?: Omit<import('@shared/video-models').VideoResult, 'url' | 'expiresAt'>
   id: string

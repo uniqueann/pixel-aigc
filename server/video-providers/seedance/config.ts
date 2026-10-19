@@ -12,8 +12,8 @@ export function seedanceConfig(env = process.env) {
   return { apiKey, baseUrl, callbackBase, callbackSecret, model: SEEDANCE_VIDEO_MODEL.model }
 }
 
-export function videoGenerationAvailable(env = process.env) {
-  return env.VIDEO_GENERATION_ENABLED === 'true' && !!seedanceConfig(env)
+export function seedanceGenerationAvailable(env = process.env) {
+  return env.VIDEO_GENERATION_ENABLED === 'true' && env.SEEDANCE_VIDEO_ENABLED === 'true' && !!seedanceConfig(env)
     && ['AIGC_DATABASE_URL', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'VIDEO_CRON_SECRET'].every(key => !!env[key])
 }
 

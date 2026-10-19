@@ -32,6 +32,8 @@ export interface GenerationDraft {
   modelProfileId?: string
   resolution?: '1k' | '2k' | '4k' | '720p'
   generateAudio?: boolean
+  /** 视频档位独立保存，避免与文生图的分辨率偏好混用。 */
+  videoResolution?: import('@shared/video-models').VideoResolution
   /** 文生图千问「自动扩写」。未设置视为关闭。 */
   enableThinking?: boolean
 }

@@ -1,6 +1,6 @@
 import { EMAIL_MODELS } from './email-models.js'
 import { findImageModel } from './image-models.js'
-import { SEEDANCE_VIDEO_MODEL } from './video-models.js'
+import { videoModel } from './video-models.js'
 
 /**
  * 任务详情只展示目录里的名称。
@@ -12,6 +12,7 @@ export function modelDisplayName(id: string | null | undefined) {
   if (image) return image.label
   const email = EMAIL_MODELS.find(model => model.id === id)
   if (email) return email.label
-  if (id === SEEDANCE_VIDEO_MODEL.id) return SEEDANCE_VIDEO_MODEL.label
+  const video = videoModel(id)
+  if (video) return video.label
   return '历史模型'
 }

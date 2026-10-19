@@ -3,6 +3,10 @@ import { canonicalizeDraftModelIds, projectWriteSchema, uploadSchema } from './c
 const draft = { prompt: '', presetKey: '1:1', count: 1, durationSeconds: 5 }
 const project = { name: '测试', schemaVersion: 1, document: { version: 1, activeSceneId: 's', scenes: [{ id: 's', name: '场景', width: 100, height: 100, viewport: { zoom: 1, panX: 0, panY: 0 }, nodes: [] }] }, drafts: { 'text-to-image': draft, 'text-to-video': draft } }
 describe('云端写入边界', () => {
+  it('H3 视频草稿保留独立档位、时长和声音，不扩展云端视频资产', () => {
+    const value = { ...draft, modelProfileId: 'minimax-h3', videoResolution: '2k', generateAudio: true, durationSeconds: 10 }
+    expect(projectWriteSchema.parse({ ...project, drafts: { ...project.drafts, 'text-to-video': value } }).drafts['text-to-video']).toEqual(value)
+  })
   it('旧草稿可继续写入，文生图模型和分辨率随草稿完整保留', () => {
     const legacy = projectWriteSchema.parse(project)
     expect(legacy.drafts['text-to-image'].modelProfileId).toBeUndefined()

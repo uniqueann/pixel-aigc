@@ -28,6 +28,7 @@ import { runtimeImageBlob } from '@/services/api/imageRuntime'
 import { readOwnedImage } from '@/services/api/ownedImages'
 import { listTasks, type TaskSummary } from '@/services/api/task'
 import { Capability } from '@/types'
+import { modelDisplayName } from '@shared/model-display'
 import { useUserStore } from '@/store/useUserStore'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { useCapabilities } from '@/hooks/useCapabilities'
@@ -187,8 +188,8 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     const workstation = workstationItems.map((record) => ({
       id: record.id,
       kind: record.mediaType === 'video' ? 'video' as const : 'workstation' as const,
-      title: record.mediaType === 'video' ? 'Seedance 视频' : workstationToolLabel(record.toolSlug),
-      subtitle: record.video ? `${record.video.durationSeconds.toFixed(1)} 秒 · 720p · ${formatTime(record.video.retentionExpiresAt)} 到期`
+      title: record.mediaType === 'video' ? record.modelProfileId ? `${modelDisplayName(record.modelProfileId)} 视频` : 'Seedance 视频' : workstationToolLabel(record.toolSlug),
+      subtitle: record.video ? `${record.video.durationSeconds.toFixed(1)} 秒 · ${record.width}×${record.height} · ${formatTime(record.video.retentionExpiresAt)} 到期`
         : `${record.width}×${record.height}${record.prompt ? ` · ${record.prompt}` : ''}`,
       status: 'succeeded',
       createdAt: record.createdAt,

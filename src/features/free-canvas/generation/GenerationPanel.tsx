@@ -18,7 +18,7 @@ import { resultAssetForTask } from './resultAsset'
 import VideoCreditEstimate from './VideoCreditEstimate'
 import VideoGenerationSettings from './VideoGenerationSettings'
 import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits'
-import type { VideoModelProfile } from '@shared/video-models'
+import type { VideoModelProfile, VideoResolution } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
 import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
@@ -38,6 +38,11 @@ interface GenerationPanelProps {
   onAudioChange?: (value: boolean) => void
   videoConfigured?: boolean
   videoModel?: VideoModelProfile
+  videoModels?: VideoModelProfile[]
+  selectedVideoModelId?: string
+  videoResolution?: VideoResolution
+  onVideoModelChange?: (id: string) => void
+  onVideoResolutionChange?: (resolution: VideoResolution) => void
   videoAvailability?: CapabilityAvailability
   onReloadModels?: () => void
   task?: GenerationTask<CanvasGenerationTaskParams>
@@ -104,6 +109,7 @@ export default function GenerationPanel({
   modelsLoading = false, generateDisabled = false, mockGateway = true,
   historyError, historySaved, onRetrySave, resultAssets,
   generateAudio = false, onAudioChange, videoConfigured = false, videoModel,
+  videoModels, selectedVideoModelId, videoResolution, onVideoModelChange, onVideoResolutionChange,
   videoAvailability, onReloadModels,
 }: GenerationPanelProps) {
   const textToVideo = mode === 'text-to-video'
@@ -137,8 +143,10 @@ export default function GenerationPanel({
   const originalModel = task ? matchImageModel(models, originalModelId) : model
   const imagePromptMax = model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
   const originalResolution = task && 'resolution' in task.params ? task.params.resolution : resolution
-  const retryCredits = task ? imageCreditAmount(originalModel, task.params.count, originalResolution ?? resolution) : estimatedCredits
-  const retryVideoCredits = videoCreditsForDuration(task && originalModelId !== videoModel?.id ? undefined : videoModel, taskDuration)
+  const retryCredits = taskIsVideo ? undefined : task ? imageCreditAmount(originalModel, task.params.count, originalResolution as '1k' | '2k' | '4k' ?? resolution) : estimatedCredits
+  const retryVideoModel = task ? videoModels?.find(item => item.id === originalModelId) ?? (originalModelId === videoModel?.id ? videoModel : undefined) : videoModel
+  const retryVideoCredits = videoCreditsForDuration(retryVideoModel?.available === false ? undefined : retryVideoModel, taskDuration,
+    taskIsVideo ? originalResolution as VideoResolution : videoResolution)
   const videoCreditSubmitBlocked = textToVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: estimatedCredits, balance })
   const videoRetryBlocked = taskIsVideo && videoCreditBlocksSubmit({ mockGateway, loading: modelsLoading, credits: retryVideoCredits, balance })
   const videoState = mockGateway ? 'ready' : videoAvailability ?? (modelsLoading ? 'loading' : videoConfigured ? 'ready' : 'soon')
@@ -220,7 +228,8 @@ export default function GenerationPanel({
         {!modelsLoading && generateDisabled && <p className="toolbox-hint">文生图服务暂不可用，请检查网络或稍后重试。</p>}
       </>}
       {textToVideo && <VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
-        loading={modelsLoading} configured={videoConfigured || mockGateway} />}
+        loading={modelsLoading} configured={videoConfigured || mockGateway} model={videoModel} models={videoModels}
+        resolution={videoResolution} selectedId={selectedVideoModelId} onModelChange={onVideoModelChange} onResolutionChange={onVideoResolutionChange} />}
       {textToVideo && <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />}
 
       <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
