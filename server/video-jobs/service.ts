@@ -3,7 +3,7 @@ import { taskOriginSchema, validTaskOrigin } from '../../shared/task-center.js'
 import sharp from 'sharp'
 import { z } from 'zod'
 import { VIDEO_PROMPT_MAX } from '../../shared/prompt-limits.js'
-import { SEEDANCE_VIDEO_MODEL, VIDEO_RATIOS, type VideoResult } from '../../shared/video-models.js'
+import { SEEDANCE_VIDEO_MODEL, VIDEO_RATIOS, VIDEO_RESOLUTIONS, videoModel, videoModelModes, videoModelCredits, type VideoResult } from '../../shared/video-models.js'
 import type { authenticate } from '../auth.js'
 import { runtimeScope, withIdentity } from '../db.js'
 import { HttpError } from '../errors.js'
@@ -15,7 +15,9 @@ import { createSqlStore } from '../image-jobs/repository.js'
 import { defaultImageJobRuntime, finalizeJob, isSafeObjectKey, type ImageJobRuntime } from '../image-jobs/service.js'
 import type { ImageJobBundle, ImageJobStore, ImageJobItemRow } from '../image-jobs/types.js'
 import { seedanceProvider } from '../video-providers/seedance/index.js'
-import { videoCallbackUrl, videoGenerationAvailable } from '../video-providers/seedance/config.js'
+import { videoCallbackUrl } from '../video-providers/seedance/config.js'
+import { videoProviderById, videoModelAvailable } from '../video-providers/registry.js'
+import { VIDEO_MAX_BYTES } from '../video-providers/download.js'
 import { probeVideo } from '../video-providers/metadata.js'
 import { VideoProviderError, type VideoProvider } from '../video-providers/types.js'
 
@@ -30,12 +32,12 @@ const common = {
   prompt: z.string().trim().min(1, '请填写视频描述').max(VIDEO_PROMPT_MAX, `视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`),
   size: z.object({ width: z.number().int().positive().max(20000), height: z.number().int().positive().max(20000) }).strict(),
   count: z.literal(1), durationSeconds: z.union([z.literal(5), z.literal(10)]),
-  resolution: z.literal('720p'), generateAudio: z.boolean().default(false),
+  resolution: z.enum(VIDEO_RESOLUTIONS), generateAudio: z.boolean().default(false),
 }
 export const createVideoTaskSchema = z.object({
   capability: z.literal('text_to_video'), requestId: z.uuid(),
   origin: taskOriginSchema.optional(),
-  modelProfileId: z.literal(SEEDANCE_VIDEO_MODEL.id).default(SEEDANCE_VIDEO_MODEL.id),
+  modelProfileId: z.string().min(1).default(SEEDANCE_VIDEO_MODEL.id),
   priceVersion: z.string().min(1),
   params: z.discriminatedUnion('mode', [
     z.object({ ...common, mode: z.literal('text_to_video'), ratio: z.enum(VIDEO_RATIOS) }).strict(),
@@ -44,6 +46,11 @@ export const createVideoTaskSchema = z.object({
   ]),
 }).strict().superRefine((value,ctx) => {
   if (!validTaskOrigin(value.origin,value.capability,value.params.mode)) ctx.addIssue({ code: 'custom',message: '视频任务来源无效',path: ['origin'] })
+  const profile = videoModel(value.modelProfileId)
+  if (!profile || !videoModelModes(profile).includes(value.params.mode)
+    || videoModelCredits(profile, value.params.resolution, value.params.durationSeconds) === undefined) {
+    ctx.addIssue({ code: 'custom', message: '所选模型不支持此生成方式、分辨率或时长', path: ['params'] })
+  }
 })
 type VideoRequest = z.infer<typeof createVideoTaskSchema>
 
@@ -58,6 +65,10 @@ export interface VideoJobRuntime extends ImageJobRuntime {
 export function defaultVideoJobRuntime(): VideoJobRuntime {
   return { ...defaultImageJobRuntime(), videoProvider: seedanceProvider, readSource: getObjectLimited,
     writeVideo: putObject, probe: probeVideo, callbackUrl: videoCallbackUrl }
+}
+
+function providerFor(id: string, runtime: VideoJobRuntime) {
+  return runtime.videoProvider.id === id ? runtime.videoProvider : videoProviderById(id)
 }
 
 export function videoFingerprint(parsed: VideoRequest) {
@@ -93,19 +104,22 @@ export async function prepareVideoSource(userId: string, parsed: VideoRequest, r
 export async function createVideoJobInStore(store: ImageJobStore, user: Pick<User, 'id'>, parsed: VideoRequest, runtime: VideoJobRuntime) {
   const existing = await existingVideo(store, parsed)
   if (existing) return { bundle: existing, created: false }
-  if (parsed.priceVersion !== SEEDANCE_VIDEO_MODEL.pricing.version) throw new HttpError(409, '视频价格已更新，请刷新配置后重试', 'VIDEO_PRICE_CHANGED')
+  const profile = videoModel(parsed.modelProfileId)
+  if (!profile) throw new HttpError(400, '视频模型不存在', 'VIDEO_PARAMS_INVALID')
+  if (parsed.priceVersion !== profile.pricing.version) throw new HttpError(409, '视频价格已更新，请刷新配置后重试', 'VIDEO_PRICE_CHANGED')
   await store.expireUserOverdue(new Date(runtime.now()))
   if (await store.hourlyCount() >= VIDEO_HOURLY_LIMIT) throw new HttpError(429, '每小时最多创建 6 个视频任务，请稍后重试', 'RATE_LIMIT')
   if (await store.userActiveCount() >= VIDEO_USER_CONCURRENCY) throw new HttpError(429, '已有视频正在生成，请完成后再试', 'USER_CONCURRENCY')
   if (await store.globalActiveCount() >= VIDEO_GLOBAL_CONCURRENCY) throw new HttpError(429, '视频服务当前任务较多，请稍后重试', 'GLOBAL_CONCURRENCY')
   const params = { ...parsed.params }
   if ('sourceImageUrl' in params) delete params.sourceImageUrl
-  const amount = SEEDANCE_VIDEO_MODEL.pricing.creditsPerVideo[params.durationSeconds]
+  const amount = videoModelCredits(profile, params.resolution, params.durationSeconds)
+  if (amount === undefined) throw new HttpError(400, '视频报价不可用', 'VIDEO_PARAMS_INVALID')
   const bundle = await reserveAndCreateJob(store, runtime.billing, user.id, {
     id: randomUUID(), requestId: parsed.requestId, fingerprint: videoFingerprint(parsed),
     origin: parsed.origin,
-    capability: 'text_to_video', modelProfileId: parsed.modelProfileId, provider: 'seedance',
-    params, providerParams: { model: SEEDANCE_VIDEO_MODEL.model, priceVersion: parsed.priceVersion,
+    capability: 'text_to_video', modelProfileId: parsed.modelProfileId, provider: profile.provider,
+    params, providerParams: { model: profile.model, priceVersion: parsed.priceVersion,
       unitPrice: amount, phase: 'submitting' }, requestedCount: 1, warnings: [],
     creditsReserved: amount, billingState: 'reserved', deadlineAt: new Date(runtime.now() + VIDEO_DEADLINE_MS),
     nextPollAt: new Date(runtime.now() + 60_000),
@@ -150,7 +164,7 @@ export async function toClientVideoTask(bundle: ImageJobBundle, runtime: VideoJo
 /** 提交返回与回调共享行锁；补齐标识时保留正在转存的租约和阶段。 */
 export async function applyVideoSubmission(
   store: ImageJobStore, jobId: string, runtime: VideoJobRuntime,
-  providerTaskId?: string, failure?: VideoProviderError,
+  providerTaskId?: string, failure?: VideoProviderError, operation?: unknown,
 ) {
   const job = await store.findById(jobId)
   if (!job) throw new HttpError(404, '视频任务不存在', 'TASK_NOT_FOUND')
@@ -166,7 +180,8 @@ export async function applyVideoSubmission(
     return finalizeJob(store, job, items, runtime, false)
   }
   const phase = job.provider_params.phase === 'submitting' && providerTaskId ? 'queued' : job.provider_params.phase
-  const next = await store.updateJob(job.id, { provider_params: { ...job.provider_params, phase }, next_poll_at: new Date(runtime.now()) })
+  const next = await store.updateJob(job.id, { provider_params: { ...job.provider_params, phase,
+    ...(operation !== undefined ? { operation } : {}) }, next_poll_at: new Date(runtime.now()) })
   return { job: next, items }
 }
 
@@ -177,8 +192,9 @@ export async function submitVideoTask(user: User, body: unknown, runtime = defau
     return existingVideo(createSqlStore(sql, user.id, 'video'), parsed)
   })
   if (existing) return toClientVideoTask(existing, runtime)
-  if (!videoGenerationAvailable()) throw new HttpError(503, '视频生成尚未开放或配置不完整', 'VIDEO_UNAVAILABLE')
-  if (parsed.priceVersion !== SEEDANCE_VIDEO_MODEL.pricing.version) throw new HttpError(409, '视频价格已更新，请刷新配置后重试', 'VIDEO_PRICE_CHANGED')
+  const profile = videoModel(parsed.modelProfileId)!
+  if (!videoModelAvailable(profile.id, parsed.params.mode)) throw new HttpError(503, '所选视频模型尚未开放或配置不完整', 'VIDEO_UNAVAILABLE')
+  if (parsed.priceVersion !== profile.pricing.version) throw new HttpError(409, '视频价格已更新，请刷新配置后重试', 'VIDEO_PRICE_CHANGED')
   const sourceImageUrl = await prepareVideoSource(user.id, parsed, runtime)
   const created = await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
@@ -188,12 +204,15 @@ export async function submitVideoTask(user: User, body: unknown, runtime = defau
   })
   if (!created.created) return toClientVideoTask(created.bundle, runtime)
   let providerTaskId: string | undefined
+  let operation: unknown
   let failure: VideoProviderError | undefined
   try {
-    const result = await runtime.videoProvider.submit({ model: SEEDANCE_VIDEO_MODEL.model, ...parsed.params, sourceImageUrl,
-      callbackUrl: runtime.callbackUrl(created.bundle.job.id, runtimeScope()) },
+    const result = await providerFor(created.bundle.job.provider, runtime).submit({ model: profile.model, ...parsed.params, sourceImageUrl,
+      ...(profile.provider === 'seedance' ? { callbackUrl: runtime.callbackUrl(created.bundle.job.id, runtimeScope()) } : {}),
+      idempotencyKey: createHash('sha256').update(`${runtimeScope()}:${user.id}:${parsed.requestId}`).digest('hex') },
     { fetch: runtime.fetch, now: runtime.now, sleep: runtime.sleep, log: runtime.log, requestId: parsed.requestId })
     providerTaskId = result.providerTaskId
+    operation = result.operation
   } catch (error) {
     failure = error instanceof VideoProviderError ? error : new VideoProviderError('UPSTREAM_UNAVAILABLE', '正在确认视频任务状态', true, true)
   }
@@ -201,9 +220,10 @@ export async function submitVideoTask(user: User, body: unknown, runtime = defau
     const store = createSqlStore(sql, user.id, 'video')
     await sql`select id from aigc.image_jobs where id=${created.bundle.job.id} for update`
     return applyVideoSubmission(store, created.bundle.job.id,
-      { ...runtime, billing: runtime.billing === noopBilling ? createSqlBilling(sql) : runtime.billing }, providerTaskId, failure)
+      { ...runtime, billing: runtime.billing === noopBilling ? createSqlBilling(sql) : runtime.billing }, providerTaskId, failure, operation)
   })
-  runtime.log({ stage: 'video-submit', jobId: bundle.job.id, code: failure?.code, confirmed: !!providerTaskId })
+  runtime.log({ stage: 'video-submit', jobId: bundle.job.id, provider: bundle.job.provider, model: bundle.job.provider_params.model,
+    code: failure?.code, confirmed: !!providerTaskId })
   return toClientVideoTask(bundle, runtime)
 }
 
@@ -221,10 +241,12 @@ export async function collectVideoOutcome(
   const signal = AbortSignal.timeout(overdue ? 100_000 : Math.max(1, Math.min(100_000, new Date(job.deadline_at).getTime() - runtime.now())))
   const ctx = { fetch: runtime.fetch, now: runtime.now, sleep: runtime.sleep, log: runtime.log, signal, requestId: job.request_id }
   try {
-    const state = await runtime.videoProvider.getStatus(id, ctx)
+    const provider = providerFor(job.provider, runtime)
+    const state = await provider.getStatus(id, ctx, providerParams.operation)
     if (state.model !== job.provider_params.model) throw new VideoProviderError('BAD_RESPONSE', '供应商视频模型与任务不匹配')
     patch.provider_task_id = id
     providerParams.vendor = state.usage ?? providerParams.vendor
+    if (state.generationId) providerParams.vendor = { ...(providerParams.vendor as Record<string, unknown> ?? {}), generationId: state.generationId }
     if (state.state === 'failed') return { providerParams, patch: { ...patch, status: 'failed', error_code: state.code, error_message: state.message } }
     if (state.state !== 'succeeded') {
       providerParams.phase = state.state === 'queued' ? 'queued' : 'generating'
@@ -236,12 +258,23 @@ export async function collectVideoOutcome(
       transferAttempts: Number(providerParams.transferAttempts ?? 0) + 1 }
     await beforeTransfer(providerParams)
     const started = runtime.now()
-    const bytes = await runtime.videoProvider.fetchResult(state.videoUrl, ctx)
+    const bytes = state.videoBytes ?? (state.videoUrl ? await provider.fetchResult(state.videoUrl, ctx) : undefined)
+    if (!bytes || bytes.byteLength > VIDEO_MAX_BYTES) throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频结果无效或超过大小限制')
     runtime.log({ stage: 'video-download', jobId: job.id, ms: runtime.now() - started, bytes: bytes.byteLength })
     const probeStarted = runtime.now()
     const measured = runtime.probe(bytes)
     runtime.log({ stage: 'video-probe', jobId: job.id, ms: runtime.now() - probeStarted })
     if (measured.hasAudio !== (job.params.generateAudio === true)) throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频声音与所选配置不匹配，积分将退回')
+    if (job.provider === 'ai-gateway') {
+      const sizes = job.params.resolution === '2k'
+        ? { '1:1': [2048, 2048], '4:3': [2048, 1536], '3:4': [1536, 2048], '16:9': [2560, 1440], '9:16': [1440, 2560] }
+        : { '1:1': [768, 768], '4:3': [1024, 768], '3:4': [768, 1024], '16:9': [1366, 768], '9:16': [768, 1366] }
+      const expected = sizes[job.params.ratio as keyof typeof sizes]
+      if (!expected || Math.abs(measured.width - expected[0]) > 2 || Math.abs(measured.height - expected[1]) > 2
+        || Math.abs(measured.durationSeconds - Number(job.params.durationSeconds)) > .5) {
+        throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频尺寸或时长与所选配置不匹配，积分将退回')
+      }
+    }
     const objectKey = `generated/${job.user_id}/video/${job.id}/0.mp4`
     const writeStarted = runtime.now()
     await runtime.writeVideo(objectKey, bytes, 'video/mp4', signal)
@@ -249,7 +282,7 @@ export async function collectVideoOutcome(
     let posterKey: string | undefined
     if (state.posterUrl && !signal.aborted) {
       try {
-        const poster = await runtime.videoProvider.fetchResult(state.posterUrl, ctx, 10 * 1024 * 1024)
+        const poster = await provider.fetchResult(state.posterUrl, ctx, 10 * 1024 * 1024)
         const thumbnail = await sharp(poster, { limitInputPixels: 40_000_000 }).resize(320, 320, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer()
         posterKey = `generated/${job.user_id}/video/${job.id}/poster.jpg`
         await runtime.writeVideo(posterKey, thumbnail, 'image/jpeg', signal)

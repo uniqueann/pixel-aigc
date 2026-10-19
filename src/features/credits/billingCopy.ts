@@ -4,7 +4,7 @@ import { creditToolName } from '@shared/credits'
 import type { ImageResolution } from '@shared/image-generation'
 import { IMAGE_MODEL_PROFILES, type ImageModelProfile } from '@shared/image-models'
 import { MAX_EXPAND_PASSES, MAX_SCALE } from '@shared/outpaint'
-import { SEEDANCE_VIDEO_MODEL } from '@shared/video-models'
+import { VIDEO_MODELS, videoModelCredits, videoModelModes, videoModelResolutions } from '@shared/video-models'
 import { CANVAS_MODES } from '@/pages/FreeCanvas/modes'
 import { WORKSTATION_TOOLS } from '@/pages/ImageWorkstation/tools'
 import { FIT_STRATEGIES } from '@/pages/Toolbox/aspect-ratio/strategies'
@@ -83,16 +83,15 @@ function downgradeNote(profile: ImageModelProfile) {
 }
 
 function videoItem() {
-  const model = SEEDANCE_VIDEO_MODEL
-  const parts = model.durations.flatMap(duration => {
-    const credits = model.pricing.creditsPerVideo[duration]
-    if (!Number.isSafeInteger(credits) || credits < 0) return []
-    return [`${duration} 秒 ${credits} 分`]
-  })
-  if (parts.length !== model.durations.length) return ''
   const text = creditToolName({ mode: 'text_to_video' }, 'text_to_video')
   const image = creditToolName({ mode: 'image_to_video' }, 'text_to_video')
-  return `${text}、${image}（${model.label}，${model.resolution}）按条计费：${parts.join('，')}。是否生成声音不改变价格。`
+  return VIDEO_MODELS.map(model => {
+    const prices = videoModelResolutions(model).map(resolution => {
+      const parts = model.durations.map(duration => `${duration} 秒 ${videoModelCredits(model, resolution, duration)} 分`)
+      return `${resolution.toUpperCase()}：${parts.join('，')}`
+    })
+    return `${videoModelModes(model).includes('image_to_video') ? `${text}、${image}` : text}（${model.label}）按条计费：${prices.join('；')}。`
+  }).join('') + '是否生成声音不改变价格，实际可用模型以页面开放状态为准。'
 }
 
 function generationItems() {

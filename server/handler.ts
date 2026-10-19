@@ -11,8 +11,7 @@ import { billingCatalog, createCreditCheckout, previewCreditDiscount, getCreditO
 import type { VercelRequest, VercelResponse } from './http.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { waitUntil } from '@vercel/functions'
-import { SEEDANCE_VIDEO_MODEL } from '../shared/video-models.js'
-import { videoGenerationAvailable } from './video-providers/seedance/config.js'
+import { publicVideoModels, videoGenerationAvailable } from './video-providers/registry.js'
 import { maintainVideoJobs, recordVideoCallback } from './video-jobs/maintenance.js'
 import { maintainImageJobs } from './image-jobs/maintenance.js'
 import { z } from 'zod'
@@ -231,14 +230,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         imageEdit: imageModelsAvailable('image_edit'),
         variation: imageModelsAvailable('variation'),
         textToImage: imageModelsAvailable('text_to_image'),
-        textToVideo: videoGenerationAvailable(), imageToVideo: videoGenerationAvailable(),
+        textToVideo: videoGenerationAvailable('text_to_video'), imageToVideo: videoGenerationAvailable('image_to_video'),
         smartSelect: segmentConfigured(),
       })
       return
     }
     if (path[0] === 'video-models' && method === 'GET') {
       // 报价与生成开关分离：关闭时仍返回价格供面板预估，提交仍由能力开关拒绝。
-      res.status(200).json({ items: [SEEDANCE_VIDEO_MODEL] })
+      res.status(200).json({ items: publicVideoModels() })
       return
     }
     if (path[0] === 'image-models' && method === 'GET') {

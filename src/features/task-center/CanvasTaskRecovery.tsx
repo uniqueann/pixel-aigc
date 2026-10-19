@@ -84,7 +84,9 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
       } else {
         const tool=origin.tool
         state.setDrafts({...state.drafts,[tool]:{...state.drafts[tool],prompt:values.prompt,count:values.count,presetKey:preset??state.drafts[tool].presetKey,
-          durationSeconds:values.durationSeconds===10?10:5,resolution:values.resolution as '1k'|'2k'|'4k'|'720p'|undefined,
+          durationSeconds:values.durationSeconds===10?10:5,
+          ...(tool==='text-to-video'?{videoResolution:values.resolution as '720p'|'768p'|'2k'|undefined,resolution:undefined}
+            :{resolution:values.resolution as '1k'|'2k'|'4k'|undefined}),
           modelProfileId:canonicalizeImageModelProfileId(detail.task.modelProfileId??undefined),generateAudio:values.generateAudio===true,enableThinking:values.enableThinking===true}})
       }
     }}/>

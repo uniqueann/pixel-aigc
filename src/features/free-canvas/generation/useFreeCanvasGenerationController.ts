@@ -124,12 +124,13 @@ function mediaAssets(assets: Asset[]) {
 }
 
 function requestForRetry(task: CanvasGenerationTask): CanvasGenerationRequest {
+  const originalModelId = modelProfileIdForRetry(task)
   return {
     capability: task.capability as CanvasGenerationRequest['capability'],
     params: task.params,
     requestId: crypto.randomUUID(),
-    modelProfileId: canonicalizeImageModelProfileId(modelProfileIdForRetry(task)),
-    priceVersion: task.capability === Capability.TextToVideo ? useCanvasVideoConfiguration.getState().models[0]?.pricing.version ?? recoveryForTask(task.id)?.request.priceVersion : undefined,
+    modelProfileId: canonicalizeImageModelProfileId(originalModelId),
+    priceVersion: task.capability === Capability.TextToVideo ? useCanvasVideoConfiguration.getState().models.find(model => model.id === originalModelId)?.pricing.version ?? recoveryForTask(task.id)?.request.priceVersion : undefined,
   }
 }
 

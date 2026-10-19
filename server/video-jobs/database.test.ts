@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SEEDANCE_VIDEO_MODEL } from '../../shared/video-models.js'
+import { MINIMAX_H3_VIDEO_MODEL, SEEDANCE_VIDEO_MODEL } from '../../shared/video-models.js'
 import type { Transaction } from '../db.js'
 
 const mocks = vi.hoisted(() => ({ identity: vi.fn(), database: vi.fn(), remove: vi.fn() }))
@@ -89,6 +89,33 @@ afterEach(() => vi.unstubAllEnvs())
 afterAll(async () => { await db.close() })
 
 describe('视频数据库状态机与隔离', () => {
+  it('H3 operation 经数据库往返，关闭生成后仍结算一次且账户与环境隔离', async () => {
+    await db.query('update aigc.credit_accounts set balance=160 where user_id=$1 and scope=$2', [users[0], 'production'])
+    const rt = runtime(), requestId = randomUUID()
+    const request = createVideoTaskSchema.parse({ capability: 'text_to_video', requestId, modelProfileId: 'minimax-h3', priceVersion: MINIMAX_H3_VIDEO_MODEL.pricing.version,
+      params: { mode: 'text_to_video', prompt: '商品展示', count: 1, size: { width: 1280, height: 720 }, ratio: '16:9', resolution: '2k', durationSeconds: 10 } })
+    const createH3 = () => identity(users[0], 'production', sql => createVideoJobInStore(createSqlStore(sql, users[0], 'video'), { id: users[0] }, request, { ...rt, billing: createSqlBilling(sql) }))
+    const first = await createH3()
+    expect((await createH3()).bundle.job.id).toBe(first.bundle.job.id)
+    await identity(users[0], 'production', async sql => {
+      const store = createSqlStore(sql, users[0], 'video')
+      await applyVideoSubmission(store, first.bundle.job.id, rt, 'job_h3', undefined, { reference: { gatewayJobId: 'job_h3' } })
+      expect((await store.findById(first.bundle.job.id))?.provider_params.operation).toEqual({ reference: { gatewayJobId: 'job_h3' } })
+      expect(await createSqlBilling(sql).reserve({ userId: users[0], jobId: randomUUID(), amount: 1, meta: {} })).toMatchObject({ ok: false, code: 'INSUFFICIENT_CREDITS' })
+    })
+    expect(await identity(users[1], 'production', sql => createSqlStore(sql, users[1], 'video').findById(first.bundle.job.id))).toBeUndefined()
+    expect(await identity(users[0], 'preview', sql => createSqlStore(sql, users[0], 'video').findById(first.bundle.job.id))).toBeUndefined()
+    vi.stubEnv('VIDEO_GENERATION_ENABLED', 'false')
+    const getStatus = vi.fn(async () => ({ state: 'succeeded' as const, model: 'minimax/minimax-h3', videoUrl: 'https://cdn.hailuoai.com/a.mp4' }))
+    const h3Runtime = { ...rt, videoProvider: { ...rt.videoProvider, id: 'ai-gateway' as const, getStatus },
+      probe: () => ({ width: 2560, height: 1440, durationSeconds: 10, sizeBytes: 6319, hasAudio: false, videoCodec: 'avc1.42', audioCodec: undefined }) }
+    await maintainVideoJobs(first.bundle.job.id, h3Runtime)
+    await maintainVideoJobs(first.bundle.job.id, h3Runtime)
+    expect(getStatus).toHaveBeenCalledTimes(1)
+    expect(getStatus).toHaveBeenCalledWith('job_h3', expect.any(Object), { reference: { gatewayJobId: 'job_h3' } })
+    expect((await db.query('select kind,delta from aigc.credit_ledger where job_id=$1 order by created_at', [first.bundle.job.id])).rows)
+      .toEqual([{ kind: 'reserve', delta: -160 }, { kind: 'settle', delta: 0 }])
+  })
   it('同一请求只预扣一次，两个账号和两个环境分别保存任务与余额', async () => {
     const request = randomUUID()
     const a = await create(users[0], 'production', request)

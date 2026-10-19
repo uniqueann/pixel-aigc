@@ -26,6 +26,8 @@ describe('计费说明文案', () => {
     expect(text).toContain(`按 2K 的 ${profile!.pricing.creditsPerImage['2k']} 分扣`)
     expect(text).toContain(`${SEEDANCE_VIDEO_MODEL.pricing.creditsPerVideo[5]}`)
     expect(text).toContain(`${SEEDANCE_VIDEO_MODEL.pricing.creditsPerVideo[10]}`)
+    expect(text).toContain('MiniMax H3')
+    expect(text).toContain('2K：5 秒 80 分，10 秒 160 分')
     expect(text).toContain(`${SYNC_TOOL_LABELS.erase}、${SYNC_TOOL_LABELS.repaint}每次 ${syncCreditPrice('erase')} 分`)
     expect(text).toContain(`1 轮 ${syncCreditPrice('outpaint', 1)} 分，${MAX_EXPAND_PASSES} 轮 ${syncCreditPrice('outpaint', MAX_EXPAND_PASSES)} 分`)
     expect(text).toContain(`${MAX_SCALE} 倍`)

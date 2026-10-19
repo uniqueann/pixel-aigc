@@ -255,7 +255,10 @@ describe('API 认证、版本和写入边界', () => {
     const flags = await request(undefined, 'GET', '/api/capabilities')
     expect(flags.json).toHaveBeenCalledWith(expect.objectContaining({ textToVideo: false, imageToVideo: false }))
     const models = await request(undefined, 'GET', '/api/video-models')
-    expect(models.json).toHaveBeenCalledWith({ items: [SEEDANCE_VIDEO_MODEL] })
+    expect(models.json).toHaveBeenCalledWith({ items: expect.arrayContaining([
+      expect.objectContaining({ ...SEEDANCE_VIDEO_MODEL, available: false }),
+      expect.objectContaining({ id: 'minimax-h3', available: false, pricing: expect.objectContaining({ version: 'minimax-h3-video-v1' }) }),
+    ]) })
   })
 
   it('capabilities 在配置腾讯云后打开智能选区', async () => {

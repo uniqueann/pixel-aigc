@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SEEDANCE_VIDEO_MODEL, type VideoModelProfile } from '@shared/video-models'
+import { MINIMAX_H3_VIDEO_MODEL, SEEDANCE_VIDEO_MODEL, type VideoModelProfile, type VideoResolution } from '@shared/video-models'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useUserStore } from '@/store/useUserStore'
 import DerivedGenerationPanel from './DerivedGenerationPanel'
@@ -26,6 +26,7 @@ function TextVideoPanel({ model, configured = true, generateDisabled = false, mo
 }) {
   const [duration, setDuration] = useState(5)
   const [audio, setAudio] = useState(false)
+  const [videoResolution, setVideoResolution] = useState<VideoResolution | undefined>(model?.resolution)
   return (
     <GenerationPanel
       mode="text-to-video"
@@ -37,6 +38,9 @@ function TextVideoPanel({ model, configured = true, generateDisabled = false, mo
       onAudioChange={setAudio}
       videoConfigured={configured}
       videoModel={model}
+      videoModels={model ? [model] : []}
+      videoResolution={videoResolution}
+      onVideoResolutionChange={setVideoResolution}
       submitting={false}
       active={false}
       formLocked={false}
@@ -49,7 +53,7 @@ function TextVideoPanel({ model, configured = true, generateDisabled = false, mo
       onRetry={() => undefined}
       onModifyParameters={() => undefined}
       onRefetch={() => undefined}
-      estimatedCredits={videoCreditsForDuration(model, duration)}
+      estimatedCredits={videoCreditsForDuration(model, duration, videoResolution)}
       generateDisabled={generateDisabled}
       mockGateway={mockGateway}
     />
@@ -102,6 +106,16 @@ function quoteButton(name: string) {
 }
 
 describe('视频面板积分预估', () => {
+  it('H3 分辨率与时长变化同步更新报价，余额不足时禁止提交', () => {
+    useUserStore.setState({ credits: 120 })
+    render(<TextVideoPanel model={MINIMAX_H3_VIDEO_MODEL} />)
+    expect(screen.getByText('预计消耗 50 积分')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: '2K' }))
+    expect(screen.getByText('预计消耗 80 积分')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: '10 秒' }))
+    expect(screen.getByText('预计消耗 160 积分')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /生成.*160/ }).hasAttribute('disabled')).toBe(true)
+  })
   afterEach(() => {
     cleanup()
     useUserStore.setState({ userId: null, credits: 0 })

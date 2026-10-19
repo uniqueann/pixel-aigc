@@ -27,11 +27,11 @@ describe('视频入口能力四态', () => {
   })
   afterEach(() => { cleanup(); useUserStore.setState({ userId: null }) })
 
-  it('关闭的视频不请求模型报价，也不因模型列表非空而开放', () => {
+  it('关闭时仍读取报价，但不因模型列表非空而开放', () => {
     const { result } = renderHook(() => useCanvasVideoModels(), setup())
     expect(result.current.textState).toBe('soon')
     expect(result.current.imageState).toBe('soon')
-    expect(listVideoModels).not.toHaveBeenCalled()
+    expect(listVideoModels).toHaveBeenCalledTimes(1)
     expect(canSubmitFreeCanvasVideo()).toBe(false)
   })
 

@@ -11,7 +11,7 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
   const job = placeholder?.type === 'generation' ? project.generations[placeholder.generationId] : undefined
   const request = record?.request ?? (job ? { capability: job.capability, params: job.input } : undefined)
   if (!request || !request.params || typeof request.params !== 'object') return drafts
-  const params = request.params as { prompt?: string; size?: { width: number; height: number }; count?: number; durationSeconds?: number; sourceImageUrl?: string; sourceImageKey?: string; mode?: string; generateAudio?: boolean; enableThinking?: boolean; resolution?: '1k' | '2k' | '4k' | '720p' }
+  const params = request.params as { prompt?: string; size?: { width: number; height: number }; count?: number; durationSeconds?: number; sourceImageUrl?: string; sourceImageKey?: string; mode?: string; generateAudio?: boolean; enableThinking?: boolean; resolution?: '1k' | '2k' | '4k' | '720p' | '768p' }
   const sourceId = record?.context.inputAssetIds[0] ?? job?.inputAssetIds[0]
   const source = sourceId ? project.assets[sourceId] : undefined
   if (source?.type === 'image' && (request.capability === Capability.Variation || params.mode === 'image_to_video' || params.sourceImageKey || params.sourceImageUrl)) {
@@ -25,7 +25,7 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
       mode: request.capability === Capability.Variation ? 'variation' as const : 'image-to-video' as const,
       sourceNode, sourceAssetId: source.id, prompt: params.prompt ?? '', count: params.count ?? 4, durationSeconds: params.durationSeconds ?? 5,
       modelProfileId: record?.request.modelProfileId ?? drafts.derived?.modelProfileId,
-      resolution: params.resolution ?? drafts.derived?.resolution,
+      resolution: params.resolution === '768p' ? drafts.derived?.resolution : params.resolution ?? drafts.derived?.resolution,
       generateAudio: params.generateAudio ?? drafts.derived?.generateAudio,
     } }
   }
@@ -41,7 +41,9 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
   return { ...drafts, derived: undefined, [mode]: {
     ...drafts[mode], prompt: params.prompt ?? '', presetKey, count: params.count ?? 1, durationSeconds: params.durationSeconds ?? 5,
     ...(record?.request.modelProfileId ? { modelProfileId: record.request.modelProfileId } : {}),
-    ...(params.resolution ? { resolution: params.resolution } : {}),
+    ...(params.resolution ? mode === 'text-to-video'
+      ? { videoResolution: params.resolution as '720p' | '768p' | '2k' }
+      : { resolution: params.resolution as '1k' | '2k' | '4k' } : {}),
     ...(params.generateAudio !== undefined ? { generateAudio: params.generateAudio } : {}),
     ...(mode === 'text-to-image' && params.enableThinking !== undefined ? { enableThinking: params.enableThinking } : {}),
   } }

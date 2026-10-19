@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import sharp from 'sharp'
 import { describe, expect, it, vi } from 'vitest'
-import { SEEDANCE_VIDEO_MODEL, VIDEO_RETENTION_MS } from '../../shared/video-models.js'
+import { MINIMAX_H3_VIDEO_MODEL, SEEDANCE_VIDEO_MODEL, VIDEO_RETENTION_MS } from '../../shared/video-models.js'
 import { createMemoryStore } from '../image-jobs/memory-store.js'
 import { defaultImageJobRuntime, finalizeJob } from '../image-jobs/service.js'
 import { VideoProviderError } from '../video-providers/types.js'
@@ -37,6 +37,41 @@ async function created(rt = runtime()) {
 }
 
 describe('视频任务提交、转存与共用计费', () => {
+  it.each([['768p', 5, 50], ['768p', 10, 100], ['2k', 5, 80], ['2k', 10, 160]] as const)('H3 %s %i 秒按独立报价预扣 %i，重复请求不多扣', async (resolution, durationSeconds, amount) => {
+    const store = createMemoryStore(user.id), rt = runtime()
+    const request = createVideoTaskSchema.parse({ ...payload(), modelProfileId: MINIMAX_H3_VIDEO_MODEL.id,
+      priceVersion: MINIMAX_H3_VIDEO_MODEL.pricing.version, params: { ...payload().params, resolution, durationSeconds } })
+    const first = await createVideoJobInStore(store, user, request, rt)
+    expect(first.bundle.job).toMatchObject({ provider: 'ai-gateway', credits_reserved: amount,
+      provider_params: { model: 'minimax/minimax-h3', unitPrice: amount } })
+    const operation = { reference: { gatewayJobId: 'job_h3' } }
+    const applied = await applyVideoSubmission(store, first.bundle.job.id, rt, 'job_h3', undefined, operation)
+    expect(applied.job.provider_params.operation).toEqual(operation)
+    expect((await toClientVideoTask(applied, rt))).not.toHaveProperty('operation')
+    expect((await createVideoJobInStore(store, user, request, rt)).created).toBe(false)
+    expect(rt.billing.reserve).toHaveBeenCalledTimes(1)
+  })
+  it('拒绝 H3 图生、720p 以及 Seedance 的 2K 请求', () => {
+    expect(() => createVideoTaskSchema.parse({ ...payload(), modelProfileId: 'minimax-h3', params: { ...payload().params, mode: 'image_to_video', ratio: 'adaptive', sourceImageKey: sourceKey } })).toThrow()
+    expect(() => createVideoTaskSchema.parse({ ...payload(), modelProfileId: 'minimax-h3' })).toThrow()
+    expect(() => payload(5, { resolution: '2k' })).toThrow()
+  })
+  it('H3 恢复使用原 operation，错档不转存、不结算', async () => {
+    const rt = runtime(), store = createMemoryStore(user.id)
+    const request = createVideoTaskSchema.parse({ ...payload(), modelProfileId: 'minimax-h3', priceVersion: MINIMAX_H3_VIDEO_MODEL.pricing.version,
+      params: { ...payload().params, resolution: '2k' } })
+    const first = await createVideoJobInStore(store, user, request, rt)
+    const operation = { reference: { gatewayJobId: 'job_h3' } }
+    const bundle = await applyVideoSubmission(store, first.bundle.job.id, rt, 'job_h3', undefined, operation)
+    const getStatus = vi.fn(async () => ({ state: 'succeeded' as const, model: 'minimax/minimax-h3', videoBytes: new Uint8Array([1]) }))
+    const provider = { ...rt.videoProvider, id: 'ai-gateway' as const, getStatus }
+    const outcome = await collectVideoOutcome(bundle, { ...rt, videoProvider: provider,
+      probe: () => ({ width: 768, height: 768, durationSeconds: 5, sizeBytes: 1, hasAudio: false, videoCodec: 'avc1.42', audioCodec: undefined }) })
+    expect(getStatus).toHaveBeenCalledWith('job_h3', expect.any(Object), operation)
+    expect(outcome.patch).toMatchObject({ status: 'failed', error_code: 'VIDEO_RESULT_INVALID' })
+    expect(rt.writeVideo).not.toHaveBeenCalled()
+    expect(rt.billing.settle).not.toHaveBeenCalled()
+  })
   it.each([[5, 50], [10, 100]] as const)('%i 秒预扣 %i 积分，重复请求不再次预扣', async (duration, credits) => {
     const store = createMemoryStore(user.id), rt = runtime(), request = payload(duration)
     const first = await createVideoJobInStore(store, user, request, rt)

@@ -1,14 +1,15 @@
-import type { VideoModelProfile } from '@shared/video-models'
+import { videoModelCredits, type VideoModelProfile, type VideoResolution } from '@shared/video-models'
 
 function quotedCredits(credits: number | undefined): number | undefined {
   return typeof credits === 'number' && Number.isFinite(credits) && credits >= 0 ? credits : undefined
 }
 
 /** 只读取接口返回的对应时长报价。缺价时返回 undefined，避免套用另一档时长或写成 0。 */
-export function videoCreditsForDuration(model: Pick<VideoModelProfile, 'pricing'> | undefined, durationSeconds: number): number | undefined {
+export function videoCreditsForDuration(model: (Pick<VideoModelProfile, 'pricing'> & Partial<VideoModelProfile>) | undefined, durationSeconds: number, resolution?: VideoResolution): number | undefined {
   const duration = durationSeconds === 10 ? 10 : durationSeconds === 5 ? 5 : undefined
   if (!model || !duration) return undefined
-  return quotedCredits(model.pricing?.creditsPerVideo?.[duration])
+  if (!model.resolution) return quotedCredits(model.pricing.creditsPerVideo?.[duration])
+  return videoModelCredits(model as VideoModelProfile, resolution ?? model.resolution, duration)
 }
 
 export function videoCreditEstimateText(credits: number | undefined, mockGateway: boolean) {

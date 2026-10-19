@@ -23,6 +23,8 @@ import { isCanvasMockGateway, isFreeCanvasTextToImageEntryEnabled, isFreeCanvasV
 import { useCanvasTextToImageModels, useCanvasVariationModels } from '@/features/free-canvas/generation/useCanvasVariationModels'
 import { useCanvasVideoModels } from '@/features/free-canvas/generation/useCanvasVideoModels'
 import { resolveCanvasTextToImageParameters } from '@/features/free-canvas/generation/textToImageParameters'
+import { selectedCanvasVideoModel } from '@/features/free-canvas/generation/videoParameters'
+import { SEEDANCE_VIDEO_MODEL, videoModelModes } from '@shared/video-models'
 import { videoCreditsForDuration } from '@/features/free-canvas/generation/videoCredits'
 import { resultAssetForTask } from '@/features/free-canvas/generation/resultAsset'
 import { useCanvasImages } from '@/features/free-canvas/images/useCanvasImages'
@@ -68,7 +70,6 @@ export default function FreeCanvas() {
   const configuration = useCanvasVariationModels()
   const textToImageConfiguration = useCanvasTextToImageModels()
   const videoConfiguration = useCanvasVideoModels()
-  const videoModel = videoConfiguration.models[0]
   const cloudProject = usePersistenceStore(state => state.cloud)
   const preferences = usePreferencesStore(state => state.preferences)
   const ownerId = currentWorkstationHistoryOwner()
@@ -81,11 +82,19 @@ export default function FreeCanvas() {
   const activeSlug = CANVAS_MODES.find((m) => m.slug === mode)?.slug === 'text-to-video' ? 'text-to-video' : 'text-to-image'
   const drafts = usePersistenceStore((state) => state.drafts)
   const { prompt, presetKey, count, durationSeconds } = drafts[activeSlug]
+  const derivedDraft = drafts.derived
+  const videoDraft = drafts['text-to-video']
+  const videoModelId = videoDraft.modelProfileId ?? (videoDraft.videoResolution === '720p' || videoDraft.resolution === '720p' ? SEEDANCE_VIDEO_MODEL.id : undefined)
+  const videoModel = selectedCanvasVideoModel(videoConfiguration.models, 'text_to_video', videoModelId)
+  const imageVideoModel = selectedCanvasVideoModel(videoConfiguration.models, 'image_to_video', derivedDraft?.modelProfileId)
+  const videoResolution = videoDraft.videoResolution ?? (videoDraft.resolution === '720p' ? '720p' : videoModel?.resolution)
+  const selectedVideoReady = !!videoModel && videoModel.available !== false
   const updateDraft = (changes: Partial<GenerationDraft>) => {
     const state = usePersistenceStore.getState()
-    state.setDrafts({ ...state.drafts, [activeSlug]: { ...state.drafts[activeSlug], ...changes } })
+    // 用户编辑后固定实际模型与档位，刷新时不随默认目录切换供应商。
+    state.setDrafts({ ...state.drafts, [activeSlug]: { ...state.drafts[activeSlug],
+      ...(activeSlug === 'text-to-video' && videoModel ? { modelProfileId: videoModel.id, videoResolution } : {}), ...changes } })
   }
-  const derivedDraft = drafts.derived
   const derivedAsset = useEditorStore((state) => derivedDraft ? state.project?.assets[derivedDraft.sourceAssetId] : undefined)
   const derivedContext = derivedDraft && derivedAsset?.type === 'image'
     ? { mode: derivedDraft.mode, source: { node: derivedDraft.sourceNode, asset: derivedAsset } }
@@ -258,8 +267,9 @@ export default function FreeCanvas() {
   }, [images.brokenAssetIds, images.assets, message])
 
   const handleGenerate = () => {
-    if (activeSlug === 'text-to-video' && (!videoConfiguration.ready || cloudProject)) {
-      message.warning(!videoConfiguration.ready ? `视频生成${capabilityAvailabilityLabel(videoConfiguration.textState)}` : '请先另存为本地副本，再生成视频')
+    if (activeSlug === 'text-to-video' && (!videoConfiguration.ready || !selectedVideoReady || cloudProject)) {
+      message.warning(!videoConfiguration.ready ? `视频生成${capabilityAvailabilityLabel(videoConfiguration.textState)}`
+        : !selectedVideoReady ? '原视频模型暂不可用，请手动选择其他模型后生成。' : '请先另存为本地副本，再生成视频')
       return
     }
     if (activeSlug === 'text-to-image' && !textToImageEntryEnabled) {
@@ -278,7 +288,7 @@ export default function FreeCanvas() {
     }
     try {
       const request = activeSlug === 'text-to-video'
-        ? buildTextToVideoRequest(prompt, preset, durationSeconds, videoModel ? { model: videoModel, generateAudio: drafts['text-to-video'].generateAudio ?? false } : undefined)
+        ? buildTextToVideoRequest(prompt, preset, durationSeconds, videoModel ? { model: videoModel, generateAudio: drafts['text-to-video'].generateAudio ?? false, resolution: videoResolution } : undefined)
         : buildTextToImageRequest(prompt, textToImageParameters.preset, textToImageParameters.count, {
             resolution: textToImageParameters.resolution,
             modelProfileId: textToImageParameters.model?.id,
@@ -288,6 +298,8 @@ export default function FreeCanvas() {
           })
       if (activeSlug === 'text-to-image') {
         updateDraft({ modelProfileId: textToImageParameters.model?.id, resolution: textToImageParameters.requestedResolution })
+      } else {
+        updateDraft({ modelProfileId: videoModel?.id, videoResolution })
       }
       void generation.generate(request, center).then((placements) => {
         if (!placements?.length) return
@@ -296,7 +308,9 @@ export default function FreeCanvas() {
     } catch (error) { message.error(error instanceof Error ? error.message : '生成参数无效') }
   }
 
-  const handleNodeGenerationAction = useCallback((action: DerivedGenerationMode, nodeId: string) => {
+  const variationModelId = model?.id
+  const imageVideoModelId = imageVideoModel?.id
+  const handleNodeGenerationAction = (action: DerivedGenerationMode, nodeId: string) => {
     if (action === 'image-to-video' && !videoConfiguration.imageReady) {
       message.warning(`视频生成${capabilityAvailabilityLabel(videoConfiguration.imageState)}`)
       return
@@ -320,10 +334,10 @@ export default function FreeCanvas() {
       mode: action, sourceNode: { ...node }, sourceAssetId: asset.id, prompt: '',
       count: previous?.count ?? preferences.image.counts.variation, durationSeconds: previous?.durationSeconds ?? 5,
       resolution: action === 'image-to-video' ? '720p' : previous?.resolution && previous.resolution !== '720p' ? previous.resolution : preferences.image.resolution,
-      modelProfileId: action === 'image-to-video' ? videoModel?.id : previous?.modelProfileId ?? model?.id,
+      modelProfileId: action === 'image-to-video' ? imageVideoModelId : previous?.modelProfileId ?? variationModelId,
       generateAudio: previous?.generateAudio ?? false,
     } })
-  }, [configuration.loading, generation, message, preferences.image, model?.id, videoModel?.id, videoConfiguration.imageReady, videoConfiguration.imageState])
+  }
 
   const variationEntryEnabled = isFreeCanvasVariationEntryEnabled()
   const handleDerivedGenerate = () => {
@@ -341,7 +355,7 @@ export default function FreeCanvas() {
     try {
       const request = derivedContext.mode === 'variation'
         ? buildVariationRequest(source.asset, derivedPrompt, effective.count, { resolution: effective.resolution, modelProfileId: model?.id })
-        : buildImageToVideoRequest(source.asset, derivedPrompt, derivedDurationSeconds, videoModel ? { model: videoModel, generateAudio: derivedDraft?.generateAudio ?? false } : undefined)
+        : buildImageToVideoRequest(source.asset, derivedPrompt, derivedDurationSeconds, imageVideoModel ? { model: imageVideoModel, generateAudio: derivedDraft?.generateAudio ?? false } : undefined)
       if (derivedContext.mode === 'variation') updateDerived({ count: effective.count, resolution: effective.resolution, modelProfileId: model?.id, sourceNode: { ...source.node }, sourceAssetId: source.asset.id })
       void generation.generateDerived(request, source).then((placements) => {
         if (!placements?.length) return
@@ -467,7 +481,7 @@ export default function FreeCanvas() {
             generateAudio={derivedDraft?.generateAudio ?? false}
             onAudioChange={generateAudio => updateDerived({ generateAudio })}
             videoConfigured={videoConfiguration.imageReady}
-            videoModel={videoModel}
+            videoModel={imageVideoModel}
             videoAvailability={videoConfiguration.imageState}
             onReloadModels={derivedContext.mode === 'variation' ? configuration.reload : videoConfiguration.reload}
             task={generation.task}
@@ -494,7 +508,7 @@ export default function FreeCanvas() {
             resolution={effective.resolution}
             onModelChange={modelProfileId => updateDerived({ modelProfileId })}
             onResolutionChange={resolution => updateDerived({ resolution })}
-            estimatedCredits={derivedContext.mode === 'variation' ? estimatedCredits : videoCreditsForDuration(videoModel, derivedDurationSeconds)}
+            estimatedCredits={derivedContext.mode === 'variation' ? estimatedCredits : videoCreditsForDuration(imageVideoModel, derivedDurationSeconds)}
             resolutionAdjusted={effective.resolution !== requestedResolution}
             mockGateway={mockGateway}
             preparationPhase={generation.preparationPhase}
@@ -514,6 +528,14 @@ export default function FreeCanvas() {
             onAudioChange={generateAudio => updateDraft({ generateAudio })}
             videoConfigured={videoConfiguration.ready}
             videoModel={videoModel}
+            videoModels={videoConfiguration.models.filter(item => videoModelModes(item).includes('text_to_video'))}
+            selectedVideoModelId={videoModelId}
+            videoResolution={videoResolution}
+            onVideoModelChange={modelProfileId => {
+              const selected = videoConfiguration.models.find(item => item.id === modelProfileId)
+              updateDraft({ modelProfileId, videoResolution: selected?.resolution, resolution: undefined })
+            }}
+            onVideoResolutionChange={videoResolution => updateDraft({ videoResolution })}
             videoAvailability={videoConfiguration.textState}
             onReloadModels={activeSlug === 'text-to-video' ? videoConfiguration.reload : textToImageConfiguration.reload}
             task={generation.task}
@@ -539,12 +561,12 @@ export default function FreeCanvas() {
             onResolutionChange={resolution => updateDraft({ resolution })}
             enableThinking={drafts['text-to-image'].enableThinking ?? false}
             onThinkingChange={enableThinking => updateDraft({ enableThinking })}
-            estimatedCredits={activeSlug === 'text-to-video' ? videoCreditsForDuration(videoModel, durationSeconds) : textToImageParameters.estimatedCredits}
+            estimatedCredits={activeSlug === 'text-to-video' ? videoCreditsForDuration(selectedVideoReady ? videoModel : undefined, durationSeconds, videoResolution) : textToImageParameters.estimatedCredits}
             resolutionAdjusted={textToImageParameters.resolutionAdjusted}
             ratioAdjusted={textToImageParameters.ratioAdjusted}
             countAdjusted={textToImageParameters.countAdjusted}
             modelsLoading={activeSlug === 'text-to-video' ? videoConfiguration.textState === 'loading' : textToImageConfiguration.loading}
-            generateDisabled={activeSlug === 'text-to-image' ? !textToImageEntryEnabled : !videoConfiguration.ready || !!cloudProject}
+            generateDisabled={activeSlug === 'text-to-image' ? !textToImageEntryEnabled : !videoConfiguration.ready || !selectedVideoReady || !!cloudProject}
             mockGateway={mockGateway}
             historyError={generation.historyError}
             historySaved={generation.historySaved}

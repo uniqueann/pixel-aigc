@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SEEDANCE_VIDEO_MODEL } from '../../../shared/video-models.js'
 import type { ProviderContext } from '../../image-providers/types.js'
 import { seedanceProvider, mapSeedanceRequest } from './index.js'
-import { callbackToken, validCallbackToken, videoGenerationAvailable } from './config.js'
+import { callbackToken, validCallbackToken, seedanceGenerationAvailable } from './config.js'
 
 const input = { model: SEEDANCE_VIDEO_MODEL.model, prompt: '雨夜城市', durationSeconds: 5 as const, resolution: '720p' as const,
   ratio: '16:9' as const, generateAudio: false, callbackUrl: 'https://example.test/api/callback' }
@@ -61,7 +61,7 @@ describe('Seedance 官方接口适配', () => {
     expect(validCallbackToken('任务一', 'preview', token)).toBe(false)
     const env = { ARK_API_KEY: 'key', VIDEO_PUBLIC_BASE_URL: 'https://example.test', SEEDANCE_CALLBACK_SECRET: 'secret',
       AIGC_DATABASE_URL: 'db', R2_ACCOUNT_ID: 'a', R2_ACCESS_KEY_ID: 'a', R2_SECRET_ACCESS_KEY: 'a', R2_BUCKET: 'a', VIDEO_CRON_SECRET: 'a' }
-    expect(videoGenerationAvailable(env)).toBe(false)
-    expect(videoGenerationAvailable({ ...env, VIDEO_GENERATION_ENABLED: 'true' })).toBe(true)
+    expect(seedanceGenerationAvailable(env)).toBe(false)
+    expect(seedanceGenerationAvailable({ ...env, VIDEO_GENERATION_ENABLED: 'true', SEEDANCE_VIDEO_ENABLED: 'true' })).toBe(true)
   })
 })

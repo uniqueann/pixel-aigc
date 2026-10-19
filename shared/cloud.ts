@@ -28,8 +28,10 @@ export const documentSchema = z.object({
 const draft = z.object({ prompt: z.string().max(20000), presetKey: z.enum(['1:1', '4:3', '3:4', '16:9', '9:16']),
   count: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), durationSeconds: z.union([z.literal(5), z.literal(10)]),
   modelProfileId: identifier.optional(), resolution: z.enum(['1k', '2k', '4k']).optional() })
+const videoDraft = draft.extend({ resolution: z.enum(['720p', '1k', '2k', '4k']).optional(),
+  videoResolution: z.enum(['720p', '768p', '2k']).optional(), generateAudio: z.boolean().optional() })
 export const draftsSchema = z.object({
-  'text-to-image': draft, 'text-to-video': draft,
+  'text-to-image': draft, 'text-to-video': videoDraft,
   derived: z.object({ mode: z.enum(['variation', 'image-to-video']), sourceNode: baseNode.extend({ type: z.literal('image'), assetId: identifier }),
     sourceAssetId: identifier, prompt: z.string().max(20000), count: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
     durationSeconds: z.union([z.literal(5), z.literal(10)]),

@@ -118,7 +118,7 @@ export interface TextToImageTaskParams {
 export interface TextToVideoTaskParams {
   mode?: 'text_to_video'
   ratio?: import('@shared/video-models').VideoRatio
-  resolution?: '720p'
+  resolution?: import('@shared/video-models').VideoResolution
   generateAudio?: boolean
   prompt: string
   size: { width: number; height: number }

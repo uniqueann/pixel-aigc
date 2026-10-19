@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SEEDANCE_VIDEO_MODEL } from '@shared/video-models'
+import { MINIMAX_H3_VIDEO_MODEL, SEEDANCE_VIDEO_MODEL } from '@shared/video-models'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore, recoveryForTask } from '@/editor/persistence/persistenceStore'
@@ -49,6 +49,31 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllEnvs(); useUserStore.setState({ userId: null }) })
 
 describe('自由画布真实视频闭环的受控验证', () => {
+  it('H3 手动重试读取原模型当前价格，不借用列表第一项的 Seedance 价格', async () => {
+    const request = buildTextToVideoRequest('商品展示', preset, 5, { model: MINIMAX_H3_VIDEO_MODEL, resolution: '2k', generateAudio: false })
+    mocks.create.mockImplementationOnce(async (input: CanvasGenerationRequest) => ({ ...task(input), status: 'failed', errorCode: 'GENERATION_FAILED' }))
+    const sceneId = useEditorStore.getState().project!.document.activeSceneId
+    const hook = renderHook(() => useFreeCanvasGenerationController(sceneId))
+    await act(async () => hook.result.current.generate(request, { x: 100, y: 100 }))
+    useCanvasVideoConfiguration.setState({ models: [SEEDANCE_VIDEO_MODEL, { ...MINIMAX_H3_VIDEO_MODEL, pricing: { ...MINIMAX_H3_VIDEO_MODEL.pricing, version: 'h3-current-price' } }] })
+    await act(async () => hook.result.current.retry())
+    expect(mocks.create).toHaveBeenCalledTimes(2)
+    expect(mocks.create.mock.calls[1][0]).toMatchObject({ modelProfileId: 'minimax-h3', priceVersion: 'h3-current-price', params: { resolution: '2k' } })
+    expect(mocks.create.mock.calls[1][0].requestId).not.toBe(request.requestId)
+  })
+  it('H3 原模型、2K 与价格版本随恢复记录保存，刷新只续接原请求', async () => {
+    const request = buildTextToVideoRequest('静物商品缓慢旋转', preset, 10, { model: MINIMAX_H3_VIDEO_MODEL, resolution: '2k', generateAudio: true })
+    const sceneId = useEditorStore.getState().project!.document.activeSceneId
+    const hook = renderHook(() => useFreeCanvasGenerationController(sceneId))
+    await act(async () => hook.result.current.generate(request, { x: 100, y: 100 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ modelProfileId: 'minimax-h3', priceVersion: 'minimax-h3-video-v1', params: expect.objectContaining({ resolution: '2k', durationSeconds: 10 }) }))
+    expect(recoveryForTask('video-task')?.request).toMatchObject({ modelProfileId: 'minimax-h3', params: { resolution: '2k' } })
+    hook.unmount()
+    useTaskStore.setState({ tasks: {} })
+    const restored = renderHook(() => useFreeCanvasGenerationController(sceneId))
+    expect(restored.result.current.task?.id).toBe('video-task')
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+  })
   it('请求携带价格版本、720p 和声音，快速重复点击只提交一次', async () => {
     const request = buildTextToVideoRequest('雨夜城市', preset, 10, { model: SEEDANCE_VIDEO_MODEL, generateAudio: true })
     const sceneId = useEditorStore.getState().project!.document.activeSceneId

@@ -15,6 +15,16 @@ beforeEach(() => {
 })
 
 describe('项目快照校验与迁移', () => {
+  it('H3 档位独立保存在视频草稿中，导入导出不影响图片分辨率', () => {
+    snapshot.drafts['text-to-video'] = { ...snapshot.drafts['text-to-video'], modelProfileId: 'minimax-h3', videoResolution: '2k', durationSeconds: 10, generateAudio: true }
+    snapshot.drafts['text-to-image'].resolution = '4k'
+    const restored = parseSnapshot(serializeSnapshot(snapshot))
+    expect(restored.drafts['text-to-video']).toEqual(snapshot.drafts['text-to-video'])
+    expect(restored.drafts['text-to-image'].resolution).toBe('4k')
+    const broken = JSON.parse(serializeSnapshot(snapshot))
+    broken.drafts['text-to-video'].videoResolution = '4k'
+    expect(() => parseSnapshot(broken)).toThrow('视频草稿分辨率无效')
+  })
   it('完整保存节点变换、视口、草稿和内嵌图片，往返保持一致', () => {
     const scene = snapshot.project.document.scenes[0]
     scene.nodes[0] = { ...scene.nodes[0], rotation: 37, x: -120, y: 600, opacity: 0.7, zIndex: 4 }
