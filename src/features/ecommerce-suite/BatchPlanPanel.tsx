@@ -6,8 +6,9 @@ import { SUITE_CATEGORY_TEMPLATES } from '@shared/ecommerce-suite-templates'
 import { listImageModels, type PublicImageModel } from '@/services/api/imageModels'
 import ModelChoice from '@/components/ModelChoice'
 import type { SuiteClient } from './api'
+import { getSlotUnreadyReason, type SuiteRetrySelection } from './batchPlan'
 
-export interface SuiteRetrySelection { batchId: string; slotIds: string[] }
+export type { SuiteRetrySelection }
 
 export default function BatchPlanPanel({ data, client, retry, blocked, flush, onSubmit, onClose, onError }: {
   data: SuiteProjectDetail; client: SuiteClient; retry?: SuiteRetrySelection; blocked: boolean;
@@ -18,7 +19,12 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
   const [modelsLoading, setModelsLoading] = useState(true)
   const [modelId, setModelId] = useState('')
   const [resolution, setResolution] = useState<'1k' | '2k' | '4k'>('1k')
-  const [selected, setSelected] = useState<string[]>(retry?.slotIds ?? data.project.config.slots.filter(slot => slot.enabled && (slot.kind !== 'size' || data.project.config.facts.some(fact => fact.confirmed && ['dimension','capacity'].includes(fact.kind))) && (slot.kind !== 'detail' || slot.referenceAssetIds.length)).map(slot => slot.id))
+  const [selected, setSelected] = useState<string[]>(
+    retry?.slotIds ??
+    data.project.config.slots
+      .filter(slot => !getSlotUnreadyReason(slot, data.project.config.subcategory, data.project.config.facts))
+      .map(slot => slot.id)
+  )
   const [quote, setQuote] = useState<SuiteQuote>()
   const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -162,8 +168,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
       <p className="suite-muted">当前统一风格：{data.project.config.style.sceneTone || '默认风格'}。可在商品信息中随时调整风格与描述标签。</p>
       <div className="suite-plan-slots">
         {data.project.config.slots.map(slot => {
-          const sourceRequired = slot.kind === 'detail'
-          const reason = !slot.enabled ? '已跳过' : sourceRequired && !slot.referenceAssetIds.length ? '需细节参考图' : slot.kind === 'size' && !data.project.config.facts.some(fact => fact.confirmed && ['dimension','capacity'].includes(fact.kind)) ? '需添加尺寸规格' : ''
+          const reason = getSlotUnreadyReason(slot, data.project.config.subcategory, data.project.config.facts)
           return (
             <label key={slot.id}>
               <Checkbox
@@ -181,7 +186,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
           )
         })}
       </div>
-      <p className="suite-muted">尺寸图支持添加文字与标注线，不单独调用生图模型；缺少尺寸规格时可先在商品信息中补充。</p>
+      <p className="suite-muted">尺寸图支持添加文字与标注线，不单独调用生图模型；缺少尺寸规格或卖点时可先在“商品信息与规格”中补充并确认。</p>
       <label className="suite-plan-field">
         图片模型
         <ModelChoice

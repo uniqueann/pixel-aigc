@@ -18,11 +18,11 @@ export async function planSuiteSlot(sql: Transaction, project: SuiteProject, sel
   const template = SUITE_CATEGORY_TEMPLATES[project.config.subcategory].slots.find(item => item.key === slot.key)!
   const facts = project.config.facts.filter(fact => fact.confirmed)
   if (template.requires.includes('confirmed_facts' as never) && !facts.length)
-    throw new HttpError(409, '请先补充并确认本槽位的商品事实', 'SUITE_FACTS_REQUIRED')
+    throw new HttpError(409, `【${slot.name}】缺少卖点或规格，请先在“商品信息与规格”中补充并确认`, 'SUITE_FACTS_REQUIRED')
   if (slot.kind === 'size' && !facts.some(fact => ['dimension', 'capacity'].includes(fact.kind)))
-    throw new HttpError(409, '请先确认尺寸或容量规格，再添加可编辑标注', 'SUITE_FACTS_REQUIRED')
+    throw new HttpError(409, `【${slot.name}】缺少尺寸或容量规格，请先在“商品信息与规格”中确认尺寸`, 'SUITE_FACTS_REQUIRED')
   const sourceId = template.strategy === 'detail_reference' ? slot.referenceAssetIds[0] : slot.kind === 'size' ? slot.referenceAssetIds[0] ?? project.config.baseAssetId : project.config.baseAssetId
-  if (!sourceId) throw new HttpError(409, '请先上传该槽位的真实细节照片', 'SUITE_ASSET_UNAVAILABLE')
+  if (!sourceId) throw new HttpError(409, `【${slot.name}】缺少${template.strategy === 'detail_reference' ? '参考照片，请先上传细节特写图' : '商品主图，请先上传商品照片'}`, 'SUITE_ASSET_UNAVAILABLE')
   const source = await readyAsset(sql, project.id, sourceId)
   if (template.strategy !== 'image_edit') {
     if (selection.mode !== 'reuse') throw new HttpError(400, '该槽位使用原图，不默认重造商品', 'INVALID_REQUEST')

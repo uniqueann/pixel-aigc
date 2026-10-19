@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SuiteProjectDetail } from '@shared/ecommerce-suite-runtime'
 import type { SuiteClient } from './api'
 import BatchPlanPanel from './BatchPlanPanel'
+import { getSlotUnreadyReason } from './batchPlan'
 
 vi.mock('@/services/api/imageModels', () => ({
   listImageModels: vi.fn(async () => [
@@ -166,5 +167,129 @@ describe('全套批量生成费用预估面板 (BatchPlanPanel)', () => {
     // 错误后按钮恢复原状，可再次点击重试
     expect(screen.getByRole('button', { name: '计算预估费用' })).toBeTruthy()
     expect(onError).toHaveBeenCalled()
+  })
+
+  it('当项目未配置商品事实时，卖点和尺寸槽位展示对应提示并默认不勾选与禁用', async () => {
+    const emptyFactsProject = {
+      ...project,
+      config: {
+        ...project.config,
+        facts: [],
+      },
+    }
+    const data = {
+      ...makeDetail(),
+      project: emptyFactsProject,
+    }
+    const client = {
+      assertCurrent: vi.fn(),
+      get: vi.fn(async () => data),
+      quote: vi.fn(),
+    } as unknown as SuiteClient
+    const flush = vi.fn(async () => undefined)
+    const onSubmit = vi.fn(async () => undefined)
+    const onClose = vi.fn()
+    const onError = vi.fn()
+
+    render(
+      <App>
+        <BatchPlanPanel
+          data={data}
+          client={client}
+          blocked={false}
+          flush={flush}
+          onSubmit={onSubmit}
+          onClose={onClose}
+          onError={onError}
+        />
+      </App>
+    )
+
+    // 等待模型异步加载完成
+    await screen.findByRole('button', { name: '计算预估费用' })
+
+    // 辅助提示文本正确渲染
+    expect(screen.getByText('需补充商品卖点')).toBeTruthy()
+    expect(screen.getByText('需添加尺寸规格')).toBeTruthy()
+    expect(screen.getByText('需细节参考图')).toBeTruthy()
+
+    // 检查对应的 Checkbox 是否被禁用且未勾选
+    const featureCheckbox = screen.getByRole('checkbox', { name: /卖点/ }) as HTMLInputElement
+    const sizeCheckbox = screen.getByRole('checkbox', { name: /尺寸/ }) as HTMLInputElement
+    const detailCheckbox = screen.getByRole('checkbox', { name: /细节/ }) as HTMLInputElement
+    expect(featureCheckbox.disabled).toBe(true)
+    expect(featureCheckbox.checked).toBe(false)
+    expect(sizeCheckbox.disabled).toBe(true)
+    expect(sizeCheckbox.checked).toBe(false)
+    expect(detailCheckbox.disabled).toBe(true)
+    expect(detailCheckbox.checked).toBe(false)
+
+    // 白底主图与场景图等就绪槽位默认勾选且未被禁用
+    const mainCheckbox = screen.getByRole('checkbox', { name: /白底/ }) as HTMLInputElement
+    expect(mainCheckbox.checked).toBe(true)
+    expect(mainCheckbox.disabled).toBe(false)
+  })
+
+  it('当服务端返回槽位缺少卖点或规格的具体错误时，弹窗 Alert 完整展示该指引文案', async () => {
+    const data = makeDetail()
+    const slotErrorMessage = '【主图 4 · 卖点】缺少卖点或规格，请先在“商品信息与规格”中补充并确认'
+    const client = {
+      assertCurrent: vi.fn(),
+      get: vi.fn(async () => data),
+      quote: vi.fn(async () => { throw new Error(slotErrorMessage) }),
+    } as unknown as SuiteClient
+    const flush = vi.fn(async () => undefined)
+    const onSubmit = vi.fn(async () => undefined)
+    const onClose = vi.fn()
+    const onError = vi.fn()
+
+    render(
+      <App>
+        <BatchPlanPanel
+          data={data}
+          client={client}
+          blocked={false}
+          flush={flush}
+          onSubmit={onSubmit}
+          onClose={onClose}
+          onError={onError}
+        />
+      </App>
+    )
+
+    const calcButton = await screen.findByRole('button', { name: '计算预估费用' })
+    fireEvent.click(calcButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('费用预估未完成')).toBeTruthy()
+      expect(screen.getByText(slotErrorMessage)).toBeTruthy()
+    })
+  })
+})
+
+describe('getSlotUnreadyReason 槽位不可用原因判定', () => {
+  it('槽位被跳过时返回“已跳过”', () => {
+    const slot = { id: 's1', key: 'main' as const, kind: 'main' as const, name: '主图 1 · 白底', enabled: false, referenceAssetIds: [], order: 0 }
+    expect(getSlotUnreadyReason(slot, 'furniture', [])).toBe('已跳过')
+  })
+
+  it('细节参考槽位缺少参考照片时返回“需细节参考图”', () => {
+    const slot = { id: 's6', key: 'detail' as const, kind: 'detail' as const, name: '主图 6 · 细节', enabled: true, referenceAssetIds: [], order: 5 }
+    expect(getSlotUnreadyReason(slot, 'furniture', [])).toBe('需细节参考图')
+  })
+
+  it('尺寸槽位缺少确认的尺寸/容量规格时返回“需添加尺寸规格”', () => {
+    const slot = { id: 's5', key: 'size' as const, kind: 'size' as const, name: '主图 5 · 尺寸', enabled: true, referenceAssetIds: [], order: 4 }
+    expect(getSlotUnreadyReason(slot, 'furniture', [])).toBe('需添加尺寸规格')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'dimension', confirmed: false }])).toBe('需添加尺寸规格')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: true }])).toBe('需添加尺寸规格')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'dimension', confirmed: true }])).toBe('')
+  })
+
+  it('需要商品事实的卖点槽位缺少确认事实时返回“需补充商品卖点”', () => {
+    const slot = { id: 's4', key: 'feature' as const, kind: 'feature' as const, name: '主图 4 · 卖点', enabled: true, referenceAssetIds: [], order: 3 }
+    expect(getSlotUnreadyReason(slot, 'furniture', [])).toBe('需补充商品卖点')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: false }])).toBe('需补充商品卖点')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: true }])).toBe('')
   })
 })
