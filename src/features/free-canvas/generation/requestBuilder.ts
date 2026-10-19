@@ -10,7 +10,7 @@ import type { ImageSizePreset } from './config'
 import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import { VARIATION_USER_PROMPT_MAX, variationPromptLimitMessage } from '@shared/variation'
 import { scaleToLongEdge } from '@/features/image-workstation/tools/requestBuilders/imageEdit'
-import type { VideoModelProfile, VideoRatio, VideoResolution } from '@shared/video-models'
+import { videoGenerateAudio, type VideoModelProfile, type VideoRatio, type VideoResolution } from '@shared/video-models'
 
 export type CanvasGenerationTaskParams =
   | TextToImageTaskParams
@@ -70,7 +70,7 @@ export function buildTextToVideoRequest(
   if (normalizedPrompt.length > VIDEO_PROMPT_MAX) throw new Error(`视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`)
 
   const params: TextToVideoTaskParams = {
-    ...(options ? { mode: 'text_to_video' as const, ratio: preset.key as VideoRatio, resolution: options.resolution ?? options.model.resolution, generateAudio: options.generateAudio } : {}),
+    ...(options ? { mode: 'text_to_video' as const, ratio: preset.key as VideoRatio, resolution: options.resolution ?? options.model.resolution, generateAudio: videoGenerateAudio(options.model, options.generateAudio) } : {}),
     prompt: normalizedPrompt,
     size: { width: preset.width, height: preset.height },
     durationSeconds: durationSeconds === 10 ? 10 : 5,
@@ -112,14 +112,14 @@ export function buildImageToVideoRequest(
   source: SourceImageInput,
   prompt: string,
   durationSeconds: number,
-  options?: { model: VideoModelProfile; generateAudio: boolean },
+  options?: { model: VideoModelProfile; generateAudio: boolean; resolution?: VideoResolution },
 ): CanvasGenerationRequest {
   if (!source.url) throw new Error('源图片不可用')
   const normalizedPrompt = prompt.trim()
   if (!normalizedPrompt) throw new Error('请输入动态描述')
   if (normalizedPrompt.length > VIDEO_PROMPT_MAX) throw new Error(`视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`)
   const params: ImageToVideoTaskParams = {
-    ...(options ? { mode: 'image_to_video' as const, ratio: 'adaptive' as const, resolution: '720p' as const, generateAudio: options.generateAudio } : {}),
+    ...(options ? { mode: 'image_to_video' as const, ratio: 'adaptive' as const, resolution: options.resolution ?? options.model.resolution, generateAudio: videoGenerateAudio(options.model, options.generateAudio) } : {}),
     sourceImageUrl: source.url,
     prompt: normalizedPrompt,
     size: { width: source.width, height: source.height },

@@ -89,18 +89,19 @@ afterEach(() => vi.unstubAllEnvs())
 afterAll(async () => { await db.close() })
 
 describe('视频数据库状态机与隔离', () => {
-  it('H3 operation 经数据库往返，关闭生成后仍结算一次且账户与环境隔离', async () => {
+  it('H3 首帧尺寸与 operation 经数据库往返，关闭生成后仍结算一次且账户与环境隔离', async () => {
     await db.query('update aigc.credit_accounts set balance=160 where user_id=$1 and scope=$2', [users[0], 'production'])
     const rt = runtime(), requestId = randomUUID()
     const request = createVideoTaskSchema.parse({ capability: 'text_to_video', requestId, modelProfileId: 'minimax-h3', priceVersion: MINIMAX_H3_VIDEO_MODEL.pricing.version,
-      params: { mode: 'text_to_video', prompt: '商品展示', count: 1, size: { width: 1280, height: 720 }, ratio: '16:9', resolution: '2k', durationSeconds: 10 } })
-    const createH3 = () => identity(users[0], 'production', sql => createVideoJobInStore(createSqlStore(sql, users[0], 'video'), { id: users[0] }, request, { ...rt, billing: createSqlBilling(sql) }))
+      params: { mode: 'image_to_video', prompt: '商品展示', sourceImageKey: `temporary/task-inputs/${users[0]}/source`, count: 1, size: { width: 800, height: 1000 }, ratio: 'adaptive', resolution: '2k', durationSeconds: 10 } })
+    const createH3 = () => identity(users[0], 'production', sql => createVideoJobInStore(createSqlStore(sql, users[0], 'video'), { id: users[0] }, request, { ...rt, billing: createSqlBilling(sql) }, { url: 'https://r2.test/input.png', width: 800, height: 1000 }))
     const first = await createH3()
     expect((await createH3()).bundle.job.id).toBe(first.bundle.job.id)
     await identity(users[0], 'production', async sql => {
       const store = createSqlStore(sql, users[0], 'video')
       await applyVideoSubmission(store, first.bundle.job.id, rt, 'job_h3', undefined, { reference: { gatewayJobId: 'job_h3' } })
       expect((await store.findById(first.bundle.job.id))?.provider_params.operation).toEqual({ reference: { gatewayJobId: 'job_h3' } })
+      expect((await store.findById(first.bundle.job.id))?.provider_params.sourceDimensions).toEqual({ width: 800, height: 1000 })
       expect(await createSqlBilling(sql).reserve({ userId: users[0], jobId: randomUUID(), amount: 1, meta: {} })).toMatchObject({ ok: false, code: 'INSUFFICIENT_CREDITS' })
     })
     expect(await identity(users[1], 'production', sql => createSqlStore(sql, users[1], 'video').findById(first.bundle.job.id))).toBeUndefined()
@@ -108,7 +109,7 @@ describe('视频数据库状态机与隔离', () => {
     vi.stubEnv('VIDEO_GENERATION_ENABLED', 'false')
     const getStatus = vi.fn(async () => ({ state: 'succeeded' as const, model: 'minimax/minimax-h3', videoUrl: 'https://cdn.hailuoai.com/a.mp4' }))
     const h3Runtime = { ...rt, videoProvider: { ...rt.videoProvider, id: 'ai-gateway' as const, getStatus },
-      probe: () => ({ width: 2560, height: 1440, durationSeconds: 10, sizeBytes: 6319, hasAudio: false, videoCodec: 'avc1.42', audioCodec: undefined }) }
+      probe: () => ({ width: 2048, height: 2560, durationSeconds: 10, sizeBytes: 6319, hasAudio: true, videoCodec: 'avc1.42', audioCodec: 'mp4a.40.2' }) }
     await maintainVideoJobs(first.bundle.job.id, h3Runtime)
     await maintainVideoJobs(first.bundle.job.id, h3Runtime)
     expect(getStatus).toHaveBeenCalledTimes(1)

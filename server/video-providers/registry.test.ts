@@ -9,6 +9,16 @@ describe('独立视频模型开关', () => {
     expect(videoGenerationAvailable('text_to_video', env)).toBe(true)
     expect(videoGenerationAvailable('image_to_video', env)).toBe(false)
     expect(videoModelAvailable('seedance-2-0-fast', 'text_to_video', env)).toBe(false)
+    expect(publicVideoModels(env)[1]).toMatchObject({ available: true, availableModes: ['text_to_video'], audioMode: 'native' })
+  })
+  it('图生必须同时打开三层开关，关闭图生不影响文生', () => {
+    const enabled = { ...env, AI_GATEWAY_IMAGE_TO_VIDEO_ENABLED: 'true' }
+    expect(videoGenerationAvailable('image_to_video', enabled)).toBe(true)
+    expect(publicVideoModels(enabled)[1].availableModes).toEqual(['text_to_video', 'image_to_video'])
+    for (const key of ['VIDEO_GENERATION_ENABLED', 'AI_GATEWAY_VIDEO_ENABLED', 'AI_GATEWAY_IMAGE_TO_VIDEO_ENABLED']) {
+      expect(videoGenerationAvailable('image_to_video', { ...enabled, [key]: 'false' })).toBe(false)
+    }
+    expect(videoGenerationAvailable('text_to_video', { ...enabled, AI_GATEWAY_IMAGE_TO_VIDEO_ENABLED: 'false' })).toBe(true)
   })
   it('关闸后仍有报价，缺凭据或关闭通道不能提交', () => {
     const disabled = { ...env, VIDEO_GENERATION_ENABLED: 'false' }

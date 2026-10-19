@@ -80,7 +80,8 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
         state.setDrafts({...state.drafts,derived:{mode:origin.tool,sourceAssetId:source.id,
           sourceNode,
           prompt:values.prompt,count:values.count,durationSeconds:values.durationSeconds===10?10:5,modelProfileId:canonicalizeImageModelProfileId(detail.task.modelProfileId??undefined),
-          resolution:values.resolution as '1k'|'2k'|'4k'|'720p'|undefined,generateAudio:values.generateAudio===true}})
+          ...(origin.tool==='image-to-video'?{videoResolution:values.resolution as '720p'|'768p'|'2k'|undefined}
+            :{resolution:values.resolution as '1k'|'2k'|'4k'|undefined}),generateAudio:values.generateAudio===true}})
       } else {
         const tool=origin.tool
         state.setDrafts({...state.drafts,[tool]:{...state.drafts[tool],prompt:values.prompt,count:values.count,presetKey:preset??state.drafts[tool].presetKey,

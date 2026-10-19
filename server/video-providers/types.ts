@@ -15,6 +15,7 @@ export interface VideoSubmitInput {
 
 export type VideoTaskState = {
   model: string
+  resolution?: VideoResolution
   usage?: Record<string, number>
   generationId?: string
 } & (

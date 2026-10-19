@@ -4,6 +4,8 @@
 
 多供应商版本将 `VIDEO_GENERATION_ENABLED` 保留为总开关，并新增默认关闭的 `SEEDANCE_VIDEO_ENABLED`。新建 Seedance 任务需要两项均为 `true`；关闭开关后原任务仍继续推进。MiniMax H3 使用独立 Gateway 通道，接入与报价见 [H3 视频说明](ai-gateway-minimax-h3-video.md)。模型目录返回各模型的 `available`，文生和图生能力分别聚合，不能由其中一项推导另一项。
 
+H3 图生另需 `AI_GATEWAY_IMAGE_TO_VIDEO_ENABLED=true`，其模型目录通过 `availableModes` 区分文生／图生是否开放。H3 仅原生有声，不向上游传声音开关；本页 Seedance 的声音参数与限制继续适用于 Seedance。
+
 ## 产品与接口约定
 
 - 固定 720p、5/10 秒、每次 1 条。文生视频支持 `1:1`、`4:3`、`3:4`、`16:9`、`9:16`；图生视频使用 `adaptive` 保持原图比例。

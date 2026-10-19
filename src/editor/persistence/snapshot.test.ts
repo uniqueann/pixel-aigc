@@ -67,7 +67,20 @@ describe('项目快照校验与迁移', () => {
     }
     const restored = parseSnapshot(serializeSnapshot(snapshot))
     expect(restored.drafts['text-to-video']).toMatchObject({ resolution: '720p', generateAudio: true })
-    expect(restoreTaskDrafts(restored).derived).toMatchObject({ mode: 'image-to-video', resolution: '720p', durationSeconds: 10, generateAudio: true, sourceAssetId: source.assetId })
+    expect(restoreTaskDrafts(restored).derived).toMatchObject({ mode: 'image-to-video', videoResolution: '720p', durationSeconds: 10, generateAudio: true, sourceAssetId: source.assetId })
+  })
+  it('H3 派生草稿的模型、2K 和声音经 JSON 往返及任务恢复保留', () => {
+    const source = snapshot.project.document.scenes[0].nodes[0]
+    if (source.type !== 'image') throw new Error('测试数据类型错误')
+    snapshot.drafts.derived = { mode: 'image-to-video', sourceNode: source, sourceAssetId: source.assetId,
+      prompt: '保持商品构图，镜头推进', count: 1, durationSeconds: 10, modelProfileId: 'minimax-h3', videoResolution: '2k', generateAudio: true }
+    const restored = parseSnapshot(serializeSnapshot(snapshot))
+    expect(restored.drafts.derived).toEqual(snapshot.drafts.derived)
+    restored.recoveries.request = { projectId: snapshot.project.id, sceneId: snapshot.project.document.activeSceneId,
+      request: { capability: Capability.TextToVideo, requestId: 'request', modelProfileId: 'minimax-h3', priceVersion: 'minimax-h3-video-v1',
+        params: { mode: 'image_to_video', prompt: '原任务', sourceImageKey: 'owned-source', ratio: 'adaptive', size: { width: 800, height: 1000 }, count: 1, resolution: '2k', durationSeconds: 10, generateAudio: true } },
+      context: { inputAssetIds: [source.assetId], autoRetryRemaining: 0, automaticRetry: false }, placements: [], replacedPlaceholderIds: [], applied: false }
+    expect(restoreTaskDrafts(restored).derived).toMatchObject({ prompt: '原任务', videoResolution: '2k', modelProfileId: 'minimax-h3', generateAudio: true })
   })
 
   it.each([{ modelProfileId: '' }, { resolution: '8k' }])('拒绝无效的文生图草稿配置 %j', (invalid) => {

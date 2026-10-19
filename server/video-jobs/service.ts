@@ -3,7 +3,7 @@ import { taskOriginSchema, validTaskOrigin } from '../../shared/task-center.js'
 import sharp from 'sharp'
 import { z } from 'zod'
 import { VIDEO_PROMPT_MAX } from '../../shared/prompt-limits.js'
-import { SEEDANCE_VIDEO_MODEL, VIDEO_RATIOS, VIDEO_RESOLUTIONS, videoModel, videoModelModes, videoModelCredits, type VideoResult } from '../../shared/video-models.js'
+import { SEEDANCE_VIDEO_MODEL, VIDEO_RATIOS, VIDEO_RESOLUTIONS, videoModel, videoModelModes, videoModelCredits, videoGenerateAudio, type VideoResult } from '../../shared/video-models.js'
 import type { authenticate } from '../auth.js'
 import { runtimeScope, withIdentity } from '../db.js'
 import { HttpError } from '../errors.js'
@@ -18,6 +18,7 @@ import { seedanceProvider } from '../video-providers/seedance/index.js'
 import { videoCallbackUrl } from '../video-providers/seedance/config.js'
 import { videoProviderById, videoModelAvailable } from '../video-providers/registry.js'
 import { VIDEO_MAX_BYTES } from '../video-providers/download.js'
+import { validH3VideoShape } from '../video-providers/ai-gateway/validation.js'
 import { probeVideo } from '../video-providers/metadata.js'
 import { VideoProviderError, type VideoProvider } from '../video-providers/types.js'
 
@@ -32,7 +33,7 @@ const common = {
   prompt: z.string().trim().min(1, '请填写视频描述').max(VIDEO_PROMPT_MAX, `视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`),
   size: z.object({ width: z.number().int().positive().max(20000), height: z.number().int().positive().max(20000) }).strict(),
   count: z.literal(1), durationSeconds: z.union([z.literal(5), z.literal(10)]),
-  resolution: z.enum(VIDEO_RESOLUTIONS), generateAudio: z.boolean().default(false),
+  resolution: z.enum(VIDEO_RESOLUTIONS), generateAudio: z.boolean().optional(),
 }
 export const createVideoTaskSchema = z.object({
   capability: z.literal('text_to_video'), requestId: z.uuid(),
@@ -67,51 +68,67 @@ export function defaultVideoJobRuntime(): VideoJobRuntime {
     writeVideo: putObject, probe: probeVideo, callbackUrl: videoCallbackUrl }
 }
 
+interface PreparedVideoSource { url: string; width: number; height: number }
+
 function providerFor(id: string, runtime: VideoJobRuntime) {
   return runtime.videoProvider.id === id ? runtime.videoProvider : videoProviderById(id)
 }
 
-export function videoFingerprint(parsed: VideoRequest) {
+export function videoFingerprint(parsed: VideoRequest, previousAudio?: boolean) {
   // 临时签名地址会变化，幂等只使用持久的对象标识和生成参数。
-  const params = { ...parsed.params }
-  if ('sourceImageUrl' in params) delete params.sourceImageUrl
+  // 保留原有字段顺序，旧请求缺省的声音设置按原任务比较，不改变历史指纹。
+  const values = parsed.params
+  const params = { prompt: values.prompt, size: values.size, count: values.count, durationSeconds: values.durationSeconds,
+    resolution: values.resolution, generateAudio: values.generateAudio ?? previousAudio ?? videoGenerateAudio(videoModel(parsed.modelProfileId)),
+    mode: values.mode, ratio: values.ratio, ...('sourceImageKey' in values ? { sourceImageKey: values.sourceImageKey } : {}) }
   return createHash('sha256').update(JSON.stringify({ params, modelProfileId: parsed.modelProfileId, priceVersion: parsed.priceVersion })).digest('hex')
 }
 
 async function existingVideo(store: ImageJobStore, parsed: VideoRequest) {
   const job = await store.findByRequestId(parsed.requestId)
   if (!job) return undefined
-  if (job.capability !== 'text_to_video' || job.request_fingerprint !== videoFingerprint(parsed)) {
+  if (job.capability !== 'text_to_video' || job.request_fingerprint !== videoFingerprint(parsed, job.params.generateAudio === true)) {
     throw new HttpError(409, '请求标识已用于其他任务', 'REQUEST_CONFLICT')
   }
   return { job, items: await store.listItems(job.id) }
 }
 
-export async function prepareVideoSource(userId: string, parsed: VideoRequest, runtime: VideoJobRuntime) {
+function validateNewAudio(parsed: VideoRequest) {
+  if (videoModel(parsed.modelProfileId)?.audioMode === 'native' && parsed.params.generateAudio === false) {
+    throw new HttpError(400, 'H3 仅提供原生有声视频，请修改声音设置后重新生成', 'VIDEO_PARAMS_INVALID')
+  }
+}
+
+export async function prepareVideoSource(userId: string, parsed: VideoRequest, runtime: VideoJobRuntime): Promise<PreparedVideoSource | undefined> {
   if (parsed.params.mode === 'text_to_video') return undefined
   const key = parsed.params.sourceImageKey
   if (!isSafeObjectKey(userId, key) || key.includes('/video/')) throw new HttpError(400, '原图对象无效或无权访问', 'INVALID_SOURCE')
   const object = await runtime.readSource(key, 20 * 1024 * 1024, AbortSignal.timeout(20_000))
   const metadata = await sharp(object.bytes, { limitInputPixels: 40_000_000 }).metadata().catch(() => undefined)
-  const width = metadata?.width ?? 0, height = metadata?.height ?? 0
+  const rotated = metadata?.orientation !== undefined && metadata.orientation >= 5
+  const width = (rotated ? metadata?.height : metadata?.width) ?? 0, height = (rotated ? metadata?.width : metadata?.height) ?? 0
+  const h3 = videoModel(parsed.modelProfileId)?.provider === 'ai-gateway'
+  const min = h3 ? 256 : 300, max = h3 ? 5760 : 6000
   if (!metadata || !['jpeg', 'png', 'webp'].includes(metadata.format ?? '') || (metadata.pages ?? 1) > 1
-    || width < 300 || height < 300 || width > 6000 || height > 6000 || width / height < .4 || width / height > 2.5) {
-    throw new HttpError(400, '请使用静态 JPEG、PNG 或 WebP 图片，每边 300–6000 像素，宽高比在 0.4–2.5 之间', 'VIDEO_IMAGE_NOT_SUPPORTED')
+    || width < min || height < min || width > max || height > max || width / height < .4 || width / height > 2.5) {
+    throw new HttpError(400, `请使用静态 JPEG、PNG 或 WebP 图片，每边 ${min}–${max} 像素，宽高比在 0.4–2.5 之间`, 'VIDEO_IMAGE_NOT_SUPPORTED')
   }
-  return (await runtime.signRead(key, 7200)).url
+  return { url: (await runtime.signRead(key, 7200)).url, width, height }
 }
 
-export async function createVideoJobInStore(store: ImageJobStore, user: Pick<User, 'id'>, parsed: VideoRequest, runtime: VideoJobRuntime) {
+export async function createVideoJobInStore(store: ImageJobStore, user: Pick<User, 'id'>, parsed: VideoRequest, runtime: VideoJobRuntime, source?: PreparedVideoSource) {
   const existing = await existingVideo(store, parsed)
   if (existing) return { bundle: existing, created: false }
   const profile = videoModel(parsed.modelProfileId)
   if (!profile) throw new HttpError(400, '视频模型不存在', 'VIDEO_PARAMS_INVALID')
+  validateNewAudio(parsed)
+  if (profile.provider === 'ai-gateway' && parsed.params.mode === 'image_to_video' && !source) throw new HttpError(400, '视频首帧尚未校验', 'VIDEO_IMAGE_NOT_SUPPORTED')
   if (parsed.priceVersion !== profile.pricing.version) throw new HttpError(409, '视频价格已更新，请刷新配置后重试', 'VIDEO_PRICE_CHANGED')
   await store.expireUserOverdue(new Date(runtime.now()))
   if (await store.hourlyCount() >= VIDEO_HOURLY_LIMIT) throw new HttpError(429, '每小时最多创建 6 个视频任务，请稍后重试', 'RATE_LIMIT')
   if (await store.userActiveCount() >= VIDEO_USER_CONCURRENCY) throw new HttpError(429, '已有视频正在生成，请完成后再试', 'USER_CONCURRENCY')
   if (await store.globalActiveCount() >= VIDEO_GLOBAL_CONCURRENCY) throw new HttpError(429, '视频服务当前任务较多，请稍后重试', 'GLOBAL_CONCURRENCY')
-  const params = { ...parsed.params }
+  const params = { ...parsed.params, generateAudio: videoGenerateAudio(profile, parsed.params.generateAudio) }
   if ('sourceImageUrl' in params) delete params.sourceImageUrl
   const amount = videoModelCredits(profile, params.resolution, params.durationSeconds)
   if (amount === undefined) throw new HttpError(400, '视频报价不可用', 'VIDEO_PARAMS_INVALID')
@@ -120,6 +137,7 @@ export async function createVideoJobInStore(store: ImageJobStore, user: Pick<Use
     origin: parsed.origin,
     capability: 'text_to_video', modelProfileId: parsed.modelProfileId, provider: profile.provider,
     params, providerParams: { model: profile.model, priceVersion: parsed.priceVersion,
+      ...(source ? { sourceDimensions: { width: source.width, height: source.height } } : {}),
       unitPrice: amount, phase: 'submitting' }, requestedCount: 1, warnings: [],
     creditsReserved: amount, billingState: 'reserved', deadlineAt: new Date(runtime.now() + VIDEO_DEADLINE_MS),
     nextPollAt: new Date(runtime.now() + 60_000),
@@ -193,21 +211,23 @@ export async function submitVideoTask(user: User, body: unknown, runtime = defau
   })
   if (existing) return toClientVideoTask(existing, runtime)
   const profile = videoModel(parsed.modelProfileId)!
+  validateNewAudio(parsed)
   if (!videoModelAvailable(profile.id, parsed.params.mode)) throw new HttpError(503, '所选视频模型尚未开放或配置不完整', 'VIDEO_UNAVAILABLE')
   if (parsed.priceVersion !== profile.pricing.version) throw new HttpError(409, '视频价格已更新，请刷新配置后重试', 'VIDEO_PRICE_CHANGED')
-  const sourceImageUrl = await prepareVideoSource(user.id, parsed, runtime)
+  const source = await prepareVideoSource(user.id, parsed, runtime)
   const created = await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     await sql`select pg_advisory_xact_lock(91517003)`
     return createVideoJobInStore(createSqlStore(sql, user.id, 'video'), user, parsed,
-      { ...runtime, billing: runtime.billing === noopBilling ? createSqlBilling(sql) : runtime.billing })
+      { ...runtime, billing: runtime.billing === noopBilling ? createSqlBilling(sql) : runtime.billing }, source)
   })
   if (!created.created) return toClientVideoTask(created.bundle, runtime)
   let providerTaskId: string | undefined
   let operation: unknown
   let failure: VideoProviderError | undefined
   try {
-    const result = await providerFor(created.bundle.job.provider, runtime).submit({ model: profile.model, ...parsed.params, sourceImageUrl,
+    const result = await providerFor(created.bundle.job.provider, runtime).submit({ model: profile.model, ...parsed.params,
+      generateAudio: videoGenerateAudio(profile, parsed.params.generateAudio), sourceImageUrl: source?.url,
       ...(profile.provider === 'seedance' ? { callbackUrl: runtime.callbackUrl(created.bundle.job.id, runtimeScope()) } : {}),
       idempotencyKey: createHash('sha256').update(`${runtimeScope()}:${user.id}:${parsed.requestId}`).digest('hex') },
     { fetch: runtime.fetch, now: runtime.now, sleep: runtime.sleep, log: runtime.log, requestId: parsed.requestId })
@@ -244,6 +264,7 @@ export async function collectVideoOutcome(
     const provider = providerFor(job.provider, runtime)
     const state = await provider.getStatus(id, ctx, providerParams.operation)
     if (state.model !== job.provider_params.model) throw new VideoProviderError('BAD_RESPONSE', '供应商视频模型与任务不匹配')
+    if (state.resolution !== undefined && state.resolution !== job.params.resolution) throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频档位与所选配置不匹配，积分将退回')
     patch.provider_task_id = id
     providerParams.vendor = state.usage ?? providerParams.vendor
     if (state.generationId) providerParams.vendor = { ...(providerParams.vendor as Record<string, unknown> ?? {}), generationId: state.generationId }
@@ -265,15 +286,8 @@ export async function collectVideoOutcome(
     const measured = runtime.probe(bytes)
     runtime.log({ stage: 'video-probe', jobId: job.id, ms: runtime.now() - probeStarted })
     if (measured.hasAudio !== (job.params.generateAudio === true)) throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频声音与所选配置不匹配，积分将退回')
-    if (job.provider === 'ai-gateway') {
-      const sizes = job.params.resolution === '2k'
-        ? { '1:1': [2048, 2048], '4:3': [2048, 1536], '3:4': [1536, 2048], '16:9': [2560, 1440], '9:16': [1440, 2560] }
-        : { '1:1': [768, 768], '4:3': [1024, 768], '3:4': [768, 1024], '16:9': [1366, 768], '9:16': [768, 1366] }
-      const expected = sizes[job.params.ratio as keyof typeof sizes]
-      if (!expected || Math.abs(measured.width - expected[0]) > 2 || Math.abs(measured.height - expected[1]) > 2
-        || Math.abs(measured.durationSeconds - Number(job.params.durationSeconds)) > .5) {
-        throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频尺寸或时长与所选配置不匹配，积分将退回')
-      }
+    if (job.provider === 'ai-gateway' && !validH3VideoShape(measured, job.params, providerParams.sourceDimensions)) {
+      throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频尺寸或时长与所选配置不匹配，积分将退回')
     }
     const objectKey = `generated/${job.user_id}/video/${job.id}/0.mp4`
     const writeStarted = runtime.now()

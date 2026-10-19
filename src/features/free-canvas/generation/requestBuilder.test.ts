@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
+import { MINIMAX_H3_VIDEO_MODEL } from '@shared/video-models'
 import { Capability } from '@/types'
 import { IMAGE_SIZE_PRESETS } from './config'
 import {
@@ -77,6 +78,13 @@ describe('buildTextToVideoRequest', () => {
 
 describe('派生生成请求', () => {
   const source = { url: 'source.png', width: 1600, height: 900 }
+  it('H3 单图首帧选择 2K，声音固定为原生有声，并保留原始尺寸', () => {
+    expect(buildImageToVideoRequest(source, '镜头推进', 10, { model: MINIMAX_H3_VIDEO_MODEL, resolution: '2k', generateAudio: false }))
+      .toMatchObject({ modelProfileId: 'minimax-h3', priceVersion: 'minimax-h3-video-v1', params: {
+        mode: 'image_to_video', ratio: 'adaptive', resolution: '2k', generateAudio: true, size: { width: 1600, height: 900 }, count: 1 } })
+    expect(buildTextToVideoRequest('商品展示', IMAGE_SIZE_PRESETS[0], 5, { model: MINIMAX_H3_VIDEO_MODEL, generateAudio: false }).params)
+      .toMatchObject({ generateAudio: true })
+  })
 
   it('构建默认四张且提示词可选的裂变请求', () => {
     expect(buildVariationRequest(source, '   ', 8)).toMatchObject({

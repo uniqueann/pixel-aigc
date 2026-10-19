@@ -38,6 +38,8 @@ import { saveCanvasTaskHistory } from './history'
 import type { CanvasGenerationRequest, CanvasGenerationTaskParams } from './requestBuilder'
 import { canonicalizeImageModelProfileId } from '@shared/image-models'
 import { modelProfileIdForRetry } from './retryModel'
+import { videoModelAvailableForMode } from '@shared/video-models'
+import { videoRetryParametersSupported } from './videoParameters'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired'])
@@ -333,6 +335,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
     initialReplacedPlaceholders: GenerationNode[] = [],
     initialContext: SubmissionContext = { inputAssetIds: [], autoRetryRemaining: 0, automaticRetry: false },
     confirmedTask?: GenerationTask<CanvasGenerationTaskParams>,
+    freshVideoInput = false,
   ) => {
     if (!sceneId || !isCurrent() || !usePersistenceStore.getState().writable || submissionGateRef.current) return
     if (initialRequest.capability === Capability.Variation && !confirmedTask && !canSubmitFreeCanvasVariation()) {
@@ -349,6 +352,12 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
         setSubmissionError('视频模型尚未就绪，请检查登录与模型配置'); return
       }
       if (usePersistenceStore.getState().cloud) { setSubmissionError('请先另存为本地副本，再生成视频'); return }
+      if (!mockGateway) {
+        const mode = params.mode === 'image_to_video' ? 'image_to_video' : 'text_to_video'
+        const model = useCanvasVideoConfiguration.getState().models.find(model => model.id === initialRequest.modelProfileId)
+        if (!videoModelAvailableForMode(model, mode)) { setSubmissionError('原视频模型暂不可用，请手动选择其他模型后生成。'); return }
+        if (!videoRetryParametersSupported(model, mode, params)) { setSubmissionError('H3 仅提供原生有声视频，请修改参数后重新生成'); return }
+      }
     }
     submissionGateRef.current = true
     if (!initialContext.automaticRetry) setAutoRetrying(false)
@@ -467,11 +476,12 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
       }
       if (!mockGateway && initialRequest.capability === Capability.TextToVideo && !confirmedTask) {
         const params = { ...initialRequest.params } as ImageToVideoTaskParams
-        if (params.mode === 'image_to_video' && !params.sourceImageKey) {
+        if (params.mode === 'image_to_video' && (!params.sourceImageKey || freshVideoInput)) {
           const source = useEditorStore.getState().project?.assets[initialContext.inputAssetIds[0]]
           if (source?.type !== 'image') throw new Error('源图片不可用，请重新选择图片')
           setPreparationPhase('正在准备并上传视频首帧…')
-          params.sourceImageKey = await taskInputKey(source, '读取原图失败', { ownerId, signal: lifetimeAbortRef.current.signal })
+          params.sourceImageKey = await taskInputKey(source, '读取原图失败', { ownerId, signal: lifetimeAbortRef.current.signal,
+            ...(freshVideoInput ? { forceUpload: true } : {}) })
         }
         delete params.sourceImageUrl
         prepared = { ...initialRequest, params }
@@ -728,6 +738,13 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
 
   const retry = useCallback(async () => {
     if (submitting || pendingSubmission || !displayedTask || !isCanvasGenerationCapability(displayedTask.capability)) return
+    if (displayedTask.capability === Capability.TextToVideo) {
+      const model = useCanvasVideoConfiguration.getState().models.find(model => model.id === modelProfileIdForRetry(displayedTask))
+      if (model?.audioMode === 'native' && (displayedTask.params as TextToVideoTaskParams).generateAudio !== true) {
+        setSubmissionError('原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成')
+        return
+      }
+    }
     const placeholders = placeholdersForTask(displayedTask.id)
     const placements = placeholders.map(({ x, y, width, height }) => ({ x, y, width, height }))
     const previousContext = contextForTask(displayedTask.id)
@@ -752,6 +769,8 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
         autoRetryRemaining: derived && mockGateway ? 1 : 0,
         automaticRetry: false,
       },
+      undefined,
+      request.capability === Capability.TextToVideo && 'mode' in request.params && request.params.mode === 'image_to_video',
     )
   }, [contextForTask, displayedTask, pendingSubmission, placeholdersForTask, submitRequest, submitting, mockGateway])
 

@@ -161,6 +161,7 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       if ((typeof draft.count !== 'number' || ![1, 2, 3, 4].includes(draft.count)) || (typeof draft.durationSeconds !== 'number' || ![5, 10].includes(draft.durationSeconds))) throw new Error('派生参数无效')
       if (draft.modelProfileId !== undefined) string(draft.modelProfileId)
       if (draft.resolution !== undefined && !(draft.mode === 'image-to-video' ? ['720p', '1k', '2k', '4k'] : ['1k', '2k', '4k']).includes(String(draft.resolution))) throw new Error('派生分辨率无效')
+      if (draft.videoResolution !== undefined && (draft.mode !== 'image-to-video' || !['720p', '768p', '2k'].includes(String(draft.videoResolution)))) throw new Error('视频草稿分辨率无效')
       if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
     }
     for (const [id, record] of Object.entries(value.recoveries)) {

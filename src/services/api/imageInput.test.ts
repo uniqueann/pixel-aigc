@@ -25,6 +25,14 @@ describe('共享生成原图准备', () => {
     expect(mocks.read).not.toHaveBeenCalled()
     expect(mocks.upload).not.toHaveBeenCalled()
   })
+  it('手动视频重试可从完整原图重新上传，不复用过期对象键', async () => {
+    const blob = new Blob(['完整原图'], { type: 'image/png' })
+    mocks.read.mockResolvedValue(blob); mocks.upload.mockResolvedValue('fresh-input-key')
+    const options = { ownerId: 'owner', signal: new AbortController().signal, forceUpload: true }
+    await expect(taskInputKey({ ...asset, objectKey: 'expired-input-key' }, '读取失败', options)).resolves.toBe('fresh-input-key')
+    expect(mocks.read).toHaveBeenCalledOnce()
+    expect(mocks.upload).toHaveBeenCalledWith(blob, 'image/png', options.signal)
+  })
 
   it('已取消的操作不使用对象键也不上传，读取失败保留原错误原因', async () => {
     const abort = new AbortController()

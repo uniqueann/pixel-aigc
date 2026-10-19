@@ -25,7 +25,9 @@ export function restoreTaskDrafts(snapshot: ProjectSnapshot) {
       mode: request.capability === Capability.Variation ? 'variation' as const : 'image-to-video' as const,
       sourceNode, sourceAssetId: source.id, prompt: params.prompt ?? '', count: params.count ?? 4, durationSeconds: params.durationSeconds ?? 5,
       modelProfileId: record?.request.modelProfileId ?? drafts.derived?.modelProfileId,
-      resolution: params.resolution === '768p' ? drafts.derived?.resolution : params.resolution ?? drafts.derived?.resolution,
+      ...(request.capability === Capability.Variation
+        ? { resolution: params.resolution as '1k' | '2k' | '4k' | undefined }
+        : { videoResolution: params.resolution as '720p' | '768p' | '2k' | undefined }),
       generateAudio: params.generateAudio ?? drafts.derived?.generateAudio,
     } }
   }
