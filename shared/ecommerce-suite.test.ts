@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   suiteAssetSchema, suiteAssetAccessRequestSchema, suiteBridgeResultRequestSchema,
   suiteBatchSchema, suiteBridgeSchema, suiteOperationSchema, suiteCompositionSchema, suiteCreateBatchRequestSchema, suiteCreateBridgeRequestSchema,
-  suiteCreateProjectRequestSchema, suiteExportConfigSchema, suiteFactSchema, suiteOriginSchema,
+  isSuiteFactReady, suiteCreateProjectRequestSchema, suiteExportConfigSchema, suiteFactSchema, suiteOriginSchema,
   suitePrecheckRequestSchema, suiteProjectSchema, suiteQuoteRequestSchema, suiteQuoteSchema,
   suiteSaveDraftRequestSchema, suiteSaveVersionRequestSchema, suiteSetCurrentRequestSchema, suiteTagsSchema,
   suiteUpdateProjectRequestSchema, suiteUploadCompleteRequestSchema, suiteUploadRequestSchema, suiteVersionSchema,
@@ -85,6 +85,21 @@ describe('电商套图阶段一：冻结契约与边界', () => {
   it('不同测量对象可以分别记录同方向尺寸，整体与部件不会混淆', () => {
     const facts = [...create.config.facts, { ...create.config.facts[0], id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', subject: 'shelf-tier-1', value: 50 }]
     expect(suiteCreateProjectRequestSchema.safeParse({ ...create, config: { ...create.config, facts } }).success).toBe(true)
+  })
+
+  it('未确认的空白规格/卖点草稿可保存，但已确认的空值被拒绝，且空值不算就绪', () => {
+    const base = { id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', name: '核心卖点', originalText: '核心卖点（待填写）', source: 'user' }
+    const blankFeature = { ...base, kind: 'feature', value: '', confirmed: false }
+    const blankDimension = { ...create.config.facts[0], id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', subject: '', value: 0, confirmed: false }
+    const withFacts = (extra: unknown[]) => suiteCreateProjectRequestSchema.safeParse({ ...create, config: { ...create.config, facts: [...create.config.facts, ...extra] } }).success
+    expect(withFacts([blankFeature, blankDimension])).toBe(true)
+    expect(withFacts([{ ...blankFeature, confirmed: true }])).toBe(false)
+    expect(withFacts([{ ...blankDimension, confirmed: true }])).toBe(false)
+    expect(isSuiteFactReady({ confirmed: false, value: '高回弹' })).toBe(false)
+    expect(isSuiteFactReady({ confirmed: true, value: '  ' })).toBe(false)
+    expect(isSuiteFactReady({ confirmed: true, value: 0, subject: '整体' })).toBe(false)
+    expect(isSuiteFactReady({ confirmed: true, value: 100, subject: '' })).toBe(false)
+    expect(isSuiteFactReady({ confirmed: true, value: 100, subject: '整体' })).toBe(true)
   })
 
   it('历史快照不能引用未确认、缺失或文字型的尺寸事实', () => {

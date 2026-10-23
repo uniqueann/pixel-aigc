@@ -18,6 +18,8 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
   const count = draft?.value.count ?? 1
   const note = draft?.value.promptNote ?? ''
   const [busy, setBusy] = useState(false)
+  const [quote, setQuote] = useState<SuiteQuote>()
+  const [expired, setExpired] = useState(false)
   const draftConflict = Boolean(draft?.error)
   const sequence = useRef(0)
   const alive = useRef(true)
@@ -26,6 +28,7 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
   const actualCount = Math.min(count, model?.ui.maxCount ?? 1)
   const strategy = SUITE_CATEGORY_TEMPLATES[project.config.subcategory].slots.find(item => item.key === slot.key)!.strategy
   const reuse = strategy !== 'image_edit'
+  const quotedCount = quote?.items.reduce((sum, item) => sum + item.count, 0) ?? 0
   const unavailable = (!reuse && !model) || !slot.enabled
 
   useEffect(() => {
@@ -35,7 +38,26 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
     return () => { alive.current = false; abort.abort() }
   }, [client, onError])
 
-  const change = (patch: Partial<SuiteSlotDraft>) => { sequence.current++; onEdit(patch) }
+  useEffect(() => {
+    if (!quote) return
+    const timer = setTimeout(() => setExpired(true), Math.max(0, Date.parse(quote.expiresAt) - Date.now()))
+    return () => clearTimeout(timer)
+  }, [quote])
+
+  const discardQuote = () => { setQuote(undefined); setExpired(false) }
+  const change = (patch: Partial<SuiteSlotDraft>) => { sequence.current++; discardQuote(); onEdit(patch) }
+
+  const submitQuote = async (confirmed: SuiteQuote) => {
+    setBusy(true)
+    try {
+      await onSubmit(confirmed)
+      if (alive.current) discardQuote()
+    } catch (error) {
+      if (alive.current) { discardQuote(); onError(error) }
+    } finally {
+      if (alive.current) setBusy(false)
+    }
+  }
 
   const handleGenerate = async () => {
     setBusy(true)
@@ -52,7 +74,12 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
         }],
       })
       if (alive.current && sequence.current === revision) {
-        await onSubmit(response)
+        if (reuse) {
+          await onSubmit(response)
+        } else {
+          setQuote(response)
+          setExpired(false)
+        }
       }
     } catch (error) {
       if (alive.current) onError(error)
@@ -74,9 +101,22 @@ export default function GenerationPanel({ project, slot, draft, client, blocked,
       <p className="suite-muted">图片比例与商品主体图保持一致。</p>
     </>}
     {!slot.enabled && <Alert type="info" message="该槽位已跳过，可在商品资料中重新启用" />}
-    <Button block type="primary" loading={busy || (loading && !reuse)} disabled={blocked || unavailable || draftConflict || (!reuse && loading)} onClick={() => { void handleGenerate() }}>
-      {busy ? '正在提交生成任务...' : reuse ? '确认底图设置' : '生成当前图片'}
-    </Button>
-    <p className="suite-muted">{reuse ? '使用原图或已上传的底图，不产生生成费用。' : '按实际成功张数扣除积分，失败或超时全额自动退还；生成后可在备选版本中查看。'}</p>
+    {quote && !reuse && (expired
+      ? <Alert type="warning" showIcon message="费用预估已超时" description="请重新计算费用后再生成。" />
+      : <Alert type="info" showIcon message={`本次生成 ${quotedCount} 张 · 预计最多消耗 ${quote.totalCredits} 积分`}
+        description="按实际成功张数扣除积分，失败或超时全额退还。确认后才会提交生成任务。" />)}
+    {quote && !reuse
+      ? <div className="suite-generation-confirm" style={{ display: 'flex', gap: 8 }}>
+        <Button disabled={busy} onClick={discardQuote}>返回修改</Button>
+        {expired
+          ? <Button type="primary" style={{ flex: 1 }} loading={busy} disabled={blocked || draftConflict} onClick={() => { void handleGenerate() }}>重新计算费用</Button>
+          : <Button type="primary" style={{ flex: 1 }} loading={busy} disabled={blocked || draftConflict} onClick={() => { void submitQuote(quote) }}>
+            {busy ? '正在提交生成任务...' : `确认生成 ${quotedCount} 张 · ${quote.totalCredits} 积分`}
+          </Button>}
+      </div>
+      : <Button block type="primary" loading={busy || (loading && !reuse)} disabled={blocked || unavailable || draftConflict || (!reuse && loading)} onClick={() => { void handleGenerate() }}>
+        {busy ? (reuse ? '正在提交生成任务...' : '正在计算预估费用...') : reuse ? '确认底图设置 · 免费' : `预估费用（${actualCount} 张 · ${actualResolution.toUpperCase()}）`}
+      </Button>}
+    <p className="suite-muted">{reuse ? '使用原图或已上传的底图，不产生生成费用。' : '点击后先显示预估积分，确认后才会扣费；按实际成功张数结算，失败或超时全额自动退还。'}</p>
   </div>
 }

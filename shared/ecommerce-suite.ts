@@ -44,9 +44,35 @@ export const suiteFactSchema = z.discriminatedUnion('kind', [
   z.object({ ...factBase, kind: z.literal('material'), value: z.string().trim().min(1).max(200) }).strict(),
   z.object({ ...factBase, kind: z.literal('feature'), value: z.string().trim().min(1).max(200) }).strict(),
 ])
+const dimensionKey = (fact: object) => { const { subject, axis } = fact as { subject?: string; axis?: string }; return `${subject}:${axis}` }
 export const suiteFactsSchema = z.array(suiteFactSchema).max(SUITE_LIMITS.facts)
   .refine(facts => unique(facts.map(fact => fact.id)), '事实 ID 不能重复')
-  .refine(facts => unique(facts.filter(fact => fact.kind === 'dimension').map(fact => `${fact.subject}:${fact.axis}`)), '同一测量对象的尺寸方向存在冲突')
+  .refine(facts => unique(facts.filter(fact => fact.kind === 'dimension').map(dimensionKey)), '同一测量对象的尺寸方向存在冲突')
+
+/** 编辑中的规格/卖点允许留空，但必须保持未确认，确认前不得进入就绪判断或生成提示词。 */
+const draftFactBase = { ...factBase, confirmed: z.literal(false) }
+const draftNumber = z.number().finite().nonnegative()
+const draftText = z.string().trim().max(200)
+const suiteDraftFactSchema = z.discriminatedUnion('kind', [
+  z.object({ ...draftFactBase, kind: z.literal('dimension'), subject: z.string().trim().max(60), axis: z.enum(['length', 'width', 'height', 'depth', 'diameter']), value: draftNumber, unit: z.enum(['mm', 'cm', 'm', 'in', 'ft']) }).strict(),
+  z.object({ ...draftFactBase, kind: z.literal('capacity'), value: draftNumber, unit: z.enum(['ml', 'l', 'fl_oz']) }).strict(),
+  z.object({ ...draftFactBase, kind: z.literal('weight'), value: draftNumber, unit: z.enum(['g', 'kg', 'lb', 'oz']) }).strict(),
+  z.object({ ...draftFactBase, kind: z.literal('load_capacity'), value: draftNumber, unit: z.enum(['g', 'kg', 'lb']) }).strict(),
+  z.object({ ...draftFactBase, kind: z.literal('material'), value: draftText }).strict(),
+  z.object({ ...draftFactBase, kind: z.literal('feature'), value: draftText }).strict(),
+])
+export const suiteConfigFactsSchema = z.array(z.union([suiteFactSchema, suiteDraftFactSchema])).max(SUITE_LIMITS.facts)
+  .refine(facts => unique(facts.map(fact => fact.id)), '事实 ID 不能重复')
+  .refine(facts => unique(facts.filter(fact => fact.confirmed && fact.kind === 'dimension').map(dimensionKey)), '同一测量对象的尺寸方向存在冲突')
+
+/** 已确认且数值/文本非空才算真实可用事实；空值与占位草稿不得参与槽位就绪或生成。 */
+export function isSuiteFactReady(fact: { confirmed: boolean; value: unknown; subject?: unknown }): boolean {
+  if (!fact.confirmed) return false
+  if (typeof fact.subject === 'string' && !fact.subject.trim()) return false
+  if (typeof fact.value === 'number') return Number.isFinite(fact.value) && fact.value > 0
+  if (typeof fact.value === 'string') return fact.value.trim().length > 0
+  return false
+}
 const confirmedFacts = suiteFactsSchema.refine(facts => facts.every(fact => fact.confirmed), '快照只能包含已确认事实')
 
 export const suiteSlotConfigSchema = z.object({
@@ -59,7 +85,7 @@ export const suiteProjectConfigSchema = z.object({
   category: z.literal('home-kitchen'), subcategory: z.enum(SUITE_SUBCATEGORIES),
   platform: z.enum(['amazon', 'general']), marketplace: z.literal('US').optional(),
   ruleProfile: z.object({ id: label, version: label }).strict(), baseAssetId: id,
-  tags: suiteTagsSchema, facts: suiteFactsSchema,
+  tags: suiteTagsSchema, facts: suiteConfigFactsSchema,
   copyLanguage: z.enum(['zh-CN', 'en-US']), unitSystem: z.enum(['metric', 'imperial']),
   style: z.object({ palette: z.array(color).min(1).max(5), sceneTone: label, templateId: label, templateVersion: label }).strict(),
   slots: z.array(suiteSlotConfigSchema).length(SUITE_LIMITS.slots),

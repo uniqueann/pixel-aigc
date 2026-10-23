@@ -125,8 +125,25 @@ describe('全套批量生成费用预估面板 (BatchPlanPanel)', () => {
       expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled()
     })
 
-    // 底部主按钮更新为开始批量生成
-    expect(screen.getByRole('button', { name: /开始批量生成 · 30 积分上限/ })).toBeTruthy()
+    // 预估成功后确认框保持未勾选，提交按钮禁用并提示先勾选
+    const confirmBox = screen.getByRole('checkbox', { name: '已核对生成槽位与费用上限' }) as HTMLInputElement
+    expect(confirmBox.checked).toBe(false)
+    const submitButton = screen.getByRole('button', { name: /开始批量生成 · 30 积分上限/ }) as HTMLButtonElement
+    expect(submitButton.disabled).toBe(true)
+    expect(screen.getByText('请先勾选确认')).toBeTruthy()
+    fireEvent.click(submitButton)
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    // 用户勾选后才允许提交
+    fireEvent.click(confirmBox)
+    await waitFor(() => {
+      expect(submitButton.disabled).toBe(false)
+    })
+    expect(screen.queryByText('请先勾选确认')).toBeNull()
+    fireEvent.click(submitButton)
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(mockQuote)
+    })
   })
 
   it('计算预估费用失败时，在弹窗内直接显示错误 Alert，不静默无反应', async () => {
@@ -281,15 +298,26 @@ describe('getSlotUnreadyReason 槽位不可用原因判定', () => {
   it('尺寸槽位缺少确认的尺寸/容量规格时返回“需添加尺寸规格”', () => {
     const slot = { id: 's5', key: 'size' as const, kind: 'size' as const, name: '主图 5 · 尺寸', enabled: true, referenceAssetIds: [], order: 4 }
     expect(getSlotUnreadyReason(slot, 'furniture', [])).toBe('需添加尺寸规格')
-    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'dimension', confirmed: false }])).toBe('需添加尺寸规格')
-    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: true }])).toBe('需添加尺寸规格')
-    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'dimension', confirmed: true }])).toBe('')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'dimension', confirmed: false, value: 100 }])).toBe('需添加尺寸规格')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: true, value: '高回弹' }])).toBe('需添加尺寸规格')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'dimension', confirmed: true, value: 100 }])).toBe('')
+  })
+
+  it('尺寸槽位不把空值或 0 的“已确认”尺寸视为就绪', () => {
+    const slot = { id: 's5', key: 'size' as const, kind: 'size' as const, name: '主图 5 · 尺寸', enabled: true, referenceAssetIds: [], order: 4 }
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'dimension', confirmed: true, value: 0 }])).toBe('需添加尺寸规格')
   })
 
   it('需要商品事实的卖点槽位缺少确认事实时返回“需补充商品卖点”', () => {
     const slot = { id: 's4', key: 'feature' as const, kind: 'feature' as const, name: '主图 4 · 卖点', enabled: true, referenceAssetIds: [], order: 3 }
     expect(getSlotUnreadyReason(slot, 'furniture', [])).toBe('需补充商品卖点')
-    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: false }])).toBe('需补充商品卖点')
-    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: true }])).toBe('')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: false, value: '高回弹' }])).toBe('需补充商品卖点')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: true, value: '高回弹' }])).toBe('')
+  })
+
+  it('空白或仅空格的卖点即使标记已确认也不算就绪', () => {
+    const slot = { id: 's4', key: 'feature' as const, kind: 'feature' as const, name: '主图 4 · 卖点', enabled: true, referenceAssetIds: [], order: 3 }
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: true, value: '' }])).toBe('需补充商品卖点')
+    expect(getSlotUnreadyReason(slot, 'furniture', [{ kind: 'feature', confirmed: true, value: '   ' }])).toBe('需补充商品卖点')
   })
 })

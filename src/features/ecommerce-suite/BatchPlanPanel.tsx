@@ -97,7 +97,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
       })
       if (alive.current && sequence.current === request) {
         setQuote(response)
-        setAgreed(true)
+        setAgreed(false)
         setExpired(false)
         setPlanError(null)
         message.success(`已完成费用预估，共 ${response.items.length} 个槽位，最高 ${response.totalCredits} 积分`)
@@ -126,18 +126,21 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
       onCancel={busy ? undefined : onClose}
       width={720}
       footer={quote ? (
-        <Button
-          type="primary"
-          loading={busy}
-          disabled={blocked || !agreed || expired}
-          onClick={() => {
-            if (!quote) return
-            setBusy(true)
-            void onSubmit(quote).then(() => { if (alive.current) onClose() }).catch(onError).finally(() => { if (alive.current) setBusy(false) })
-          }}
-        >
-          {expired ? '已超时，请重新计算' : `开始批量生成 · ${quote.totalCredits} 积分上限`}
-        </Button>
+        <>
+          {!agreed && !expired && !blocked && <span className="suite-muted" style={{ marginRight: 12 }}>请先勾选确认</span>}
+          <Button
+            type="primary"
+            loading={busy}
+            disabled={blocked || !agreed || expired}
+            onClick={() => {
+              if (!quote) return
+              setBusy(true)
+              void onSubmit(quote).then(() => { if (alive.current) onClose() }).catch(onError).finally(() => { if (alive.current) setBusy(false) })
+            }}
+          >
+            {expired ? '已超时，请重新计算' : `开始批量生成 · ${quote.totalCredits} 积分上限`}
+          </Button>
+        </>
       ) : (
         <Button
           type="primary"

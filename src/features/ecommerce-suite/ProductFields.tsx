@@ -1,6 +1,7 @@
 import { Button, Checkbox, Input, InputNumber, Select } from 'antd'
 import { SUITE_CATEGORY_TEMPLATES } from '@shared/ecommerce-suite-templates'
 import type { SuiteFact, SuiteProjectConfig, SuiteSubcategory } from '@shared/ecommerce-suite'
+import { isSuiteFactReady } from '@shared/ecommerce-suite'
 import { changeSuiteCategory } from './config'
 import { SUITE_RULE_VERSION } from '@shared/ecommerce-suite-precheck'
 
@@ -9,15 +10,15 @@ export default function ProductFields({ value, onChange, creating = false, disab
 }) {
   const setFact = (id: string, patch: Partial<SuiteFact>) => onChange({
     ...value,
-    facts: value.facts.map(fact => fact.id === id ? {
-      ...fact,
-      ...patch,
-      confirmed: 'confirmed' in patch ? patch.confirmed : fact.confirmed,
-    } as SuiteFact : fact),
+    facts: value.facts.map(fact => {
+      if (fact.id !== id) return fact
+      const next = { ...fact, ...patch, confirmed: 'confirmed' in patch ? patch.confirmed : fact.confirmed } as SuiteFact
+      return isSuiteFactReady({ ...next, confirmed: true }) ? next : { ...next, confirmed: false } as SuiteFact
+    }),
   })
   const addFact = (kind: 'dimension' | 'feature') => {
-    const common = { id: crypto.randomUUID(), name: kind === 'dimension' ? '长' : '核心卖点', originalText: '用户填写', source: 'user' as const, confirmed: true }
-    const fact: SuiteFact = kind === 'dimension' ? { ...common, kind, subject: '商品主体', axis: 'length', value: 100, unit: 'cm' } : { ...common, kind, value: '' }
+    const common = { id: crypto.randomUUID(), name: kind === 'dimension' ? '长' : '核心卖点', originalText: kind === 'dimension' ? '长（待填写）' : '核心卖点（待填写）', source: 'user' as const, confirmed: false as const }
+    const fact: SuiteFact = kind === 'dimension' ? { ...common, kind, subject: '', axis: 'length', value: 0, unit: 'cm' } : { ...common, kind, value: '' }
     onChange({ ...value, facts: [...value.facts, fact] })
   }
   return <fieldset className="suite-product-fields" disabled={disabled}>
@@ -39,12 +40,12 @@ export default function ProductFields({ value, onChange, creating = false, disab
     {value.facts.map(fact => <div className="suite-fact" key={fact.id}>
       <Input aria-label="规格名称" value={fact.name} disabled={disabled} maxLength={100} placeholder="规格名称（如长/宽/高/卖点）" onChange={event => setFact(fact.id, { name: event.target.value, originalText: `${event.target.value} ${fact.value}${'unit' in fact ? fact.unit : ''}` })} />
       {fact.kind === 'dimension' ? <>
-        <Input aria-label="测量对象" placeholder="测量部位（如整体、坐垫）" value={fact.subject} maxLength={60} onChange={event => setFact(fact.id, { subject: event.target.value })} />
+        <Input aria-label="测量对象" placeholder="测量部位（如整体、坐垫，必填）" value={fact.subject} maxLength={60} onChange={event => setFact(fact.id, { subject: event.target.value })} />
         <Select aria-label="尺寸方向" value={fact.axis} options={[['length', '长度'], ['width', '宽度'], ['height', '高度'], ['depth', '深度'], ['diameter', '直径']].map(([value, label]) => ({ value, label }))} onChange={axis => setFact(fact.id, { axis })} />
-        <InputNumber aria-label="尺寸数值" min={0.01} value={fact.value} onChange={number => setFact(fact.id, { value: number ?? 0, originalText: `${fact.name} ${number ?? 0}${fact.unit}` })} />
+        <InputNumber aria-label="尺寸数值" min={0.01} placeholder="请填写数值" value={fact.value > 0 ? fact.value : null} onChange={number => setFact(fact.id, { value: number ?? 0, originalText: `${fact.name} ${number ?? 0}${fact.unit}` })} />
         <Select aria-label="尺寸单位" value={fact.unit} options={['cm', 'm', 'mm', 'in', 'ft'].map(unit => ({ value: unit }))} onChange={unit => setFact(fact.id, { unit, originalText: `${fact.name} ${fact.value}${unit}` })} />
       </> : <Input aria-label="卖点内容" placeholder="卖点描述（如高回弹海绵、久坐不塌）" value={String(fact.value)} maxLength={200} onChange={event => setFact(fact.id, { value: event.target.value, originalText: `${fact.name} ${event.target.value}` })} />}
-      <Checkbox checked={fact.confirmed} disabled={disabled} onChange={event => setFact(fact.id, { confirmed: event.target.checked, originalText: `${fact.name} ${fact.value}${'unit' in fact ? fact.unit : ''}` })}>启用此项</Checkbox>
+      <Checkbox checked={fact.confirmed} disabled={disabled || (!fact.confirmed && !isSuiteFactReady({ ...fact, confirmed: true }))} onChange={event => setFact(fact.id, { confirmed: event.target.checked, originalText: `${fact.name} ${fact.value}${'unit' in fact ? fact.unit : ''}` })}><span title={isSuiteFactReady({ ...fact, confirmed: true }) ? undefined : '请先填写完整内容再启用'}>{isSuiteFactReady({ ...fact, confirmed: true }) ? '启用此项' : '启用此项（请先填写完整）'}</span></Checkbox>
       <Button type="text" danger disabled={disabled} onClick={() => onChange({ ...value, facts: value.facts.filter(item => item.id !== fact.id) })}>删除</Button>
     </div>)}
     <div className="suite-fact-heading"><strong>要生成的槽位</strong></div>

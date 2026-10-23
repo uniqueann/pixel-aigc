@@ -1,5 +1,5 @@
 import { SUITE_CATEGORY_TEMPLATES } from '@shared/ecommerce-suite-templates'
-import type { SuiteFact, SuiteSlotConfig, SuiteSubcategory } from '@shared/ecommerce-suite'
+import { isSuiteFactReady, type SuiteFact, type SuiteSlotConfig, type SuiteSubcategory } from '@shared/ecommerce-suite'
 
 export interface SuiteRetrySelection {
   batchId: string
@@ -9,7 +9,7 @@ export interface SuiteRetrySelection {
 export function getSlotUnreadyReason(
   slot: SuiteSlotConfig,
   subcategory: SuiteSubcategory,
-  facts: readonly Pick<SuiteFact, 'confirmed' | 'kind'>[]
+  facts: readonly Pick<SuiteFact, 'confirmed' | 'kind' | 'value'>[]
 ): string {
   if (!slot.enabled) return '已跳过'
   const template = SUITE_CATEGORY_TEMPLATES[subcategory]?.slots.find(item => item.key === slot.key)
@@ -18,11 +18,11 @@ export function getSlotUnreadyReason(
     return '需细节参考图'
   }
   if (slot.kind === 'size') {
-    const hasDimension = facts.some(fact => fact.confirmed && ['dimension', 'capacity'].includes(fact.kind))
+    const hasDimension = facts.some(fact => isSuiteFactReady(fact) && ['dimension', 'capacity'].includes(fact.kind))
     if (!hasDimension) return '需添加尺寸规格'
   }
   if (template?.requires.includes('confirmed_facts' as never)) {
-    const hasConfirmed = facts.some(fact => fact.confirmed)
+    const hasConfirmed = facts.some(isSuiteFactReady)
     if (!hasConfirmed) return '需补充商品卖点'
   }
   return ''
