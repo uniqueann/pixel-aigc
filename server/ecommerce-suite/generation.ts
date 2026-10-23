@@ -7,7 +7,7 @@ import { composeFusionPrompt } from '../../shared/fusion.js'
 import { SUITE_CATEGORY_TEMPLATES } from '../../shared/ecommerce-suite-templates.js'
 import { suiteOperationRetryable } from '../../shared/ecommerce-suite-state.js'
 import { stopUnsubmittedOperations } from './batches.js'
-import { SUITE_LIMITS, suiteBatchSchema, suiteCreateBatchRequestSchema, suiteOperationSchema, suiteQuoteRequestSchema, suiteQuoteSchema,
+import { SUITE_LIMITS, isSuiteFactReady, suiteBatchSchema, suiteCreateBatchRequestSchema, suiteOperationSchema, suiteQuoteRequestSchema, suiteQuoteSchema,
   type SuiteBatch, type SuiteProject, type SuiteQuote, type SuiteQuoteRequest } from '../../shared/ecommerce-suite.js'
 import { actor, assertRevision, fingerprint, readSuite, readyAsset, requireSuite, suiteTransaction, type SuiteUser } from './repository.js'
 
@@ -16,7 +16,7 @@ export async function planSuiteSlot(sql: Transaction, project: SuiteProject, sel
   const slot = project.config.slots.find(slot => slot.id === selection.slotId && slot.enabled)
   if (!slot) throw new HttpError(400, '槽位不存在或已跳过', 'INVALID_REQUEST')
   const template = SUITE_CATEGORY_TEMPLATES[project.config.subcategory].slots.find(item => item.key === slot.key)!
-  const facts = project.config.facts.filter(fact => fact.confirmed)
+  const facts = project.config.facts.filter(isSuiteFactReady)
   if (template.requires.includes('confirmed_facts' as never) && !facts.length)
     throw new HttpError(409, `【${slot.name}】缺少卖点或规格，请先在“商品信息与规格”中补充并确认`, 'SUITE_FACTS_REQUIRED')
   if (slot.kind === 'size' && !facts.some(fact => ['dimension', 'capacity'].includes(fact.kind)))
