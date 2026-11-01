@@ -12,10 +12,12 @@ export async function createSuite(user: SuiteUser, body: unknown) {
   validateTemplate(request.config)
   return suiteTransaction(user, async sql => {
     await sql`select pg_advisory_xact_lock(hashtextextended(${`${user.id}:${actor(user).runtimeScope}:${request.requestId}`},0))`
-    const [old] = await sql`select id,request_fingerprint from aigc.suite_projects where create_request_id=${request.requestId}`
+    const [old] = await sql`select id,request_fingerprint,deleted_at,purge_started_at from aigc.suite_projects where create_request_id=${request.requestId}`
     const hash = fingerprint(request.config)
     if (old) {
       if (old.request_fingerprint !== hash) throw new HttpError(409, '创建请求已用于其他配置', 'SUITE_REQUEST_CONFLICT')
+      // 删除/清理保留旧行防止旧请求复活；恢复包需要重新导入时由客户端换用新的稳定身份。
+      if (old.deleted_at || old.purge_started_at) throw new HttpError(409, '原恢复项目已删除，将创建新的恢复副本', 'SUITE_PROJECT_DELETED')
       return readSuite(sql, String(old.id))
     }
     const id = randomUUID()

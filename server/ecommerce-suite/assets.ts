@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import sharp, { type Metadata } from 'sharp'
 import { suiteAssetAccessRequestSchema, suiteUploadCompleteRequestSchema, suiteUploadRequestSchema, type SuiteAssetRef } from '../../shared/ecommerce-suite.js'
 import { HttpError } from '../errors.js'
-import { getObjectLimited, putObject, signRead, signUpload } from '../storage.js'
+import { deleteObject, getObjectLimited, putObject, signRead, signUpload } from '../storage.js'
 import { actor, fingerprint, readyAsset, requireSuite, suiteTransaction, toSuiteAsset, type SuiteUser } from './repository.js'
 import { beginSuiteObjectWrite } from './object-writes.js'
 
@@ -11,9 +11,10 @@ export interface SuiteStorage {
   put: typeof putObject
   signRead: typeof signRead
   signUpload: typeof signUpload
+  delete(key: string, signal?: AbortSignal): Promise<void>
 }
 export const suiteStorage: SuiteStorage = {
-  read: (key: string) => getObjectLimited(key, 20 * 1024 * 1024), put: putObject, signRead, signUpload,
+  read: (key: string) => getObjectLimited(key, 20 * 1024 * 1024), put: putObject, signRead, signUpload, delete: deleteObject,
 }
 const extensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
 export const SUITE_THUMBNAIL_EDGE = 320
@@ -110,6 +111,8 @@ export function suiteObjectKey(user: SuiteUser, projectId: string, assetId: stri
 export async function beginSuiteUpload(user: SuiteUser, projectId: string, body: unknown, storage = suiteStorage) {
   const request = suiteUploadRequestSchema.parse(body)
   const row = await suiteTransaction(user, async sql => {
+    // 同一 requestId 的并发请求必须串行化：先加锁再查重，避免双方都查不到后其中一方撞主键返回 500。
+    await sql`select pg_advisory_xact_lock(hashtextextended(${`suite-upload:${user.id}:${actor(user).runtimeScope}:${request.requestId}`},0))`
     await requireSuite(sql, projectId, true)
     const [old] = await sql`select * from aigc.suite_assets where id=${request.requestId}`
     if (old) {
@@ -148,6 +151,8 @@ export async function completeSuiteUpload(user: SuiteUser, projectId: string, bo
     return row ? toSuiteAsset(row) : readyAsset(sql, projectId, request.assetId)
   })
   await rememberSuiteThumbnail(user, projectId, asset, storage, object.bytes)
+  // 正式对象已落库后再删除临时对象；失败不影响上传结果，未完成的上传仍由桶生命周期兜底。
+  try { await storage.delete(String(pending.temp_key)) } catch { /* 忽略清理失败 */ }
   return { asset }
 }
 async function readAccessAssets(user: SuiteUser, projectId: string, assetIds: string[], includeThumbnail: boolean) {

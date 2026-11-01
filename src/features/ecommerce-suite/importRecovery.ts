@@ -2,8 +2,9 @@ import { suiteRecoveryManifestSchema, type SuiteRecoveryManifest, type SuiteRest
 import { detectImageMime } from '@shared/image-format'
 import type { SuiteActor } from '@shared/ecommerce-suite'
 import type { FileEntry } from '@zip.js/zip.js'
+import { CloudError } from '@/cloud/client'
 import type { SuiteClient } from './api'
-import { archiveSuiteDraft, saveSuiteBlob } from './backup'
+import { archiveSuiteDraft, readSuiteRecoveryAttempt, saveSuiteBlob, saveSuiteRecoveryAttempt } from './backup'
 import { verifySuiteBlob } from './recoveryPackage'
 
 const MAX = 200 * 1024 * 1024
@@ -65,31 +66,49 @@ async function recoveryId(seed: string) {
 }
 export async function importSuiteRecovery(client: SuiteClient, actor: SuiteActor, input: { manifest: SuiteRecoveryManifest; images: Map<string,Blob> }, fileDigest: string) {
   const { manifest, images } = input
-  const seed = `${actor.userId}:${actor.runtimeScope}:${fileDigest}`
-  const slots = new Map<string,string>(), assets = new Map<string,string>(), versions = new Map<string,string>()
-  for (const slot of manifest.config.slots) slots.set(slot.id, await recoveryId(`${seed}:slot:${slot.id}`))
-  for (const asset of manifest.assets) assets.set(asset.assetId, await recoveryId(`${seed}:asset:${asset.assetId}`))
-  for (const version of manifest.versions) versions.set(version.id, await recoveryId(`${seed}:version:${version.id}`))
-  const config = { ...manifest.config, title: `${manifest.config.title.slice(0,88)} 恢复副本`, baseAssetId: assets.get(manifest.config.baseAssetId)!,
-    slots: manifest.config.slots.map(slot => ({ ...slot, id: slots.get(slot.id)!, referenceAssetIds: slot.referenceAssetIds.map(id => assets.get(id)!) })) }
-  const request: SuiteRestoreSnapshotRequest = { requestId: await recoveryId(`${seed}:restore`), config,
-    versions: manifest.versions.map(version => ({ id: versions.get(version.id)!, slotId: slots.get(version.slotId)!, parentVersionId: version.parentVersionId ? versions.get(version.parentVersionId)! : null,
-      assetId: assets.get(version.assetId)!, versionNumber: version.versionNumber, composition: version.composition })),
-    heads: manifest.slotHeads.map(head => ({ slotId: slots.get(head.slotId)!, activeVersionId: head.activeVersionId ? versions.get(head.activeVersionId)! : null })),
-    drafts: (manifest.drafts ?? []).map(draft => ({ slotId: slots.get(draft.slotId)!, value: { ...draft.value, expectedDraftRevision: 0, baseVersionId: draft.value.baseVersionId ? versions.get(draft.value.baseVersionId)! : null } })) }
-  if (new TextEncoder().encode(JSON.stringify(request)).length > 3 * 1024 * 1024) throw new Error('版本元数据超过单次恢复的 3 MiB 上限，请保留恢复包；本次尚未创建云端项目')
-  client.assertCurrent()
-  const project = await client.create(await recoveryId(`${seed}:create`), { ...config, slots: config.slots.map(slot => ({ ...slot, referenceAssetIds: [] })) })
+  const base = `${actor.userId}:${actor.runtimeScope}:${fileDigest}`
+  const build = async (seed: string) => {
+    const slots = new Map<string,string>(), assets = new Map<string,string>(), versions = new Map<string,string>()
+    for (const slot of manifest.config.slots) slots.set(slot.id, await recoveryId(`${seed}:slot:${slot.id}`))
+    for (const asset of manifest.assets) assets.set(asset.assetId, await recoveryId(`${seed}:asset:${asset.assetId}`))
+    for (const version of manifest.versions) versions.set(version.id, await recoveryId(`${seed}:version:${version.id}`))
+    const config = { ...manifest.config, title: `${manifest.config.title.slice(0,88)} 恢复副本`, baseAssetId: assets.get(manifest.config.baseAssetId)!,
+      slots: manifest.config.slots.map(slot => ({ ...slot, id: slots.get(slot.id)!, referenceAssetIds: slot.referenceAssetIds.map(id => assets.get(id)!) })) }
+    const request: SuiteRestoreSnapshotRequest = { requestId: await recoveryId(`${seed}:restore`), config,
+      versions: manifest.versions.map(version => ({ id: versions.get(version.id)!, slotId: slots.get(version.slotId)!, parentVersionId: version.parentVersionId ? versions.get(version.parentVersionId)! : null,
+        assetId: assets.get(version.assetId)!, versionNumber: version.versionNumber, composition: version.composition })),
+      heads: manifest.slotHeads.map(head => ({ slotId: slots.get(head.slotId)!, activeVersionId: head.activeVersionId ? versions.get(head.activeVersionId)! : null })),
+      drafts: (manifest.drafts ?? []).map(draft => ({ slotId: slots.get(draft.slotId)!, value: { ...draft.value, expectedDraftRevision: 0, baseVersionId: draft.value.baseVersionId ? versions.get(draft.value.baseVersionId)! : null } })) }
+    if (new TextEncoder().encode(JSON.stringify(request)).length > 3 * 1024 * 1024) throw new Error('版本元数据超过单次恢复的 3 MiB 上限，请保留恢复包；本次尚未创建云端项目')
+    return { slots, assets, versions, config, request, createRequestId: await recoveryId(`${seed}:create`) }
+  }
+  const create = async (plan: Awaited<ReturnType<typeof build>>) => {
+    client.assertCurrent()
+    return client.create(plan.createRequestId, { ...plan.config, slots: plan.config.slots.map(slot => ({ ...slot, referenceAssetIds: [] })) })
+  }
+  // 原恢复项目仍存在时沿用确定性身份；项目已删除/清理后换用持久化随机种子，避免撞上保留的旧行。
+  const attempt = await readSuiteRecoveryAttempt(actor, fileDigest).catch(() => undefined)
+  let plan = await build(attempt ? `${base}:${attempt.nonce}` : base)
+  let project
+  try {
+    project = await create(plan)
+  } catch (error) {
+    if (!(error instanceof CloudError) || error.code !== 'SUITE_PROJECT_DELETED') throw error
+    const nonce = crypto.randomUUID()
+    await saveSuiteRecoveryAttempt(actor, fileDigest, nonce).catch(() => undefined)
+    plan = await build(`${base}:${nonce}`)
+    project = await create(plan)
+  }
   for (const asset of manifest.assets) {
     client.assertCurrent()
     const blob = images.get(asset.assetId)!
-    await client.upload(project.id, assets.get(asset.assetId)!, blob, '恢复包图片')
-    await saveSuiteBlob(actor, project.id, assets.get(asset.assetId)!, blob).catch(() => undefined)
+    await client.upload(project.id, plan.assets.get(asset.assetId)!, blob, '恢复包图片')
+    await saveSuiteBlob(actor, project.id, plan.assets.get(asset.assetId)!, blob).catch(() => undefined)
   }
-  const restored = await client.restoreSnapshot(project.id, request)
+  const restored = await client.restoreSnapshot(project.id, plan.request)
   for (const draft of manifest.draftArchives ?? []) {
     client.assertCurrent()
-    await archiveSuiteDraft(actor, project.id, slots.get(draft.slotId)!, { dirty: false, value: { ...draft.value, expectedDraftRevision: 0, baseVersionId: draft.value.baseVersionId ? versions.get(draft.value.baseVersionId)! : null } })
+    await archiveSuiteDraft(actor, project.id, plan.slots.get(draft.slotId)!, { dirty: false, value: { ...draft.value, expectedDraftRevision: 0, baseVersionId: draft.value.baseVersionId ? plan.versions.get(draft.value.baseVersionId)! : null } })
   }
   return restored
 }

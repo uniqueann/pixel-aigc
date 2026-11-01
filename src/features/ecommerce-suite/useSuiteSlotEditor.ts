@@ -62,37 +62,39 @@ export function useSuiteSlotEditor(data: SuiteProjectDetail | undefined, client:
     const next = { value: { ...current.value, ...patch }, dirty: true, edit: current.edit + 1, error: undefined }
     records.set(slotId, next); notify()
     void saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, next).catch(() => {
+      // 只标记仍属于这次编辑的记录；若云端已保存成功，不能用过期的本机失败覆盖结果。
       const record = records.get(slotId)
-      if (record) record.error = '本机存储失败，请保持页面并保存云端或下载图层草稿'
-      notify()
+      if (record?.edit === next.edit && record.dirty) { record.error = '本机存储失败，请保持页面并保存云端或下载图层草稿'; notify() }
     })
   }, [notify, records])
   const flushSlot = useCallback(async (slotId: string) => {
-    if (writes.current.has(slotId)) await writes.current.get(slotId)
+    // 等待后必须复查：其他调用可能已接手同一槽位的保存，各自用同一修订号重复提交会制造假冲突。
+    while (writes.current.has(slotId)) await writes.current.get(slotId)
     const record = records.get(slotId), detail = latest.current
     if (!record?.dirty || !detail) return
     if (record.error?.includes('冲突')) throw new Error(record.error)
     const action = (async () => {
-      await saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, record)
+      // 本机草稿只是降级能力：IndexedDB 写入失败时继续保存云端，避免因配额问题丢失编辑。
+      try { await saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, record) } catch { /* 继续云端保存 */ }
       if (offline) return
       const saved = await client.draft(detail.project.id, slotId, record.value)
       const current = records.get(slotId)!
       const next = { ...current, value: { ...current.value, expectedDraftRevision: saved.revision }, dirty: current.edit !== record.edit, error: undefined }
       records.set(slotId, next)
-      await saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, next)
+      try { await saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, next) } catch { /* 本机备份失败不影响云端结果 */ }
     })().catch(error => {
       const current = records.get(slotId)
       if (current) current.error = error instanceof CloudError && error.status === 409 ? '草稿修订冲突，本机副本已保留，请读取云端或另存图层草稿' : '草稿未同步，请手动重试保存'
       throw error
-    }).finally(() => { writes.current.delete(slotId); notify() })
+    })
     writes.current.set(slotId, action)
-    await action
+    try { await action } finally { if (writes.current.get(slotId) === action) writes.current.delete(slotId); notify() }
   }, [client, notify, offline, records])
   const flushAll = useCallback(async () => {
     for (const id of records.keys()) await flushSlot(id)
   }, [flushSlot, records])
   useEffect(() => {
-    if (offline || ![...records.values()].some(record => record.dirty && !record.error)) return
+    if (offline || ![...records.values()].some(record => record.dirty && (!record.error || record.error.includes('本机存储失败')))) return
     const timer = setTimeout(() => { void flushAll().catch(() => undefined) }, 800)
     return () => clearTimeout(timer)
   }, [revision, flushAll, offline, records])
@@ -102,22 +104,35 @@ export function useSuiteSlotEditor(data: SuiteProjectDetail | undefined, client:
     return () => window.removeEventListener('beforeunload', guard)
   }, [records])
   const reset = async (slotId: string, version: SuiteSlotVersion) => {
-    const detail = latest.current!, old = records.get(slotId)
-    if (writes.current.has(slotId)) await writes.current.get(slotId)
-    if (old) await archiveSuiteDraft(detail.project.actor, detail.project.id, slotId, old)
-    const cloud = (await client.get(detail.project.id)).drafts.find(item => item.slotId === slotId)
-    records.set(slotId, { value: { ...initialDraft(detail, slotId), ...old?.value, expectedDraftRevision: cloud?.revision ?? 0,
-      baseVersionId: version.id, layers: version.composition.layersSnapshot, factsSnapshot: version.composition.factsSnapshot,
-      copyLanguage: version.composition.copyLanguage, unitSystem: version.composition.unitSystem }, dirty: true, edit: (old?.edit ?? 0) + 1 })
-    notify(); await flushSlot(slotId)
+    // 读取云端与写入排在同一队列：既等待在途保存，也防止自动保存插进这次读取中间。
+    const previous = writes.current.get(slotId)
+    const action = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(async () => {
+      const detail = latest.current!, old = records.get(slotId)
+      if (!detail) return
+      if (old) await archiveSuiteDraft(detail.project.actor, detail.project.id, slotId, old)
+      const cloud = (await client.get(detail.project.id)).drafts.find(item => item.slotId === slotId)
+      records.set(slotId, { value: { ...initialDraft(detail, slotId), ...old?.value, expectedDraftRevision: cloud?.revision ?? 0,
+        baseVersionId: version.id, layers: version.composition.layersSnapshot, factsSnapshot: version.composition.factsSnapshot,
+        copyLanguage: version.composition.copyLanguage, unitSystem: version.composition.unitSystem }, dirty: true, edit: (old?.edit ?? 0) + 1 })
+    })
+    writes.current.set(slotId, action)
+    try { await action } finally { if (writes.current.get(slotId) === action) writes.current.delete(slotId); notify() }
+    await flushSlot(slotId)
   }
   const readCloud = async (slotId: string) => {
-    const detail = latest.current!, old = records.get(slotId)
-    if (old) await archiveSuiteDraft(detail.project.actor, detail.project.id, slotId, old)
-    const cloud = await client.get(detail.project.id)
-    const value = initialDraft(cloud, slotId)
-    records.set(slotId, { value, dirty: false, edit: 0 })
-    await saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, { value, dirty: false }); notify()
+    // 读取云端与写入排在同一队列：否则读到的修订可能落后于刚保存的结果，下一次编辑会被误判为冲突。
+    const previous = writes.current.get(slotId)
+    const action = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(async () => {
+      const detail = latest.current!, old = records.get(slotId)
+      if (!detail) return
+      if (old) await archiveSuiteDraft(detail.project.actor, detail.project.id, slotId, old)
+      const cloud = await client.get(detail.project.id)
+      const value = initialDraft(cloud, slotId)
+      records.set(slotId, { value, dirty: false, edit: 0 })
+      await saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, { value, dirty: false })
+    })
+    writes.current.set(slotId, action)
+    try { await action } finally { if (writes.current.get(slotId) === action) writes.current.delete(slotId); notify() }
   }
   const saveVersion = async (slotId: string) => {
     await flushSlot(slotId)

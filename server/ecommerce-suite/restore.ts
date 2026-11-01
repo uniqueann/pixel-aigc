@@ -2,7 +2,6 @@ import { suiteRestoreSnapshotRequestSchema } from '../../shared/ecommerce-suite-
 import { suiteSaveDraftRequestSchema, suiteVersionSchema } from '../../shared/ecommerce-suite.js'
 import { HttpError } from '../errors.js'
 import { actor, fingerprint, readSuite, readyAsset, requireSuite, suiteTransaction, validateTemplate, type SuiteUser } from './repository.js'
-import { validateSuiteComposition } from './versions.js'
 
 /** 恢复到本账号新项目，仅接收成品与草稿，不导入来源权限、任务或可执行状态。 */
 export function restoreSuiteSnapshot(user: SuiteUser, projectId: string, body: unknown) {
@@ -30,7 +29,8 @@ export function restoreSuiteSnapshot(user: SuiteUser, projectId: string, body: u
       if (!slots.has(imported.slotId) || sequenceKeys.has(sequenceKey) || imported.parentVersionId && (versions.get(imported.parentVersionId)?.slotId !== imported.slotId || versions.get(imported.parentVersionId)!.versionNumber >= imported.versionNumber))
         throw new HttpError(400, '恢复版本顺序或父引用无效', 'SUITE_RESULT_CONFLICT')
       sequenceKeys.add(sequenceKey)
-      validateSuiteComposition(request.config, imported.slotId, imported.composition, [...request.config.facts, ...imported.composition.factsSnapshot])
+      // 历史版本是不可变快照：事实随版本冻结，不能对照当前配置或当前平台规则回验。
+      // 否则删除过的规格、切换过的平台都会让合法恢复包无法导入；结构约束已由请求 schema 与槽位/父引用检查覆盖。
       const version = suiteVersionSchema.parse({ ...imported, projectId, source: 'reuse', createdAt: new Date().toISOString() })
       await sql`insert into aigc.suite_versions(id,user_id,scope,project_id,slot_id,asset_id,parent_version_id,version_number,application_key,snapshot)
         values(${version.id},${user.id},${actor(user).runtimeScope},${projectId},${version.slotId},${version.assetId},${version.parentVersionId},${version.versionNumber},${`restore:${request.requestId}:${version.id}`},${sql.json(version as never)})`

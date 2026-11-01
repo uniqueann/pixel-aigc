@@ -41,6 +41,18 @@ function rememberFrame(current: Map<string, PreviewFrame>, identity: string, fra
   return next
 }
 
+function rememberBlob(cache: Map<string, Blob>, identity: string, blob: Blob) {
+  const next = new Map(cache)
+  next.delete(identity)
+  next.set(identity, blob)
+  while (next.size > PREVIEW_CACHE_LIMIT) {
+    const oldest = next.keys().next().value
+    if (oldest === undefined) break
+    next.delete(oldest)
+  }
+  return next
+}
+
 function rememberBitmap(cache: Map<string, ImageBitmap>, identity: string, image: ImageBitmap) {
   const existing = cache.get(identity)
   if (existing === image) { cache.delete(identity); cache.set(identity, image); return image }
@@ -135,7 +147,7 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
       clientRef.current.assertCurrent()
       if (!mounted.current || loadToken.current.get(identity) !== token) return
       inflight.current.delete(identity)
-      setBlobs(existing => existing.get(identity) === blob ? existing : new Map(existing).set(identity, blob))
+      setBlobs(existing => existing.get(identity) === blob ? existing : rememberBlob(existing, identity, blob))
     }).catch(error => {
       if (loadToken.current.get(identity) === token) inflight.current.delete(identity)
       if (!mounted.current || currentSignal.aborted || identityRef.current !== identity || loadToken.current.get(identity) !== token) return

@@ -67,6 +67,7 @@ try {
     put: async (key, bytes, contentType) => { objects.set(key, { bytes: Buffer.from(bytes), contentType }) },
     signRead: async key => ({ url: `https://storage.example.invalid/${key}`, expiresAt: Date.now() + 900000 }),
     signUpload: async key => key,
+    delete: async key => { objects.delete(key) },
   }
   const runtime = { ...defaultImageJobRuntime(), log: () => undefined, providerFor: () => provider,
     getObject: storage.read, putObject: storage.put, signRead: storage.signRead }
@@ -87,6 +88,7 @@ try {
   assert.ok(init.uploadUrl && init.uploadId)
   objects.set(init.uploadUrl, { bytes: Buffer.from(MOCK_PNG_1X1), contentType: 'image/png' })
   const completed = await completeSuiteUpload(user, project.id, { assetId: config.baseAssetId, uploadId: init.uploadId }, storage)
+  assert.equal(objects.has(init.uploadUrl), false, '转存成功后临时上传对象应被删除')
   assert.equal((await completeSuiteUpload(user, project.id, { assetId: config.baseAssetId, uploadId: init.uploadId }, storage)).asset.checksum, completed.asset.checksum)
   assert.equal(isSafeObjectKey(user.id, completed.asset.objectKey), true)
   assert.equal(isSafeObjectKey(other.id, completed.asset.objectKey), false)
