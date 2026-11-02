@@ -42,6 +42,7 @@ function EmailAssistantSession() {
   }, [params, setParams])
 
   return <div className="email-assistant-page">
+    <h1 className="sr-only">邮件助手</h1>
     <ToolSwitcher className="page-tab-row" options={MODES} value={mode} onChange={value => {
       const next = new URLSearchParams(params)
       next.set('mode', value); next.delete('operation'); setParams(next)

@@ -484,6 +484,7 @@ function MainLayoutContent() {
 
   return (
     <TaskNavigationProvider><TaskCenterProvider onCredits={() => setCreditsOpen(true)}>
+      <a className="skip-link" href="#app-main-content">跳到主要内容</a>
       <Layout className="app-shell" style={{ height: '100vh' }}>
         <AppSidebar
           key={sidebarOwner}
@@ -541,7 +542,7 @@ function MainLayoutContent() {
               {isCanvasRoute(location.pathname) ? <CanvasProjectMenu /> : null}
             </div>
           </Header>
-          <Content className="app-main-content">
+          <Content className="app-main-content" id="app-main-content" tabIndex={-1}>
             {currentUserId ? <CreditRulesNotice key={currentUserId} owner={currentUserId} /> : null}
             <PreferencesSyncAlert />
             <ErrorBoundary key={`${currentUserId}:${account?.runtimeScope}:${location.pathname}`}>
