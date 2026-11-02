@@ -1429,8 +1429,10 @@ export async function submitImageTask(user: User, body: unknown, runtime = defau
   const created = await withIdentity(user.id,user.email,async sql => {
     await sql`select set_config('statement_timeout','8000',true),set_config('lock_timeout','5000',true)`
     await requireActive(sql,user.id)
-    await validateSuiteBridgeTask(sql, parsed.origin, parsed.capability === 'text_to_image' ? undefined : parsed.params.sourceImageKey, parsed.requestId, 'image_job')
+    // 与套图派发保持同一锁顺序：先取全局计费锁，再锁套图项目行。
+    // 桥接校验会对项目行加锁，若放在全局锁之前会与派发事务形成反向加锁死锁。
     await sql`select pg_advisory_xact_lock(91517002)`
+    await validateSuiteBridgeTask(sql, parsed.origin, parsed.capability === 'text_to_image' ? undefined : parsed.params.sourceImageKey, parsed.requestId, 'image_job')
     const billingRuntime = { ...bounded,billing: runtime.billing === noopBilling ? createSqlBilling(sql) : runtime.billing }
     return createImageJobInStore(createSqlStore(sql,user.id),user,parsed,billingRuntime)
   })

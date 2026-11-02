@@ -173,6 +173,25 @@ describe('套图主预览', () => {
     view.unmount()
   })
 
+  it('原图缓存超过上限后淘汰最久未用的资产，切回时会重新读取', async () => {
+    const props = harness()
+    const view = render(<SuiteCanvas {...props} />)
+    await shown(view.container)
+    const identities = Array.from({ length: 8 }, (_, index) => ({
+      ...asset, assetId: `00000000-0000-4000-8000-${String(index + 100).padStart(12, '0')}`,
+    }))
+    for (const next of identities) {
+      view.rerender(<SuiteCanvas {...props} asset={next} composition={{ ...composition, layersSnapshot: [] }} />)
+      await shown(view.container)
+    }
+    // 初始资产在 9 个不同资产之后被淘汰，切回时必须重新读取原图。
+    const before = backupAssetBlob.mock.calls.length
+    view.rerender(<SuiteCanvas {...props} asset={asset} composition={{ ...composition, layersSnapshot: [] }} />)
+    await waitFor(() => expect(backupAssetBlob.mock.calls.length).toBe(before + 1))
+    await shown(view.container)
+    view.unmount()
+  })
+
   it('同一张图修改文字图层时会重绘，重绘完成前仍显示这张图', async () => {
     const props = harness()
     const view = render(<SuiteCanvas {...props} />)

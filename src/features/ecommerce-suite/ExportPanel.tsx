@@ -89,7 +89,8 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
       }, combined, (done, total) => setProgress(Math.round(done / total * 100)), retry ? files : [])
       combined.throwIfAborted(); client.assertCurrent()
       if (expectedKey !== currentKey.current) throw new Error('编码期间项目或图层已变化，请重新预检')
-      setReport(frozen); setFiles(encoded); setAcknowledged(true); setPartial(true)
+      // 警告、未知项与部分导出都必须由用户显式确认；预检完成不能自动放行下载。
+      setReport(frozen); setFiles(encoded)
     } catch (error) { if (!signal.aborted) setError(run.signal.aborted ? '已取消，可以重新预检' : error instanceof Error ? error.message : '合规预检失败') }
     finally { if (!signal.aborted && controller.current === run) setBusy(false) }
   }

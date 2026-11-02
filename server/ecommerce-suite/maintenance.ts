@@ -13,6 +13,7 @@ import { planSuiteSlot, type SuitePlannedSlot } from './generation.js'
 import { refreshSuiteBatch, stopUnsubmittedOperations, writeSuiteOperation } from './batches.js'
 import { registerSuiteOperationResults } from './results.js'
 import { suiteStorage, type SuiteStorage } from './assets.js'
+import { suiteTaskOriginMatches } from './task-origin.js'
 import { ecommerceSuiteDispatchReady } from './config.js'
 
 export interface SuiteClaim { id: string; user_id: string; project_id: string; batch_id: string; lease_token: string }
@@ -24,6 +25,8 @@ export const SUITE_MAINTENANCE_MAX_OPERATIONS = 7
 export async function dispatchSuiteClaim(claim: SuiteClaim, runtime = defaultImageJobRuntime()) {
   const user = suiteClaimUser(claim)
   return suiteTransaction(user, async sql => {
+    // 与普通任务创建保持同一锁顺序：先取全局计费锁，再锁项目行，避免互相等待形成死锁。
+    await sql`select pg_advisory_xact_lock(91517002)`
     const projectRow = await requireSuite(sql, claim.project_id, true, true)
     const [batchRow] = await sql`select * from aigc.suite_batches where id=${claim.batch_id} and project_id=${claim.project_id} for update`
     const [row] = await sql`select *,lease_until>clock_timestamp() as lease_valid from aigc.suite_operations where id=${claim.id} and batch_id=${claim.batch_id} for update`
@@ -33,7 +36,13 @@ export async function dispatchSuiteClaim(claim: SuiteClaim, runtime = defaultIma
     if (operation.phase === 'stopped' || operation.terminalState) return { fenced: true, image: null }
     // 先查绑定和稳定原请求，保留过期原任务的创建事实，不以“未找到可读任务”重建。
     if (!operation.task && (row.source_job_id || operation.mode === 'image_edit')) {
-      const [original] = await sql`select id from aigc.image_jobs where user_id=${user.id} and scope=${actor(user).runtimeScope} and request_id=${operation.requestId}`
+      // 只认套图自己创建、上下文完全一致的任务；仅按 requestId 查找会被普通任务抢占。
+      const [original] = await sql`select id from aigc.image_jobs
+        where user_id=${user.id} and scope=${actor(user).runtimeScope} and request_id=${operation.requestId}
+          and capability='image_edit'
+          and origin->>'entry'='ecommerce' and origin->>'tool'='ecommerce-suite'
+          and origin->>'projectId'=${batch.projectId} and origin->>'slotId'=${operation.slotId}
+          and origin->>'batchId'=${batch.id} and origin->>'operationId'=${operation.id}`
       const sourceId = row.source_job_id ?? original?.id
       if (sourceId) {
         operation = { ...operation, phase: 'bound', task: { sourceKind: 'image_job', sourceId: String(sourceId), requestId: operation.requestId } }
@@ -63,10 +72,12 @@ export async function dispatchSuiteClaim(claim: SuiteClaim, runtime = defaultIma
     const rows = await sql`select plan from aigc.suite_operations where batch_id=${batch.id} and source_job_id is not null`
     const committed = rows.reduce((sum, op) => sum + (op.plan as unknown as SuitePlannedSlot).item.credits, 0)
     if (committed + item.credits > batch.maxCredits) throw new HttpError(409, '本批次预算不足，请重新确认未执行项', 'SUITE_BUDGET_EXCEEDED')
-    await sql`select pg_advisory_xact_lock(91517002)`
     const parsed = createImageTaskSchema.parse({ requestId: operation.requestId, capability: 'image_edit', modelProfileId: item.modelProfileId,
       origin: { entry: 'ecommerce', tool: 'ecommerce-suite', projectId: batch.projectId, slotId: item.slotId, batchId: batch.id, operationId: operation.id }, params: current.execution.params })
     const original = await createImageJobInStore(createSqlStore(sql, user.id), user, parsed, { ...runtime, billing: createSqlBilling(sql) })
+    // 同一 requestId 可能被普通任务先占用；只有来源与上下文完全一致才允许绑定并登记结果。
+    if (!suiteTaskOriginMatches(original.bundle.job, { requestId: operation.requestId, projectId: batch.projectId, slotId: item.slotId, batchId: batch.id, operationId: operation.id }))
+      throw new HttpError(409, '原任务来源与套图请求不一致，请重新确认未执行项', 'SUITE_QUOTE_CHANGED')
     if (original.bundle.job.credits_reserved !== item.credits || original.bundle.job.provider !== current.execution.provider
       || fingerprint(original.bundle.job.provider_params) !== fingerprint(current.execution.mapped))
       throw new HttpError(409, '实际任务费用或渠道与报价不一致', 'SUITE_QUOTE_CHANGED')

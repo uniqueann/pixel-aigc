@@ -19,6 +19,7 @@ import BatchPlanPanel, { type SuiteRetrySelection } from './BatchPlanPanel'
 import BatchPanel from './BatchPanel'
 import { backupAssetBlob, exportSuiteRecovery } from './recoveryPackage'
 import { useSuiteSlotEditor, suiteDraftComposition } from './useSuiteSlotEditor'
+import { uploadSuiteAsset } from './uploadAsset'
 import SuiteCanvas from './SuiteCanvas'
 import LayerPanel from './LayerPanel'
 import { encodeSuiteImage } from './render'
@@ -29,7 +30,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
   const requestedBatch = params.get('batch')
   const focusedBatchId = requestedBatch && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedBatch) ? requestedBatch : undefined
   const workspace = useSuiteWorkspace(id, actor, client, signal, focusedBatchId)
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const navigate = useNavigate()
   const [productOpen, setProductOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
@@ -77,8 +78,9 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
   }
   const upload = async (blob: Blob, base: boolean) => {
     await workspace.flush()
-    const id = base && !data.assets.some(asset => asset.assetId === config.baseAssetId) ? config.baseAssetId : crypto.randomUUID()
-    const uploaded = await client.upload(data.project.id, id, blob, base ? '商品主体图' : '槽位参考图')
+    const reserved = base && !data.assets.some(asset => asset.assetId === config.baseAssetId)
+    const uploaded = await uploadSuiteAsset(client, data.project.id, reserved ? config.baseAssetId : crypto.randomUUID(),
+      blob, base ? '商品主体图' : '槽位参考图', reserved)
     await saveSuiteBlob(actor, data.project.id, uploaded.assetId, blob).catch(() => undefined)
     const current = workspace.store.getState().config!
     workspace.edit(base ? { ...current, baseAssetId: uploaded.assetId } : { ...current, slots: current.slots.map(item => item.id === slot.id ? { ...item, referenceAssetIds: [uploaded.assetId] } : item) })
@@ -147,10 +149,21 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       {(workspace.error || actionError) && <Alert showIcon type="warning" message={actionError || workspace.error} />}
       {workspace.offline && <Alert type="warning" showIcon message="正在使用本地备份，可继续编辑；联网并保存成功后才能生成。" action={<Button onClick={() => { void workspace.run(workspace.reloadCloud).catch(reportError) }}>重新连接云端</Button>} />}
       {workspace.conflict && <Alert type="warning" showIcon message="云端配置已更新，本机副本已保留。" action={<div className="suite-actions">
-        <Button onClick={() => { void workspace.run(workspace.reloadCloud).catch(reportError) }}>读取云端</Button>
+        <Button onClick={() => { void workspace.run(() => workspace.reloadCloud(true)).catch(reportError) }}>读取云端</Button>
         <Button onClick={() => { void workspace.run(async () => { const copy = await copySuite(client, data, config); navigate(`/ecommerce/${copy.id}`) }).catch(reportError) }}>另存为新项目</Button>
       </div>} />}
-      {workspace.pending && <Alert type="warning" showIcon message="提交结果待确认，保留原编号，不重复生成。" description={`原请求：${workspace.pending.requestId}`} action={<Button loading={workspace.busy} onClick={() => { void workspace.run(workspace.recoverPending).catch(reportError) }}>查询原批次</Button>} />}
+      {workspace.pending && <Alert type="warning" showIcon message="提交结果待确认，保留原编号，不重复生成。" description={`原请求：${workspace.pending.requestId}`} action={<div className="suite-actions">
+        <Button loading={workspace.busy} onClick={() => { void workspace.run(workspace.recoverPending).catch(reportError) }}>查询原批次</Button>
+        <Button danger disabled={workspace.busy} onClick={() => modal.confirm({
+          title: '放弃原请求编号？',
+          content: '仅在确认任务中心没有新任务、积分未被扣费后放弃。放弃后需要重新确认费用再提交；若原请求其实已被服务器接收，可能重复生成并扣费。',
+          okText: '确认放弃', okButtonProps: { danger: true }, cancelText: '保留原编号',
+          onOk: () => workspace.run(workspace.abandonPending).then(result => {
+            if (result === 'abandoned') message.warning('已放弃原编号，请重新确认费用后提交')
+            else if (result === 'recovered') message.success('原批次已找回，已清除待确认编号')
+          }).catch(reportError),
+        })}>放弃原编号</Button>
+      </div>} />}
       <div className="suite-body">
         <div ref={previewRef} className={`suite-preview${sticky ? ' suite-preview-sticky' : ''}`}>
           <div className="suite-preview-heading"><strong>{slot.name}</strong><div className="suite-actions">
@@ -210,9 +223,9 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       </section>
     </div>
     <div ref={footerRef} className="suite-footer"><span>{data.project.slotHeads.filter(head => head.activeVersionId && config.slots.some(slot => slot.id === head.slotId && slot.enabled)).length} / {config.slots.filter(slot => slot.enabled).length} 个槽位已完成出图</span>
-      <span className="suite-footer-status">{active ? '⚡ 后台正在批量出图中，可自由切换槽位查看' : workspace.busy ? '正在同步数据...' : '✓ 修改已实时自动暂存'}</span>
+      <span className="suite-footer-status">{active ? '⚡ 后台正在批量出图中，可自由切换槽位查看' : workspace.busy ? '正在同步数据...' : workspace.offline ? '离线：修改仅保存在本机' : '✓ 修改已实时自动暂存'}</span>
       <div className="suite-actions">
-        <Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).then(() => message.success('修改已成功同步至云端')).catch(reportError) }}>立即同步</Button>
+        <Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).then(() => message.success(workspace.offline ? '已保存到本机，联网后请再次同步' : '修改已成功同步至云端')).catch(reportError) }}>立即同步</Button>
         <Button type="primary" disabled={blocked} onClick={() => setExportSelection({})}>合规预检与批量导出</Button>
       </div></div>
     {exportSelection && <ExportPanel actor={actor} data={data} client={client} signal={signal} initialSlotId={exportSelection.slotId}
@@ -229,7 +242,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       <p className="suite-muted">{bridgeMode === 'base' ? '独立文字标注保留在套图中，从工作站回填新版本后仍可自由编辑。' : '文字与标注将合并进图片中作为整体进行精修。'}</p>
       <p className="suite-muted">工作站中编辑完成后，可一键回填生成新版本，回填不额外扣费。</p>
     </Modal>
-    <Modal title="商品信息与规格" open={productOpen} onCancel={() => setProductOpen(false)} width={740} footer={<Button type="primary" loading={workspace.busy} onClick={() => { void workspace.run(async () => { await workspace.flush(); setProductOpen(false) }).catch(reportError) }}>保存资料</Button>}>
+    <Modal title="商品信息与规格" open={productOpen} onCancel={() => setProductOpen(false)} width={740} footer={<Button type="primary" loading={workspace.busy} onClick={() => { void workspace.run(async () => { await workspace.flush(); setProductOpen(false) }).then(() => { if (workspace.offline) message.warning('资料已保存到本机，联网后需点击“立即同步”') }).catch(reportError) }}>保存资料</Button>}>
       <ProductFields value={config} onChange={workspace.edit} disabled={workspace.busy} />
       <label className="suite-file-button">{data.assets.some(asset => asset.assetId === config.baseAssetId) ? '更换商品主体图' : '完成商品主体图上传'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, true)).catch(reportError) }} /></label>
     </Modal>

@@ -58,6 +58,10 @@ export const clearPendingSuite = (actor: SuiteActor, id: string) => write('pendi
 export interface SuiteCreationDraft { requestId: string; config: SuiteProjectDetail['project']['config']; image: Blob }
 export const readSuiteCreation = (actor: SuiteActor) => read<SuiteCreationDraft>('creation', key(actor, 'creation'))
 export const saveSuiteCreation = (actor: SuiteActor, value: SuiteCreationDraft | undefined) => write('creation', key(actor, 'creation'), value)
+/** 恢复包在项目删除后重新导入时使用的稳定随机种子，保证重试不会重复创建。 */
+export interface SuiteRecoveryAttempt { nonce: string }
+export const readSuiteRecoveryAttempt = (actor: SuiteActor, digest: string) => read<SuiteRecoveryAttempt>('projects', key(actor, `recovery-attempt:${digest}`))
+export const saveSuiteRecoveryAttempt = (actor: SuiteActor, digest: string, nonce: string) => write('projects', key(actor, `recovery-attempt:${digest}`), { nonce })
 export interface LocalSuiteDraft { value: import('@shared/ecommerce-suite').SuiteSlotDraft; dirty: boolean }
 export const readLocalSuiteDraft = (actor: SuiteActor, projectId: string, slotId: string) => read<LocalSuiteDraft>('projects', key(actor, `slot-draft:${projectId}:${slotId}`))
 const localDraftWrites = new Map<string, Promise<void>>()

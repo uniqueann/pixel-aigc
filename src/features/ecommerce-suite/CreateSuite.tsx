@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Modal, Steps } from 'antd'
+import { Alert, App, Button, Modal, Steps } from 'antd'
+import { CloudError } from '@/cloud/client'
 import type { SuiteActor } from '@shared/ecommerce-suite'
 import { suiteProjectConfigSchema } from '@shared/ecommerce-suite'
 import { normalizeImageBlob } from '@shared/image-format'
@@ -7,10 +8,12 @@ import CanvasAssetPicker from '@/features/free-canvas/images/CanvasAssetPicker'
 import { readOwnedImage } from '@/services/api/ownedImages'
 import type { SuiteClient } from './api'
 import { newSuiteConfig } from './config'
+import { createSuiteProject } from './createProject'
 import { readSuiteCreation, saveSuiteCreation } from './backup'
 import ProductFields from './ProductFields'
 
 export default function CreateSuite({ actor, client, onClose, onCreated }: { actor: SuiteActor; client: SuiteClient; onClose: () => void; onCreated: (id: string) => void }) {
+  const { message } = App.useApp()
   const [config, setConfig] = useState(newSuiteConfig)
   const [image, setImage] = useState<Blob>()
   const [step, setStep] = useState(0)
@@ -43,14 +46,25 @@ export default function CreateSuite({ actor, client, onClose, onCreated }: { act
     try {
       if (!image) throw new Error('请先上传商品主体照片')
       const validated = suiteProjectConfigSchema.parse(config)
-      await saveSuiteCreation(actor, { requestId: requestId.current, config: validated, image })
-      let project
-      try { project = await client.create(requestId.current, validated) }
-      catch (error) { project = await client.findCreate(requestId.current); if (!project) throw error }
-      await client.upload(project.id, validated.baseAssetId, image, '商品主体图')
+      // 本机草稿只用于中断后找回；写入失败不能阻断云端创建。
+      await saveSuiteCreation(actor, { requestId: requestId.current, config: validated, image }).catch(() => undefined)
+      const created = await createSuiteProject(client, requestId.current, validated, async next => {
+        requestId.current = next
+        await saveSuiteCreation(actor, { requestId: next, config: validated, image }).catch(() => undefined)
+      })
+      requestId.current = created.requestId
+      if (created.recovered) message.info('上次创建请求已完成，已打开原项目；本次资料修改可在工作台继续')
+      // 底图编号在创建时预留，服务器不允许同一编号覆盖成另一张图。若项目已存有上次的底图
+      // （响应丢失后换图重试），保留原图并继续进入工作台，不能把已成功的创建当成失败。
+      const stored = await client.upload(created.project.id, created.project.config.baseAssetId, image, '商品主体图')
+        .then(() => true, error => {
+          if (error instanceof CloudError && error.code === 'SUITE_REQUEST_CONFLICT') return false
+          throw error
+        })
+      if (!stored) message.warning('原项目已保留上次的商品主体图，本次选择的图片未上传；进入工作台后可替换主体图')
       client.assertCurrent()
-      await saveSuiteCreation(actor, undefined)
-      if (alive.current) onCreated(project.id)
+      await saveSuiteCreation(actor, undefined).catch(() => undefined)
+      if (alive.current) onCreated(created.project.id)
     } catch (error) { if (alive.current) setError(error instanceof Error ? error.message : '保存失败，资料已保留') }
     finally { if (alive.current) setBusy(false) }
   }
@@ -67,7 +81,7 @@ export default function CreateSuite({ actor, client, onClose, onCreated }: { act
       <label className="suite-file-button">选择本地图片<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void choose(file); event.target.value = '' }} /></label>
       <Button disabled={busy} onClick={() => setPicker(true)}>从我的资产选择</Button>
       <p className="suite-muted">支持 JPG、PNG、WebP 格式，最大 20 MB。创建项目暂不消耗积分。</p>
-    </div> : <ProductFields value={config} onChange={next => { requestId.current = crypto.randomUUID(); setConfig(next) }} creating disabled={busy} />}
+    </div> : <ProductFields value={config} onChange={setConfig} creating disabled={busy} />}
     {picker && <CanvasAssetPicker ownerId={actor.userId} targetLabel="套图" busy={busy} onClose={() => setPicker(false)} onSelect={async record => {
       try {
         if (record.runtimeScope !== actor.runtimeScope) throw new Error('该图片来源环境与当前项目不一致，请下载后作为本地图片上传')

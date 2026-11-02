@@ -32,10 +32,13 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
   const accept = useCallback((data: SuiteProjectDetail, replace = false) => {
     client.assertCurrent()
     if (data.project.actor.userId !== actor.userId || data.project.actor.runtimeScope !== actor.runtimeScope) throw new Error('项目归属与当前账号环境不一致')
+    // 修订号单调递增：保存刚返回的新修订不能被仍在途的旧读取回退，否则下一次保存会用旧修订制造假冲突。
+    if (latest.current?.project.id === data.project.id && data.project.revision < latest.current.project.revision) return false
     latest.current = data
     setDetail(data)
     if (!store.getState().config || replace) store.getState().setConfig(data.project.config, false)
     if (!store.getState().selectedSlotId) store.getState().selectSlot(data.project.config.slots[0].id)
+    return true
   }, [actor, client, store])
   const load = useCallback(async (replace = false) => {
     const sequence = ++loading.current
@@ -47,8 +50,9 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
       data.tasks.push(...focused.tasks.filter(task => !known.has(task.taskKey)))
     }
     if (sequence !== loading.current) return
-    accept(data, replace)
     setOffline(false)
+    // 被丢弃的过期快照不能作为调用方后续操作的依据，也不能回写本机备份；返回当前最新详情。
+    if (!accept(data, replace)) return latest.current
     void saveSuiteBackup(actor, data).then(() => readSuiteBackup(actor, id)).then(backup => {
       if (!signal.aborted) setBackupState(backup?.complete ? '本地完整备份已就绪' : '元数据已备份，部分图片尚未落盘')
     }).catch(() => { if (!signal.aborted) setBackupState('本地存储不可用，可下载恢复包') })
@@ -79,25 +83,32 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     if (!state.dirty || !state.config || !latest.current) return
     void saveSuiteBackup(actor, latest.current, false, state.config).catch(() => { if (!signal.aborted) setBackupState('本地存储不可用，请先保存云端或下载恢复包') })
   }), [actor, signal, store])
-  const flush = useCallback(async (): Promise<void> => {
+  const flush = useCallback(async (online = !offline): Promise<void> => {
     if (saving.current) await saving.current
     const state = store.getState(), data = latest.current
     if (!state.dirty || !state.config || !data) return
     const config = state.config, editRevision = state.editRevision
     if (conflict) throw new Error('云端存在修订冲突，请先处理本机副本')
     const action = (async () => {
-      await saveSuiteBackup(actor, data, false, config)
+      // 本机备份只是降级能力：IndexedDB 配额不足或不可用时，不能阻断云端保存。
+      let localSaved = true
+      try { await saveSuiteBackup(actor, data, false, config) }
+      catch { localSaved = false; if (!signal.aborted) setBackupState('本地存储不可用，请保持页面或下载恢复包') }
       client.assertCurrent()
-      if (offline) { setSaveState('已保存本机，联网后需要同步'); return }
+      if (!online) {
+        setSaveState(localSaved ? '已保存本机，联网后需要同步' : '本机存储不可用，联网前请勿关闭页面')
+        return
+      }
       setSaveState('正在保存…')
       try {
         const project = await client.update(id, data.project.revision, config)
         const next = { ...latest.current!, project }
         latest.current = next; setDetail(next)
         store.getState().markSaved(editRevision)
-        // 成功保存后清除待同步标记，仍保留新编辑产生的本机副本。
+        // 成功保存后清除待同步标记，仍保留新编辑产生的本机副本；本机写失败不能反过来报云端失败。
         const current = store.getState()
-        await saveSuiteBackup(actor, next, false, current.dirty ? current.config! : null)
+        try { await saveSuiteBackup(actor, next, false, current.dirty ? current.config! : null) }
+        catch { if (!signal.aborted) setBackupState('本地存储不可用，请保持页面或下载恢复包') }
         if (!signal.aborted) setSaveState(current.dirty ? '还有编辑待保存' : '已保存到云端')
       } catch (error) {
         if (!signal.aborted) {
@@ -129,6 +140,17 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     setPending(undefined)
     await load()
   }, [actor, client, id, load, pending])
+  /** 用户确认原请求未受理后放弃本机编号；放弃前再做一次权威查询，批次已存在时转为找回。 */
+  const abandonPending = useCallback(async (): Promise<'none' | 'recovered' | 'abandoned'> => {
+    const receipt = pending ?? await readPendingSuite(actor, id)
+    if (!receipt) { setPending(undefined); return 'none' }
+    const batch = await client.findBatch(id, receipt.requestId)
+    await clearPendingSuite(actor, id)
+    setPending(undefined)
+    if (batch) { await load(); return 'recovered' }
+    if (!signal.aborted) setSaveState('已放弃原编号，可重新提交')
+    return 'abandoned'
+  }, [actor, client, id, load, pending, signal])
   const settleOriginals = useCallback(async () => {
     const data = latest.current
     if (!data) return
@@ -204,12 +226,23 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     setBackupState('本地完整备份已就绪')
     return all
   }
-  const reloadCloud = async () => {
-    await load(true); setConflict(false); setError(''); setSaveState('已读取云端')
+  const reloadCloud = async (discardLocal = false) => {
+    const dirty = store.getState().dirty
+    // 离线重连时保留本机未同步编辑并随后上传；冲突页的“读取云端”才明确丢弃本机副本。
+    const keepLocal = dirty && !discardLocal && !conflict
+    await load(!keepLocal)
+    setConflict(false); setError('')
+    if (keepLocal) {
+      await flush(true)
+      setSaveState('已重新连接并同步本机编辑')
+    } else {
+      setSaveState('已读取云端')
+    }
     const data = latest.current!
-    await saveSuiteBackup(actor, data, false, null)
+    try { await saveSuiteBackup(actor, data, false, null) }
+    catch { if (!signal.aborted) setBackupState('本地存储不可用，请保持页面或下载恢复包') }
   }
   const edit = (config: SuiteProjectConfig) => store.getState().setConfig(config)
   return { detail, editor, store, error, busy, offline, conflict, pending, saveState, backupState, client, run, load, flush, edit,
-    submit, recoverPending, settleOriginals, completeBackup, reloadCloud }
+    submit, recoverPending, abandonPending, settleOriginals, completeBackup, reloadCloud }
 }
