@@ -96,6 +96,37 @@ body {
   line-height: 1.6;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: 1200;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #061f18;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  top: 12px;
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+}
+
 a {
   color: var(--color-accent);
   text-decoration: none;
@@ -2486,20 +2517,198 @@ body.sidebar-resizing * {
   min-width: 0;
 }
 
-.email-batch-import-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px;
-}
-
-.email-batch-import-grid > .ant-card,
 .email-batch-panel > .ant-card {
   min-width: 0;
 }
 
+.email-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.email-batch-summary {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+/* 粘性摘要停在内容区 padding 下沿；用页面底色盖住上方 20px，避免表格行从缝里露出。 */
+.email-batch-summary::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  left: 0;
+  top: -20px;
+  height: 20px;
+  background: var(--color-bg);
+  pointer-events: none;
+}
+
+.email-batch-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.email-batch-summary-copy {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.email-batch-summary-copy strong {
+  overflow: hidden;
+  max-width: 46ch;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-batch-summary-copy p,
+.email-batch-summary-copy span {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.email-batch-summary-actions {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+/* 小屏把摘要还原成普通卡片，避免粘性条占掉过多可视高度。 */
+@media (max-width: 720px) {
+  .email-batch-summary {
+    position: static;
+  }
+
+  .email-batch-summary::before {
+    display: none;
+  }
+}
+
+.email-batch-summary .ant-progress {
+  margin: 0;
+}
+
+.email-batch-import-card .ant-card-head-wrapper {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.email-batch-import-card .ant-card-extra {
+  margin-inline-start: 0;
+}
+
+.email-batch-import-compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.email-batch-import-compact > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-batch-import-compact > button {
+  margin-left: auto;
+}
+
+.email-batch-template-body {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.email-batch-template-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.email-batch-template-table th,
+.email-batch-template-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.email-batch-template-table th {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.email-batch-template-table td:first-child {
+  width: 28%;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.email-batch-template-table td:last-child {
+  color: var(--color-text-secondary);
+}
+
+.email-batch-inline-link {
+  padding: 0 2px;
+  height: auto;
+  font-size: inherit;
+  vertical-align: baseline;
+}
+
+.email-batch-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.email-batch-filter-hint {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.email-batch-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 96px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
 .email-batch-hint,
-.email-batch-template-notes,
-.email-batch-progress p {
+.email-batch-template-notes {
   color: var(--color-text-secondary);
   font-size: 12px;
   line-height: 1.8;
@@ -2521,14 +2730,6 @@ body.sidebar-resizing * {
 .email-batch-model {
   margin: 12px 0;
   font-size: 13px;
-}
-
-.email-batch-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
 }
 
 .email-batch-table {
@@ -2563,6 +2764,9 @@ body.sidebar-resizing * {
 }
 
 .email-batch-row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 2px;
   max-width: 100%;
 }
 
@@ -2576,7 +2780,8 @@ body.sidebar-resizing * {
 }
 
 .email-batch-row-error {
-  display: block;
+  display: -webkit-box;
+  overflow: hidden;
   width: 100%;
   margin: 0;
   color: var(--color-text-secondary);
@@ -2584,6 +2789,8 @@ body.sidebar-resizing * {
   line-height: 1.5;
   white-space: normal;
   overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 @container (max-width: 720px) {
@@ -2612,13 +2819,13 @@ body.sidebar-resizing * {
   }
 
   .email-batch-table tr.ant-table-row {
-    margin-bottom: 12px;
-    padding-bottom: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--color-border);
   }
 
   .email-batch-table tr.ant-table-row > td.ant-table-cell {
-    padding: 4px 0 !important;
+    padding: 3px 0 !important;
     border: 0 !important;
     background: transparent !important;
     text-align: left !important;
@@ -2628,20 +2835,45 @@ body.sidebar-resizing * {
     content: attr(data-label);
     display: block;
     margin-bottom: 2px;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     font-size: 12px;
     line-height: 1.4;
   }
 
+  /* 小屏只保留状态、原文和操作；序号由行顺序隐含，其余字段进详情弹窗。 */
+  .email-batch-table td[data-label="序号"],
+  .email-batch-table td[data-label="编写指导"],
+  .email-batch-table td[data-label="生成设置"],
+  .email-batch-table td[data-label="语言"],
+  .email-batch-table td[data-label="生成结果"] {
+    display: none !important;
+  }
+
+  .email-batch-table td[data-label="原始邮件内容"] .email-batch-cell {
+    -webkit-line-clamp: 1;
+  }
+
   .email-batch-cell {
-    display: block;
-    overflow: visible;
-    -webkit-line-clamp: unset;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
   }
 
   .email-batch-table .ant-table-pagination {
     flex-wrap: wrap;
     row-gap: 8px;
+  }
+
+  .email-batch-summary {
+    padding: 12px;
+  }
+
+  .email-batch-summary-actions {
+    justify-content: flex-start;
+  }
+
+  .email-batch-import-compact {
+    align-items: flex-start;
   }
 }
 
@@ -2651,14 +2883,61 @@ body.sidebar-resizing * {
   width: 100%;
 }
 
+.email-batch-detail-field > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.email-batch-detail-field small {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
 .email-batch-detail label .ant-input {
   margin-top: 6px;
 }
 
-@media (max-width: 900px) {
-  .email-batch-import-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.email-batch-detail-readonly {
+  background: var(--color-surface-2) !important;
+  border-color: transparent !important;
+}
+
+.email-batch-detail-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 占位符与焦点环：AntD 默认透明度在暗色下不足 3:1。 */
+.email-assistant-page .ant-input::placeholder,
+.email-assistant-page .ant-input-affix-wrapper input::placeholder {
+  color: var(--color-text-secondary) !important;
+  opacity: 1;
+}
+
+.email-assistant-page .ant-select-selection-placeholder {
+  color: var(--color-text-secondary) !important;
+  opacity: 1;
+}
+
+.email-assistant-page .ant-upload-wrapper .ant-upload-drag p.ant-upload-hint {
+  color: var(--color-text-secondary) !important;
+}
+
+.email-assistant-page .email-batch-template-notes .ant-btn-link {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.email-assistant-page .ant-btn:focus-visible,
+.email-assistant-page .ant-radio-button-wrapper:focus-visible,
+.email-assistant-page .ant-segmented:has(:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .free-canvas-generation-placeholder {

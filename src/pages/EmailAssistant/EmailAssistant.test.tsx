@@ -214,7 +214,7 @@ describe('邮件助手单个与批量页面', () => {
     expect(useTaskStore.getState().tasks['旧账号任务']).toBeUndefined()
   })
 
-  it('可下载模板和结果 CSV，延迟释放各自地址，清空后导出不可用', async () => {
+  it('可下载模板和结果 CSV，并延迟释放各自地址', async () => {
     render(<EmailAssistant />, { wrapper })
     clickMode('批量')
     await importCsv(['未生成的邮件,,,', ',错误行,,'])
@@ -223,17 +223,29 @@ describe('邮件助手单个与批量页面', () => {
     const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL')
     fireEvent.click(buttonByText(batchPane(), /下载模板/))
     expect(mocks.download).toHaveBeenCalledWith('邮件助手-批量模板.csv')
-    expect(batchPane().getByAltText('CSV 模板列名：原始邮件内容、编写指导、生成设置、语言')).toBeTruthy()
+    expect(batchPane().getByText('填写规则')).toBeTruthy()
     fireEvent.click(buttonByText(batchPane(), /导出 CSV/))
     expect(mocks.download).toHaveBeenCalledWith('客户邮件-生成结果.csv')
-    fireEvent.click(buttonByText(batchPane(), /清空批次/))
-    expect(buttonByText(batchPane(), /导出 CSV/).disabled).toBe(true)
+    expect(buttonByText(batchPane(), /导出 CSV/).disabled).toBe(false)
     act(() => vi.advanceTimersByTime(999))
     expect(revokeObjectURL).not.toHaveBeenCalled()
     act(() => vi.advanceTimersByTime(1))
     expect(revokeObjectURL).toHaveBeenCalledTimes(2)
     expect(revokeObjectURL).toHaveBeenNthCalledWith(1, 'blob:邮件模板')
     expect(revokeObjectURL).toHaveBeenNthCalledWith(2, 'blob:邮件结果')
+  })
+
+  it('清空批次需要确认，清空后可撤销', async () => {
+    render(<EmailAssistant />, { wrapper })
+    clickMode('批量')
+    await importCsv(['邮件一,,,', '邮件二,,,'])
+    fireEvent.click(buttonByText(batchPane(), /清空批次/))
+    await waitFor(() => expect(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')).toBeTruthy())
+    fireEvent.click(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')!)
+    await waitFor(() => expect(batchPane().queryByText('邮件一')).toBeNull())
+    expect(batchPane().getByText(/导入 CSV 后/)).toBeTruthy()
+    fireEvent.click(screen.getByText('撤销'))
+    await waitFor(() => expect(batchPane().getByText('邮件一')).toBeTruthy())
   })
 
   it('确认框关闭后批次在后台跑，暂停期间不提交、继续后接着跑', async () => {

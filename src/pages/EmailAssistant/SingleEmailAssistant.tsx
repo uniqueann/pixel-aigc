@@ -157,6 +157,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
   }
 
   const handleNewTask = async () => {
+    if (!await confirmRecovery('新建任务将清空当前邮件内容和生成结果，是否继续？')) return
     await controller.newTask()
     const defaults = usePreferencesStore.getState().preferences.email
     setSourceText(''); setInstruction('')
@@ -185,8 +186,9 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
         action={<Button loading={controller.submitting} onClick={() => void controller.recoverSubmission().catch(error => message.error(error instanceof Error ? error.message : '查询失败'))}>查询或恢复原请求</Button>} /> : null}
       <Row gutter={[20, 20]}>
         <Col xs={24} xl={12}>
-          <Card title="原始邮件内容" size="small">
+          <Card title={<h2 className="email-card-title">原始邮件内容</h2>} size="small">
             <Input.TextArea
+              aria-label="原始邮件内容"
               rows={12}
               value={sourceText}
               disabled={controller.formLocked}
@@ -194,8 +196,9 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
               placeholder="粘贴需要处理的邮件内容"
             />
           </Card>
-          <Card title="编写指导" size="small" style={{ marginTop: 16 }}>
+          <Card title={<h2 className="email-card-title">编写指导</h2>} size="small" style={{ marginTop: 16 }}>
             <Input.TextArea
+              aria-label="编写指导"
               rows={4}
               value={instruction}
               disabled={controller.formLocked}
@@ -205,7 +208,9 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
           </Card>
         </Col>
         <Col xs={24} xl={12}>
-          <Card title="生成设置" size="small" extra={<Button size="small" disabled={controller.formLocked} onClick={() => void handleNewTask().catch(error => message.error(error instanceof Error ? error.message : '新建任务失败'))}>新建任务</Button>}>
+          <Card title={<h2 className="email-card-title">生成设置</h2>} size="small" extra={<Button size="small"
+            disabled={controller.formLocked || (!sourceText.trim() && !instruction.trim() && !controller.resultText)}
+            onClick={() => void handleNewTask().catch(error => message.error(error instanceof Error ? error.message : '新建任务失败'))}>新建任务</Button>}>
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <div>
                 <div className="field-label">操作类型</div>
@@ -277,7 +282,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
           />
 
           <Card
-            title="生成结果"
+            title={<h2 className="email-card-title">生成结果</h2>}
             size="small"
             className="email-result-card"
             extra={controller.resultText ? (
@@ -296,6 +301,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
             ) : null}
           >
             <Input.TextArea
+              aria-label="生成结果"
               rows={12}
               value={controller.resultText}
               disabled={controller.task?.status !== 'succeeded'}
@@ -306,7 +312,7 @@ export default function SingleEmailAssistant({ controller, configuration, gate, 
             {controller.task ? <span className="email-save-hint">{profiles.find(model => model.id === controller.task?.modelProfileId)?.label ?? '历史模型'} · 实扣 {controller.task.creditsCost} 积分{controller.task.billingState === 'refunded' ? ' · 已返还' : controller.task.billingState === 'reserved' ? ` · 预扣 ${controller.task.creditsReserved}` : ''}</span> : null}
             {controller.task?.tokenUsage ? <span className="email-save-hint">本次使用 {controller.task.tokenUsage.totalTokens} tokens</span> : null}
           </Card>
-          {authEnabled ? <Card title="最近 7 天" size="small" style={{ marginTop: 16 }}>
+          {authEnabled ? <Card title={<h2 className="email-card-title">最近 7 天</h2>} size="small" style={{ marginTop: 16 }}>
             {controller.history.length ? <Space direction="vertical" style={{ width: '100%' }}>
               <Select style={{ width: '100%' }} value={controller.task?.id} placeholder="选择历史任务"
                 options={controller.history.map(item => ({ value: item.id, label: `${new Date(item.createdAt).toLocaleString('zh-CN')} · ${TASK_TYPES.find(type => type.value === item.operation)?.label ?? item.operation} · ${item.preview ?? ''}` }))}
