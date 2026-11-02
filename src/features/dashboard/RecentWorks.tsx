@@ -126,7 +126,7 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
   }, [items.length, loading])
   return <section className="dashboard-section" aria-labelledby="dashboard-works-title">
     <div className="dashboard-section-heading"><h2 id="dashboard-works-title">最近作品</h2><Link to="/assets">查看全部</Link></div>
-    <p className="dashboard-section-note">{hydrating ? '正在同步最近作品…' : '最近的图片和视频作品'}</p>
+    {hydrating ? <p className="dashboard-section-note">正在同步最近作品…</p> : null}
     {error || hydrateError ? <div className="dashboard-inline-error" role="alert">{error ?? hydrateError}<Button size="small" onClick={() => setAttempt(value => value + 1)}>重试读取</Button></div> : null}
     {loading || (hydrating && !items.length) ? <Skeleton active title={false} paragraph={{ rows: 2 }} /> : items.length ? <div className={`dashboard-works-scroller${fades.left ? ' has-left-fade' : ''}${fades.right ? ' has-right-fade' : ''}`}>
       <div className="dashboard-works-strip" ref={stripRef} aria-label="最近作品列表">
