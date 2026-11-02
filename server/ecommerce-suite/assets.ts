@@ -115,9 +115,23 @@ export async function beginSuiteUpload(user: SuiteUser, projectId: string, body:
     await sql`select pg_advisory_xact_lock(hashtextextended(${`suite-upload:${user.id}:${actor(user).runtimeScope}:${request.requestId}`},0))`
     await requireSuite(sql, projectId, true)
     const [old] = await sql`select * from aigc.suite_assets where id=${request.requestId}`
+    const hash = fingerprint(request)
     if (old) {
-      if (old.project_id !== projectId || old.request_fingerprint !== fingerprint(request)) throw new HttpError(409, '上传编号已用于其他图片', 'SUITE_REQUEST_CONFLICT')
-      return old
+      if (old.project_id !== projectId) throw new HttpError(409, '上传编号已用于其他图片', 'SUITE_REQUEST_CONFLICT')
+      if (old.status === 'ready') {
+        if (old.request_fingerprint !== hash) throw new HttpError(409, '上传编号已用于其他图片', 'SUITE_REQUEST_CONFLICT')
+        return old
+      }
+      if (old.request_fingerprint === hash) return old
+      // 未完成的上传只是尝试：同一编号换图重试时重置这一行，避免旧尝试永久占住编号。
+      // 刷新 created_at，让过期清理按新的尝试时间计算。
+      const uploadId = randomUUID()
+      const tempKey = `temporary/suite-uploads/${actor(user).runtimeScope}/${user.id}/${projectId}/${uploadId}`
+      const [reset] = await sql`update aigc.suite_assets set request_fingerprint=${hash},upload_id=${uploadId},temp_key=${tempKey},
+        mime_type=${request.mimeType},bytes=${request.bytes},created_at=now()
+        where project_id=${projectId} and id=${request.requestId} and status='pending' returning *`
+      // 清理任务可能刚删除这一行；此时按全新上传插入。
+      if (reset) return reset
     }
     const uploadId = randomUUID()
     const tempKey = `temporary/suite-uploads/${actor(user).runtimeScope}/${user.id}/${projectId}/${uploadId}`

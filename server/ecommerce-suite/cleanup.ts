@@ -5,10 +5,12 @@ import { withImageMaintenance } from '../image-jobs/maintenance.js'
 
 /** 单独的维护入口、开关和固定预算；只删除持久对象，不派发任务或改写账本。 */
 export async function cleanupSuiteAssets(storage = { delete: deleteObject }, signal?: AbortSignal, runId = randomUUID()) {
-  const report = { runId, scope: runtimeScope(), projectsStarted: 0, objectsDeleted: 0, failures: 0, disabled: false }
+  const report = { runId, scope: runtimeScope(), projectsStarted: 0, uploadsPurged: 0, objectsDeleted: 0, failures: 0, disabled: false }
   if (process.env.ECOMMERCE_SUITE_CLEANUP_ENABLED !== 'true') return { ...report, disabled: true }
   const budget = AbortSignal.any([AbortSignal.timeout(45_000), ...(signal ? [signal] : [])])
   report.projectsStarted = await withImageMaintenance(async sql => Number((await sql`select aigc.start_expired_suite_cleanup(${report.scope}) as count`)[0].count))
+  // 未完成的上传行不会被对象清理覆盖：单独移除超过 24 小时且无引用的尝试，临时对象由桶生命周期回收。
+  report.uploadsPurged = await withImageMaintenance(async sql => Number((await sql`select aigc.cleanup_expired_suite_uploads(${report.scope}) as count`)[0].count))
   for (let index = 0; index < 8 && !budget.aborted; index++) {
     const [claim] = await withImageMaintenance(sql => sql`select * from aigc.claim_suite_object_cleanup(${report.scope})`)
     if (!claim) break
