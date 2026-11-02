@@ -201,7 +201,8 @@ describe('首页工作台', () => {
     expect(screen.queryByText('把多张图合成一个场景。')).toBeNull()
     await waitFor(() => expect(screen.getByText('还没有最近作品')).toBeTruthy())
     expect(screen.queryByText(/此浏览器/)).toBeNull()
-    expect(screen.getByText('最近的图片和视频作品')).toBeTruthy()
+    expect(screen.getByText('生成的图片和视频会出现在这里')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '去画布创作' }).getAttribute('href')).toBe('/canvas/text-to-image')
     mocks.capabilities = { textToVideo: false, textToImage: true, imageEdit: true }
     view.rerender(<MemoryRouter><QueryClientProvider client={client}><App><Dashboard /></App></QueryClientProvider></MemoryRouter>)
     expect(screen.queryByRole('link', { name: '打开文生视频' })).toBeNull()

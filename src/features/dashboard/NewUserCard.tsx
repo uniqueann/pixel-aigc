@@ -10,7 +10,11 @@ export default function NewUserCard({ ownerId }: { ownerId: string }) {
   const welcome = useUserStore(state => state.account?.userId === ownerId ? state.account.welcome : undefined)
   const [dismissed, setDismissed] = useState(() => readLocalWelcome(ownerId).starterCardDismissed === true)
   if (!welcome || welcome.initialCredits == null || welcome.hasCreatedWork || welcome.starterCardDismissed || dismissed)
-    return <div className="dashboard-empty dashboard-works-empty"><PictureOutlined aria-hidden /><span>还没有最近作品</span></div>
+    return <div className="dashboard-works-empty">
+      <PictureOutlined aria-hidden />
+      <div className="dashboard-works-empty-copy"><strong>还没有最近作品</strong><span>生成的图片和视频会出现在这里</span></div>
+      <Link className="dashboard-works-empty-action" to="/canvas/text-to-image">去画布创作</Link>
+    </div>
   return <div className="dashboard-new-user-card" role="region" aria-label="开始创作第一张作品">
     <Button className="dashboard-new-user-close" type="text" size="small" icon={<CloseOutlined />} aria-label="关闭新用户卡片"
       onClick={() => { setDismissed(true); acknowledgeWelcome(ownerId, { starterCardDismissed: true }) }} />
