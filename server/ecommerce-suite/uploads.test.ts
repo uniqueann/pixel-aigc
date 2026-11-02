@@ -5,6 +5,7 @@ import type { SuiteUser } from './repository.js'
 const state = vi.hoisted(() => ({
   asset: null as Record<string, unknown> | null,
   inserts: 0,
+  dropReset: false,
   calls: [] as string[],
   beginWrite: vi.fn(async () => undefined),
 }))
@@ -24,6 +25,13 @@ vi.mock('./repository.js', () => ({
           object_key: values[7], mime_type: values[8], bytes: values[9], status: 'pending',
           width: null, height: null, checksum: null, thumbnail_object_key: null,
         }
+        return [state.asset]
+      }
+      if (text.includes('set request_fingerprint=')) {
+        state.calls.push('reset')
+        if (state.dropReset) { state.asset = null; return [] }
+        if (!state.asset || state.asset.status !== 'pending') return []
+        state.asset = { ...state.asset, request_fingerprint: values[0], upload_id: values[1], temp_key: values[2], mime_type: values[3], bytes: values[4] }
         return [state.asset]
       }
       if (text.startsWith('update aigc.suite_assets')) {
@@ -90,6 +98,7 @@ describe('套图上传许可并发幂等', () => {
   beforeEach(() => {
     state.asset = null
     state.inserts = 0
+    state.dropReset = false
     state.calls = []
     state.beginWrite.mockClear()
   })
@@ -106,9 +115,30 @@ describe('套图上传许可并发幂等', () => {
     expect(store.signUpload).toHaveBeenCalledTimes(2)
   })
 
-  it('同一编号复用于不同图片时返回冲突，而不是覆盖原记录', async () => {
-    state.asset = pendingAsset({ request_fingerprint: 'other' })
+  it('同一编号换图重试时重置未完成的上传，旧尝试不再占住编号', async () => {
+    state.asset = pendingAsset({ request_fingerprint: 'other', upload_id: '00000000-0000-4000-8000-000000000099' })
+    const store = fakeStorage()
+    const result = await beginSuiteUpload(user, projectId, request, store.storage)
+
+    expect(state.calls).toContain('reset')
+    expect(result).toMatchObject({ assetId: requestId })
+    expect((result as { uploadId: string }).uploadId).not.toBe('00000000-0000-4000-8000-000000000099')
+    expect(state.asset).toMatchObject({ request_fingerprint: 'fp', status: 'pending' })
+    expect(store.signUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it('已完成的资产不允许被同一编号覆盖', async () => {
+    state.asset = pendingAsset({ status: 'ready', request_fingerprint: 'other' })
     await expect(beginSuiteUpload(user, projectId, request, fakeStorage().storage)).rejects.toMatchObject({ code: 'SUITE_REQUEST_CONFLICT' })
+  })
+
+  it('清理任务在重置前删除旧行时按全新上传插入', async () => {
+    state.asset = pendingAsset({ request_fingerprint: 'other' })
+    state.dropReset = true
+    const result = await beginSuiteUpload(user, projectId, request, fakeStorage().storage)
+
+    expect(state.inserts).toBe(1)
+    expect(result).toMatchObject({ assetId: requestId })
   })
 })
 

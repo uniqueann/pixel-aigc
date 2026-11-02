@@ -3,6 +3,7 @@ import type { SuiteAssetRef, SuiteComposition, SuiteLayer } from '@shared/ecomme
 import { moveSuiteLayer } from '@shared/ecommerce-suite-annotations'
 import type { SuiteClient } from './api'
 import { backupAssetBlob } from './recoveryPackage'
+import { beginPreviewLoad, settlePreviewLoad, type PreviewLoadTokens } from './previewLoadToken'
 import { paintSuite, type SuiteLayerBox } from './render'
 
 const PREVIEW_CACHE_LIMIT = 8
@@ -99,7 +100,7 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
   const drag = useRef<{ id: string; x: number; y: number; layer: SuiteLayer; handle: 'body' | 'start' | 'end' | 'label' }>()
   const bitmaps = useRef(new Map<string, ImageBitmap>())
   const inflight = useRef(new Set<string>())
-  const loadToken = useRef(new Map<string, number>())
+  const loadTokens = useRef<PreviewLoadTokens>({ sequence: 0, tokens: new Map() })
   const blobsRef = useRef(blobs)
   const assetRef = useRef(asset)
   const clientRef = useRef(client)
@@ -138,21 +139,20 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
   useEffect(() => {
     const identity = assetIdentity
     if (blobsRef.current.has(identity) || inflight.current.has(identity)) return
-    const token = (loadToken.current.get(identity) ?? 0) + 1
-    loadToken.current.set(identity, token)
+    const token = beginPreviewLoad(loadTokens.current, identity)
     const current = assetRef.current
     const currentSignal = signalRef.current
     inflight.current.add(identity)
     void backupAssetBlob(current.actor, current, currentSignal).then(blob => {
       clientRef.current.assertCurrent()
-      if (!mounted.current || loadToken.current.get(identity) !== token) return
+      if (!mounted.current || loadTokens.current.tokens.get(identity) !== token) return
       inflight.current.delete(identity)
       setBlobs(existing => existing.get(identity) === blob ? existing : rememberBlob(existing, identity, blob))
     }).catch(error => {
-      if (loadToken.current.get(identity) === token) inflight.current.delete(identity)
-      if (!mounted.current || currentSignal.aborted || identityRef.current !== identity || loadToken.current.get(identity) !== token) return
+      if (loadTokens.current.tokens.get(identity) === token) inflight.current.delete(identity)
+      if (!mounted.current || currentSignal.aborted || identityRef.current !== identity || loadTokens.current.tokens.get(identity) !== token) return
       setFailure({ identity, message: error instanceof Error ? error.message : '图片不可用' })
-    })
+    }).finally(() => { settlePreviewLoad(loadTokens.current, identity, token) })
   }, [assetIdentity, retry])
   useEffect(() => {
     if (!base) return

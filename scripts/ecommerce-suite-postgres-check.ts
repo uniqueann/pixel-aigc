@@ -94,6 +94,18 @@ try {
   assert.equal(isSafeObjectKey(other.id, completed.asset.objectKey), false)
   checks.push('真实 PNG 解码、内容校验与持久对象完成可重入')
 
+  const retryAsset = randomUUID()
+  const firstAttempt = await beginSuiteUpload(user, project.id, { requestId: retryAsset, name: '换图重试', mimeType: 'image/png', bytes: MOCK_PNG_1X1.length }, storage)
+  const secondAttempt = await beginSuiteUpload(user, project.id, { requestId: retryAsset, name: '换图重试', mimeType: 'image/png', bytes: MOCK_PNG_1X1.length + 1 }, storage)
+  assert.notEqual((secondAttempt as { uploadId: string }).uploadId, (firstAttempt as { uploadId: string }).uploadId, '未完成的上传换图重试应重置而不是占住编号')
+  await sql`update aigc.suite_assets set created_at=now()-interval '2 days' where id=${retryAsset}`
+  const freshPending = randomUUID()
+  await beginSuiteUpload(user, project.id, { requestId: freshPending, name: '新尝试', mimeType: 'image/png', bytes: MOCK_PNG_1X1.length }, storage)
+  assert.ok((await withImageMaintenance(tx => tx`select aigc.cleanup_expired_suite_uploads('local') as count`))[0].count >= 1)
+  assert.equal((await sql`select count(*)::int as n from aigc.suite_assets where id=${retryAsset}`)[0].n, 0, '超过 24 小时的未完成上传应被清理')
+  assert.equal((await sql`select count(*)::int as n from aigc.suite_assets where id=${freshPending}`)[0].n, 1, '新的未完成上传不受影响')
+  checks.push('未完成上传换图重试会重置；超过 24 小时的孤立尝试由维护清理')
+
   const edited = await updateSuite(user, project.id, { expectedRevision: 0, config: { ...config, title: '已更新商品' } })
   await assert.rejects(updateSuite(user, project.id, { expectedRevision: 0, config }), /云端已有更新/)
   await assert.rejects(getSuite(other, project.id), /不存在或无权/)
