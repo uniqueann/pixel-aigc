@@ -349,7 +349,7 @@ export default function PipelineTool() {
       />
     </div>
     <div className="toolbox-watermark-main">
-      <section ref={previewPanelRef} className={`toolbox-preview-panel${selected && resultView === 'single' ? ' has-image' : ''}`} aria-label="流水线预览">
+      <section ref={previewPanelRef} className={`toolbox-preview-panel${items.length > 0 ? ' has-image' : ''}${resultView === 'grid' ? ' is-grid' : ''}`} aria-label="流水线预览">
         <div className="toolbox-section-heading">
           <div className="toolbox-preview-title">
             <strong>效果预览</strong>

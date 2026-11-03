@@ -4260,8 +4260,18 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .toolbox-aspect-ratio .toolbox-preset-row .ant-select-selector { min-height: 44px; }
   .toolbox-aspect-ratio .toolbox-preset-row .ant-input { min-height: 44px; }
   .toolbox-aspect-ratio .toolbox-color-trigger { min-height: 44px; }
-  /* 流水线：单张视图吸顶，保留关键提示，长规格说明在移动端收起。 */
+  /* 流水线：单张与网格视图都吸顶；网格面板限高并整体滚动，避免压住底栏。 */
   .toolbox-sticky-preview.toolbox-pipeline .toolbox-settings-panel { order: 0; }
+  .toolbox-pipeline .toolbox-preview-panel.has-image.is-grid {
+    max-height: calc(100vh - 220px);
+    max-height: calc(100dvh - 220px);
+    overflow-y: auto;
+  }
+  .toolbox-pipeline .toolbox-preview-panel.has-image.is-grid .toolbox-result-grid { min-height: 0; }
+  .toolbox-pipeline .toolbox-preview-panel.has-image.is-grid .toolbox-result-grid-items {
+    max-height: none;
+    overflow: visible;
+  }
   .toolbox-pipeline .toolbox-preview-panel > .toolbox-hint { display: block; }
   .toolbox-pipeline .toolbox-preview-panel > .toolbox-preview-spec { display: none; }
   .app-main-content:has(.toolbox-pipeline .toolbox-preview-panel.has-image) { scroll-padding-top: 420px; }
