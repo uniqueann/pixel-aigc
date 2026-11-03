@@ -150,7 +150,7 @@ export default function PipelineTool() {
         onSelect={state.select}
         onRemove={id => { const item = items.find(item => item.id === id); if (item) forgetPipelineImage(item.file); state.remove(id) }}
         onClear={() => { clearPipelineCache(); state.clear() }}
-        processingHint={settings.aspectRatio.strategy === 'crop' ? '智能裁剪可能上传缩略图识别主体，水印在本机处理' : '转比例与水印在本机处理'}
+        processingHint={settings.aspectRatio.strategy === 'crop' ? '主体识别可能上传缩略图，水印在本机处理' : '转比例与水印在本机处理'}
       />
     </div>
     <div className="toolbox-watermark-main">

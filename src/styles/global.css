@@ -4223,6 +4223,27 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   }
   .toolbox-watermark .ant-slider-handle::before { inset: -17px; width: 44px; height: 44px; }
   .toolbox-sticky-preview.toolbox-watermark .toolbox-watermark-main { padding-bottom: 150px; }
+  /* 转比例单独收敛移动端规则：预览优先并吸顶，但高度、提示与底部留白按自己的内容决定。 */
+  .toolbox-sticky-preview.toolbox-aspect-ratio .toolbox-settings-panel { order: 0; }
+  .toolbox-aspect-ratio .toolbox-preview-panel.has-image {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    box-shadow: 0 8px 20px rgba(17, 17, 20, 0.14);
+  }
+  .toolbox-aspect-ratio .toolbox-settings-panel { z-index: 0; }
+  .toolbox-aspect-ratio .toolbox-section-heading > .toolbox-preview-actions { width: 100%; justify-content: flex-start; margin-left: 0; }
+  .toolbox-aspect-ratio .toolbox-preview-stage { min-height: 200px; padding: 10px; }
+  .toolbox-aspect-ratio .toolbox-preview-stage img { max-height: 200px; }
+  .toolbox-aspect-ratio .toolbox-preview-panel > .toolbox-hint { display: block; }
+  .app-main-content:has(.toolbox-aspect-ratio .toolbox-preview-panel.has-image) { scroll-padding-top: 340px; }
+  .toolbox-sticky-preview.toolbox-aspect-ratio .toolbox-watermark-main { padding-bottom: 0; }
+  .toolbox-aspect-ratio .toolbox-settings-panel .ant-radio-wrapper { min-height: 44px; align-items: center; }
+  .toolbox-aspect-ratio .toolbox-image-card .toolbox-section-heading .ant-btn { min-height: 44px; }
+  .toolbox-aspect-ratio .toolbox-preset-row .ant-btn { min-height: 44px; }
+  .toolbox-aspect-ratio .toolbox-preset-row .ant-select-selector { min-height: 44px; }
+  .toolbox-aspect-ratio .toolbox-preset-row .ant-input { min-height: 44px; }
+  .toolbox-aspect-ratio .toolbox-color-trigger { min-height: 44px; }
   .result-gallery-head strong { max-width: 62vw; }
   .result-gallery-stage { padding: 10px; }
   .result-gallery-stage img { max-height: calc(100dvh - 260px); }
