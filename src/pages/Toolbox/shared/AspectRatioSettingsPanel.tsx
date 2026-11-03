@@ -98,7 +98,7 @@ export default function AspectRatioSettingsPanel({ settings, disabled, onChange,
               <span>{background.toUpperCase()}</span>
             </button>
           </div>
-          <div role="radiogroup" aria-label="留白方式">
+          <div className="toolbox-background-options" role="radiogroup" aria-label="留白方式">
             <Radio.Group
               value={settings.background === 'transparent' ? 'transparent' : 'color'}
               disabled={disabled}

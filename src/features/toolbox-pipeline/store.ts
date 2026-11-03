@@ -23,6 +23,8 @@ interface PipelineState {
   remove: (id: string) => void
   clear: () => void
   reset: (ownerId: string) => void
+  restore: (snapshot: { items: PipelineItem[]; settings: PipelineSettings; selectedId: string | null }) => void
+  restoreItem: (item: PipelineItem, index: number) => void
   updateRatio: (patch: Partial<PipelineSettings['aspectRatio']>) => void
   updateWatermark: (patch: Partial<PipelineSettings['watermark']>) => void
   enableWatermark: (enabled: boolean) => void
@@ -46,6 +48,21 @@ export function createPipelineStore(ownerId = 'local') {
     clear: () => { if (get().runState !== 'running' && !get().stopping) set(state => ({ items: [], selectedId: null, runState: 'idle', revision: state.revision + 1 })) },
     reset: ownerId => set(state => ({ ownerId, initialized: false, items: [], selectedId: null,
       settings: defaultPipelineSettings(), runState: 'idle', stopping: false, revision: state.revision + 1 })),
+    // 设置变更后恢复整批结果；只在空闲时允许，避免覆盖正在写入的运行结果。
+    restore: snapshot => {
+      if (get().runState === 'running' || get().stopping) return
+      set(state => ({ items: snapshot.items, settings: snapshot.settings, selectedId: snapshot.selectedId,
+        runState: 'idle', stopping: false, revision: state.revision + 1 }))
+    },
+    // 误删撤销：按原位置放回，保留原有结果与状态。
+    restoreItem: (item, index) => {
+      if (get().runState === 'running' || get().stopping) return
+      set(state => {
+        const items = [...state.items]
+        items.splice(Math.max(0, Math.min(index, items.length)), 0, item)
+        return { items, selectedId: state.selectedId ?? item.id, revision: state.revision + 1 }
+      })
+    },
     updateRatio: patch => {
       if (get().runState === 'running' || get().stopping || !changed(get().settings.aspectRatio, patch)) return
       set(state => ({ settings: { ...state.settings, aspectRatio: { ...state.settings.aspectRatio, ...patch } },

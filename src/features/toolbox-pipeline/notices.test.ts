@@ -22,6 +22,11 @@ describe('流水线降级提示', () => {
     expect(pipelineQueueNote(item('c'), 'idle')).toBe('转比例完成 · 水印完成')
   })
 
+  it('失败项说明给出可重试动作，不再写成等待或完成', () => {
+    expect(pipelineQueueNote(item('d', { ratioStatus: 'failed', failedStep: 'ratio' }), 'idle')).toBe('转比例失败，可重试')
+    expect(pipelineQueueNote(item('e', { watermarkStatus: 'failed', failedStep: 'watermark' }), 'idle')).toBe('加水印失败，可重试')
+  })
+
   it('两张降级成功时进度含批次计数，失败项不计入', () => {
     const focus = { fx: 0.5, fy: 0.5, source: 'grid' as const, unavailable: true, note: CENTER_CROP_UNAVAILABLE_NOTE }
     const items = [
