@@ -37,6 +37,8 @@ describe('计费说明文案', () => {
     expect(text).toContain(SUBJECT_DETECTION_LABEL)
     expect(text).toContain(SMART_SELECT_LABEL)
     expect(text).toContain(LOCAL_TEMPLATE_LABEL)
+    expect(text).toContain('主体识别可能上传缩略图')
+    expect(text).toContain('会上传图片生成背景')
     expect(text).toContain('失败或超时会退回预扣积分')
     expect(text).toContain('超时未完成的任务不再计入扣费')
     expect(text).toContain('视频任务失败或超时会退回预扣积分')
