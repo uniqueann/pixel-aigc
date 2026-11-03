@@ -13,6 +13,8 @@ interface Props {
   onDownload?: (item: PreviewItem) => Promise<void> | void
   downloadLabel?: string
   downloadTooltip?: string
+  /** 结果类型，用于 dialog 标题与图片 alt，默认“抠图结果”。 */
+  resultLabel?: string
   /** 透明结果在画廊里也需要棋盘格，否则透明区域会露出背后的页面。 */
   checkerboard?: boolean
 }
@@ -26,6 +28,7 @@ export default function ResultGallery({
   onDownload,
   downloadLabel = '下载结果大图',
   downloadTooltip = '下载抠图结果',
+  resultLabel = '抠图结果',
   checkerboard = false,
 }: Props) {
   const [comparing, setComparing] = useState(false)
@@ -63,7 +66,7 @@ export default function ResultGallery({
     <>
       <Modal
         open={open}
-        title={<span className="sr-only">{title} 抠图结果预览</span>}
+        title={<span className="sr-only">{title} {resultLabel}预览</span>}
         footer={null}
         closable={false}
         centered
@@ -84,12 +87,12 @@ export default function ResultGallery({
           <header className="result-gallery-head">
             <div>
               <strong>{title}</strong>
-              <span aria-live="polite">{current + 1} / {items.length} · 抠图结果预览</span>
+              <span aria-live="polite">{current + 1} / {items.length} · {resultLabel}预览</span>
             </div>
             <Button ref={closeRef} type="text" icon={<CloseOutlined />} onClick={close}>关闭</Button>
           </header>
           <div className={`result-gallery-stage${checkerboard ? ' is-transparent' : ''}`}>
-            <img src={item.fullSrc} alt={`${title} 的抠图结果`} />
+            <img src={item.fullSrc} alt={`${title} 的${resultLabel}`} />
           </div>
           <footer className="result-gallery-actions">
             <div className="result-gallery-nav">

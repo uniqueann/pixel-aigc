@@ -91,6 +91,8 @@ describe('工具箱图片卡片', () => {
     const props = renderCard()
     const file = new File(['x'], 'cup.jpg', { type: 'image/jpeg' })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input.getAttribute('tabindex')).toBe('-1')
+    expect(input.getAttribute('aria-hidden')).toBe('true')
     fireEvent.change(input, { target: { files: [file] } })
     expect(props.onAdd).toHaveBeenCalledWith(file)
 

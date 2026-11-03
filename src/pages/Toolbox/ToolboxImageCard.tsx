@@ -268,6 +268,8 @@ export default function ToolboxImageCard({
         type="file"
         accept={ACCEPT}
         multiple
+        tabIndex={-1}
+        aria-hidden="true"
         aria-label="选择图片"
         onChange={event => {
           addFiles(event.target.files)

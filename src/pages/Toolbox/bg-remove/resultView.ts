@@ -68,13 +68,7 @@ export function progressLabel({ itemCount, completedCount, failedCount, processi
   return `${completedCount} / ${itemCount} 张已完成`
 }
 
-/** 结果网格与徽标共用的状态文案。 */
-export function resultStatusLabel(status: BatchStatus) {
-  if (status === 'succeeded') return '完成'
-  if (status === 'processing') return '处理中'
-  if (status === 'failed') return '失败'
-  return '等待'
-}
+export { resultStatusLabel } from '../shared/resultStatus'
 
 export type FooterMode = 'cancel' | 'download' | 'retry' | 'empty' | 'process'
 

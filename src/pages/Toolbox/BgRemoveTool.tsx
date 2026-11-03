@@ -6,8 +6,9 @@ import { useCapabilities } from '@/hooks/useCapabilities'
 import CapabilityStatus from '@/components/CapabilityStatus'
 import { useUserStore } from '@/store/useUserStore'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
-import BackgroundColorDialog from './bg-remove/BackgroundColorDialog'
-import ResultGallery from './bg-remove/ResultGallery'
+import ColorDialog from './shared/ColorDialog'
+import ResultGallery from './shared/ResultGallery'
+import ResultGrid, { type ResultFilter } from './shared/ResultGrid'
 import ToolboxImageCard, { PreviewItemNotice, PreviewResultActions } from './ToolboxImageCard'
 import { imagesNeedingRemoval, processRemovalBatch, recompositeBatch } from './bg-remove/batch'
 import { requestMatte } from './bg-remove/client'
@@ -19,7 +20,7 @@ import { usePreferencesStore } from '@/features/preferences/store'
 import { initialBgRemoveSettings } from '@/features/preferences/toolParameters'
 import { applyEdgeRefineResult, loadBgRemoveSession, saveBgRemoveSession, setEdgeRefineHandoff, takeEdgeRefineResult } from './bg-remove/session'
 import { PREVIEW_MAX_DIMENSION, type BatchImage, type BgRemoveSettings } from './bg-remove/types'
-import { footerMode, previewAlt, previewKind, previewMeta, previewOverlay, previewSource, progressLabel, resultStatusLabel, showCheckerboard, type PreviewMode } from './bg-remove/resultView'
+import { footerMode, previewAlt, previewKind, previewMeta, previewOverlay, previewSource, progressLabel, showCheckerboard, type PreviewMode } from './bg-remove/resultView'
 import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
@@ -36,7 +37,6 @@ import { assertRecoveryActor,persistRecoveredResult } from '@/features/task-cent
 import type { RecoveryActionContext } from '@/features/task-center/TaskRecoveryPanel'
 
 type ResultView = 'single' | 'grid'
-type ResultFilter = 'all' | 'succeeded' | 'failed'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败'
@@ -459,11 +459,6 @@ export default function BgRemoveTool() {
   const batchSummary = items.length > 0
     ? `成功 ${completed.length} · 失败 ${failed.length} · 可下载 ${downloadable.length}`
     : '等待图片'
-  const visibleResultItems = items.filter(item => {
-    if (resultFilter === 'succeeded') return item.status === 'succeeded'
-    if (resultFilter === 'failed') return item.status === 'failed'
-    return true
-  })
 
   return (
     <div className="toolbox-watermark toolbox-sticky-preview">
@@ -531,46 +526,16 @@ export default function BgRemoveTool() {
           </div>
           {items.length > 0 && resultView === 'single' && <p className="toolbox-batch-summary">{batchSummary}</p>}
           {resultView === 'grid' ? (
-            <div className="toolbox-result-grid" role="group" aria-label="抠图结果网格">
-              <div className="toolbox-result-grid-toolbar">
-                <Segmented
-                  size="small"
-                  aria-label="筛选结果"
-                  value={resultFilter}
-                  options={[
-                    { label: '全部', value: 'all' },
-                    { label: `成功 ${completed.length}`, value: 'succeeded' },
-                    { label: `失败 ${failed.length}`, value: 'failed' },
-                  ]}
-                  onChange={value => setResultFilter(value === 'succeeded' || value === 'failed' ? value : 'all')}
-                />
-              </div>
-              {visibleResultItems.length === 0 ? (
-                <p className="toolbox-result-grid-empty">没有符合筛选的结果</p>
-              ) : (
-                <div className="toolbox-result-grid-items">
-                  {visibleResultItems.map(item => {
-                    const result = galleryById.get(item.id)
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`toolbox-result-tile${item.id === selectedId ? ' is-selected' : ''}`}
-                        aria-pressed={item.id === selectedId}
-                        aria-label={`${item.file.name}，${resultStatusLabel(item.status)}${result ? '，查看结果' : ''}`}
-                        onClick={() => selectImage(item.id)}
-                      >
-                        <span className={`toolbox-result-thumb${result && backgroundMode === 'transparent' ? ' is-transparent' : ''}`}>
-                          <img src={result?.fullSrc ?? item.sourceUrl} alt="" />
-                          <span className={`toolbox-result-badge is-${item.status}`}>{resultStatusLabel(item.status)}</span>
-                        </span>
-                        <span className="toolbox-result-name">{item.file.name}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+            <ResultGrid
+              items={items.map(item => ({ id: item.id, name: item.file.name, sourceUrl: item.sourceUrl, status: item.status }))}
+              results={galleryById}
+              selectedId={selectedId}
+              filter={resultFilter}
+              onFilterChange={setResultFilter}
+              onSelect={selectImage}
+              ariaLabel="抠图结果网格"
+              checkerboard={backgroundMode === 'transparent'}
+            />
           ) : (
             <div className={`toolbox-preview-stage${kind && showCheckerboard(kind, backgroundMode) ? ' is-transparent' : ''}`}>
               {selected ? (
@@ -652,7 +617,7 @@ export default function BgRemoveTool() {
         checkerboard={backgroundMode === 'transparent'}
         onDownload={item => downloadOne(item.id)}
       />
-      <BackgroundColorDialog
+      <ColorDialog
         open={colorDialogOpen}
         value={settings.background}
         onClose={() => setColorOpen(false)}

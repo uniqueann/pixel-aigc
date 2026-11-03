@@ -2,7 +2,12 @@ import { useRef, useState, type RefObject } from 'react'
 import { Button, Input, Modal } from 'antd'
 import { hexForColorInput, normalizeHex } from './color'
 
-const PRESETS = [
+export interface ColorPreset {
+  label: string
+  value: string
+}
+
+const DEFAULT_COLOR_PRESETS: readonly ColorPreset[] = [
   { label: '白色', value: '#FFFFFF' },
   { label: '黑色', value: '#000000' },
   { label: '品牌绿', value: '#21CFA0' },
@@ -14,21 +19,27 @@ interface Props {
   value: string
   onClose: () => void
   onApply: (value: string) => void
+  title?: string
+  presetsLabel?: string
+  presets?: readonly ColorPreset[]
+  idPrefix?: string
 }
 
-interface BodyProps {
-  value: string
+interface BodyProps extends Required<Pick<Props, 'value' | 'onClose' | 'onApply'>> {
   firstPresetRef: RefObject<HTMLButtonElement>
-  onClose: () => void
-  onApply: (value: string) => void
+  presetsLabel: string
+  presets: readonly ColorPreset[]
+  idPrefix: string
 }
 
 // 表单单独拆成子组件：Modal 的 destroyOnHidden 会在关闭后卸载它，
 // 下次打开自然回到当前生效颜色，不需要 effect 或 key 重挂载 Modal。
-function ColorDialogBody({ value, firstPresetRef, onClose, onApply }: BodyProps) {
+function ColorDialogBody({ value, firstPresetRef, onClose, onApply, presetsLabel, presets, idPrefix }: BodyProps) {
   const [draft, setDraft] = useState(() => hexForColorInput(value))
   const [hexInput, setHexInput] = useState(() => hexForColorInput(value))
   const [error, setError] = useState<string | null>(null)
+  const presetsLabelId = `${idPrefix}-presets-label`
+  const hexErrorId = `${idPrefix}-hex-error`
 
   function choose(next: string) {
     const normalized = normalizeHex(next)
@@ -62,9 +73,9 @@ function ColorDialogBody({ value, firstPresetRef, onClose, onApply }: BodyProps)
   return (
     <div className="bg-color-dialog-body">
       <div className="bg-color-preview" style={{ background: draft }} aria-hidden="true" />
-      <div className="bg-color-presets" role="group" aria-labelledby="bg-color-presets-label">
-        <span id="bg-color-presets-label" className="bg-color-label">常用背景色</span>
-        {PRESETS.map((preset, index) => {
+      <div className="bg-color-presets" role="group" aria-labelledby={presetsLabelId}>
+        <span id={presetsLabelId} className="bg-color-label">{presetsLabel}</span>
+        {presets.map((preset, index) => {
           const active = draft === preset.value
           return (
             <button
@@ -83,27 +94,27 @@ function ColorDialogBody({ value, firstPresetRef, onClose, onApply }: BodyProps)
         })}
       </div>
       <div className="bg-color-field">
-        <label htmlFor="bg-color-custom">自定义颜色</label>
+        <label htmlFor={`${idPrefix}-custom`}>自定义颜色</label>
         <input
-          id="bg-color-custom"
+          id={`${idPrefix}-custom`}
           type="color"
           value={hexForColorInput(draft)}
           onChange={event => choose(event.target.value)}
         />
       </div>
       <div className="bg-color-field">
-        <label htmlFor="bg-color-hex">十六进制颜色值</label>
+        <label htmlFor={`${idPrefix}-hex`}>十六进制颜色值</label>
         <Input
-          id="bg-color-hex"
+          id={`${idPrefix}-hex`}
           value={hexInput}
           onChange={event => { setHexInput(event.target.value); setError(null) }}
           onBlur={commitHex}
           onPressEnter={commitHex}
           status={error ? 'error' : undefined}
           aria-invalid={Boolean(error)}
-          aria-describedby={error ? 'bg-color-hex-error' : undefined}
+          aria-describedby={error ? hexErrorId : undefined}
         />
-        {error && <p id="bg-color-hex-error" className="bg-color-error" role="alert">{error}</p>}
+        {error && <p id={hexErrorId} className="bg-color-error" role="alert">{error}</p>}
       </div>
       <div className="bg-color-dialog-actions">
         <Button onClick={onClose}>取消</Button>
@@ -113,13 +124,22 @@ function ColorDialogBody({ value, firstPresetRef, onClose, onApply }: BodyProps)
   )
 }
 
-export default function BackgroundColorDialog({ open, value, onClose, onApply }: Props) {
+export default function ColorDialog({
+  open,
+  value,
+  onClose,
+  onApply,
+  title = '背景颜色',
+  presetsLabel = '常用背景色',
+  presets = DEFAULT_COLOR_PRESETS,
+  idPrefix = 'bg-color',
+}: Props) {
   const firstPresetRef = useRef<HTMLButtonElement>(null)
 
   return (
     <Modal
       open={open}
-      title="背景颜色"
+      title={title}
       footer={null}
       centered
       width={380}
@@ -134,6 +154,9 @@ export default function BackgroundColorDialog({ open, value, onClose, onApply }:
         firstPresetRef={firstPresetRef}
         onClose={onClose}
         onApply={onApply}
+        presetsLabel={presetsLabel}
+        presets={presets}
+        idPrefix={idPrefix}
       />
     </Modal>
   )
