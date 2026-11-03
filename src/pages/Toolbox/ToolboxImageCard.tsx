@@ -101,7 +101,7 @@ export function PreviewItemNotice({ error, note, warning = false }: { error?: st
   if (!error && !note) return null
   return (
     <>
-      {error && <p className="toolbox-preview-error" title={error}>{error}</p>}
+      {error && <p className="toolbox-preview-error" role="alert" title={error}>{error}</p>}
       {note && <p className={warning ? 'toolbox-crop-notice' : 'toolbox-hint'} role="status" title={note}>{note}</p>}
     </>
   )
@@ -120,6 +120,7 @@ export default function ToolboxImageCard({
   const inputRef = useRef<HTMLInputElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
   const dragDepth = useRef(0)
+  const atLimit = items.length >= MAX_FILES
   const [dragOver, setDragOver] = useState(false)
   const [hiddenCount, setHiddenCount] = useState(0)
   const [showFade, setShowFade] = useState(false)
@@ -203,16 +204,22 @@ export default function ToolboxImageCard({
         <button type="button" className="toolbox-image-drop" disabled={disabled} onClick={openPicker}>
           <span className="toolbox-image-drop-icon" aria-hidden><PictureOutlined /></span>
           <span className="toolbox-image-drop-copy">
-            <strong>拖入图片，或点击选择</strong>
+            <strong>选择图片，或拖入文件</strong>
             <span>静态 JPG / PNG / WebP，最多 20 张；{processingHint}</span>
           </span>
         </button>
       ) : (
         <div className={`toolbox-image-strip-frame${showFade ? ' is-overflowing' : ''}`}>
           <div className="toolbox-image-strip" ref={stripRef} onScroll={measure}>
-            <button type="button" className="toolbox-image-add" disabled={disabled} onClick={openPicker}>
+            <button
+              type="button"
+              className="toolbox-image-add"
+              disabled={disabled || atLimit}
+              title={atLimit ? `最多 ${MAX_FILES} 张` : undefined}
+              onClick={openPicker}
+            >
               <span aria-hidden><PlusOutlined /></span>
-              <span>添加图片</span>
+              <span>{atLimit ? '已达上限' : '添加图片'}</span>
             </button>
             {items.map(item => {
               const meta = statusMeta[item.status]
@@ -252,7 +259,7 @@ export default function ToolboxImageCard({
 
       <p className="toolbox-hint">
         单张最多 20 MB，整批最多 150 MB；桌面设备最多 24 MP，触屏设备最多 12 MP。
-        {items.length > 0 && '拖入图片到此卡片任意位置即可添加。'}
+        {items.length > 0 && '桌面端也可拖入图片到此卡片任意位置添加。'}
       </p>
       {dragOver && <div className="toolbox-image-drop-hint" role="status"><span aria-hidden><ArrowUpOutlined /></span>松开即可添加</div>}
       <input

@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Button, ColorPicker, Progress, Radio, Tooltip } from 'antd'
+import { App, Button, Progress, Radio, Segmented, Spin, Tooltip } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import CapabilityStatus from '@/components/CapabilityStatus'
 import { useUserStore } from '@/store/useUserStore'
-import PreviewGallery from '@/components/PreviewGallery'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
+import BackgroundColorDialog from './bg-remove/BackgroundColorDialog'
+import ResultGallery from './bg-remove/ResultGallery'
 import ToolboxImageCard, { PreviewItemNotice, PreviewResultActions } from './ToolboxImageCard'
 import { imagesNeedingRemoval, processRemovalBatch, recompositeBatch } from './bg-remove/batch'
 import { requestMatte } from './bg-remove/client'
@@ -18,6 +19,7 @@ import { usePreferencesStore } from '@/features/preferences/store'
 import { initialBgRemoveSettings } from '@/features/preferences/toolParameters'
 import { applyEdgeRefineResult, loadBgRemoveSession, saveBgRemoveSession, setEdgeRefineHandoff, takeEdgeRefineResult } from './bg-remove/session'
 import { PREVIEW_MAX_DIMENSION, type BatchImage, type BgRemoveSettings } from './bg-remove/types'
+import { footerMode, previewAlt, previewKind, previewMeta, previewOverlay, previewSource, progressLabel, resultStatusLabel, showCheckerboard, type PreviewMode } from './bg-remove/resultView'
 import { datedDownloadName } from './shared/dateStamp'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
@@ -32,6 +34,9 @@ import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
 import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
 import { assertRecoveryActor,persistRecoveredResult } from '@/features/task-center/recoveryMedia'
 import type { RecoveryActionContext } from '@/features/task-center/TaskRecoveryPanel'
+
+type ResultView = 'single' | 'grid'
+type ResultFilter = 'all' | 'succeeded' | 'failed'
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败'
@@ -49,7 +54,7 @@ function composeSucceededMattes(
 
 export default function BgRemoveTool() {
   const navigate = useNavigate()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const userId = useUserStore(state => state.userId)
   const knownBalance = useKnownCreditBalance()
   const scope = userId ?? 'local'
@@ -66,12 +71,20 @@ export default function BgRemoveTool() {
   const [settings, setSettings] = useState<BgRemoveSettings>(() => initialBgRemoveSettings(usePreferencesStore.getState().preferences))
   const [appliedMemoryEpoch, setAppliedMemoryEpoch] = useState(memoryEpoch)
   const settingsRef = useRef(settings)
+  // 透明模式不保存颜色值，切回纯色时用这里记住的上一次颜色。
+  const lastColorRef = useRef(settings.background === 'transparent' ? '#ffffff' : settings.background)
   if (appliedMemoryEpoch !== memoryEpoch) {
     setSettings(initialBgRemoveSettings(usePreferencesStore.getState().preferences))
     setAppliedMemoryEpoch(memoryEpoch)
   }
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const previewRef = useRef<string | null>(null)
+  const previewPanelRef = useRef<HTMLElement>(null)
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('result')
+  const [resultView, setResultView] = useState<ResultView>('single')
+  const [resultFilter, setResultFilter] = useState<ResultFilter>('all')
+  const [colorOpen, setColorOpen] = useState(false)
+  const [recompositing, setRecompositing] = useState(false)
   const [processing, setProcessing] = useState(false)
   const processingRef = useRef(false)
   const cancelledRef = useRef(false)
@@ -91,8 +104,17 @@ export default function BgRemoveTool() {
   const downloadable = completed.filter(item => item.output)
   const failed = items.filter(item => item.status === 'failed')
   const outputBytes = downloadable.reduce((sum, item) => sum + (item.output?.size ?? 0), 0)
-  const busy = processing || adding || packaging
-  const controlsLocked = processing || packaging
+  const busy = processing || adding || packaging || recompositing
+  const controlsLocked = processing || packaging || recompositing
+  const allDone = items.length > 0 && completed.length === items.length
+  const hasPending = items.some(item => item.status === 'pending')
+  const mode = footerMode({ processing, itemCount: items.length, allDone, failedCount: failed.length })
+  const statusText = progressLabel({
+    itemCount: items.length,
+    completedCount: completed.length,
+    failedCount: failed.length,
+    processing,
+  })
   useTaskDraftGuard({dirty:items.some(item=>item.status==='pending'||item.status==='failed'),reason:'当前队列中有未处理或未保存的图片，离开后将清空列表，是否继续？',blocked:adding||packaging?'正在读取或打包图片，请完成后再切换':undefined})
   const quoteFor = (ids?: string[]) => bgRemoveBatchQuote(items, billing.data, { ids, mock: mockGateway, loading: billing.isPending && billing.fetchStatus === 'fetching' })
   const generateQuote = quoteFor()
@@ -101,6 +123,7 @@ export default function BgRemoveTool() {
 
   useLayoutEffect(() => {
     settingsRef.current = settings
+    if (settings.background !== 'transparent') lastColorRef.current = settings.background
   })
 
   function commitItems(next: BatchImage[]) {
@@ -227,12 +250,14 @@ export default function BgRemoveTool() {
 
   async function updateBackground(background: string) {
     if (processingRef.current || packaging) return
+    if (background !== 'transparent') lastColorRef.current = background
     const next = { background }
     settingsRef.current = next
     setSettings(next)
     usePreferencesStore.getState().remember('bg-remove', { background: next.background })
     const ready = itemsRef.current.filter(item => item.matte)
     if (!ready.length) return
+    setRecompositing(true)
     try {
       await recompositeBatch(
         itemsRef.current,
@@ -241,6 +266,8 @@ export default function BgRemoveTool() {
       )
     } catch (error) {
       message.error(errorMessage(error))
+    } finally {
+      if (mountedRef.current) setRecompositing(false)
     }
   }
 
@@ -265,6 +292,7 @@ export default function BgRemoveTool() {
       if (!selectedIdRef.current) {
         selectedIdRef.current = item.id
         setSelectedId(item.id)
+        setPreviewMode('result')
       }
     }).catch(error => {
       if (mountedRef.current && scopeRef.current === scope) message.error(`${file.name}：${errorMessage(error)}`)
@@ -285,23 +313,39 @@ export default function BgRemoveTool() {
     if (selectedIdRef.current === id) {
       selectedIdRef.current = next[0]?.id ?? null
       setSelectedId(selectedIdRef.current)
+      setPreviewMode('result')
     }
     persistQueue()
   }
 
   function clearFiles() {
     if (processingRef.current) return
-    for (const item of itemsRef.current) URL.revokeObjectURL(item.sourceUrl)
-    commitItems([])
-    selectedIdRef.current = null
-    setSelectedId(null)
-    replacePreview(null)
-    persistQueue()
+    modal.confirm({
+      title: '清空所有图片？',
+      content: '当前队列、抠图结果和未保存的修改都会被清空，且无法撤销。',
+      okText: '清空',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => {
+        for (const item of itemsRef.current) URL.revokeObjectURL(item.sourceUrl)
+        commitItems([])
+        selectedIdRef.current = null
+        setSelectedId(null)
+        setPreviewMode('result')
+        setResultView('single')
+        setResultFilter('all')
+        setColorOpen(false)
+        replacePreview(null)
+        persistQueue()
+      },
+    })
   }
 
   function selectImage(id: string) {
     selectedIdRef.current = id
     setSelectedId(id)
+    setPreviewMode('result')
+    setResultView('single')
   }
 
   function refineEdge(id: string) {
@@ -322,6 +366,7 @@ export default function BgRemoveTool() {
       return
     }
     if (processingRef.current || addingCountRef.current) return
+    setColorOpen(false)
     processingRef.current = true
     cancelledRef.current = false
     const abort = new AbortController()
@@ -354,6 +399,16 @@ export default function BgRemoveTool() {
       if (batchAbortRef.current === abort) batchAbortRef.current = null
       if (mountedRef.current) {
         commitItems(itemsRef.current.map(item => item.status === 'processing' ? { ...item, status: 'pending' } : item))
+        // 批次结束后如果当前选中的是失败/待处理项，自动把主预览切到第一张成功结果。
+        const current = itemsRef.current.find(item => item.id === selectedIdRef.current)
+        if (current?.status !== 'succeeded') {
+          const firstSuccess = itemsRef.current.find(item => item.status === 'succeeded' && item.output)
+          if (firstSuccess) {
+            selectedIdRef.current = firstSuccess.id
+            setSelectedId(firstSuccess.id)
+            setPreviewMode('result')
+          }
+        }
         setProcessing(false)
       }
     }
@@ -373,6 +428,7 @@ export default function BgRemoveTool() {
 
   async function downloadAll() {
     if (packaging) return
+    setColorOpen(false)
     setPackaging(true)
     try {
       const blob = await createBgRemoveZip(itemsRef.current)
@@ -384,10 +440,34 @@ export default function BgRemoveTool() {
     }
   }
 
+  function showResult() {
+    if (resultView === 'grid') setResultView('single')
+    previewPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   const backgroundMode = settings.background === 'transparent' ? 'transparent' : 'color'
+  const colorDialogOpen = colorOpen && !controlsLocked
+  // matte 或 output 任一存在都说明结果已经生成；处理中/失败优先于旧结果。
+  const previewHasResult = Boolean(selected?.matte || selected?.output)
+  const kind = selected ? previewKind({ mode: previewMode, hasResult: previewHasResult, status: selected.status }) : null
+  const canOpenResult = Boolean(selected?.output) && kind === 'result'
+  const overlay = kind ? previewOverlay(kind) : null
+  const downloadActionLabel = downloadable.length > 0 && failed.length > 0
+    ? `下载 ${downloadable.length} 张结果`
+    : '打包下载'
+  const galleryById = new Map(galleryProps.items.map(item => [item.id, item]))
+  const batchSummary = items.length > 0
+    ? `成功 ${completed.length} · 失败 ${failed.length} · 可下载 ${downloadable.length}`
+    : '等待图片'
+  const visibleResultItems = items.filter(item => {
+    if (resultFilter === 'succeeded') return item.status === 'succeeded'
+    if (resultFilter === 'failed') return item.status === 'failed'
+    return true
+  })
 
   return (
     <div className="toolbox-watermark toolbox-sticky-preview">
+      <h1 className="sr-only">智能抠图</h1>
       <TaskRecoveryPanel tools={['bg-remove']} blockedReason={busy?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async (result,image,detail,context)=>{
         assertRecoveryActor(context.actor,context.signal)
         await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)
@@ -405,18 +485,38 @@ export default function BgRemoveTool() {
         processingHint="智能抠图会上传图片处理"
       />
       <div className="toolbox-watermark-main">
-        <section className="toolbox-preview-panel" aria-label="抠图预览">
+        <section ref={previewPanelRef} className="toolbox-preview-panel" aria-label="抠图预览">
           <div className="toolbox-section-heading">
             <div className="toolbox-preview-title">
               <strong>抠图预览</strong>
-              <span className="toolbox-preview-meta">{selected ? `${selected.file.name} · ${selected.width} × ${selected.height}` : '等待图片'}</span>
+              <span className="toolbox-preview-meta">
+                {resultView === 'grid'
+                  ? `结果网格 · ${batchSummary}`
+                  : selected ? `${selected.file.name} · ${selected.width} × ${selected.height} · ${previewMeta(kind ?? 'pending', backgroundMode)}` : '等待图片'}
+              </span>
             </div>
             {selected && (
               <div className="toolbox-preview-actions">
-                {(canRefineEdge(selected) || selected.status === 'failed') && (
-                  <Button size="small" type="link" disabled={busy} onClick={() => refineEdge(selected.id)}>
-                    {canRefineEdge(selected) ? '修边缘' : '去工作站精修'}
-                  </Button>
+                {items.length > 0 && (
+                  <Segmented
+                    size="small"
+                    aria-label="结果视图"
+                    value={resultView}
+                    options={[{ label: '单张', value: 'single' }, { label: '结果网格', value: 'grid' }]}
+                    onChange={value => setResultView(value === 'grid' ? 'grid' : 'single')}
+                  />
+                )}
+                {selected.output && resultView === 'single' ? (
+                  <Segmented
+                    size="small"
+                    aria-label="预览对照"
+                    value={previewMode}
+                    options={[{ label: '结果', value: 'result' }, { label: '对比原图', value: 'source' }]}
+                    onChange={value => setPreviewMode(value === 'source' ? 'source' : 'result')}
+                  />
+                ) : null}
+                {canRefineEdge(selected) && (
+                  <Button size="small" type="link" disabled={busy} onClick={() => refineEdge(selected.id)}>修边缘</Button>
                 )}
                 <PreviewResultActions
                   status={selected.status}
@@ -429,29 +529,113 @@ export default function BgRemoveTool() {
               </div>
             )}
           </div>
-          <div className="toolbox-preview-stage">
-            {selected ? <img src={previewUrl ?? selected.sourceUrl} alt={`${selected.file.name} 的抠图预览`} onClick={selected.output ? () => openAt(selected.id) : undefined} style={{ cursor: selected.output ? 'zoom-in' : undefined }} /> : <p>先添加图片，再选择背景</p>}
-          </div>
+          {items.length > 0 && resultView === 'single' && <p className="toolbox-batch-summary">{batchSummary}</p>}
+          {resultView === 'grid' ? (
+            <div className="toolbox-result-grid" role="group" aria-label="抠图结果网格">
+              <div className="toolbox-result-grid-toolbar">
+                <Segmented
+                  size="small"
+                  aria-label="筛选结果"
+                  value={resultFilter}
+                  options={[
+                    { label: '全部', value: 'all' },
+                    { label: `成功 ${completed.length}`, value: 'succeeded' },
+                    { label: `失败 ${failed.length}`, value: 'failed' },
+                  ]}
+                  onChange={value => setResultFilter(value === 'succeeded' || value === 'failed' ? value : 'all')}
+                />
+              </div>
+              {visibleResultItems.length === 0 ? (
+                <p className="toolbox-result-grid-empty">没有符合筛选的结果</p>
+              ) : (
+                <div className="toolbox-result-grid-items">
+                  {visibleResultItems.map(item => {
+                    const result = galleryById.get(item.id)
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`toolbox-result-tile${item.id === selectedId ? ' is-selected' : ''}`}
+                        aria-pressed={item.id === selectedId}
+                        aria-label={`${item.file.name}，${resultStatusLabel(item.status)}${result ? '，查看结果' : ''}`}
+                        onClick={() => selectImage(item.id)}
+                      >
+                        <span className={`toolbox-result-thumb${result && backgroundMode === 'transparent' ? ' is-transparent' : ''}`}>
+                          <img src={result?.fullSrc ?? item.sourceUrl} alt="" />
+                          <span className={`toolbox-result-badge is-${item.status}`}>{resultStatusLabel(item.status)}</span>
+                        </span>
+                        <span className="toolbox-result-name">{item.file.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className={`toolbox-preview-stage${kind && showCheckerboard(kind, backgroundMode) ? ' is-transparent' : ''}`}>
+              {selected ? (
+                <>
+                  {/* 处理中/失败时强制显示源图，避免旧结果残留在“未生成结果”的说明下面。 */}
+                  <img
+                    src={kind === 'processing' || kind === 'failed' || kind === 'pending' ? selected.sourceUrl : previewSource(previewMode, previewUrl, selected.sourceUrl)}
+                    alt={previewAlt(kind ?? 'pending', selected.file.name)}
+                    tabIndex={canOpenResult ? 0 : undefined}
+                    role={canOpenResult ? 'button' : undefined}
+                    aria-label={canOpenResult ? '打开抠图结果大图' : undefined}
+                    onClick={canOpenResult ? () => openAt(selected.id) : undefined}
+                    onKeyDown={canOpenResult ? event => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      openAt(selected.id)
+                    } : undefined}
+                    style={{ cursor: canOpenResult ? 'zoom-in' : undefined }}
+                  />
+                  {overlay && (
+                    <div className={`toolbox-preview-state is-${kind}`} role={kind === 'processing' ? 'status' : undefined}>
+                      {kind === 'processing' && <Spin size="small" />}
+                      <span>{overlay}</span>
+                    </div>
+                  )}
+                </>
+              ) : <p>添加图片后，这里会显示抠图结果</p>}
+            </div>
+          )}
           <PreviewItemNotice error={selected?.error} />
-          <p className="toolbox-hint">预览图为压缩显示（最长边不超过 {PREVIEW_MAX_DIMENSION}px）。更改背景颜色仅在本地合成，不消耗积分。</p>
+          <p className="toolbox-hint">
+            {resultView === 'grid' ? '点击任意结果查看单张大图。' : ''}
+            预览图为压缩显示（最长边不超过 {PREVIEW_MAX_DIMENSION}px）。切换输出背景仅在本地合成，不消耗积分。
+          </p>
         </section>
         <section className="toolbox-settings-panel" aria-label="抠图设置">
           <div className="toolbox-section-heading"><div><strong>抠图设置</strong><span>一次设置，应用到整批</span></div></div>
-          <label className="toolbox-field-label">输出背景</label>
-          <Radio.Group
-            value={backgroundMode}
-            disabled={controlsLocked}
-            onChange={event => void updateBackground(event.target.value === 'transparent' ? 'transparent' : '#ffffff')}
-            options={[{ label: '纯色', value: 'color' }, { label: '透明 PNG', value: 'transparent' }]}
-            optionType="button"
-          />
+          <span id="bg-output-label" className="toolbox-field-label">输出背景</span>
+          <div className="toolbox-output-options" role="radiogroup" aria-labelledby="bg-output-label">
+            <Radio.Group
+              value={backgroundMode}
+              disabled={controlsLocked}
+              onChange={event => void updateBackground(event.target.value === 'transparent' ? 'transparent' : lastColorRef.current)}
+              options={[{ label: '透明 PNG', value: 'transparent' }, { label: '纯色', value: 'color' }]}
+              optionType="button"
+            />
+          </div>
           {backgroundMode === 'color' && (
             <div className="toolbox-field-row">
               <span>背景颜色</span>
-              <ColorPicker value={settings.background} disabled={controlsLocked} onChange={color => void updateBackground(color.toHexString())} />
+              <button
+                type="button"
+                className="toolbox-color-trigger"
+                aria-label={`背景颜色，当前 ${settings.background.toUpperCase()}`}
+                aria-haspopup="dialog"
+                aria-expanded={colorDialogOpen}
+                disabled={controlsLocked}
+                onClick={() => setColorOpen(true)}
+              >
+                <span className="toolbox-color-swatch" style={{ background: settings.background }} aria-hidden="true" />
+                <span>{settings.background.toUpperCase()}</span>
+              </button>
             </div>
           )}
-          <p className="toolbox-hint">纯色背景导出为 JPEG，透明背景导出为 PNG。更换背景颜色不重复消耗积分。</p>
+          <p className="toolbox-hint">透明背景导出为 PNG；纯色背景导出为 JPEG。切换背景不重复消耗积分。</p>
           <CapabilityStatus ready={serviceReady} error={capabilityError}
             unavailableMessage="智能抠图服务正在升级维护中，暂时不可用。"
             onRetry={() => void refetchCapabilities()} />
@@ -461,18 +645,37 @@ export default function BgRemoveTool() {
           <CreditSettlementHint quote={generateQuote} />
         </section>
       </div>
-      <PreviewGallery {...galleryProps} onDownload={item => downloadOne(item.id)} />
+      <ResultGallery
+        {...galleryProps}
+        downloadLabel="下载结果大图"
+        downloadTooltip="下载抠图结果"
+        checkerboard={backgroundMode === 'transparent'}
+        onDownload={item => downloadOne(item.id)}
+      />
+      <BackgroundColorDialog
+        open={colorDialogOpen}
+        value={settings.background}
+        onClose={() => setColorOpen(false)}
+        onApply={color => void updateBackground(color)}
+      />
       <div className="toolbox-watermark-footer">
-        <div className="toolbox-progress">
-          <span>{completed.length} / {items.length} 张已完成</span>
-          {processing && <Progress size="small" percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
+        <div className="toolbox-progress" role="status" aria-live="polite">
+          <span>{statusText}</span>
+          {processing && <Progress size="small" aria-label="处理进度" percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
           {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
         </div>
         <div className="toolbox-footer-actions">
-          <Button icon={<DownloadOutlined />} disabled={!downloadable.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
-          {failed.length > 0 && !processing && <CreditActionButton quote={quoteFor(failed.map(item => item.id))} disabled={busy || creditBlocked || (needsRemoval(failed.map(item => item.id)) && !serviceReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>}
-          {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
-            <Tooltip title={creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+          <Button type={mode === 'download' ? 'primary' : 'default'} icon={<DownloadOutlined />} disabled={!downloadable.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>{downloadActionLabel}</Button>
+          {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>查看结果</Button>}
+          {mode === 'retry' && (
+            <>
+              <CreditActionButton type="primary" quote={quoteFor(failed.map(item => item.id))} disabled={busy || creditBlocked || (needsRemoval(failed.map(item => item.id)) && !serviceReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>
+              {hasPending && <CreditActionButton quote={generateQuote} disabled={creditBlocked || (needsRemoval() && !serviceReady) || busy} onClick={() => void processImages()}>继续处理剩余</CreditActionButton>}
+            </>
+          )}
+          {mode === 'cancel' && <Button danger onClick={cancelProcessing}>取消处理</Button>}
+          {(mode === 'process' || mode === 'empty') && (
+            <Tooltip title={creditBlocked ? INSUFFICIENT_CREDITS_REASON : mode === 'empty' ? '请先添加图片' : needsRemoval() && !serviceReady ? '智能抠图服务暂不可用' : undefined}>
               <span>
                 <CreditActionButton quote={generateQuote} type="primary" disabled={creditBlocked || (needsRemoval() && !serviceReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
               </span>

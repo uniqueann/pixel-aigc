@@ -27,6 +27,7 @@ describe('工具默认参数与记忆', () => {
     expect(effectiveImageParameters(3, '4k', undefined, { ...ui, resolutions: ['1k'] })).toEqual({ count: 2, resolution: '1k' })
   })
   it('工具箱不恢复裁剪焦点或 Logo 文件', () => {
+    expect(initialBgRemoveSettings(defaultPreferences()).background).toBe('transparent')
     const p = defaultPreferences()
     p.image.lastUsed['aspect-ratio'] = { strategy: 'crop', selectedPresetId: 'temu-main' }
     p.image.lastUsed['bg-remove'] = { background: '#ffffff' }; p.image.lastUsed.watermark = { text: '我的水印', opacity: 40 }
