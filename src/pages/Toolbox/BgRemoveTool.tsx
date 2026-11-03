@@ -480,7 +480,7 @@ export default function BgRemoveTool() {
         processingHint="智能抠图会上传图片处理"
       />
       <div className="toolbox-watermark-main">
-        <section ref={previewPanelRef} className="toolbox-preview-panel" aria-label="抠图预览">
+        <section ref={previewPanelRef} className={`toolbox-preview-panel${selected ? ' has-image' : ''}`} aria-label="抠图预览">
           <div className="toolbox-section-heading">
             <div className="toolbox-preview-title">
               <strong>抠图预览</strong>
