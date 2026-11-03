@@ -58,4 +58,11 @@ describe('智能抠图结果画廊', () => {
     fireEvent.click(screen.getByRole('button', { name: /关闭/ }))
     expect(props.onClose).toHaveBeenCalledOnce()
   })
+
+  it('可替换结果类型与下载文案，供其他工具箱复用', () => {
+    renderGallery({ resultLabel: '水印结果', downloadLabel: '下载水印结果' })
+    expect(screen.getByRole('dialog', { name: /first\.jpg 水印结果预览/ })).toBeTruthy()
+    expect(screen.getByAltText('first.jpg 的水印结果')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /下载水印结果/ })).toBeTruthy()
+  })
 })

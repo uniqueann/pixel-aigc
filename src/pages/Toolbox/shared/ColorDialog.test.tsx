@@ -2,11 +2,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { App } from 'antd'
-import BackgroundColorDialog from './BackgroundColorDialog'
+import ColorDialog from './ColorDialog'
 
 afterEach(() => cleanup())
 
-function renderDialog(overrides: Partial<Parameters<typeof BackgroundColorDialog>[0]> = {}) {
+function renderDialog(overrides: Partial<Parameters<typeof ColorDialog>[0]> = {}) {
   const props = {
     open: true,
     value: '#FFFFFF',
@@ -14,7 +14,7 @@ function renderDialog(overrides: Partial<Parameters<typeof BackgroundColorDialog
     onApply: vi.fn(),
     ...overrides,
   }
-  render(<App><BackgroundColorDialog {...props} /></App>)
+  render(<App><ColorDialog {...props} /></App>)
   return props
 }
 
@@ -53,5 +53,19 @@ describe('背景颜色对话框', () => {
     expect(screen.getByRole('alert').textContent).toContain('请输入')
     fireEvent.click(screen.getByRole('button', { name: '应用颜色' }))
     expect(props.onApply).not.toHaveBeenCalled()
+  })
+
+  it('支持自定义标题、预设标签与 id 前缀', () => {
+    renderDialog({
+      title: '水印文字颜色',
+      presetsLabel: '常用文字颜色',
+      presets: [{ label: '深灰', value: '#374151' }],
+      idPrefix: 'watermark-color',
+    })
+    expect(screen.getByRole('dialog', { name: '水印文字颜色' })).toBeTruthy()
+    expect(screen.getByText('常用文字颜色')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /深灰/ })).toBeTruthy()
+    expect(screen.getByLabelText('自定义颜色').id).toBe('watermark-color-custom')
+    expect(screen.getByLabelText('十六进制颜色值').id).toBe('watermark-color-hex')
   })
 })

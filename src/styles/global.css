@@ -15,9 +15,13 @@
 
   --color-accent: #21cfa0;
   --color-accent-soft: #163a32;
+  /* 实心品牌绿上的文字/图标；深色文字在明暗主题都满足 4.5:1。 */
+  --color-on-accent: #07130f;
   /* 用于浅色背景上的强调文字；深色主题保持品牌绿。 */
   --color-accent-text: #21cfa0;
   --color-text-secondary-strong: #b8b6bc;
+  /* 键盘焦点环统一用高对比前景色，避免 Ant 默认焦点色在品牌绿上失效。 */
+  --color-focus-ring: #ededec;
 
   --color-success: #4ade80;
   --color-warning: #f5b942;
@@ -63,9 +67,11 @@ html[data-theme='light'] {
 
   --color-accent: #12a67f;
   --color-accent-soft: #ecfdf5;
+  --color-on-accent: #07130f;
   /* #12a67f 在白底上只有 3.09:1，文字场景改用更深一档的墨绿。 */
   --color-accent-text: #0a6b52;
   --color-text-secondary-strong: #475569;
+  --color-focus-ring: #111827;
 
   --color-success: #16a34a;
   --color-warning: #d97706;
@@ -3224,6 +3230,16 @@ body.sidebar-resizing * {
 }
 
 .toolbox-preview-stage img { display: block; max-width: 100%; max-height: min(50vh, 460px); object-fit: contain; }
+.toolbox-preview-open {
+  display: grid;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  place-items: center;
+  cursor: zoom-in;
+}
 .toolbox-preview-stage p { color: var(--color-text-secondary-strong); }
 .toolbox-batch-summary {
   margin: 0 0 10px;
@@ -3232,6 +3248,7 @@ body.sidebar-resizing * {
   font-variant-numeric: tabular-nums;
 }
 .toolbox-result-grid { display: flex; min-height: 400px; flex-direction: column; gap: 12px; }
+.toolbox-result-grid.is-compact { min-height: 0; }
 .toolbox-result-grid-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -3336,9 +3353,14 @@ body.sidebar-resizing * {
 
 .toolbox-settings-panel { display: flex; flex-direction: column; gap: 6px; }
 .toolbox-settings-panel > .toolbox-output-options { margin: 2px 0 10px; }
-.toolbox-settings-panel .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) { color: var(--color-accent-text); }
+.toolbox-settings-panel .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled),
+.toolbox-settings-panel .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):hover,
+.toolbox-settings-panel .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):active {
+  color: var(--color-on-accent);
+}
 .toolbox-preview-panel > .ant-radio-group { margin-bottom: 12px; }
 .toolbox-settings-panel > .toolbox-layout-options { display: flex; margin-bottom: 0; }
+.toolbox-layout-options .ant-radio-group { display: flex; flex: 1; }
 .toolbox-layout-options .ant-radio-button-wrapper { flex: 1; text-align: center; }
 .toolbox-field-label { display: block; margin-top: 10px; color: var(--color-text-secondary); font-size: 12px; }
 .toolbox-field-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; color: var(--color-text-secondary); font-size: 12px; }
@@ -3360,6 +3382,12 @@ body.sidebar-resizing * {
 .toolbox-color-trigger:disabled { cursor: not-allowed; opacity: 0.55; }
 .toolbox-color-swatch { width: 16px; height: 16px; flex: 0 0 16px; border: 1px solid var(--color-border); border-radius: 4px; }
 .toolbox-logo-name { display: block; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* placeholder 也是文本，不能比正文更淡；模板输入框还依赖它提供唯一提示。 */
+.toolbox-watermark .ant-input::placeholder,
+.toolbox-watermark .ant-select-selection-placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1;
+}
 
 .toolbox-anchor-grid {
   display: grid;
@@ -3373,11 +3401,11 @@ body.sidebar-resizing * {
   border: 1px solid var(--color-border-strong);
   border-radius: 6px;
   background: var(--color-surface-2);
-  color: var(--color-text-secondary);
+  color: var(--color-text-secondary-strong);
   cursor: pointer;
 }
 
-.toolbox-anchor-grid button.is-active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); }
+.toolbox-anchor-grid button.is-active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-text); }
 .toolbox-anchor-grid button:disabled { cursor: not-allowed; opacity: 0.55; }
 .toolbox-presets { display: flex; margin-top: 10px; padding-top: 12px; flex-direction: column; gap: 8px; border-top: 1px solid var(--color-border); }
 .toolbox-preset-row { display: flex; gap: 8px; }
@@ -3509,8 +3537,8 @@ body.sidebar-resizing * {
   color: rgba(255, 255, 255, 0.6);
 }
 .result-gallery .ant-btn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-.result-gallery .ant-btn-primary { color: #07130f; }
-.result-gallery .ant-btn-primary:not(:disabled):hover { color: #07130f; }
+.result-gallery .ant-btn-primary { color: var(--color-on-accent); }
+.result-gallery .ant-btn-primary:not(:disabled):hover { color: var(--color-on-accent); }
 
 /* 颜色面板用 modal 承载，焦点、Escape 和名称由 dialog 统一处理。 */
 .bg-color-dialog-body { display: flex; flex-direction: column; gap: 16px; }
@@ -3842,6 +3870,9 @@ body.sidebar-resizing * {
 }
 .toolbox-progress { display: flex; min-width: 0; max-width: 420px; flex: 1; flex-direction: column; gap: 5px; color: var(--color-text-secondary-strong); font-size: 12px; }
 .toolbox-progress-status { white-space: normal; }
+.toolbox-undo-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; color: var(--color-warning-text); }
+.toolbox-watermark .toolbox-undo-button.ant-btn-link { min-height: 24px; padding-inline: 4px; color: var(--color-accent-text); }
+.toolbox-watermark .toolbox-undo-button.ant-btn-link:not(:disabled):hover { color: var(--color-accent-text); text-decoration: underline; }
 .toolbox-footer-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .toolbox-watermark .toolbox-view-result.ant-btn-link,
 .toolbox-watermark .toolbox-view-result.ant-btn-link:not(:disabled):hover,
@@ -3850,8 +3881,8 @@ body.sidebar-resizing * {
 .toolbox-crop-warning { flex: 1 0 100%; margin: 0; }
 
 /* 品牌绿上的主按钮改用深色文字，明暗主题下都满足 4.5:1。 */
-.toolbox-watermark .ant-btn.ant-btn-primary:not(.ant-btn-dangerous) { color: #07130f; }
-.toolbox-watermark .ant-btn.ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):hover { color: #07130f; }
+.toolbox-watermark .ant-btn.ant-btn-primary:not(.ant-btn-dangerous) { color: var(--color-on-accent); }
+.toolbox-watermark .ant-btn.ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):hover { color: var(--color-on-accent); }
 /* Ant 默认按钮 hover 使用品牌绿，浅色底上只有 2.64:1；文字场景改用深一档墨绿。 */
 .toolbox-watermark .ant-btn.ant-btn-default:not(:disabled):hover,
 .toolbox-watermark .ant-btn.ant-btn-default:not(:disabled):active {
@@ -3866,10 +3897,14 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
 /* 统一焦点环，避免深色主题下品牌绿焦点与按钮背景混在一起。 */
 .toolbox-watermark .ant-btn:focus-visible,
 .toolbox-watermark .ant-radio-button-wrapper:focus-visible,
+.toolbox-watermark .ant-radio-button-wrapper:has(input:focus-visible),
+.toolbox-watermark .ant-switch:focus-visible,
 .toolbox-watermark .ant-segmented:has(:focus-visible),
 .toolbox-watermark .toolbox-color-trigger:focus-visible,
+.toolbox-watermark .toolbox-anchor-grid button:focus-visible,
+.toolbox-watermark .toolbox-preview-open:focus-visible,
 .toolbox-watermark .toolbox-preview-stage img:focus-visible {
-  outline: 3px solid var(--color-text-primary);
+  outline: 3px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -4143,6 +4178,8 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
 @media (max-width: 900px) {
   /* 移动端先看到输出背景，再看到预览，避免处理完才发现要纯色。 */
   .toolbox-sticky-preview .toolbox-settings-panel { order: -1; }
+  /* 加水印需要边调边看，设置不能排在预览前面。 */
+  .toolbox-sticky-preview.toolbox-watermark .toolbox-settings-panel { order: 0; }
 }
 
 @media (max-width: 1280px) and (min-width: 901px) {
@@ -4157,12 +4194,35 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
 
 @media (max-width: 560px) {
   .toolbox-result-grid-items { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; }
-  .toolbox-watermark .toolbox-footer-actions { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
-  .toolbox-watermark .toolbox-footer-actions > .ant-btn-primary,
-  .toolbox-watermark .toolbox-footer-actions > span { flex: 1 1 100%; width: 100%; }
-  .toolbox-watermark .toolbox-footer-actions > span > .ant-btn { width: 100%; }
+  /* 加水印时把实时预览吸顶并压到 180px，滚动调参仍能看到效果。 */
+  .toolbox-watermark .toolbox-preview-panel.has-image {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    box-shadow: 0 8px 20px rgba(17, 17, 20, 0.14);
+  }
+  /* 设置面板单独成层，避免 Ant 选中项的 z-index 盖过吸顶预览。 */
+  .toolbox-watermark .toolbox-settings-panel { z-index: 0; }
+  .toolbox-watermark .toolbox-preview-stage { min-height: 180px; padding: 10px; }
+  .toolbox-watermark .toolbox-preview-stage img { max-height: 180px; }
+  .toolbox-watermark .toolbox-preview-panel > .toolbox-hint { display: none; }
+  .app-main-content:has(.toolbox-watermark) { scroll-padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  .app-main-content:has(.toolbox-watermark .toolbox-preview-panel.has-image) { scroll-padding-top: 280px; }
+  .toolbox-watermark .toolbox-footer-actions { flex-direction: row; flex-wrap: nowrap; align-items: stretch; }
+  .toolbox-watermark .toolbox-footer-actions > .ant-btn { flex: 1 1 0; min-width: 0; min-height: 44px; }
+  .toolbox-watermark .toolbox-footer-actions > span { flex: 1 1 0; min-width: 0; }
+  .toolbox-watermark .toolbox-footer-actions > span > .ant-btn { width: 100%; min-height: 44px; }
   .toolbox-watermark .toolbox-footer-actions > .toolbox-view-result { flex: 0 0 auto; align-self: center; }
-  .toolbox-sticky-preview .toolbox-watermark-main { padding-bottom: 88px; }
+  .toolbox-watermark .toolbox-anchor-grid button { min-height: 44px; }
+  .toolbox-watermark .toolbox-color-trigger { min-height: 44px; }
+  .toolbox-watermark .toolbox-undo-button.ant-btn-link { min-height: 44px; }
+  .toolbox-watermark .toolbox-field-row .ant-switch::before {
+    content: '';
+    position: absolute;
+    inset: -11px -6px;
+  }
+  .toolbox-watermark .ant-slider-handle::before { inset: -17px; width: 44px; height: 44px; }
+  .toolbox-sticky-preview.toolbox-watermark .toolbox-watermark-main { padding-bottom: 150px; }
   .result-gallery-head strong { max-width: 62vw; }
   .result-gallery-stage { padding: 10px; }
   .result-gallery-stage img { max-height: calc(100dvh - 260px); }

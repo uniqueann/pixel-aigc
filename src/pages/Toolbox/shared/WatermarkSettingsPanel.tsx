@@ -1,7 +1,15 @@
-import type { ReactNode } from 'react'
-import { Button, ColorPicker, Input, Radio, Slider, Switch, Upload } from 'antd'
+import { useState, type ReactNode } from 'react'
+import { Button, Input, Radio, Slider, Switch, Upload } from 'antd'
 import { UploadOutlined } from '@ant-design/icons'
 import type { WatermarkAnchor, WatermarkSettings } from '../watermark/types'
+import ColorDialog, { type ColorPreset } from './ColorDialog'
+
+const textColorPresets: readonly ColorPreset[] = [
+  { label: '白色', value: '#FFFFFF' },
+  { label: '黑色', value: '#000000' },
+  { label: '品牌绿', value: '#21CFA0' },
+  { label: '深灰', value: '#374151' },
+]
 
 const anchors: { value: WatermarkAnchor; label: string }[] = [
   { value: 'top-left', label: '左上' },
@@ -24,42 +32,79 @@ interface Props {
 }
 
 export default function WatermarkSettingsPanel({ settings, disabled, onChange, onLogo, templates }: Props) {
+  const [colorDialogOpen, setColorDialogOpen] = useState(false)
   return (
     <section className="toolbox-settings-panel" aria-label="水印设置">
       <div className="toolbox-section-heading"><div><strong>水印设置</strong><span>一次设置，应用到整批</span></div></div>
-      <Radio.Group
-        value={settings.kind}
-        disabled={disabled}
-        onChange={event => onChange({ kind: event.target.value })}
-        options={[{ label: '文字水印', value: 'text' }, { label: 'Logo 水印', value: 'logo' }]}
-        optionType="button"
-        buttonStyle="solid"
-      />
+      <div role="radiogroup" aria-label="水印类型">
+        <Radio.Group
+          value={settings.kind}
+          disabled={disabled}
+          onChange={event => onChange({ kind: event.target.value })}
+          options={[{ label: '文字水印', value: 'text' }, { label: 'Logo 水印', value: 'logo' }]}
+          optionType="button"
+          buttonStyle="solid"
+        />
+      </div>
       {settings.kind === 'text' ? (
         <>
           <label className="toolbox-field-label" htmlFor="watermark-text">水印文字</label>
           <Input id="watermark-text" value={settings.text} maxLength={80} disabled={disabled} placeholder="例如：© 我的品牌" onChange={event => onChange({ text: event.target.value })} />
-          <label className="toolbox-field-label">文字颜色</label>
-          <Radio.Group
-            className="toolbox-layout-options"
-            aria-label="文字颜色模式"
-            value={settings.colorMode}
-            disabled={disabled}
-            onChange={event => onChange({ colorMode: event.target.value })}
-            options={[{ label: '自动', value: 'auto' }, { label: '自定义', value: 'custom' }]}
-            optionType="button"
-            buttonStyle="solid"
-          />
+          <span id="watermark-color-label" className="toolbox-field-label">文字颜色</span>
+          <div className="toolbox-layout-options" role="radiogroup" aria-labelledby="watermark-color-label">
+            <Radio.Group
+              value={settings.colorMode}
+              disabled={disabled}
+              onChange={event => onChange({ colorMode: event.target.value })}
+              options={[{ label: '自动', value: 'auto' }, { label: '自定义', value: 'custom' }]}
+              optionType="button"
+              buttonStyle="solid"
+            />
+          </div>
           {settings.colorMode === 'custom' && (
-            <div className="toolbox-field-row"><span>自定义颜色</span><ColorPicker value={settings.color} disabled={disabled} onChange={color => onChange({ color: color.toHexString() })} /></div>
+            <>
+              <div className="toolbox-field-row">
+                <span>自定义颜色</span>
+                <button
+                  type="button"
+                  className="toolbox-color-trigger"
+                  aria-label={`自定义颜色，当前 ${settings.color.toUpperCase()}`}
+                  aria-haspopup="dialog"
+                  aria-expanded={colorDialogOpen}
+                  disabled={disabled}
+                  onClick={() => setColorDialogOpen(true)}
+                >
+                  <span className="toolbox-color-swatch" style={{ background: settings.color }} aria-hidden="true" />
+                  <span>{settings.color.toUpperCase()}</span>
+                </button>
+              </div>
+              <ColorDialog
+                open={colorDialogOpen}
+                value={settings.color}
+                title="水印文字颜色"
+                presetsLabel="常用文字颜色"
+                presets={textColorPresets}
+                idPrefix="watermark-color"
+                onClose={() => setColorDialogOpen(false)}
+                onApply={color => onChange({ color })}
+              />
+            </>
           )}
           <div className="toolbox-field-row">
             <span>可读性描边</span>
             <Switch checked={settings.readability} disabled={disabled} aria-label="可读性描边" onChange={checked => onChange({ readability: checked })} />
           </div>
           <p className="toolbox-hint">自动根据背景明暗选择黑白文字；开启描边后使用高对比色，确保文字在复杂背景下清晰可读。</p>
-          <label className="toolbox-field-label">文字大小：短边的 {settings.textSizePercent}%</label>
-          <Slider min={1} max={15} value={settings.textSizePercent} disabled={disabled} onChange={value => onChange({ textSizePercent: value })} />
+          <label className="toolbox-field-label" id="watermark-text-size-label">文字大小：短边的 {settings.textSizePercent}%</label>
+          <Slider
+            min={1}
+            max={15}
+            value={settings.textSizePercent}
+            disabled={disabled}
+            ariaLabelledByForHandle="watermark-text-size-label"
+            ariaValueTextFormatterForHandle={value => `短边的 ${value}%`}
+            onChange={value => onChange({ textSizePercent: value })}
+          />
         </>
       ) : (
         <>
@@ -68,41 +113,82 @@ export default function WatermarkSettingsPanel({ settings, disabled, onChange, o
             <Button icon={<UploadOutlined />} disabled={disabled}>选择 PNG / WebP</Button>
           </Upload>
           <span className="toolbox-logo-name" title={settings.logoName ?? ''}>{settings.logoName ?? '推荐使用透明背景 Logo'}</span>
-          <label className="toolbox-field-label">Logo 宽度：短边的 {settings.logoSizePercent}%</label>
-          <Slider min={5} max={50} value={settings.logoSizePercent} disabled={disabled} onChange={value => onChange({ logoSizePercent: value })} />
+          <label className="toolbox-field-label" id="watermark-logo-size-label">Logo 宽度：短边的 {settings.logoSizePercent}%</label>
+          <Slider
+            min={5}
+            max={50}
+            value={settings.logoSizePercent}
+            disabled={disabled}
+            ariaLabelledByForHandle="watermark-logo-size-label"
+            ariaValueTextFormatterForHandle={value => `短边的 ${value}%`}
+            onChange={value => onChange({ logoSizePercent: value })}
+          />
         </>
       )}
-      <label className="toolbox-field-label">排列方式</label>
-      <Radio.Group
-        className="toolbox-layout-options"
-        value={settings.layout}
-        disabled={disabled}
-        onChange={event => onChange({ layout: event.target.value })}
-        options={[{ label: '单个', value: 'single' }, { label: '平铺', value: 'tile' }]}
-        optionType="button"
-        buttonStyle="solid"
-      />
+      <label className="toolbox-field-label" id="watermark-layout-label">排列方式</label>
+      <div className="toolbox-layout-options" role="radiogroup" aria-labelledby="watermark-layout-label">
+        <Radio.Group
+          value={settings.layout}
+          disabled={disabled}
+          onChange={event => onChange({ layout: event.target.value })}
+          options={[{ label: '单个', value: 'single' }, { label: '平铺', value: 'tile' }]}
+          optionType="button"
+          buttonStyle="solid"
+        />
+      </div>
       {settings.layout === 'tile' ? (
         <>
-          <label className="toolbox-field-label">平铺间距：短边的 {settings.tileGapPercent}%</label>
-          <Slider min={0} max={30} value={settings.tileGapPercent} disabled={disabled} onChange={value => onChange({ tileGapPercent: value })} />
-          <label className="toolbox-field-label">旋转角度：{settings.tileRotation}°</label>
-          <Slider min={-60} max={60} value={settings.tileRotation} disabled={disabled} onChange={value => onChange({ tileRotation: value })} />
+          <label className="toolbox-field-label" id="watermark-tile-gap-label">平铺间距：短边的 {settings.tileGapPercent}%</label>
+          <Slider
+            min={0}
+            max={30}
+            value={settings.tileGapPercent}
+            disabled={disabled}
+            ariaLabelledByForHandle="watermark-tile-gap-label"
+            ariaValueTextFormatterForHandle={value => `短边的 ${value}%`}
+            onChange={value => onChange({ tileGapPercent: value })}
+          />
+          <label className="toolbox-field-label" id="watermark-tile-rotation-label">旋转角度：{settings.tileRotation}°</label>
+          <Slider
+            min={-60}
+            max={60}
+            value={settings.tileRotation}
+            disabled={disabled}
+            ariaLabelledByForHandle="watermark-tile-rotation-label"
+            ariaValueTextFormatterForHandle={value => `${value} 度`}
+            onChange={value => onChange({ tileRotation: value })}
+          />
         </>
       ) : (
         <>
-          <label className="toolbox-field-label">位置</label>
-          <div className="toolbox-anchor-grid">
-            {anchors.map(anchor => <button key={anchor.value} type="button" className={settings.anchor === anchor.value ? 'is-active' : ''} disabled={disabled} aria-label={anchor.label} title={anchor.label} onClick={() => onChange({ anchor: anchor.value })}>{anchor.label}</button>)}
+          <span id="watermark-anchor-label" className="toolbox-field-label">位置</span>
+          <div className="toolbox-anchor-grid" role="group" aria-labelledby="watermark-anchor-label">
+            {anchors.map(anchor => <button key={anchor.value} type="button" className={settings.anchor === anchor.value ? 'is-active' : ''} disabled={disabled} aria-label={anchor.label} aria-pressed={settings.anchor === anchor.value} title={anchor.label} onClick={() => onChange({ anchor: anchor.value })}>{anchor.label}</button>)}
           </div>
         </>
       )}
-      <label className="toolbox-field-label">透明度：{settings.opacity}%</label>
-      <Slider min={10} max={100} value={settings.opacity} disabled={disabled} onChange={value => onChange({ opacity: value })} />
+      <label className="toolbox-field-label" id="watermark-opacity-label">透明度：{settings.opacity}%</label>
+      <Slider
+        min={10}
+        max={100}
+        value={settings.opacity}
+        disabled={disabled}
+        ariaLabelledByForHandle="watermark-opacity-label"
+        ariaValueTextFormatterForHandle={value => `${value}%`}
+        onChange={value => onChange({ opacity: value })}
+      />
       {settings.layout === 'single' && (
         <>
-          <label className="toolbox-field-label">边距：短边的 {settings.marginPercent}%</label>
-          <Slider min={0} max={10} value={settings.marginPercent} disabled={disabled} onChange={value => onChange({ marginPercent: value })} />
+          <label className="toolbox-field-label" id="watermark-margin-label">边距：短边的 {settings.marginPercent}%</label>
+          <Slider
+            min={0}
+            max={10}
+            value={settings.marginPercent}
+            disabled={disabled}
+            ariaLabelledByForHandle="watermark-margin-label"
+            ariaValueTextFormatterForHandle={value => `短边的 ${value}%`}
+            onChange={value => onChange({ marginPercent: value })}
+          />
         </>
       )}
       {templates}
