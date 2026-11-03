@@ -11,8 +11,10 @@ import { invalidateBatch, processBatch } from './watermark/batch'
 import { createWatermarkZip, downloadBlob, namesForImages } from './watermark/download'
 import { deletePreset, listPresets, savePreset, type WatermarkPreset } from './watermark/presets'
 import { WatermarkRenderer } from './watermark/renderer'
-import { type BatchImage, type WatermarkSettings } from './watermark/types'
+import { migrateWatermarkSettings, type BatchImage, type WatermarkSettings } from './watermark/types'
 import { watermarkPreviewAlt, watermarkPreviewMeta, watermarkPreviewSource, type WatermarkPreviewMode } from './watermark/preview'
+import { loadWatermarkSession, saveWatermarkSession } from './watermark/session'
+import { footerMode, progressLabel } from './shared/resultProgress'
 import { datedDownloadName } from './shared/dateStamp'
 import { LOCAL_TEMPLATE_LABEL } from './shared/presetLabels'
 import { inspectImage, inspectLogo, MAX_ZIP_BYTES, queueLimitMessage, hasWatermark } from './watermark/validation'
@@ -44,15 +46,23 @@ type ResultView = 'single' | 'grid'
 export default function WatermarkTool() {
   const { message, modal } = App.useApp()
   const scope = useUserStore(state => state.userId ?? 'local')
-  const [items, setItems] = useState<BatchImage[]>([])
+  const [restoredSession] = useState(() => loadWatermarkSession(scope))
+  const [items, setItems] = useState<BatchImage[]>(() => restoredSession?.items ?? [])
   const { openAt, galleryProps } = useBlobPreviewGallery(items)
-  const itemsRef = useRef<BatchImage[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const itemsRef = useRef<BatchImage[]>(items)
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    if (!restoredSession) return null
+    return restoredSession.selectedId && restoredSession.items.some(item => item.id === restoredSession.selectedId)
+      ? restoredSession.selectedId
+      : restoredSession.items[0]?.id ?? null
+  })
   const [resultView, setResultView] = useState<ResultView>('single')
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all')
   const [previewMode, setPreviewMode] = useState<WatermarkPreviewMode>('result')
   const memoryEpoch = usePreferencesStore(state => state.memoryEpoch)
-  const [settings, setSettings] = useState<WatermarkSettings>(() => initialWatermarkSettings(usePreferencesStore.getState().preferences))
+  const [settings, setSettings] = useState<WatermarkSettings>(() => restoredSession
+    ? migrateWatermarkSettings(restoredSession.settings)
+    : initialWatermarkSettings(usePreferencesStore.getState().preferences))
   const [appliedMemoryEpoch, setAppliedMemoryEpoch] = useState(memoryEpoch)
   if (appliedMemoryEpoch !== memoryEpoch) {
     setSettings(initialWatermarkSettings(usePreferencesStore.getState().preferences))
@@ -76,6 +86,7 @@ export default function WatermarkTool() {
   const [settingsNotice, setSettingsNotice] = useState<{ count: number } | null>(null)
   const settingsSnapshotRef = useRef<SettingsSnapshot | null>(null)
   const previewScrollTopRef = useRef<number | null>(null)
+  const previewPanelRef = useRef<HTMLElement | null>(null)
 
   const selected = items.find(item => item.id === selectedId)
   const completed = items.filter(item => item.status === 'succeeded')
@@ -97,6 +108,13 @@ export default function WatermarkTool() {
   const batchSummary = items.length > 0
     ? `成功 ${completed.length} · 失败 ${failed.length} · 可下载 ${completed.length}`
     : '等待图片'
+  const allDone = items.length > 0 && completed.length === items.length
+  const hasPending = items.some(item => item.status === 'pending')
+  const mode = footerMode({ processing, itemCount: items.length, allDone, failedCount: failed.length })
+  const statusText = progressLabel({ itemCount: items.length, completedCount: completed.length, failedCount: failed.length, processing })
+  const downloadActionLabel = completed.length > 0 && failed.length > 0
+    ? `下载 ${completed.length} 张结果`
+    : '打包下载'
 
   function commitItems(next: BatchImage[]) {
     if (!mountedRef.current) return
@@ -121,10 +139,14 @@ export default function WatermarkTool() {
       cancelledRef.current = true
       rendererRef.current?.dispose()
       rendererRef.current = null
-      for (const item of itemsRef.current) URL.revokeObjectURL(item.sourceUrl)
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     }
   }, [])
+
+  // 页签切换会卸载页面，用内存会话保留本次打开期间的队列与结果。
+  useEffect(() => {
+    saveWatermarkSession({ ownerId: scope, items, settings, selectedId })
+  }, [scope, items, settings, selectedId])
 
   useEffect(() => {
     let active = true
@@ -352,6 +374,11 @@ export default function WatermarkTool() {
     }
   }
 
+  function showResult() {
+    if (resultView === 'grid') setResultView('single')
+    previewPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   async function chooseLogo(file: File) {
     try {
       await inspectLogo(file)
@@ -417,7 +444,7 @@ export default function WatermarkTool() {
         onClear={requestClearFiles}
       />
       <div className="toolbox-watermark-main">
-        <section className={`toolbox-preview-panel${selected ? ' has-image' : ''}`} aria-label="水印预览">
+        <section ref={previewPanelRef} className={`toolbox-preview-panel${selected ? ' has-image' : ''}`} aria-label="水印预览">
           <div className="toolbox-section-heading">
             <div className="toolbox-preview-title">
               <strong>水印预览</strong>
@@ -525,8 +552,8 @@ export default function WatermarkTool() {
 
       <div className="toolbox-watermark-footer">
         <div className="toolbox-progress" role="status" aria-live="polite" aria-atomic="true">
-          <span>{completed.length} / {items.length} 张已完成</span>
-          {processing && <Progress size="small" percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
+          <span>{statusText}</span>
+          {processing && <Progress size="small" aria-label="处理进度" percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
           {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
           {settingsNotice && (
             <span className="toolbox-undo-notice">
@@ -536,8 +563,16 @@ export default function WatermarkTool() {
           )}
         </div>
         <div className="toolbox-footer-actions">
-          <Button icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>打包下载</Button>
-          {processing ? <Button danger onClick={cancelProcessing}>取消处理</Button> : (
+          <Button type={mode === 'download' ? 'primary' : 'default'} icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>{downloadActionLabel}</Button>
+          {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>查看结果</Button>}
+          {mode === 'retry' && (
+            <>
+              <Button type="primary" disabled={busy || !hasWatermark(settings)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>
+              {hasPending && <Button disabled={busy || !hasWatermark(settings)} onClick={() => void processImages()}>继续处理剩余</Button>}
+            </>
+          )}
+          {mode === 'cancel' && <Button danger onClick={cancelProcessing}>取消处理</Button>}
+          {(mode === 'process' || mode === 'empty') && (
             <Button type="primary" disabled={!items.some(item => item.status !== 'succeeded') || !hasWatermark(settings) || busy} onClick={() => void processImages()}>开始处理</Button>
           )}
         </div>
