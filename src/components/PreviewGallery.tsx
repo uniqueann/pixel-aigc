@@ -38,6 +38,9 @@ export interface PreviewGalleryProps {
   onClose: () => void
   onChange: (index: number) => void
   onDownload?: (item: PreviewItem) => Promise<void> | void
+  /** 覆盖默认的“下载原始大图”文案，避免调用方下载的是结果却写成原图。 */
+  downloadLabel?: string
+  downloadTooltip?: string
 }
 
 function PreviewDownloadButton({ label, tooltip, split, onClick }: { label: string; tooltip: string; split: boolean; onClick: () => void }) {
@@ -131,7 +134,7 @@ function PreviewImage({ image, onRetry }: { image: ReactElement<RcPreviewImagePr
   )
 }
 
-export default function PreviewGallery({ items, open, current, onClose, onChange, onDownload }: PreviewGalleryProps) {
+export default function PreviewGallery({ items, open, current, onClose, onChange, onDownload, downloadLabel, downloadTooltip }: PreviewGalleryProps) {
   const { message } = App.useApp()
   const [comparing, setComparing] = useState(false)
   const item = items[current]
@@ -215,8 +218,8 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
           isVideo ? null : originalNode,
           <PreviewDownloadButton
             key="download"
-            label={isVideo ? '下载视频' : '下载原始大图'}
-            tooltip={isVideo ? '下载视频' : '下载原图'}
+            label={isVideo ? '下载视频' : downloadLabel ?? '下载原始大图'}
+            tooltip={isVideo ? '下载视频' : downloadTooltip ?? '下载原图'}
             split={!isVideo}
             onClick={() => void download()}
           />,

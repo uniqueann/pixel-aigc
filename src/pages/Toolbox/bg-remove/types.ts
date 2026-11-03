@@ -5,7 +5,8 @@ export interface BgRemoveSettings {
 }
 
 export const DEFAULT_BG_REMOVE_SETTINGS: BgRemoveSettings = {
-  background: '#ffffff',
+  // 抠图的核心产物是透明背景；纯色作为备选，避免首次使用直接得到白底 JPEG。
+  background: 'transparent',
 }
 
 export interface BatchImage {

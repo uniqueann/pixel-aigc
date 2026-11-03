@@ -32,7 +32,7 @@ describe('工具箱图片卡片', () => {
   it('空状态是一条拖拽条，并沿用数量和限制说明', () => {
     renderCard()
     expect(screen.getByText('图片').parentElement?.textContent).toContain('0 / 20 张')
-    expect(screen.getByRole('button', { name: /拖入图片，或点击选择/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /选择图片，或拖入文件/ })).toBeTruthy()
     expect(screen.getByText(/智能抠图会上传图片处理/)).toBeTruthy()
     expect(screen.getByText(/单张最多 20 MB，整批最多 150 MB/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: '清空' })).toBeNull()
@@ -62,6 +62,14 @@ describe('工具箱图片卡片', () => {
     expect(props.onRemove).toHaveBeenCalledWith('c')
     fireEvent.click(screen.getByRole('button', { name: '清空' }))
     expect(props.onClear).toHaveBeenCalledOnce()
+  })
+
+  it('达到 20 张时添加入口禁用并提示上限', () => {
+    const items = Array.from({ length: 20 }, (_, index) => image({ id: `image-${index}`, status: 'succeeded' }))
+    renderCard(items, { selectedId: items[0].id })
+    const add = screen.getByRole('button', { name: '已达上限' })
+    expect(add.hasAttribute('disabled')).toBe(true)
+    expect(add.getAttribute('title')).toBe('最多 20 张')
   })
 
   it('处理中不能删除或继续添加，拖入整卡会高亮', () => {
