@@ -3358,7 +3358,20 @@ body.sidebar-resizing * {
 .toolbox-settings-panel .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):active {
   color: var(--color-on-accent);
 }
+/* 深色下“纯色”选中项原本是深字配深底；补上品牌绿底，保证选中态可读。 */
+html[data-theme='dark'] .toolbox-background-options .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
 .toolbox-preview-panel > .ant-radio-group { margin-bottom: 12px; }
+.toolbox-stage-switch { margin-bottom: 12px; }
+/* 流水线阶段页签是品牌绿实心底，统一改用深色文字，明暗主题都满足 4.5:1。 */
+.toolbox-pipeline .toolbox-stage-switch .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled),
+.toolbox-pipeline .toolbox-stage-switch .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):hover,
+.toolbox-pipeline .toolbox-stage-switch .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):active {
+  color: var(--color-on-accent);
+}
 .toolbox-settings-panel > .toolbox-layout-options { display: flex; margin-bottom: 0; }
 .toolbox-layout-options .ant-radio-group { display: flex; flex: 1; }
 .toolbox-layout-options .ant-radio-button-wrapper { flex: 1; text-align: center; }
@@ -3853,7 +3866,8 @@ body.sidebar-resizing * {
   .toolbox-image-tile.is-selected .toolbox-image-remove { opacity: 1; }
   .toolbox-image-tile.is-selected .toolbox-image-remove:disabled { opacity: 0.45; }
   .toolbox-image-remove { width: 32px; height: 32px; }
-  .toolbox-image-remove::before { inset: -6px; }
+  /* 只向上、向右扩命中区，避免 44px 圆覆盖 72px 图块中心导致误删。 */
+  .toolbox-image-remove::before { inset: -6px -6px 0 0; }
   .toolbox-color-trigger { min-height: 44px; }
 }
 .toolbox-crop-notice { margin: 10px 0 0; padding: 8px 10px; border-radius: 6px; background: rgba(245, 185, 66, 0.16); color: var(--color-warning-text); font-size: 13px; line-height: 1.45; }
@@ -3880,8 +3894,8 @@ body.sidebar-resizing * {
 .toolbox-warning { color: var(--color-warning-text); }
 .toolbox-crop-warning { flex: 1 0 100%; margin: 0; }
 
-/* 品牌绿上的主按钮改用深色文字，明暗主题下都满足 4.5:1。 */
-.toolbox-watermark .ant-btn.ant-btn-primary:not(.ant-btn-dangerous) { color: var(--color-on-accent); }
+/* 品牌绿上的主按钮改用深色文字，明暗主题下都满足 4.5:1；禁用态交回 Ant 的弱化样式。 */
+.toolbox-watermark .ant-btn.ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) { color: var(--color-on-accent); }
 .toolbox-watermark .ant-btn.ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):hover { color: var(--color-on-accent); }
 /* Ant 默认按钮 hover 使用品牌绿，浅色底上只有 2.64:1；文字场景改用深一档墨绿。 */
 .toolbox-watermark .ant-btn.ant-btn-default:not(:disabled):hover,
@@ -4149,6 +4163,8 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   margin-bottom: 0;
 }
 
+/* 引导副标题在页面底色上只有 4.4:1，改用更深的次级文字色。 */
+.toolbox-pipeline-lead > .toolbox-section-heading span { color: var(--color-text-secondary-strong); }
 .toolbox-pipeline-settings {
   min-width: 0;
   display: flex;
@@ -4244,6 +4260,26 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .toolbox-aspect-ratio .toolbox-preset-row .ant-select-selector { min-height: 44px; }
   .toolbox-aspect-ratio .toolbox-preset-row .ant-input { min-height: 44px; }
   .toolbox-aspect-ratio .toolbox-color-trigger { min-height: 44px; }
+  /* 流水线：单张视图吸顶，保留关键提示，长规格说明在移动端收起。 */
+  .toolbox-sticky-preview.toolbox-pipeline .toolbox-settings-panel { order: 0; }
+  .toolbox-pipeline .toolbox-preview-panel > .toolbox-hint { display: block; }
+  .toolbox-pipeline .toolbox-preview-panel > .toolbox-preview-spec { display: none; }
+  .app-main-content:has(.toolbox-pipeline .toolbox-preview-panel.has-image) { scroll-padding-top: 420px; }
+  .toolbox-sticky-preview.toolbox-pipeline .toolbox-watermark-main { padding-bottom: 0; }
+  .toolbox-pipeline .toolbox-section-heading > .toolbox-preview-actions { width: 100%; justify-content: flex-start; margin-left: 0; }
+  .toolbox-pipeline .toolbox-stage-switch .ant-radio-button-wrapper { min-height: 44px; display: inline-flex; align-items: center; }
+  .toolbox-pipeline .toolbox-preview-actions .ant-btn { min-height: 44px; }
+  .toolbox-pipeline .toolbox-settings-panel .ant-radio-wrapper { min-height: 44px; align-items: center; }
+  .toolbox-pipeline .toolbox-settings-panel .ant-radio-button-wrapper { min-height: 44px; display: inline-flex; align-items: center; }
+  .toolbox-pipeline .toolbox-settings-panel .ant-input { min-height: 44px; }
+  .toolbox-pipeline .toolbox-image-card .toolbox-section-heading .ant-btn { min-height: 44px; }
+  .toolbox-pipeline .toolbox-preset-row .ant-btn { min-height: 44px; }
+  .toolbox-pipeline .toolbox-preset-row .ant-select-selector { min-height: 44px; }
+  .toolbox-pipeline .toolbox-preset-row .ant-input { min-height: 44px; }
+  .toolbox-pipeline .toolbox-pipeline-watermark-toggle .ant-switch { position: relative; }
+  .toolbox-pipeline .toolbox-pipeline-watermark-toggle .ant-switch::before { content: ''; position: absolute; inset: -11px -6px; }
+  .toolbox-pipeline .toolbox-footer-actions { flex-wrap: wrap; }
+  .toolbox-pipeline .toolbox-footer-actions > .toolbox-view-result { min-height: 44px; }
   .result-gallery-head strong { max-width: 62vw; }
   .result-gallery-stage { padding: 10px; }
   .result-gallery-stage img { max-height: calc(100dvh - 260px); }

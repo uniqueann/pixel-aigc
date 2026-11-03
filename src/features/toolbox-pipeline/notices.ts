@@ -10,7 +10,8 @@ const phaseLabels = {
 
 /** 检测不可用时优先展示降级说明，避免被「已完成」文案盖住。 */
 export function pipelineQueueNote(item: PipelineItem, runState: 'idle' | 'running' | 'paused') {
-  if (item.cropFocus?.unavailable && itemStatus(item) !== 'failed') return item.cropFocus.note
+  if (itemStatus(item) === 'failed') return item.failedStep === 'watermark' ? '加水印失败，可重试' : '转比例失败，可重试'
+  if (item.cropFocus?.unavailable) return item.cropFocus.note
   if (item.phase) return phaseLabels[item.phase]
   if (item.cropFocus?.source === 'grid' && item.cropFocus.note) return item.cropFocus.note
   if (itemStatus(item) === 'succeeded') return item.watermarkStatus === 'skipped' ? '转比例完成 · 已跳过水印' : '转比例完成 · 水印完成'
