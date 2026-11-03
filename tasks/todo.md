@@ -488,3 +488,10 @@
   - 数据保护：设置变更提示并可撤销恢复 3 张结果；清空确认可取消；删除撤销 2 → 3 张。
   - 明暗主题：阶段页签、留白方式选中态、禁用主按钮对比度均达标。
 - 截图：`/tmp/pipeline-new-desktop.png`、`/tmp/pipeline-new-375-light.png`、`/tmp/pipeline-new-375-dark.png`、`/tmp/pipeline-new-320-notice.png`、`/tmp/pipeline-new-320-failed.png`、`/tmp/pipeline-new-grid-after-retry.png`。
+
+## 网格视图吸顶修复（2026-11-04）
+
+- 根因：`has-image` 只在单张视图添加，切到网格后丢失移动端吸顶类。
+- 修复：有图片时统一添加 `has-image`；网格视图增加 `is-grid`，面板按视口限高并整体滚动，避免压住底部操作栏。
+- 验证：375×900、375×667、320×568 下网格均保持吸顶；6 张图滚动到底后最后一张距底栏 94px；单张视图无回归。
+- 检查：`npm run lint`、`npm run build`、流水线相关 20 个单测全部通过。
