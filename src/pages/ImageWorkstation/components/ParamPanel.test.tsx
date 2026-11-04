@@ -220,7 +220,7 @@ describe('智能编辑参数面板', () => {
       />,
     )
     expect(screen.getByText('模拟光影重绘效果，最终画面以生成效果为准。')).toBeTruthy()
-    expect(screen.getByRole('group', { name: '光线方向' })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: '光线方向' })).toBeTruthy()
     expect(screen.getByText('光质')).toBeTruthy()
     expect(screen.getByText('色温')).toBeTruthy()
     const noteMax = relightNoteBudget(model.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)

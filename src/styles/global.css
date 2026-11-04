@@ -2026,6 +2026,19 @@ body.sidebar-resizing * {
 
 .workstation-preview-image.is-previewable { cursor: zoom-in; }
 
+/* 移动端吸顶时替代标题行的一行参数摘要；桌面和未吸顶时不占位。 */
+.workstation-preview-compact-summary {
+  display: none;
+  margin: 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .workstation-fusion-sources {
   display: flex;
   width: 100%;
@@ -2145,7 +2158,7 @@ body.sidebar-resizing * {
   color: var(--color-text-primary);
 }
 
-.relight-compass-cell[aria-pressed='true'] {
+.relight-compass-cell[aria-checked='true'] {
   border-color: var(--color-accent);
   background: var(--color-accent);
   color: var(--color-on-accent);
@@ -2156,7 +2169,7 @@ body.sidebar-resizing * {
   background: var(--color-surface);
 }
 
-.relight-compass-cell.is-center[aria-pressed='true'] {
+.relight-compass-cell.is-center[aria-checked='true'] {
   border-style: solid;
   background: var(--color-accent);
 }
@@ -2166,7 +2179,7 @@ body.sidebar-resizing * {
   opacity: 0.55;
 }
 
-.relight-compass-cell[aria-pressed='true']:disabled {
+.relight-compass-cell[aria-checked='true']:disabled {
   opacity: 0.8;
 }
 
@@ -2610,6 +2623,13 @@ body.sidebar-resizing * {
   flex: 1;
   padding-bottom: 24px;
   transition: min-height 0.2s ease;
+}
+
+/* AntD 的分段控件焦点环是 #78ccad，白底约 1.9:1；统一换成高对比前景色。 */
+.image-workstation-page .ant-segmented:focus-visible,
+.image-workstation-page .ant-segmented:has(:focus-visible) {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .image-workstation-settings .ant-segmented-item {
@@ -4557,6 +4577,41 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .image-workstation-preview-panel.has-image .workstation-canvas-footnote { display: none; }
   .app-main-content:has(.image-workstation-preview-panel.has-image) {
     scroll-padding-top: 320px;
+  }
+  /* 吸顶后压缩成紧凑条：只保留画面和方向摘要，避免盖住设置面板。 */
+  .image-workstation-preview-panel.is-relight .workstation-canvas-shell {
+    transition: height 160ms ease;
+  }
+  .image-workstation-preview-panel.is-stuck {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .image-workstation-preview-panel.is-stuck .workstation-panel-heading-row,
+  .image-workstation-preview-panel.is-stuck .workstation-canvas-controls,
+  .image-workstation-preview-panel.is-stuck .workstation-canvas-state,
+  .image-workstation-preview-panel.is-stuck .workstation-result-strip {
+    display: none;
+  }
+  .image-workstation-preview-panel.is-stuck .workstation-canvas-shell {
+    height: 120px;
+    padding: 4px 8px;
+    gap: 0;
+  }
+  .image-workstation-preview-panel.is-stuck .workstation-preview-compact-summary { display: block; }
+  .app-main-content:has(.image-workstation-preview-panel.is-relight.has-image) {
+    scroll-padding-top: 170px;
+  }
+  .app-main-content:has(.image-workstation-preview-panel.is-relight.has-image) .image-workstation-settings {
+    scroll-margin-top: 170px;
+  }
+  /* 光质/色温等分段控件在移动端也满足 44px 触控高度。 */
+  .image-workstation-settings .ant-segmented-item-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding-block: 4px;
+    line-height: 1.3;
   }
   .relight-compass { --relight-cell: 64px; gap: 8px; }
   .relight-compass-pad { gap: 6px; }

@@ -107,12 +107,12 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
   const hint = RELIGHT_DIRECTION_HINTS[value.direction]
 
   return (
-    <div className={`relight-compass${isBack ? ' is-back' : ''}`} role="group" aria-label="光线方向">
+    <div className={`relight-compass${isBack ? ' is-back' : ''}`}>
       <div className="relight-compass-head">
         <span className="relight-compass-label">光线方向</span>
         <span className="relight-compass-summary">{summary}</span>
       </div>
-      <div className="relight-compass-pad">
+      <div className="relight-compass-pad" role="radiogroup" aria-label="光线方向">
         {CELLS.map(cell => {
           const selected = !isBack && value.direction === cell.id
           return (
@@ -123,10 +123,11 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
                 else cellRefs.current.delete(cell.id)
               }}
               type="button"
+              role="radio"
               className={`relight-compass-cell${cell.id === 'front' ? ' is-center' : ''}`}
               style={{ gridRow: cell.row + 1, gridColumn: cell.col + 1 }}
-              aria-label={`${cell.label}光`}
-              aria-pressed={selected}
+              aria-label={`${cell.label}光：${RELIGHT_DIRECTION_HINTS[cell.id]}`}
+              aria-checked={selected}
               tabIndex={disabled ? -1 : activeCell === cell.id ? 0 : -1}
               disabled={disabled}
               onClick={() => select(cell.id)}
@@ -143,6 +144,7 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
           ref={frontModeRef}
           type="button"
           role="radio"
+          aria-label={`商品前方：${RELIGHT_DIRECTION_HINTS.front}`}
           aria-checked={!isBack}
           tabIndex={disabled ? -1 : isBack ? -1 : 0}
           disabled={disabled}
@@ -155,6 +157,7 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
           ref={backModeRef}
           type="button"
           role="radio"
+          aria-label={`背面 · 逆光：${RELIGHT_DIRECTION_HINTS.back}`}
           aria-checked={isBack}
           tabIndex={disabled ? -1 : isBack ? 0 : -1}
           disabled={disabled}
