@@ -36,6 +36,7 @@ import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
+import RelightDirectionOverlay from './components/RelightDirectionOverlay'
 import ToolExampleStrip from './components/ToolExampleStrip'
 import { workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
@@ -93,6 +94,7 @@ export default function ImageWorkstation() {
   const [retouchNote, setRetouchNote] = useState('')
   const [fusionNote, setFusionNote] = useState('')
   const [relightNote, setRelightNote] = useState('')
+  const [relightOverlayEnabled, setRelightOverlayEnabled] = useState(true)
   const imageConfiguration = useImageModels('image_edit')
   const variationConfiguration = useImageModels('variation')
   const imageModels = imageConfiguration.models
@@ -201,6 +203,8 @@ export default function ImageWorkstation() {
           ? `${controller.inputAsset.width}×${controller.inputAsset.height}`
           : '等待上传'
   const previewHasImage = Boolean(fusionTool ? fusionProduct : showSourcePreview ? controller.inputAsset : undefined)
+  const showRelightOverlay = relightTool && previewHasImage && relightOverlayEnabled
+  const muteRelightOverlay = showRelightOverlay && compareMode === 'effect' && controller.outputAssets.length > 0
   const replaceSourceAsset = controller.replaceSourceAsset
   const previewPanelRef = useRef<HTMLElement>(null)
   const settingsPanelRef = useRef<HTMLElement>(null)
@@ -610,6 +614,19 @@ export default function ImageWorkstation() {
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
               processingLabel={!controller.resultReadError && (controller.active || controller.submitting) ? '正在生成，结果会显示在下方' : undefined}
               errorLabel={controller.resultReadError ? '结果暂时无法读取，可重试' : undefined}
+              overlay={showRelightOverlay ? (
+                <RelightDirectionOverlay
+                  direction={relightOptions.direction}
+                  disabled={controller.formLocked}
+                  muted={muteRelightOverlay}
+                  onDirectionChange={direction => updateParameters({ relight: { ...relightOptions, direction } })}
+                />
+              ) : undefined}
+              overlayToggle={relightTool && previewHasImage ? {
+                label: '方向示意',
+                pressed: relightOverlayEnabled,
+                onChange: () => setRelightOverlayEnabled(enabled => !enabled),
+              } : undefined}
               imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
               imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
               referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
