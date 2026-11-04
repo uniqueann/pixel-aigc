@@ -196,7 +196,7 @@ describe('智能编辑参数面板', () => {
     expect(screen.queryByText('生成尺寸')).toBeNull()
   })
 
-  it('重新打光展示方向、光质、色温和近似效果提示', () => {
+  it('重新打光展示方向、光线质感、色温和近似效果提示', () => {
     render(
       <ParamPanel
         capability={Capability.Relight}
@@ -221,9 +221,10 @@ describe('智能编辑参数面板', () => {
     )
     expect(screen.getByText('模拟光影重绘效果，最终画面以生成效果为准。')).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: '光线方向' })).toBeTruthy()
-    expect(screen.getByText('光质')).toBeTruthy()
+    expect(screen.getByText('光线质感')).toBeTruthy()
+    expect(screen.getByText('柔光过渡柔和；硬光对比更强。')).toBeTruthy()
     expect(screen.getByText('色温')).toBeTruthy()
-    expect(screen.getByRole('radiogroup', { name: '光质' })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: '光线质感' })).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: '色温' })).toBeTruthy()
     const noteMax = relightNoteBudget(model.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)
     const noteToggle = screen.getByRole('button', { name: /添加补充说明/ })

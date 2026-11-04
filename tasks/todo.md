@@ -668,3 +668,26 @@
 - **验证**：`npx tsc --noEmit`、`npm run lint`、`npm test`（333 文件 / 2130 用例）、`npm run build` 全部通过；Playwright 1440/390 明暗主题实测 10 个 radio、单一选中态、中心为 DIV、无横向溢出；键盘链路 底部 → 正面光 → 背面 · 逆光 → 底部 全部通过。
 - **检测器**：390 为 `[]`；1440 仅剩壳层侧边栏 `#21cfa0 on #1fb38b` 1.3:1（预存在，非 Relight 面板）。
 - **截图**：`/tmp/relight-p3-1440-front.png`、`/tmp/relight-p3-1440-back.png`、`/tmp/relight-p3-390-front.png`、`/tmp/relight-p3-1440-dark-front.png`。
+
+## 重新打光 · 复查 5 项修复（2026-11-04）
+
+目标：把复查 Action Summary 的 5 项全部落地，重点收敛错误态重复信息，并补齐移动端开关与指针手柄的可见性。
+
+- [x] 错误状态收敛：relight 错误分支不再弹 toast、不传画布 `errorLabel`、隐藏 `GenerationTaskStatus` 结果读取卡片；只保留预览短状态 + 页脚状态 + 主操作「重试读取」
+- [x] 重试读取按钮补充 `title` 说明「任务已完成，但结果读取失败。可免费重试，不会重复扣费。」
+- [x] 移动端吸顶紧凑条保留「方向示意」开关：36px 图标按钮，`aria-pressed` + `aria-label`，复用 `relightOverlayEnabled`
+- [x] 「光质」改为「光线质感」，补一行「柔光过渡柔和；硬光对比更强。」说明，同步测试与帮助文档
+- [x] 页脚描边生成按钮 hover/focus 对比度：颜色与描边改用 `--color-accent-text`（白底 ≥ 4.5:1）
+- [x] 叠加拖拽手柄改为纯指针 `span`（root 仍 `aria-hidden`），移除不可达的 button 语义；画布工具条补「拖动光源可微调」提示（关闭叠加时同步隐藏）
+- [x] 验证：`tsc --noEmit`、lint、相关测试、全量测试、build、Playwright 1440/1366/390 明暗与错误态
+
+### 复查记录（2026-11-04 · 5 项修复）
+
+- **错误状态**：relight 结果读取失败时，画布警告 pill、任务状态警告卡片与 toast 均为 0；页脚保留「结果暂时无法读取 · 可免费重试」和主操作「重试读取」，按钮 `title` 说明免费重试；页脚与预览状态均为 12px。`GenerationTaskStatus` 新增 `suppressResultReadError`，抑制时也不再显示绿色「生成完成」，并补了单元测试。
+- **移动端吸顶**：390 吸顶面板高 176px，紧凑行显示「主光：正面 · 柔光 · 中性」+ 36×36 图标开关；开关 `aria-pressed` 从 true 切到 false 后，`.relight-direction-overlay` 从 1 变 0，无横向溢出。`scroll-padding-top` / `scroll-margin-top` 由 170px 调到 190px。
+- **术语**：设置面板与可访问名称改为「光线质感」，新增「柔光过渡柔和；硬光对比更强。」；帮助文档同步。
+- **对比度**：错误态下生成按钮降级为描边，hover 计算色 `#0a6b52` on `#ffffff`，对比度 6.49:1；暗色为 `#21cfa0` on `#1f1f23`，8.21:1。
+- **叠加手柄**：手柄为 `SPAN`，无 button 角色、不可 Tab 聚焦；指针拖拽实测「正面」→「左侧」仍生效；画布工具条显示「拖动光源可微调」，关闭「方向示意」后提示与叠加层一起隐藏。
+- **验证**：`npx tsc --noEmit`、`npm run lint`、`npm test`（333 文件 / 2132 用例）、`npm run build` 全部通过；Playwright 1440/1366 明暗、390 明暗吸顶、错误态与开关联动均通过，控制台 0 错误。
+- **检测器**：1440 仅剩壳层侧边栏 `#21cfa0 on #1fb38b` 1.3:1（预存在）；390 为 0；错误态 CDP 扫描仅命中 AntD tooltip 箭头的 `organic-clip-path` 假阳性（`ant-tooltip-arrow::before`，非业务代码）。
+- **截图**：`/tmp/relight-fixes-1440-light-error.png`、`/tmp/relight-fixes-1366-dark-error.png`、`/tmp/relight-fixes-390-light-stuck.png`、`/tmp/relight-fixes-390-dark-stuck.png`。

@@ -2051,6 +2051,13 @@ body.sidebar-resizing * {
 .workstation-preview-image.is-previewable { cursor: zoom-in; }
 
 /* 移动端吸顶时替代标题行的一行参数摘要；桌面和未吸顶时不占位。 */
+.workstation-preview-compact-row {
+  display: none;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
 .workstation-preview-compact-summary {
   display: none;
   margin: 0;
@@ -2061,6 +2068,39 @@ body.sidebar-resizing * {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.workstation-preview-compact-row .workstation-preview-compact-summary {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+
+/* 吸顶后画布工具条隐藏，用图标按钮保留「方向示意」开关。 */
+.workstation-preview-compact-toggle {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary-strong);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.workstation-preview-compact-toggle[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.workstation-preview-compact-toggle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .workstation-fusion-sources {
@@ -2421,8 +2461,10 @@ body.sidebar-resizing * {
   cursor: grabbing;
 }
 
-.relight-light-handle:disabled {
-  cursor: not-allowed;
+/* 纯指针手柄：表单锁定时不再响应拖动。 */
+.relight-light-handle.is-disabled {
+  cursor: default;
+  pointer-events: none;
 }
 
 .relight-light-dot {
@@ -2494,6 +2536,13 @@ body.sidebar-resizing * {
 .workstation-overlay-toggle:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.workstation-overlay-hint {
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
 .workstation-canvas-toolbar,
@@ -2994,6 +3043,13 @@ body.sidebar-resizing * {
 .image-workstation-page .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled),
 .image-workstation-page .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):hover {
   color: var(--color-on-accent);
+}
+
+/* AntD 默认把描边按钮 hover 提亮到 #30b38b（白底 2.6:1），这里改用可读的品牌深色。 */
+.image-workstation-footer-actions .credit-action-button.ant-btn-default:not(:disabled):hover,
+.image-workstation-footer-actions .credit-action-button.ant-btn-default:not(:disabled):focus-visible {
+  border-color: var(--color-accent-text);
+  color: var(--color-accent-text);
 }
 
 .image-workstation-page .ant-input::placeholder,
@@ -4823,14 +4879,15 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
     padding: 4px 8px;
     gap: 0;
   }
+  .image-workstation-preview-panel.is-stuck .workstation-preview-compact-row { display: flex; }
   .image-workstation-preview-panel.is-stuck .workstation-preview-compact-summary { display: block; }
   .app-main-content:has(.image-workstation-preview-panel.is-relight.has-image) {
-    scroll-padding-top: 170px;
+    scroll-padding-top: 190px;
   }
   .app-main-content:has(.image-workstation-preview-panel.is-relight.has-image) .image-workstation-settings {
-    scroll-margin-top: 170px;
+    scroll-margin-top: 190px;
   }
-  /* 光质/色温等分段控件在移动端也满足 44px 触控高度。 */
+  /* 光线质感/色温等分段控件在移动端也满足 44px 触控高度。 */
   .image-workstation-settings .ant-segmented-item-label {
     display: flex;
     align-items: center;
@@ -4848,6 +4905,7 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .relight-presets button { height: 44px; }
   .relight-note-toggle { min-height: 44px; }
   .workstation-overlay-toggle { height: 36px; }
+  .workstation-overlay-hint { display: none; }
   .workstation-result-item { width: 78px; flex-basis: 78px; }
   .workstation-result-thumb { height: 68px; }
   .workstation-result-badge { font-size: 9px; }

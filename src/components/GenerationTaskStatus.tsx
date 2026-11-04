@@ -30,6 +30,8 @@ interface GenerationTaskStatusProps {
   pollError?: Error | null
   readingResults?: boolean
   resultReadError?: string
+  /** 页面已在页脚给出唯一结论时，隐藏这里的结果读取警告卡片。 */
+  suppressResultReadError?: boolean
   historyError?: string
   historySaved?: boolean
   onRetryRead?: () => void
@@ -54,6 +56,7 @@ export default function GenerationTaskStatus({
   pollError,
   readingResults = false,
   resultReadError,
+  suppressResultReadError = false,
   historyError,
   historySaved = false,
   onRetryRead,
@@ -70,10 +73,11 @@ export default function GenerationTaskStatus({
   const phaseLabel = task?.phase ? ({ submitting: '提交确认中', queued: '排队中', generating: '视频生成中', transferring: '视频转存中' })[task.phase] : undefined
   // 任务成功不等于结果可读：读取失败时只保留一个警告结论，避免和绿色“生成完成”同屏。
   const resultUnavailable = Boolean(resultReadError)
+  const showResultReadError = resultUnavailable && !suppressResultReadError
 
   return (
     <div className="generation-task-status-stack">
-      {resultUnavailable ? (
+      {showResultReadError ? (
         <div className="generation-task-status is-warning" role="alert">
           <div className="generation-task-status-title">
             <strong>结果暂时无法读取</strong>
@@ -87,7 +91,7 @@ export default function GenerationTaskStatus({
             </div>
           ) : null}
         </div>
-      ) : (task || submitting) ? (
+      ) : resultUnavailable ? null : (task || submitting) ? (
         <div className={`generation-task-status is-${task?.status ?? 'pending'}`} role="status" aria-live="polite">
           <div className="generation-task-status-title">
             <strong>{readingResults ? '读取结果中' : phaseLabel ?? (task ? STATUS_LABELS[task.status] : '正在提交')}</strong>

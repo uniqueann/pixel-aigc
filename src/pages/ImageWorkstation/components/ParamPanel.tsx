@@ -257,10 +257,10 @@ export default function ParamPanel({
         <RelightCompass value={relight} disabled={disabled} onChange={next => onRelightChange?.(next)} />
         <div className="relight-pair">
           <div>
-            <div style={labelStyle}>光质</div>
+            <div style={labelStyle}>光线质感</div>
             <Segmented
               block
-              aria-label="光质"
+              aria-label="光线质感"
               disabled={disabled}
               value={relight.quality}
               onChange={(value) => update({ quality: value as RelightOptions['quality'] })}
@@ -283,6 +283,9 @@ export default function ParamPanel({
             />
           </div>
         </div>
+        <p className="toolbox-hint relight-quality-hint" style={{ margin: 0, fontSize: 12 }}>
+          柔光过渡柔和；硬光对比更强。
+        </p>
         <div>
           {countHeading}
           <GenerationCountPicker value={count} max={maxCount} disabled={disabled} onChange={onCountChange} />

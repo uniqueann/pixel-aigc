@@ -276,6 +276,21 @@ describe('图片工作站配置提示', () => {
     expect(mocks.controller.retryRead).toHaveBeenCalledTimes(1)
   })
 
+  it('重新打光结果读取失败时只在页脚保留结论，画布不再叠加警告', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts.relight = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
+    mocks.tool = 'relight'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
+    expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
+    expect(screen.getByRole('button', { name: '重试读取' }).getAttribute('title')).toBe('任务已完成，但结果读取失败。可免费重试，不会重复扣费。')
+  })
+
   it('确认重绘未配置后才显示不能用的提示', () => {
     mocks.tool = 'repaint'
     mocks.status.capabilities.repaint = false

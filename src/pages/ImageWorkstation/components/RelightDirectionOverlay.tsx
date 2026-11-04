@@ -59,14 +59,14 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
   const isFront = geometry.kind === 'front'
   const isBack = geometry.kind === 'back'
 
-  const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+  const onPointerDown = (event: PointerEvent<HTMLSpanElement>) => {
     if (disabled || !onDirectionChange) return
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
     draggingRef.current = true
   }
 
-  const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+  const onPointerMove = (event: PointerEvent<HTMLSpanElement>) => {
     if (!draggingRef.current || disabled || !onDirectionChange) return
     const rect = rootRef.current?.getBoundingClientRect()
     if (!rect) return
@@ -78,7 +78,7 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
     if (next !== direction) onDirectionChange(next)
   }
 
-  const stopDragging = (event: PointerEvent<HTMLButtonElement>) => {
+  const stopDragging = (event: PointerEvent<HTMLSpanElement>) => {
     draggingRef.current = false
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
@@ -147,12 +147,11 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
               />
             ) : null}
           </svg>
-          <button
-            type="button"
-            className={`relight-light-handle is-${geometry.kind}`}
+          {/* 纯指针增强：方向由罗盘 radio 组提供键盘与读屏入口，这里不再暴露第二个控件。 */}
+          <span
+            className={`relight-light-handle is-${geometry.kind}${disabled || !onDirectionChange ? ' is-disabled' : ''}`}
             style={{ left: geometry.handle.x - 22, top: geometry.handle.y - 22 }}
-            tabIndex={-1}
-            disabled={disabled || !onDirectionChange}
+            title="拖动光源调整方向"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={stopDragging}
@@ -161,7 +160,7 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
             <span className={`relight-light-dot is-${geometry.kind}`}>
               {isFront ? <CameraGlyph /> : <LightGlyph />}
             </span>
-          </button>
+          </span>
           {isPlanar ? null : (
             <span
               className={`relight-overlay-tag is-${geometry.kind}`}
