@@ -37,6 +37,7 @@ import ImageAssetStrip from './components/ImageAssetStrip'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
 import RelightDirectionOverlay from './components/RelightDirectionOverlay'
+import RelightExample from './components/RelightExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
 import { workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
@@ -675,7 +676,9 @@ export default function ImageWorkstation() {
               onPreview={openAt}
             />
           </section>
-          {showExample && example ? <ToolExampleStrip example={example} /> : null}
+          {relightTool && !previewHasImage
+            ? <RelightExample />
+            : showExample && example ? <ToolExampleStrip example={example} /> : null}
         </div>
         <aside ref={settingsPanelRef} className="workstation-panel image-workstation-settings" aria-labelledby="workstation-settings-heading">
           <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>

@@ -9,5 +9,6 @@ export default function ToolHelpLink() {
     : group === 'toolbox' ? pathname === '/toolbox/bg-remove' ? '/help/bg-remove' : '/help/toolbox'
     : group === 'canvas' ? '/help/canvas' : undefined
   if (!href) return null
-  return <Link className="tool-help-link" to={href} aria-label="当前工具使用帮助" title="使用帮助"><QuestionCircleOutlined /></Link>
+  // 新标签打开帮助，避免离开工作站丢失上传图和备注。
+  return <Link className="tool-help-link" to={href} target="_blank" rel="noreferrer" aria-label="当前工具使用帮助" title="使用帮助"><QuestionCircleOutlined /></Link>
 }

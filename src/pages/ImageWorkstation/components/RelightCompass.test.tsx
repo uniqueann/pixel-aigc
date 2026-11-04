@@ -29,6 +29,23 @@ describe('RelightCompass', () => {
     expect(screen.getByRole('radio', { name: '商品前方：主光从镜头方向来，投影落在商品后方。' })).toBeTruthy()
   })
 
+  it('光线预设一次写入方向、光质和色温', () => {
+    const onChange = renderCompass()
+    fireEvent.click(screen.getByRole('button', { name: '日落暖光' }))
+    expect(onChange).toHaveBeenLastCalledWith({
+      ...RELIGHT_DEFAULT,
+      direction: 'bottom-left',
+      quality: 'soft',
+      temperature: 'warm',
+    })
+  })
+
+  it('当前组合命中预设时显示按下态', () => {
+    renderCompass({ direction: 'back', quality: 'hard', temperature: 'cool' })
+    expect(screen.getByRole('button', { name: '冷调轮廓光' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: '棚拍柔光' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
   it('点击方位或中心正面更新方向', () => {
     const onChange = renderCompass({ direction: 'front' })
     fireEvent.click(screen.getByRole('radio', { name: /^右侧光/ }))

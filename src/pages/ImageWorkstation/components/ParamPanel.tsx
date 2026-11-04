@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Button, Checkbox, Input, Segmented, Select, Space } from 'antd'
+import { DownOutlined } from '@ant-design/icons'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import ModelChoice from '@/components/ModelChoice'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
@@ -116,6 +118,8 @@ export default function ParamPanel({
   onRelightChange,
   promptMinHeight,
 }: Props) {
+  // null 表示跟随内容：有备注时默认展开，用户手动收起后保持收起。
+  const [relightNoteOpen, setRelightNoteOpen] = useState<boolean | null>(null)
   const intro = title ? (
     <header className="param-panel-intro">
       <h2>{title}</h2>
@@ -250,9 +254,11 @@ export default function ParamPanel({
     const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
       || model.ui.resolutionRatioConstraints['4k'].includes(constraintSize)
     const noteMax = relightNoteBudget(model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)
+    const noteExpanded = relightNoteOpen ?? Boolean(smartEditPrompt)
+    const noteNearLimit = smartEditPrompt.length >= Math.floor(noteMax * 0.85)
     const update = (patch: Partial<RelightOptions>) => onRelightChange?.({ ...relight, ...patch })
     return (
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
         {intro}
         {models.length > 1 ? (
           <div>
@@ -267,72 +273,91 @@ export default function ParamPanel({
             />
           </div>
         ) : null}
-        <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>模拟光影重绘效果，最终画面以生成效果为准。</p>
         <RelightCompass value={relight} disabled={disabled} onChange={next => onRelightChange?.(next)} />
-        <div>
-          <div style={labelStyle}>光质</div>
-          <Segmented
-            block
-            disabled={disabled}
-            value={relight.quality}
-            onChange={(value) => update({ quality: value as RelightOptions['quality'] })}
-            options={[{ label: '柔光', value: 'soft' }, { label: '硬光', value: 'hard' }]}
-          />
-        </div>
-        <div>
-          <div style={labelStyle}>色温</div>
-          <Segmented
-            block
-            disabled={disabled}
-            value={relight.temperature}
-            onChange={(value) => update({ temperature: value as RelightOptions['temperature'] })}
-            options={[
-              { label: '暖', value: 'warm' },
-              { label: '中性', value: 'neutral' },
-              { label: '冷', value: 'cool' },
-            ]}
-          />
-        </div>
-        <div>
-          <div style={labelStyle}>补充说明（可选）</div>
-          <Input.TextArea
-            value={smartEditPrompt}
-            disabled={disabled}
-            onChange={(event) => onSmartEditPromptChange(event.target.value)}
-            placeholder="例如：略微提亮背景"
-            autoSize={{ minRows: 3, maxRows: 6 }}
-            styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
-            style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
-            maxLength={noteMax}
-            aria-label="补充说明"
-            showCount
-          />
+        <div className="relight-pair">
+          <div>
+            <div style={labelStyle}>光质</div>
+            <Segmented
+              block
+              disabled={disabled}
+              value={relight.quality}
+              onChange={(value) => update({ quality: value as RelightOptions['quality'] })}
+              options={[{ label: '柔光', value: 'soft' }, { label: '硬光', value: 'hard' }]}
+            />
+          </div>
+          <div>
+            <div style={labelStyle}>色温</div>
+            <Segmented
+              block
+              disabled={disabled}
+              value={relight.temperature}
+              onChange={(value) => update({ temperature: value as RelightOptions['temperature'] })}
+              options={[
+                { label: '暖', value: 'warm' },
+                { label: '中性', value: 'neutral' },
+                { label: '冷', value: 'cool' },
+              ]}
+            />
+          </div>
         </div>
         <div>
           {countHeading}
           <GenerationCountPicker value={count} max={maxCount} disabled={disabled} onChange={onCountChange} />
         </div>
         <div>
-          <div style={labelStyle}>渲染分辨率</div>
-          <Select
-            aria-label="渲染分辨率"
-            style={{ width: '100%' }}
-            value={resolution}
-            disabled={disabled}
-            onChange={onResolutionChange}
-            options={resolutions.map(value => ({
-              value,
-              label: value.toUpperCase(),
-              disabled: value === '4k' && !fourKAllowed,
-            }))}
-          />
+          <div className="relight-resolution-row">
+            <div style={{ ...labelStyle, marginBottom: 0 }}>渲染分辨率</div>
+            <Select
+              aria-label="渲染分辨率"
+              style={{ width: 120 }}
+              value={resolution}
+              disabled={disabled}
+              onChange={onResolutionChange}
+              options={resolutions.map(value => ({
+                value,
+                label: value.toUpperCase(),
+                disabled: value === '4k' && !fourKAllowed,
+              }))}
+            />
+          </div>
           {mapped ? (
-            <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
+            <p className="toolbox-hint" style={{ margin: '6px 0 0', fontSize: 12 }}>
               预计输出 {mapped.size} · {mapped.resolution.toUpperCase()}
               {!fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
             </p>
           ) : null}
         </div>
+        <div>
+          <button
+            type="button"
+            className="relight-note-toggle"
+            aria-expanded={noteExpanded}
+            aria-controls="relight-note"
+            disabled={disabled}
+            onClick={() => setRelightNoteOpen(!noteExpanded)}
+          >
+            <span>{noteExpanded ? '补充说明（可选）' : '添加补充说明（可选）'}</span>
+            <DownOutlined rotate={noteExpanded ? 180 : 0} aria-hidden="true" />
+          </button>
+          {noteExpanded ? (
+            <Input.TextArea
+              id="relight-note"
+              value={smartEditPrompt}
+              disabled={disabled}
+              onChange={(event) => onSmartEditPromptChange(event.target.value)}
+              placeholder="例如：让投影更柔和，保留杯身高光"
+              autoSize={{ minRows: 3, maxRows: 6 }}
+              styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
+              style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
+              maxLength={noteMax}
+              aria-label="补充说明"
+              showCount={noteNearLimit ? {
+                formatter: ({ count: current, maxLength }) => `${current} / ${maxLength ?? noteMax}`,
+              } : false}
+            />
+          ) : null}
+        </div>
+        <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>模拟光影重绘效果，最终画面以生成效果为准。</p>
       </Space>
     )
   }
