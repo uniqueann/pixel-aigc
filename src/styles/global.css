@@ -4306,6 +4306,23 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .toolbox-settings-panel,
   .toolbox-image-card,
   .workstation-panel { padding: 12px; }
+  /* 参考工具箱：有图时预览卡吸顶并压缩画布，滚动调参仍能看到效果。 */
+  .image-workstation-canvas-column { display: contents; }
+  .image-workstation-preview-panel.has-image {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    box-shadow: 0 8px 20px rgb(17 17 20 / 14%);
+  }
+  .image-workstation-preview-panel.has-image .workstation-canvas-shell {
+    height: 210px;
+    min-height: 0;
+    padding: 8px 10px;
+  }
+  .image-workstation-preview-panel.has-image .workstation-canvas-footnote { display: none; }
+  .app-main-content:has(.image-workstation-preview-panel.has-image) {
+    scroll-padding-top: 320px;
+  }
   .workstation-result-item { width: 78px; flex-basis: 78px; }
   .workstation-result-thumb { height: 68px; }
   .workstation-result-badge { font-size: 9px; }

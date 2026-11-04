@@ -200,6 +200,7 @@ export default function ImageWorkstation() {
         : controller.inputAsset
           ? `${controller.inputAsset.width}×${controller.inputAsset.height}`
           : '等待上传'
+  const previewHasImage = Boolean(fusionTool ? fusionProduct : showSourcePreview ? controller.inputAsset : undefined)
   const replaceSourceAsset = controller.replaceSourceAsset
   const previewPanelRef = useRef<HTMLElement>(null)
   const settingsPanelRef = useRef<HTMLElement>(null)
@@ -599,7 +600,7 @@ export default function ImageWorkstation() {
       />
       <div className="image-workstation-main">
         <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
-          <section ref={previewPanelRef} className="workstation-panel image-workstation-preview-panel" aria-labelledby="workstation-preview-heading">
+          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}`} aria-labelledby="workstation-preview-heading">
             <div className="workstation-panel-heading-row">
               <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
               <span className={`workstation-preview-meta${controller.resultReadError ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
