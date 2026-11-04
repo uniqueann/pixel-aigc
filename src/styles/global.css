@@ -4306,31 +4306,16 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .toolbox-settings-panel,
   .toolbox-image-card,
   .workstation-panel { padding: 12px; }
-  /* 移动端 8 个工具横向溢出：改为两行换行，所有工具一屏可见。 */
-  .image-workstation-tool-switcher .tool-switcher { overflow-x: visible; }
-  .image-workstation-tool-switcher .tool-switcher .ant-segmented { width: 100%; min-width: 0; }
-  .image-workstation-tool-switcher .tool-switcher .ant-segmented-group {
-    display: flex;
-    width: 100%;
-    flex-wrap: wrap;
-  }
-  .image-workstation-tool-switcher .tool-switcher .ant-segmented-item {
-    display: inline-flex;
-    min-height: 44px;
-    flex: 0 0 auto;
-    align-items: center;
-  }
-  .image-workstation-tool-switcher .tool-switcher-fade { display: none; }
   .workstation-result-item { width: 78px; flex-basis: 78px; }
   .workstation-result-thumb { height: 68px; }
   .workstation-result-badge { font-size: 9px; }
   .workstation-prompt-templates .ant-btn { min-height: 40px; }
   .image-workstation-footer-actions .ant-btn { min-height: 44px; }
   .workstation-canvas-replace .ant-btn { min-height: 40px; }
+  /* 保持横滑 + 两侧渐隐；只加高触控区域，文字仍居中。 */
   .generation-count-picker .ant-radio-button-wrapper {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
+    height: 44px;
+    line-height: 42px;
   }
   .image-workstation-footer {
     margin: 0 -12px;
