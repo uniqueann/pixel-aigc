@@ -224,12 +224,33 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByText('光质')).toBeTruthy()
     expect(screen.getByText('色温')).toBeTruthy()
     const noteMax = relightNoteBudget(model.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)
-    expect(screen.getByPlaceholderText('例如：略微提亮背景')).toHaveProperty('maxLength', noteMax)
+    const noteToggle = screen.getByRole('button', { name: /添加补充说明/ })
+    expect(noteToggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByPlaceholderText('例如：让投影更柔和，保留杯身高光')).toBeNull()
+    fireEvent.click(noteToggle)
+    expect(noteToggle.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByPlaceholderText('例如：让投影更柔和，保留杯身高光')).toHaveProperty('maxLength', noteMax)
+    expect(screen.queryByText(`0 / ${noteMax}`)).toBeNull()
     expect(screen.queryByRole('combobox', { name: '模型' })).toBeNull()
     expect(screen.queryByText('后期增强')).toBeNull()
     expect(screen.queryByText('手动调整')).toBeNull()
-    expect(screen.getByText(`0 / ${noteMax}`)).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: '生成数量' })).toBeTruthy()
+  })
+
+  it('重新打光备注接近上限时才显示字数', () => {
+    const noteMax = relightNoteBudget(model.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)
+    const note = '字'.repeat(Math.floor(noteMax * 0.85))
+    render(
+      <ParamPanel
+        capability={Capability.Relight}
+        {...panelProps}
+        smartEditPrompt={note}
+        models={[model]}
+        modelProfileId={model.id}
+      />,
+    )
+    expect(screen.getByPlaceholderText('例如：让投影更柔和，保留杯身高光')).toBeTruthy()
+    expect(screen.getByText(`${note.length} / ${noteMax}`)).toBeTruthy()
   })
 
   it('重新打光多个模型时显示下拉，并按模型限制分辨率', () => {
@@ -258,7 +279,8 @@ describe('智能编辑参数面板', () => {
     expect(screen.getAllByText('1K').length).toBeGreaterThan(0)
     expect(screen.getAllByText('2K').length).toBeGreaterThan(0)
     expect(screen.queryByText('4K')).toBeNull()
-    expect(screen.getByPlaceholderText('例如：略微提亮背景')).toHaveProperty('maxLength', relightNoteBudget(qwen.ui.promptMaxLength ?? PROMPT_MAX_LENGTH))
+    fireEvent.click(screen.getByRole('button', { name: /添加补充说明/ }))
+    expect(screen.getByPlaceholderText('例如：让投影更柔和，保留杯身高光')).toHaveProperty('maxLength', relightNoteBudget(qwen.ui.promptMaxLength ?? PROMPT_MAX_LENGTH))
   })
 
   it('消除和重绘按百炼上限显示字数，并使用加高的描述框', () => {

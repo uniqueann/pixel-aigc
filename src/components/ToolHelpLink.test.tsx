@@ -13,7 +13,10 @@ describe('工具标题帮助入口', () => {
     ['/email?mode=batch', '/help/email-assistant'], ['/canvas/text-to-image', '/help/canvas'], ['/canvas/text-to-video', '/help/canvas'],
   ])('%s 直达实际存在的文章', (path, href) => {
     render(<MemoryRouter initialEntries={[path]}><ToolHelpLink /></MemoryRouter>)
-    expect(screen.getByRole('link', { name: '当前工具使用帮助' }).getAttribute('href')).toBe(href)
+    const link = screen.getByRole('link', { name: '当前工具使用帮助' })
+    expect(link.getAttribute('href')).toBe(href)
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noreferrer')
     expect(HELP_ARTICLES.some(article => href === `/help/${article.slug}`)).toBe(true)
   })
   it('首页不显示工具问号', () => {

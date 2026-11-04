@@ -2093,12 +2093,29 @@ body.sidebar-resizing * {
 
 /* 重新打光：空间罗盘 + 前方/后方模式 + 方向摘要。 */
 .relight-compass {
-  --relight-cell: 58px;
+  --relight-cell: 50px;
   display: flex;
   width: 100%;
   flex-direction: column;
   align-items: center;
   gap: 10px;
+}
+
+/* 光质/色温并排，把纵向空间让给数量与分辨率。 */
+.relight-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.relight-pair .ant-segmented { width: 100%; }
+
+/* 分辨率与标签同一行，预计输出说明单独一行。 */
+.relight-resolution-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .relight-compass-head {
@@ -2243,6 +2260,83 @@ body.sidebar-resizing * {
   font-size: 12px;
   line-height: 1.5;
   text-align: center;
+}
+
+/* 三个常用光线起点，放在罗盘上方，避免用户从 60 种组合里从零开始。 */
+.relight-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.relight-presets button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary-strong);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.relight-presets button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.relight-presets button[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.relight-presets button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.relight-presets button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* 可选备注默认收起，避免挤压数量与分辨率。 */
+.relight-note-toggle {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary-strong);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.relight-note-toggle:hover:not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.relight-note-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.relight-note-toggle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.relight-note-toggle + .ant-input-textarea {
+  margin-top: 8px;
 }
 
 /* 预览图上的方向示意与拖动手柄。 */
@@ -2531,6 +2625,29 @@ body.sidebar-resizing * {
 .tool-example-arrow {
   color: var(--color-text-muted);
   font-size: 16px;
+}
+
+/* 重新打光的空状态示意：用同一商品的光向图代替照片，避免伪造生成结果。 */
+.relight-example-art {
+  display: grid;
+  width: 112px;
+  height: 112px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.relight-example-art svg {
+  width: 100%;
+  height: 100%;
+}
+
+.relight-example-note {
+  margin: 10px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .param-panel-intro {
@@ -4616,6 +4733,8 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .relight-compass { --relight-cell: 64px; gap: 8px; }
   .relight-compass-pad { gap: 6px; }
   .relight-compass-hint { text-align: left; }
+  .relight-presets button { height: 44px; }
+  .relight-note-toggle { min-height: 44px; }
   .workstation-overlay-toggle { height: 36px; }
   .workstation-result-item { width: 78px; flex-basis: 78px; }
   .workstation-result-thumb { height: 68px; }

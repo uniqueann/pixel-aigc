@@ -24,6 +24,18 @@ interface CompassCell {
   rotate?: number
 }
 
+interface RelightPreset {
+  label: string
+  value: Pick<RelightOptions, 'direction' | 'quality' | 'temperature'>
+}
+
+/** 三个常用起点，避免用户在 10×2×3 的组合里从零开始。 */
+const PRESETS: RelightPreset[] = [
+  { label: '棚拍柔光', value: { direction: 'front', quality: 'soft', temperature: 'neutral' } },
+  { label: '日落暖光', value: { direction: 'bottom-left', quality: 'soft', temperature: 'warm' } },
+  { label: '冷调轮廓光', value: { direction: 'back', quality: 'hard', temperature: 'cool' } },
+]
+
 const CELLS: CompassCell[] = [
   { id: 'top-left', label: '左上', row: 0, col: 0, rotate: 135 },
   { id: 'top', label: '顶部', row: 0, col: 1, rotate: 180 },
@@ -71,6 +83,12 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
     select('back')
   }
 
+  const applyPreset = (preset: RelightPreset) => {
+    if (disabled) return
+    if (preset.value.direction !== 'back') setLastFront(preset.value.direction)
+    onChange({ ...value, ...preset.value })
+  }
+
   const moveFocus = (id: RelightDirection) => {
     requestAnimationFrame(() => cellRefs.current.get(id)?.focus())
   }
@@ -111,6 +129,24 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
       <div className="relight-compass-head">
         <span className="relight-compass-label">光线方向</span>
         <span className="relight-compass-summary">{summary}</span>
+      </div>
+      <div className="relight-presets" role="group" aria-label="光线预设">
+        {PRESETS.map(preset => {
+          const active = value.direction === preset.value.direction
+            && value.quality === preset.value.quality
+            && value.temperature === preset.value.temperature
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              aria-pressed={active}
+              disabled={disabled}
+              onClick={() => applyPreset(preset)}
+            >
+              {preset.label}
+            </button>
+          )
+        })}
       </div>
       <div className="relight-compass-pad" role="radiogroup" aria-label="光线方向">
         {CELLS.map(cell => {
