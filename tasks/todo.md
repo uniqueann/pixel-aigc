@@ -648,3 +648,23 @@
 - **验证**：最终改动后顺序复跑 `npx tsc --noEmit`、`npm run lint`、`npm test`（333 文件 / 2126 用例，21:59）、`npm run build` 全部通过；Playwright 覆盖 1440/1366/390 明暗主题、正面/底部/逆光、空状态、备注聚焦与吸顶紧凑条。
 - **截图**：`/tmp/relight-p1-1440-front.png`、`/tmp/relight-p1-1440-bottom.png`、`/tmp/relight-p1-1440-back.png`、`/tmp/relight-p2-1440-empty.png`、`/tmp/relight-p2-1366-bottom.png`、`/tmp/relight-mobile-empty-2.png`、`/tmp/relight-dark-front.png`、`/tmp/relight-dark-back.png`。
 - **未做**：P3「正面」重复 radio 留到下一轮；暗色侧边栏选中项 1.3:1 属于壳层级，未在本轮扩大范围。
+
+## 重新打光 · P3 重复「正面」修复（2026-11-04）
+
+目标：同一概念只保留一个选中控件。中心改为非交互商品图形，正面/逆光作为同一「光线方向」radiogroup 的两个选项。
+
+- [x] `RelightCompass`：中心格改为非交互商品图形，移除 `front` 网格按钮
+- [x] `RelightCompass`：正面/逆光 radio 并入同一 `radiogroup`，选中态唯一；删除 `lastFront` 状态
+- [x] 键盘：网格方向键保留；底行 ArrowDown 进入深度行，深度行 ArrowUp 回到底部，ArrowLeft/Right 切换正面/逆光；roving tabindex 覆盖 10 个 radio
+- [x] CSS：拆分 `.relight-compass-pad`（radiogroup 容器）与 `.relight-compass-grid`（3×3）；中心图形样式；移动端间距
+- [x] 测试：断言 10 个 radio、任意方向只有一个 `aria-checked=true`、中心不是按钮/radio、跨区方向键
+- [x] 验证：tsc、lint、相关测试、全量测试、build、Playwright 1440/390 明暗与读屏属性
+
+### 复查记录（2026-11-04 · P3）
+
+- **语义**：`RelightCompass` 只保留一个「光线方向」radiogroup，包含 8 个平面方位 + 正面光 + 背面 · 逆光共 10 个 radio；任意方向都只有一个 `aria-checked=true`。中心改为 `aria-hidden` 的商品图形，不再是按钮/radio。
+- **键盘**：roving tabindex 跟随当前方向；网格方向键保留，穿过中心时落到对侧格子；底行 ArrowDown 进入深度行，深度行 ArrowUp 回到底部，ArrowLeft/Right 在正面/逆光间切换。
+- **视觉**：中心使用虚线边框和 `--color-surface`，与可选格子区分；逆光时网格降为 0.55 透明度，深度行保持清晰。
+- **验证**：`npx tsc --noEmit`、`npm run lint`、`npm test`（333 文件 / 2130 用例）、`npm run build` 全部通过；Playwright 1440/390 明暗主题实测 10 个 radio、单一选中态、中心为 DIV、无横向溢出；键盘链路 底部 → 正面光 → 背面 · 逆光 → 底部 全部通过。
+- **检测器**：390 为 `[]`；1440 仅剩壳层侧边栏 `#21cfa0 on #1fb38b` 1.3:1（预存在，非 Relight 面板）。
+- **截图**：`/tmp/relight-p3-1440-front.png`、`/tmp/relight-p3-1440-back.png`、`/tmp/relight-p3-390-front.png`、`/tmp/relight-p3-1440-dark-front.png`。
