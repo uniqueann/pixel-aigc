@@ -53,6 +53,7 @@ import { isCanvasMockGateway } from '@/features/free-canvas/generation/availabil
 import { syncCreditPrice } from '@shared/billing'
 import { COUNT_TOOLS, type CountTool } from '@shared/preferences'
 import { useStickyPreview } from './utils/useStickyPreview'
+import { useStuckPreview } from './utils/useStuckPreview'
 import { useWorkstationPromptHeight } from './utils/useWorkstationPromptHeight'
 import TaskRecoveryPanel,{type RecoveryActionContext} from '@/features/task-center/TaskRecoveryPanel'
 import WorkstationRecovery from '@/features/task-center/WorkstationRecovery'
@@ -63,7 +64,12 @@ import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
 import { assertRecoveryActor,persistRecoveredResult,recoveredResultId,readRecoveryImage } from '@/features/task-center/recoveryMedia'
 import { bindRuntimeImage,releaseRuntimeImageUser,setRuntimeImageUsers,withRuntimeImage } from '@/editor/runtimeImages'
 import {taskIsActive,type TaskTool,type TaskCenterMedia,type TaskCenterDetail,type TaskCenterSummary} from '@shared/task-center'
-import { readRelight } from '@shared/relight'
+import {
+  RELIGHT_DIRECTION_LABELS,
+  RELIGHT_QUALITY_LABELS,
+  RELIGHT_TEMPERATURE_LABELS,
+  readRelight,
+} from '@shared/relight'
 import { readRetouchDirections } from '@shared/retouch'
 import WorkstationBridge, { type WorkstationSuiteBinding } from '@/features/ecommerce-suite/WorkstationBridge'
 import type { SuiteActor } from '@shared/ecommerce-suite'
@@ -208,6 +214,7 @@ export default function ImageWorkstation() {
   const replaceSourceAsset = controller.replaceSourceAsset
   const previewPanelRef = useRef<HTMLElement>(null)
   const settingsPanelRef = useRef<HTMLElement>(null)
+  const previewStuck = useStuckPreview(previewPanelRef, relightTool && previewHasImage)
   const promptMinHeight = useWorkstationPromptHeight({
     previewPanelRef,
     settingsPanelRef,
@@ -604,11 +611,16 @@ export default function ImageWorkstation() {
       />
       <div className="image-workstation-main">
         <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
-          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}`} aria-labelledby="workstation-preview-heading">
+          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
             <div className="workstation-panel-heading-row">
               <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
               <span className={`workstation-preview-meta${controller.resultReadError ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
             </div>
+            {relightTool ? (
+              <p className="workstation-preview-compact-summary">
+                主光：{RELIGHT_DIRECTION_LABELS[relightOptions.direction]} · {RELIGHT_QUALITY_LABELS[relightOptions.quality]} · {RELIGHT_TEMPERATURE_LABELS[relightOptions.temperature]}
+              </p>
+            ) : null}
             <CanvasArea
               interactionMode={activeTool.interactionMode}
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}

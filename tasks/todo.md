@@ -577,3 +577,19 @@
 - 尺寸修复：`CanvasArea` 新增 `.workstation-preview-stage` 包裹图片与 overlay，stage 改为纵向 flex 后图片在高度轴 `flex: 1` 填充；390px 下 stage 320×146、图片 146×146、手柄 44×44，图片与手柄均在 stage 内，无横向溢出；1440px 下 stage 750×395、图片 395×395。
 - 验证：`tsc --noEmit`、`eslint --max-warnings 0`、Vitest 331 文件 / 2107 用例、`vite build` 全部通过；Playwright 覆盖 390/1440 明暗主题、点击方位、拖动、背面模式、方向键与开关。
 - 已知限制：本轮只做 P1 的「罗盘教学与重设计」；键盘/触控可达性的其余部分与移动端吸顶紧凑条留待后续。
+
+## 重新打光 · 剩余 P1（2026-11-04）
+
+- [x] P1-2 可达性：罗盘改为 `radiogroup` / `radio` + `aria-checked`，可访问名称写全；移动端光质/色温 ≥44px；Segmented 焦点环对比度 ≥3:1
+- [x] P1-3 吸顶遮挡：移动端吸顶时压缩为紧凑条（图片 + 方向摘要），隐藏结果条/工具条/标题；设置面板加 `scroll-margin-top`
+- [x] 测试：罗盘语义与键盘回归；吸顶判定单元测试
+- [x] 验证：typecheck / lint / test / build；Playwright 390 滚动遮挡、1440 回归
+
+### 复核记录（2026-11-04）
+
+- 罗盘语义：9 个方位改为 `radiogroup` + `radio` + `aria-checked`，保留 roving tabindex 与方向键；可访问名称写成「左上光：主光从左上方来，投影落向右下方。」这类完整句子；深度开关名称同样补全。
+- 触控与焦点：移动端光质/色温 Segmented 轨道 48px、选项 44px；罗盘 64px、深度开关 44px；AntD 默认 `#78ccad` 焦点环在白底约 1.9:1，已统一覆盖为 `--color-focus-ring`（浅色 `#111827` ≈17:1，深色 `#ededec` 约 15:1）。
+- 吸顶紧凑条：新增 `useStuckPreview`，390px 下预览卡贴顶时从 272px 压到 157px，隐藏标题、工具条、结果条与状态 pill，只保留画面和「主光：正面 · 柔光 · 中性」摘要；回滚到顶部恢复完整卡片。
+- 滚动可达性：relight 有图时 `scroll-padding-top` 从 320px 降到 170px，并给设置面板加 `scroll-margin-top: 170px`，键盘聚焦控件时不会被紧凑条盖住。
+- 验证：`tsc`、`eslint --max-warnings 0`、Vitest 332 文件 / 2115 用例、`vite build` 全部通过；Playwright 实测 390px 滚动 200/300/410/515 时卡片高度 157px、摘要可见、无横向溢出；1440px 布局不变，摘要 `display: none`。
+- 取舍：紧凑态隐藏结果条，生成完成时需回滚到顶部查看候选；页脚仍显示结果状态。若后续需要滚动中直接切换结果，可把结果条移出吸顶卡。
