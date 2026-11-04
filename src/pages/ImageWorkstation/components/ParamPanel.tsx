@@ -10,10 +10,10 @@ import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
 import {
   RELIGHT_DEFAULT,
-  RELIGHT_DIRECTION_CHOICES,
   relightNoteBudget,
   type RelightOptions,
 } from '@shared/relight'
+import RelightCompass from './RelightCompass'
 import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import type { OutpaintOutputMode } from '@shared/outpaint'
@@ -268,23 +268,7 @@ export default function ParamPanel({
           </div>
         ) : null}
         <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>模拟光影重绘效果，最终画面以生成效果为准。</p>
-        <div>
-          <div style={labelStyle}>光线方向</div>
-          <div className="workstation-relight-compass" role="group" aria-label="光线方向">
-            {RELIGHT_DIRECTION_CHOICES.map(item => (
-              <Button
-                key={item.id}
-                size="small"
-                type={relight.direction === item.id ? 'primary' : 'default'}
-                disabled={disabled}
-                className={`workstation-relight-${item.id}`}
-                onClick={() => update({ direction: item.id })}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </div>
-        </div>
+        <RelightCompass value={relight} disabled={disabled} onChange={next => onRelightChange?.(next)} />
         <div>
           <div style={labelStyle}>光质</div>
           <Segmented

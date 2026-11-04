@@ -556,3 +556,24 @@
 - 移动端吸顶：390×844 下预览卡 272px（有候选结果时 431px），`position: sticky; top: 0` 落在顶栏下方；`display: contents` 让画布列不再包一层，预览卡可直接吸在设置面板之上。滚动到底时设置面板顶部会滑入预览卡下方，属预期；prompt 输入框在中间滚动区间完整可见。
 - 层叠修复：AntD 聚焦输入框与数量选中项会带 `position: relative; z-index: 1`，设置面板原本不构成层叠上下文，导致其盖住吸顶卡；现给 `.image-workstation-settings` 加 `z-index: 0`，设置区内容统一位于吸顶卡之下。
 - 已知限制：mock 生成结果不可读，候选卡样式通过注入同结构 DOM 复核；真实结果链路仍需在联调环境走一遍。
+
+## 重新打光 · 罗盘重设计（2026-11-04）
+
+- [x] `shared/relight.ts`：导出方向/光质/色温标签与一行方向提示，提示词输出保持不变
+- [x] 新增 `RelightCompass`：3×3 空间罗盘（8 方位 + 中心正面）、前方/后方模式开关、方向摘要与说明、roving tabindex + 方向键 + `aria-pressed`
+- [x] 新增 `RelightDirectionOverlay`：预览图光源箭头 + 虚线投影、44px 可拖动手柄、方向示意标
+- [x] `CanvasArea` 增加 overlay 插槽与“方向示意”开关
+- [x] `index.tsx` 接入罗盘与 overlay，查看结果时 overlay 默认淡出
+- [x] 样式：桌面/移动端尺寸、选中/禁用/焦点态、明暗主题对比度
+- [x] 测试：RelightCompass 交互与键盘；ParamPanel/CanvasArea 回归
+- [x] 验证：typecheck / lint / test / build；Playwright 1440/390 明暗主题
+
+### 复核记录（2026-11-04）
+
+- 罗盘：8 方位 + 中心正面组成 3×3 网格，箭头指向商品；`aria-pressed` 表达选中，roving tabindex + 方向键在网格内移动并即时选择；「商品前方 / 背面 · 逆光」用 `radiogroup` 独立表达深度，切回前方时恢复上次方位。
+- 摘要与提示：面板头部实时显示「主光：方向 · 光质 · 色温」，下方一行说明投影方向；`aria-live` 只在值变化时播报。
+- 预览联动：`RelightDirectionOverlay` 用实线箭头表示主光、虚线表示投影，手柄 44×44 支持拖动并按 45° 吸附；逆光时箭头改虚线并出现轮廓光弧。
+- 开关：工具条「方向示意」按钮控制 overlay，`aria-pressed` 同步；查看效果图（compareMode=effect 且有结果）时 overlay 自动降为 0.35 透明度并禁用拖动，避免遮挡结果。
+- 尺寸修复：`CanvasArea` 新增 `.workstation-preview-stage` 包裹图片与 overlay，stage 改为纵向 flex 后图片在高度轴 `flex: 1` 填充；390px 下 stage 320×146、图片 146×146、手柄 44×44，图片与手柄均在 stage 内，无横向溢出；1440px 下 stage 750×395、图片 395×395。
+- 验证：`tsc --noEmit`、`eslint --max-warnings 0`、Vitest 331 文件 / 2107 用例、`vite build` 全部通过；Playwright 覆盖 390/1440 明暗主题、点击方位、拖动、背面模式、方向键与开关。
+- 已知限制：本轮只做 P1 的「罗盘教学与重设计」；键盘/触控可达性的其余部分与移动端吸顶紧凑条留待后续。

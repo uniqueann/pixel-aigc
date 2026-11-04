@@ -2003,6 +2003,17 @@ body.sidebar-resizing * {
   font-size: 12px;
 }
 
+.workstation-preview-stage {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
 .workstation-preview-image {
   display: block;
   max-width: min(100%, 640px);
@@ -2067,30 +2078,252 @@ body.sidebar-resizing * {
   object-fit: contain;
 }
 
-.workstation-relight-compass {
+/* 重新打光：空间罗盘 + 前方/后方模式 + 方向摘要。 */
+.relight-compass {
+  --relight-cell: 58px;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.relight-compass-head {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.relight-compass-label {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.relight-compass-summary {
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.relight-compass-pad {
+  display: grid;
+  grid-template-columns: repeat(3, var(--relight-cell));
+  grid-template-rows: repeat(3, var(--relight-cell));
+  gap: 8px;
+}
+
+.relight-compass-cell {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary-strong);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.relight-compass-cell .anticon {
+  font-size: 15px;
+}
+
+.relight-compass-cell:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.relight-compass-cell[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.relight-compass-cell.is-center {
+  border-style: dashed;
+  background: var(--color-surface);
+}
+
+.relight-compass-cell.is-center[aria-pressed='true'] {
+  border-style: solid;
+  background: var(--color-accent);
+}
+
+.relight-compass-cell:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.relight-compass-cell[aria-pressed='true']:disabled {
+  opacity: 0.8;
+}
+
+.relight-compass-cell:focus-visible,
+.relight-depth button:focus-visible,
+.workstation-overlay-toggle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.relight-compass.is-back .relight-compass-cell:not(:disabled) {
+  opacity: 0.55;
+}
+
+.relight-compass.is-back .relight-compass-cell:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.relight-depth {
   display: grid;
   width: 100%;
-  max-width: 220px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: calc(var(--relight-cell) * 3 + 16px);
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
 
-.workstation-relight-compass .ant-btn {
-  width: 100%;
+.relight-depth button {
   min-width: 0;
-  padding-inline: 0;
+  height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary-strong);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
-.workstation-relight-top-left { grid-column: 1; grid-row: 1; }
-.workstation-relight-top { grid-column: 2; grid-row: 1; }
-.workstation-relight-top-right { grid-column: 3; grid-row: 1; }
-.workstation-relight-left { grid-column: 1; grid-row: 2; }
-.workstation-relight-front { grid-column: 2; grid-row: 2; }
-.workstation-relight-right { grid-column: 3; grid-row: 2; }
-.workstation-relight-bottom-left { grid-column: 1; grid-row: 3; }
-.workstation-relight-bottom { grid-column: 2; grid-row: 3; }
-.workstation-relight-bottom-right { grid-column: 3; grid-row: 3; }
-.workstation-relight-back { grid-column: 2; grid-row: 4; }
+.relight-depth button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.relight-depth button[aria-checked='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.relight-depth button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.relight-compass-hint {
+  min-height: 36px;
+  margin: 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* 预览图上的方向示意与拖动手柄。 */
+.relight-direction-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.relight-direction-overlay.is-muted {
+  opacity: 0.35;
+}
+
+.relight-direction-overlay.is-muted .relight-light-handle {
+  pointer-events: none;
+}
+
+.relight-direction-overlay svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.relight-light-handle {
+  position: absolute;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.relight-light-handle:active {
+  cursor: grabbing;
+}
+
+.relight-light-handle:disabled {
+  cursor: not-allowed;
+}
+
+.relight-light-dot {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--color-accent-text);
+  border-radius: 50%;
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+  color: var(--color-accent-text);
+}
+
+/* 画布工具条上的“方向示意”开关。 */
+.workstation-canvas-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workstation-overlay-toggle {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary-strong);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workstation-overlay-toggle[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.workstation-overlay-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
 
 .workstation-canvas-toolbar,
 .workstation-canvas-hint {
@@ -4325,6 +4558,10 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .app-main-content:has(.image-workstation-preview-panel.has-image) {
     scroll-padding-top: 320px;
   }
+  .relight-compass { --relight-cell: 64px; gap: 8px; }
+  .relight-compass-pad { gap: 6px; }
+  .relight-compass-hint { text-align: left; }
+  .workstation-overlay-toggle { height: 36px; }
   .workstation-result-item { width: 78px; flex-basis: 78px; }
   .workstation-result-thumb { height: 68px; }
   .workstation-result-badge { font-size: 9px; }

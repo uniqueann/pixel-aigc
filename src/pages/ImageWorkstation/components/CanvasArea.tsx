@@ -1,6 +1,6 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, Segmented, Spin, Upload, message } from 'antd'
-import { InboxOutlined, UploadOutlined } from '@ant-design/icons'
+import { BulbOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import type { InteractionMode } from '../tools'
@@ -41,6 +41,10 @@ interface Props {
   processingLabel?: string
   /** 结果读取失败时在画布上显示失败状态。 */
   errorLabel?: string
+  /** 叠加在画布上的方向示意等交互层。 */
+  overlay?: ReactNode
+  /** 画布工具条上的叠加层开关。 */
+  overlayToggle?: { label: string; pressed: boolean; onChange: () => void }
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -117,6 +121,8 @@ export default function CanvasArea({
   activityLabel,
   processingLabel,
   errorLabel,
+  overlay,
+  overlayToggle,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -303,23 +309,38 @@ export default function CanvasArea({
             options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
             onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
           />
+          {overlayToggle ? (
+            <button
+              type="button"
+              className="workstation-overlay-toggle"
+              aria-pressed={overlayToggle.pressed}
+              title="实线 = 主光方向；虚线 = 投影方向"
+              onClick={overlayToggle.onChange}
+            >
+              <BulbOutlined aria-hidden="true" />
+              {overlayToggle.label}
+            </button>
+          ) : null}
         </div>
         <div className="workstation-canvas-replace">{replaceButton}</div>
       </div>
-      <img
-        src={compareMode === 'original' ? originalImageUrl ?? imageUrl : imageUrl}
-        alt={compareMode === 'original' ? '原始图片' : '当前编辑效果'}
-        className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
-        tabIndex={onPreview ? 0 : undefined}
-        role={onPreview ? 'button' : undefined}
-        aria-label={onPreview ? `打开${compareMode === 'original' ? '原图' : '效果'}大图` : undefined}
-        onClick={onPreview ? () => onPreview(compareMode) : undefined}
-        onKeyDown={onPreview ? event => {
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          event.preventDefault()
-          onPreview(compareMode)
-        } : undefined}
-      />
+      <div className="workstation-preview-stage">
+        <img
+          src={compareMode === 'original' ? originalImageUrl ?? imageUrl : imageUrl}
+          alt={compareMode === 'original' ? '原始图片' : '当前编辑效果'}
+          className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
+          tabIndex={onPreview ? 0 : undefined}
+          role={onPreview ? 'button' : undefined}
+          aria-label={onPreview ? `打开${compareMode === 'original' ? '原图' : '效果'}大图` : undefined}
+          onClick={onPreview ? () => onPreview(compareMode) : undefined}
+          onKeyDown={onPreview ? event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            onPreview(compareMode)
+          } : undefined}
+        />
+        {overlay}
+      </div>
       {errorLabel ? (
         <div className="workstation-canvas-state is-warning" role="alert">
           <span>{errorLabel}</span>

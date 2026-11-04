@@ -56,7 +56,7 @@ export const RELIGHT_TEMPERATURE_INSTRUCTIONS: Record<RelightTemperature, string
   cool: '冷色温：只让环境光、背景、投影和高光的光源色略偏冷。不要给整张图套蓝色或冷色滤镜，不要改变商品本体的固有颜色。',
 }
 
-const directionLabel: Record<RelightDirection, string> = {
+export const RELIGHT_DIRECTION_LABELS: Record<RelightDirection, string> = {
   left: '左侧',
   right: '右侧',
   top: '顶部',
@@ -69,29 +69,30 @@ const directionLabel: Record<RelightDirection, string> = {
   'bottom-right': '右下',
 }
 
-const qualityLabel: Record<RelightQuality, string> = {
+export const RELIGHT_QUALITY_LABELS: Record<RelightQuality, string> = {
   soft: '柔光',
   hard: '硬光',
 }
 
-const temperatureLabel: Record<RelightTemperature, string> = {
+export const RELIGHT_TEMPERATURE_LABELS: Record<RelightTemperature, string> = {
   warm: '暖色',
   neutral: '中性',
   cool: '冷色',
 }
 
-export const RELIGHT_DIRECTION_CHOICES: ReadonlyArray<{ id: RelightDirection; label: string }> = [
-  { id: 'top-left', label: '左上' },
-  { id: 'top', label: '顶' },
-  { id: 'top-right', label: '右上' },
-  { id: 'left', label: '左' },
-  { id: 'front', label: '正面' },
-  { id: 'right', label: '右' },
-  { id: 'bottom-left', label: '左下' },
-  { id: 'bottom', label: '底' },
-  { id: 'bottom-right', label: '右下' },
-  { id: 'back', label: '逆光' },
-]
+/** 界面用的一行方向提示，和提示词里的完整说明保持同一事实。 */
+export const RELIGHT_DIRECTION_HINTS: Record<RelightDirection, string> = {
+  top: '主光从正上方来，投影落在正下方。',
+  left: '主光从画面左侧来，投影落向右侧。',
+  right: '主光从画面右侧来，投影落向左侧。',
+  front: '主光从镜头方向来，投影落在商品后方。',
+  bottom: '主光从下方来，投影向上落在商品上方。',
+  back: '主光从商品背后而来，轮廓发光，投影铺向镜头。',
+  'top-left': '主光从左上方来，投影落向右下方。',
+  'top-right': '主光从右上方来，投影落向左下方。',
+  'bottom-left': '主光从左下方来，投影落向右上方。',
+  'bottom-right': '主光从右下方来，投影落向左上方。',
+}
 
 export function relightOptionLine(options: RelightOptions) {
   return [
@@ -145,7 +146,7 @@ export function composeRelightPrompt(options: RelightOptions, note?: string) {
 }
 
 export function relightHistoryText(options: RelightOptions, note?: string) {
-  const summary = `${directionLabel[options.direction]}、${qualityLabel[options.quality]}、${temperatureLabel[options.temperature]}`
+  const summary = `${RELIGHT_DIRECTION_LABELS[options.direction]}、${RELIGHT_QUALITY_LABELS[options.quality]}、${RELIGHT_TEMPERATURE_LABELS[options.temperature]}`
   const extra = note?.trim()
   return extra ? `${summary}。${extra}` : summary
 }
