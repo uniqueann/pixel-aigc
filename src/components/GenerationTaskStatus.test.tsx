@@ -38,6 +38,21 @@ describe('生成任务状态', () => {
     expect(retryRead).toHaveBeenCalledTimes(1)
   })
 
+  it('页面已有唯一结论时可隐藏结果读取警告，也不显示绿色完成态', () => {
+    render(
+      <GenerationTaskStatus
+        task={succeededTask}
+        resultReadError="仅支持 PNG、JPEG 和 WebP 图片"
+        suppressResultReadError
+        onRetryRead={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText('结果暂时无法读取')).toBeNull()
+    expect(screen.queryByText('生成完成')).toBeNull()
+    expect(screen.queryByRole('button', { name: '重试读取' })).toBeNull()
+  })
+
   it('结果可读时保持正常的生成完成状态', () => {
     render(<GenerationTaskStatus task={succeededTask} summary="已生成 1 个图片结果" />)
     expect(screen.getByText('生成完成')).toBeTruthy()

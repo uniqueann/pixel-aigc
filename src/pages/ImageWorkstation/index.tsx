@@ -1,6 +1,6 @@
 import { useCallback,useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { UNSAFE_LocationContext,useNavigate, useParams } from 'react-router-dom'
-import { DownloadOutlined } from '@ant-design/icons'
+import { DownloadOutlined, EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons'
 import { App, Button, Tooltip } from 'antd'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
@@ -186,11 +186,14 @@ export default function ImageWorkstation() {
     if (notifiedResultRef.current === key) return
     notifiedResultRef.current = key
     if (controller.resultReadError) {
-      notification.warning({
-        message: '任务已完成，但结果暂时无法读取',
-        description: '可免费重试读取，不会重复扣费。',
-        duration: 6,
-      })
+      // 重新打光把结论收敛到页脚与重试主操作，不再叠加 toast。
+      if (!relightTool) {
+        notification.warning({
+          message: '任务已完成，但结果暂时无法读取',
+          description: '可免费重试读取，不会重复扣费。',
+          duration: 6,
+        })
+      }
       return
     }
     if (controller.outputAssets.length > 0) {
@@ -199,7 +202,7 @@ export default function ImageWorkstation() {
         description: `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
       })
     }
-  }, [controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification])
+  }, [controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, relightTool])
   const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
   const relightOutput = relightTool
     ? outputPreview(activeModel, controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined, effectiveParameters.resolution)
@@ -622,15 +625,29 @@ export default function ImageWorkstation() {
               <span className={`workstation-preview-meta${controller.resultReadError ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
             </div>
             {relightTool ? (
-              <p className="workstation-preview-compact-summary">
-                主光：{RELIGHT_DIRECTION_LABELS[relightOptions.direction]} · {RELIGHT_QUALITY_LABELS[relightOptions.quality]} · {RELIGHT_TEMPERATURE_LABELS[relightOptions.temperature]}
-              </p>
+              <div className="workstation-preview-compact-row">
+                <p className="workstation-preview-compact-summary">
+                  主光：{RELIGHT_DIRECTION_LABELS[relightOptions.direction]} · {RELIGHT_QUALITY_LABELS[relightOptions.quality]} · {RELIGHT_TEMPERATURE_LABELS[relightOptions.temperature]}
+                </p>
+                {previewHasImage ? (
+                  <button
+                    type="button"
+                    className="workstation-preview-compact-toggle"
+                    aria-label="方向示意"
+                    aria-pressed={relightOverlayEnabled}
+                    title="实线箭头 = 主光；镜头/辉光徽标 = 正面/逆光；虚线 = 投影"
+                    onClick={() => setRelightOverlayEnabled(enabled => !enabled)}
+                  >
+                    {relightOverlayEnabled ? <EyeOutlined aria-hidden="true" /> : <EyeInvisibleOutlined aria-hidden="true" />}
+                  </button>
+                ) : null}
+              </div>
             ) : null}
             <CanvasArea
               interactionMode={activeTool.interactionMode}
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
               processingLabel={!controller.resultReadError && (controller.active || controller.submitting) ? '正在生成，结果会显示在下方' : undefined}
-              errorLabel={controller.resultReadError ? '结果暂时无法读取，可重试' : undefined}
+              errorLabel={controller.resultReadError && !relightTool ? '结果暂时无法读取，可重试' : undefined}
               overlay={showRelightOverlay ? (
                 <RelightDirectionOverlay
                   direction={relightOptions.direction}
@@ -645,6 +662,7 @@ export default function ImageWorkstation() {
                 pressed: relightOverlayEnabled,
                 onChange: () => setRelightOverlayEnabled(enabled => !enabled),
               } : undefined}
+              overlayHint={relightTool && previewHasImage && relightOverlayEnabled ? '拖动光源可微调' : undefined}
               imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
               imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
               referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
@@ -747,6 +765,7 @@ export default function ImageWorkstation() {
             protocolError={controller.protocolError}
             readingResults={controller.readingResults}
             resultReadError={controller.resultReadError}
+            suppressResultReadError={relightTool}
             historyError={controller.historyError}
             historySaved={controller.historySaved}
             onRetryRead={() => void controller.retryRead()}
@@ -789,7 +808,13 @@ export default function ImageWorkstation() {
                   下载结果
                 </Button>
                 {canRetryRead ? (
-                  <Button type="primary" onClick={() => void controller.retryRead()}>重试读取</Button>
+                  <Button
+                    type="primary"
+                    title="任务已完成，但结果读取失败。可免费重试，不会重复扣费。"
+                    onClick={() => void controller.retryRead()}
+                  >
+                    重试读取
+                  </Button>
                 ) : null}
                 <Tooltip title={canRetryRead ? '重新生成会再次计费，建议先重试读取' : blockReason}>
                   <span>

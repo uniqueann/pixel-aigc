@@ -47,6 +47,8 @@ interface Props {
   emptyExtra?: ReactNode
   /** 画布工具条上的叠加层开关。 */
   overlayToggle?: { label: string; pressed: boolean; onChange: () => void }
+  /** 叠加层开关旁的指针操作提示。 */
+  overlayHint?: string
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -126,6 +128,7 @@ export default function CanvasArea({
   overlay,
   emptyExtra,
   overlayToggle,
+  overlayHint,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -314,16 +317,19 @@ export default function CanvasArea({
             onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
           />
           {overlayToggle ? (
-            <button
-              type="button"
-              className="workstation-overlay-toggle"
-              aria-pressed={overlayToggle.pressed}
-              title="实线箭头 = 主光；镜头/辉光徽标 = 正面/逆光；虚线 = 投影"
-              onClick={overlayToggle.onChange}
-            >
-              <BulbOutlined aria-hidden="true" />
-              {overlayToggle.label}
-            </button>
+            <>
+              <button
+                type="button"
+                className="workstation-overlay-toggle"
+                aria-pressed={overlayToggle.pressed}
+                title="实线箭头 = 主光；镜头/辉光徽标 = 正面/逆光；虚线 = 投影"
+                onClick={overlayToggle.onChange}
+              >
+                <BulbOutlined aria-hidden="true" />
+                {overlayToggle.label}
+              </button>
+              {overlayHint ? <span className="workstation-overlay-hint">{overlayHint}</span> : null}
+            </>
           ) : null}
         </div>
         <div className="workstation-canvas-replace">{replaceButton}</div>
