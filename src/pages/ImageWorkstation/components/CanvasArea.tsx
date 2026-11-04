@@ -37,6 +37,10 @@ interface Props {
   onPreview?: (view: 'original' | 'effect') => void
   uploadHint?: string
   activityLabel?: string
+  /** 已有输入图时在画布上显示生成状态，不替换图片。 */
+  processingLabel?: string
+  /** 结果读取失败时在画布上显示失败状态。 */
+  errorLabel?: string
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -111,6 +115,8 @@ export default function CanvasArea({
   onPreview,
   uploadHint,
   activityLabel,
+  processingLabel,
+  errorLabel,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -304,11 +310,31 @@ export default function CanvasArea({
         src={compareMode === 'original' ? originalImageUrl ?? imageUrl : imageUrl}
         alt={compareMode === 'original' ? '原始图片' : '当前编辑效果'}
         className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
+        tabIndex={onPreview ? 0 : undefined}
+        role={onPreview ? 'button' : undefined}
+        aria-label={onPreview ? `打开${compareMode === 'original' ? '原图' : '效果'}大图` : undefined}
         onClick={onPreview ? () => onPreview(compareMode) : undefined}
+        onKeyDown={onPreview ? event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          onPreview(compareMode)
+        } : undefined}
       />
-      <div className="workstation-canvas-footnote">
-        {interactionMode === 'params-only' ? '选择满意的结果后，可继续进行二次编辑' : '该功能即将上线，敬请期待'}
-      </div>
+      {errorLabel ? (
+        <div className="workstation-canvas-state is-warning" role="alert">
+          <span>{errorLabel}</span>
+        </div>
+      ) : processingLabel ? (
+        <div className="workstation-canvas-state is-processing" role="status">
+          <Spin size="small" />
+          <span>{processingLabel}</span>
+        </div>
+      ) : null}
+      {errorLabel || processingLabel ? null : (
+        <div className="workstation-canvas-footnote">
+          {interactionMode === 'params-only' ? '选择满意的结果后，可继续进行二次编辑' : '该功能即将上线，敬请期待'}
+        </div>
+      )}
     </div>
   )
 }

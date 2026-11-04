@@ -331,7 +331,8 @@ export function useImageWorkstationController({
     const adapted = service.reconcile(nextTask, { ...context.options, existingAssets: Object.values(useEditorStore.getState().project?.assets ?? {}), deferAssets: nextTask.status === 'succeeded' })
     void applyCompletedTask(nextTask, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'), context.ownerId, undefined, context.epoch)
   }, [applyCompletedTask, service])
-  const taskQuery = useTaskPolling(activeTaskId, handlePolledTask)
+  // 任务成功不代表结果可读；成功提示由页面在结果读取结束后统一给出。
+  const taskQuery = useTaskPolling(activeTaskId, handlePolledTask, true, { successNotification: false })
 
   const completeSync = useCallback(async (input: {
     sourceAsset: ImageAsset; capability: Capability; params: InpaintTaskParams | OutpaintTaskParams; parentGenerationId?: GenerationId

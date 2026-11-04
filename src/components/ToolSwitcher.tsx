@@ -15,9 +15,11 @@ interface Props {
   value: string
   onChange: (value: string) => void
   className?: string
+  /** 分组读屏名称，便于辅助技术理解这是一组工具切换。 */
+  ariaLabel?: string
 }
 
-export default function ToolSwitcher({ options, value, onChange, className }: Props) {
+export default function ToolSwitcher({ options, value, onChange, className, ariaLabel }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [edges, setEdges] = useState({ left: false, right: false })
   const updateEdges = useCallback(() => {
@@ -70,6 +72,7 @@ export default function ToolSwitcher({ options, value, onChange, className }: Pr
               }
             })}
             value={value}
+            aria-label={ariaLabel}
             onChange={(next) => onChange(String(next))}
           />
         </div>

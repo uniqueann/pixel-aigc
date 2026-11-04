@@ -15,6 +15,8 @@ export function workstationGenerateBlockReason(input: {
   repaintBlocked: boolean
   retouchBlocked?: boolean
   fusionBlocked?: boolean
+  promptRequired?: boolean
+  promptEmpty?: boolean
   referenceCount?: number
   maxRefImages?: number
   insufficientCredits?: boolean
@@ -32,6 +34,7 @@ export function workstationGenerateBlockReason(input: {
     && input.referenceCount > input.maxRefImages
   ) return referenceImageLimitMessage(input.maxRefImages)
   if (input.formLocked) return '请等待当前任务完成'
+  if (input.promptRequired && input.promptEmpty) return '请先填写编辑要求'
   if (input.retouchBlocked) return '请先选择精修方向'
   if (input.repaintBlocked) return '重绘尚未配置'
   if (input.maskRequired && !input.hasMaskPaint) return emptyMaskMessage(input.mode)

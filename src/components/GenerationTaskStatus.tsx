@@ -68,11 +68,27 @@ export default function GenerationTaskStatus({
   const terminalFailure = task?.status === 'failed' || task?.status === 'cancelled'
   const video = task?.capability === Capability.TextToVideo
   const phaseLabel = task?.phase ? ({ submitting: '提交确认中', queued: '排队中', generating: '视频生成中', transferring: '视频转存中' })[task.phase] : undefined
+  // 任务成功不等于结果可读：读取失败时只保留一个警告结论，避免和绿色“生成完成”同屏。
+  const resultUnavailable = Boolean(resultReadError)
 
   return (
     <div className="generation-task-status-stack">
-      {(task || submitting) ? (
-        <div className={`generation-task-status is-${task?.status ?? 'pending'}`}>
+      {resultUnavailable ? (
+        <div className="generation-task-status is-warning" role="alert">
+          <div className="generation-task-status-title">
+            <strong>结果暂时无法读取</strong>
+            {readingResults ? <Spin size="small" /> : null}
+          </div>
+          {summary ? <span>{summary}</span> : null}
+          <span>任务已完成，但结果读取失败。可免费重试，不会重复扣费。</span>
+          {onRetryRead ? (
+            <div className="generation-task-status-actions">
+              <Button size="small" type="primary" loading={readingResults} onClick={onRetryRead}>重试读取</Button>
+            </div>
+          ) : null}
+        </div>
+      ) : (task || submitting) ? (
+        <div className={`generation-task-status is-${task?.status ?? 'pending'}`} role="status" aria-live="polite">
           <div className="generation-task-status-title">
             <strong>{readingResults ? '读取结果中' : phaseLabel ?? (task ? STATUS_LABELS[task.status] : '正在提交')}</strong>
             {(active || polling || readingResults) ? <Spin size="small" /> : null}
@@ -90,8 +106,7 @@ export default function GenerationTaskStatus({
         </div>
       ) : null}
 
-      {task?.status === 'succeeded' && historySaved ? <span>{video ? '视频已保存到我的资产，保留 30 天' : '完整图片已保存到本地历史'}</span> : null}
-      {resultReadError ? <Alert type="warning" showIcon message="已生成，结果读取失败" description={resultReadError} action={onRetryRead ? <Button size="small" loading={readingResults} onClick={onRetryRead}>重试读取</Button> : undefined} /> : null}
+      {!resultUnavailable && task?.status === 'succeeded' && historySaved ? <span>{video ? '视频已保存到我的资产，保留 30 天' : '完整图片已保存到本地历史'}</span> : null}
       {historyError ? <Alert type="warning" showIcon message={video ? '视频可用，资产记录未保存' : '图片可用，历史未保存'} description={historyError} action={onRetrySave ? <Button size="small" onClick={onRetrySave}>重试保存</Button> : undefined} /> : null}
       {submissionError ? <Alert type="error" showIcon message="提交失败" description={submissionError} /> : null}
       {protocolError ? <Alert type="error" showIcon message="结果异常" description={protocolError} /> : null}

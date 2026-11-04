@@ -75,12 +75,13 @@ export default function ImageWorkstation() {
   const bridgeId = new URLSearchParams(location?.location.search).get('bridgeId')
   const [suiteBinding, setSuiteBinding] = useState<WorkstationSuiteBinding>()
   const account=useUserStore(state=>state.account)
+  const taskCenterEnabled = Boolean(account?.features?.taskCenter)
   const [observedTask,setObservedTask]=useState<{task:TaskCenterSummary;owner:string;scope:string}>()
   const observeRecoveredTask=useCallback(async(detail:TaskCenterDetail,context:RecoveryActionContext)=>{
     assertRecoveryActor(context.actor,context.signal)
     setObservedTask({task:detail.task,...context.actor})
   },[])
-  const { message } = App.useApp()
+  const { message, notification } = App.useApp()
   const knownBalance = useKnownCreditBalance()
   const project = useEditorStore(state => state.project)
   const canvasHandleRef = useRef<CanvasHandle | null>(null)
@@ -166,7 +167,39 @@ export default function ImageWorkstation() {
     referenceAsset: fusionReference,
     useProductAsset: fusionTool,
   })
+  // 任务成功不等于结果可用：等结果读取结束后，由页面给出唯一结论。
+  const notifiedResultRef = useRef<string>()
+  useEffect(() => {
+    const task = controller.activeTask
+    if (!task || task.status !== 'succeeded' || controller.readingResults || taskCenterEnabled) return
+    const key = `${task.id}:${controller.resultReadError ? 'error' : 'success'}`
+    if (notifiedResultRef.current === key) return
+    notifiedResultRef.current = key
+    if (controller.resultReadError) {
+      notification.warning({
+        message: '任务已完成，但结果暂时无法读取',
+        description: '可免费重试读取，不会重复扣费。',
+        duration: 6,
+      })
+      return
+    }
+    if (controller.outputAssets.length > 0) {
+      notification.success({
+        message: '任务已完成',
+        description: `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
+      })
+    }
+  }, [controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification])
   const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
+  const previewMeta = controller.resultReadError
+    ? '结果暂时无法读取'
+    : controller.active || controller.submitting
+      ? '正在生成'
+      : controller.outputAssets.length > 0
+        ? `已生成 ${controller.outputAssets.length} 张`
+        : controller.inputAsset
+          ? `${controller.inputAsset.width}×${controller.inputAsset.height}`
+          : '等待上传'
   const replaceSourceAsset = controller.replaceSourceAsset
   const previewPanelRef = useRef<HTMLElement>(null)
   const settingsPanelRef = useRef<HTMLElement>(null)
@@ -234,6 +267,8 @@ export default function ImageWorkstation() {
     repaintBlocked: activeTool.slug === 'repaint' && repaintReady === false,
     retouchBlocked: retouchTool && normalizeRetouchDirections(retouchDirections).length === 0,
     fusionBlocked: fusionTool && (!fusionProduct || !fusionReference),
+    promptRequired: activeTool.capability === Capability.ImageEdit,
+    promptEmpty: !smartEditPrompt.trim(),
     referenceCount: variationTool || fusionTool || activeTool.capability === Capability.ImageEdit || retouchTool || relightTool ? referenceCount : undefined,
     maxRefImages: activeModel?.ui.maxRefImages,
     mode: inpaintMode,
@@ -460,6 +495,7 @@ export default function ImageWorkstation() {
   const bridgeBlock = bridgeId && (!suiteBinding || (controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey) !== suiteBinding.inputObjectKey)
     ? '请恢复本会话输入后再提交，已有结果可以显式回填' : undefined
   const blockReason = bridgeBlock ?? generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
+  const canRetryRead = Boolean(controller.resultReadError) && !controller.readingResults
   const example = toolExample(activeTool.slug)
   const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
   const { previewRef, footerRef, sticky } = useStickyPreview(true)
@@ -472,6 +508,13 @@ export default function ImageWorkstation() {
       : controller.inputAsset
         ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
         : '请先上传需要处理的图片'
+  const footerInfo = controller.resultReadError
+    ? '结果暂时无法读取 · 可免费重试'
+    : controller.active || controller.submitting
+      ? '正在生成 · 请稍候'
+      : controller.outputAssets.length > 0
+        ? `已生成 ${controller.outputAssets.length} 张 · ${inputDescription}`
+        : inputDescription
   const recoveryRuntime = useRef({})
   useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) }, [])
   useEffect(() => useUserStore.subscribe((state, previous) => {
@@ -509,6 +552,7 @@ export default function ImageWorkstation() {
   }, [replaceSourceAsset])
   return (
     <div className="image-workstation-page">
+      <h1 className="sr-only">图片工作站 · {activeTool.label}</h1>
       {bridgeId && <WorkstationBridge key={`${account?.userId}:${account?.runtimeScope}:${bridgeId}:${activeTool.slug}`} id={bridgeId} tool={activeTool.slug}
         task={controller.activeTask} disabled={controller.formLocked || uploading || fusionLoading} onInput={applySuiteInput} onBinding={setSuiteBinding} />}
       {!bridgeId && <WorkstationRecovery tool={activeTool.slug as TaskTool} nativeBusy={controller.formLocked||uploading||fusionLoading}
@@ -550,15 +594,21 @@ export default function ImageWorkstation() {
           ready: isWorkstationToolReady(item, capability => capabilityState(capability) !== false),
         }))}
         value={activeTool.slug}
+        ariaLabel="切换图片工具"
         onChange={(slug) => navigate(`/image-workstation/${slug}`)}
       />
       <div className="image-workstation-main">
         <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
           <section ref={previewPanelRef} className="workstation-panel image-workstation-preview-panel" aria-labelledby="workstation-preview-heading">
-            <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
+            <div className="workstation-panel-heading-row">
+              <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
+              <span className={`workstation-preview-meta${controller.resultReadError ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
+            </div>
             <CanvasArea
               interactionMode={activeTool.interactionMode}
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
+              processingLabel={!controller.resultReadError && (controller.active || controller.submitting) ? '正在生成，结果会显示在下方' : undefined}
+              errorLabel={controller.resultReadError ? '结果暂时无法读取，可重试' : undefined}
               imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
               imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
               referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
@@ -673,7 +723,7 @@ export default function ImageWorkstation() {
         {!edgeRefine && configurationReady === true && <CreditQuoteNotice quote={generateQuote} onRetry={() => void activeConfiguration.refetch()} />}
         <div className="image-workstation-footer-row">
           <div className="image-workstation-footer-info">
-            <span className="image-workstation-input-description" title={inputDescription}>{inputDescription}</span>
+            <span className="image-workstation-input-description" title={footerInfo}>{footerInfo}</span>
             {!edgeRefine && (
               <div className="image-workstation-footer-hints">
                 <CreditBalanceNotice quote={generateQuote} />
@@ -697,10 +747,13 @@ export default function ImageWorkstation() {
                 >
                   下载结果
                 </Button>
-                <Tooltip title={blockReason}>
+                {canRetryRead ? (
+                  <Button type="primary" onClick={() => void controller.retryRead()}>重试读取</Button>
+                ) : null}
+                <Tooltip title={canRetryRead ? '重新生成会再次计费，建议先重试读取' : blockReason}>
                   <span>
                     <CreditActionButton data-task-generate
-                      type="primary"
+                      type={canRetryRead ? 'default' : 'primary'}
                       loading={controller.submitting}
                       quote={generateQuote}
                       disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}

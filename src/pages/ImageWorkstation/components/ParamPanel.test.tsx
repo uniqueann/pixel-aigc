@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Capability } from '@/types'
 import { publicImageModel, IMAGE_MODEL_PROFILES, NANO_BANANA_PROFILE_ID } from '@shared/image-models'
 import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
@@ -62,12 +62,44 @@ describe('智能编辑参数面板', () => {
         onPresetPlatformChange={() => undefined}
       />,
     )
-    expect(screen.getByText(/预计输出比例 1:1/)).toBeTruthy()
+    expect(screen.getByText(/预计输出 1:1/)).toBeTruthy()
     expect(screen.getByText(/当前比例不支持 4K/)).toBeTruthy()
     expect(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节')).toHaveProperty('maxLength', PROMPT_MAX_LENGTH)
     expect(screen.getByText(`4 / ${PROMPT_MAX_LENGTH}`)).toBeTruthy()
     expect(screen.getByRole('radiogroup', { name: '生成数量' })).toBeTruthy()
     expect(screen.queryByRole('slider')).toBeNull()
+  })
+
+  it('智能编辑把编辑要求标成必填，并提供可追加的起步模板', () => {
+    const onChange = vi.fn()
+    render(
+      <ParamPanel
+        capability={Capability.ImageEdit}
+        smartEditPrompt=""
+        onSmartEditPromptChange={onChange}
+        count={1}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1000, height: 1000 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+      />,
+    )
+    const textarea = screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节')
+    expect(textarea.getAttribute('aria-required')).toBe('true')
+    expect(textarea.getAttribute('aria-labelledby')).toBe('workstation-prompt-label')
+    expect(screen.getByRole('group', { name: '提示词模板' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '纯白背景' }))
+    expect(onChange).toHaveBeenCalledWith('换成纯白电商背景，保留商品细节和阴影')
   })
 
   it('裂变把补充要求标成可选，并按余量限制字数', () => {
@@ -99,7 +131,7 @@ describe('智能编辑参数面板', () => {
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByPlaceholderText('例如：户外露营场景，俯拍')).toHaveProperty('maxLength', VARIATION_USER_PROMPT_MAX)
     expect(screen.queryByText('生成尺寸')).toBeNull()
-    expect(screen.getByText(/预计输出比例 3:2/)).toBeTruthy()
+    expect(screen.getByText(/预计输出 3:2/)).toBeTruthy()
   })
 
   it('精修展示四个方向，补充说明单独计数', () => {
@@ -306,7 +338,7 @@ describe('智能编辑参数面板', () => {
     )
     expect(screen.getByText('Nano Banana 2.1')).toBeTruthy()
     expect(document.querySelector('[data-vendor="google"]')).toBeTruthy()
-    expect(screen.getByText(/预计输出比例 1:1 · 4K/)).toBeTruthy()
+    expect(screen.getByText(/预计输出 1:1 · 4K/)).toBeTruthy()
     expect(screen.queryByText(/当前比例不支持 4K/)).toBeNull()
   })
 

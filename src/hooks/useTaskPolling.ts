@@ -12,12 +12,19 @@ import { emitTaskCenter } from '@/features/task-center/receipts'
 import { CloudError } from '@/cloud/client'
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
 
+export interface TaskPollingOptions {
+  /** 工作站需要等结果读取完成后再给结论，可关闭这里的通用成功通知。 */
+  successNotification?: boolean
+}
+
 /** 旧业务推进保持兼容；缓存隔离且每个观察者独立消费结果。 */
 export function useTaskPolling(
   taskId: string | undefined,
   onTask?: (task: GenerationTask<unknown>) => void,
   enabled = true,
+  options: TaskPollingOptions = {},
 ) {
+  const successNotification = options.successNotification !== false
   const queryClient = useQueryClient()
   const user = useUserStore((s) => s.userId),
     scope = useUserStore((s) => s.account?.runtimeScope ?? 'local'),
@@ -99,7 +106,7 @@ export function useTaskPolling(
       prev !== task.status &&
       !ACTIVE_STATUSES.has(task.status)
     ) {
-      if (task.status === 'succeeded')
+      if (task.status === 'succeeded' && successNotification)
         notification.success({
           message: '任务已完成',
           description: '生成结果已就绪，可在结果区查看',
@@ -123,6 +130,7 @@ export function useTaskPolling(
     owner,
     globalCenter,
     notification,
+    successNotification,
   ])
   return query
 }
