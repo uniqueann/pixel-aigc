@@ -1912,6 +1912,14 @@ body.sidebar-resizing * {
   gap: 4px 8px;
 }
 
+.workstation-settings-output {
+  color: var(--color-text-secondary-strong);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .workstation-preview-meta {
   color: var(--color-text-secondary-strong);
   font-size: 12px;
@@ -1963,6 +1971,22 @@ body.sidebar-resizing * {
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+/* 空状态教学示意放在上传框上方，避免被 480px 画布推到首屏之外。 */
+.workstation-canvas-shell.is-empty.has-empty-extra {
+  justify-content: flex-start;
+}
+
+.workstation-canvas-shell.is-empty.has-empty-extra .workstation-upload {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.workstation-empty-extra {
+  width: 100%;
+  flex: 0 0 auto;
 }
 
 .workstation-task-placeholder {
@@ -2399,6 +2423,32 @@ body.sidebar-resizing * {
   color: var(--color-accent-text);
 }
 
+/* 镜头光用圆角方形，和平面光的圆形光源区分；逆光加一圈辉光。 */
+.relight-light-dot.is-front {
+  border-radius: 8px;
+}
+
+.relight-light-dot.is-back {
+  box-shadow: 0 0 0 5px var(--color-accent-soft), 0 2px 8px rgb(0 0 0 / 18%);
+}
+
+.relight-overlay-tag {
+  position: absolute;
+  z-index: 3;
+  padding: 2px 7px;
+  border: 1px solid var(--color-accent);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-accent-text);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+}
+
 /* 画布工具条上的“方向示意”开关。 */
 .workstation-canvas-toolbar {
   display: flex;
@@ -2628,6 +2678,33 @@ body.sidebar-resizing * {
 }
 
 /* 重新打光的空状态示意：用同一商品的光向图代替照片，避免伪造生成结果。 */
+.relight-example {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.relight-example summary {
+  color: var(--color-text-secondary-strong);
+  font-size: 13px;
+}
+
+.relight-example figcaption {
+  color: var(--color-text-secondary-strong);
+}
+
+.relight-example .tool-example-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 8px;
+  overflow: visible;
+}
+
+.relight-example figure {
+  width: 100%;
+  align-items: center;
+}
+
 .relight-example-art {
   display: grid;
   width: 112px;
@@ -2636,6 +2713,12 @@ body.sidebar-resizing * {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-surface);
+}
+
+.relight-example .relight-example-note {
+  margin-top: 8px;
+  color: var(--color-text-secondary-strong);
+  font-size: 11px;
 }
 
 .relight-example-art svg {
@@ -2908,7 +2991,8 @@ body.sidebar-resizing * {
   color: var(--color-text-secondary-strong);
 }
 
-.image-workstation-page .workstation-canvas-controls .ant-segmented-item:not(.ant-segmented-item-selected) .ant-segmented-item-label {
+.image-workstation-page .workstation-canvas-controls .ant-segmented-item:not(.ant-segmented-item-selected) .ant-segmented-item-label,
+.image-workstation-page .relight-pair .ant-segmented-item:not(.ant-segmented-item-selected) .ant-segmented-item-label {
   color: var(--color-text-secondary-strong);
 }
 
@@ -4487,6 +4571,17 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
     position: sticky;
     top: 16px;
   }
+
+  /* 重新打光的参数面板更长，桌面端也给吸底操作栏留出滚动余量。 */
+  .app-main-content:has(.image-workstation-preview-panel.is-relight) {
+    scroll-padding-bottom: 96px;
+  }
+  .image-workstation-page:has(.image-workstation-preview-panel.is-relight) .image-workstation-settings {
+    margin-bottom: 96px;
+  }
+  .image-workstation-page:has(.image-workstation-preview-panel.is-relight) #relight-note {
+    scroll-margin-bottom: 96px;
+  }
 }
 
 @media (max-width: 900px) {
@@ -4730,6 +4825,8 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
     padding-block: 4px;
     line-height: 1.3;
   }
+  .relight-example-art { width: 88px; height: 88px; }
+  .relight-example .tool-example-row { gap: 6px; }
   .relight-compass { --relight-cell: 64px; gap: 8px; }
   .relight-compass-pad { gap: 6px; }
   .relight-compass-hint { text-align: left; }

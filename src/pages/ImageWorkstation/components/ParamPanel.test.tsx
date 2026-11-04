@@ -223,6 +223,8 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByRole('radiogroup', { name: '光线方向' })).toBeTruthy()
     expect(screen.getByText('光质')).toBeTruthy()
     expect(screen.getByText('色温')).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: '光质' })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: '色温' })).toBeTruthy()
     const noteMax = relightNoteBudget(model.ui.promptMaxLength ?? PROMPT_MAX_LENGTH)
     const noteToggle = screen.getByRole('button', { name: /添加补充说明/ })
     expect(noteToggle.getAttribute('aria-expanded')).toBe('false')

@@ -36,6 +36,7 @@ import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
+import { outputPreview } from './utils/outputPreview'
 import RelightDirectionOverlay from './components/RelightDirectionOverlay'
 import RelightExample from './components/RelightExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
@@ -200,6 +201,9 @@ export default function ImageWorkstation() {
     }
   }, [controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification])
   const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
+  const relightOutput = relightTool
+    ? outputPreview(activeModel, controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined, effectiveParameters.resolution)
+    : undefined
   const previewMeta = controller.resultReadError
     ? '结果暂时无法读取'
     : controller.active || controller.submitting
@@ -635,6 +639,7 @@ export default function ImageWorkstation() {
                   onDirectionChange={direction => updateParameters({ relight: { ...relightOptions, direction } })}
                 />
               ) : undefined}
+              emptyExtra={relightTool && !previewHasImage ? <RelightExample /> : undefined}
               overlayToggle={relightTool && previewHasImage ? {
                 label: '方向示意',
                 pressed: relightOverlayEnabled,
@@ -676,12 +681,15 @@ export default function ImageWorkstation() {
               onPreview={openAt}
             />
           </section>
-          {relightTool && !previewHasImage
-            ? <RelightExample />
-            : showExample && example ? <ToolExampleStrip example={example} /> : null}
+          {!relightTool && showExample && example ? <ToolExampleStrip example={example} /> : null}
         </div>
         <aside ref={settingsPanelRef} className="workstation-panel image-workstation-settings" aria-labelledby="workstation-settings-heading">
-          <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>
+          <div className="workstation-panel-heading-row">
+            <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>
+            {relightOutput ? (
+              <span className="workstation-settings-output">预计输出 {relightOutput.size} · {relightOutput.resolution.toUpperCase()}</span>
+            ) : null}
+          </div>
           <CapabilityStatus
             ready={configurationReady}
             error={capabilityError}
