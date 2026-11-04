@@ -6,7 +6,7 @@ import ModelChoice from '@/components/ModelChoice'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { Capability } from '@/types'
-import { mapDragonCodeSize, matchImageModel, nearestRatio } from '@shared/image-models'
+import { mapDragonCodeSize, matchImageModel } from '@shared/image-models'
 import { MAX_ERASE_PROMPT_LENGTH } from '@shared/erase'
 import { FUSION_NOTE_MAX } from '@shared/fusion'
 import { PROMPT_MAX_LENGTH } from '@shared/prompt-limits'
@@ -16,6 +16,7 @@ import {
   type RelightOptions,
 } from '@shared/relight'
 import RelightCompass from './RelightCompass'
+import { outputPreview } from '../utils/outputPreview'
 import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import type { OutpaintOutputMode } from '@shared/outpaint'
@@ -65,25 +66,6 @@ const SMART_EDIT_PROMPT_TEMPLATES = [
   { label: '只调光线', prompt: '只调整光线和氛围，不改变商品结构和颜色' },
   { label: '清理杂物', prompt: '去除背景杂物，保持商品主体完整' },
 ] as const
-
-function outputPreview(
-  model: PublicImageModel | undefined,
-  sourceSize: { width: number; height: number } | undefined,
-  resolution: '1k' | '2k' | '4k',
-) {
-  if (!sourceSize) return undefined
-  const ratios = model?.ui.ratios?.filter(ratio => ratio.includes(':'))
-  if (model && model.provider !== 'dragoncode' && ratios?.length) {
-    const size = nearestRatio(sourceSize.width, sourceSize.height, ratios)
-    const allowed = model.ui.resolutionRatioConstraints?.[resolution]
-    const downgraded = resolution === '4k' && !!allowed && !allowed.includes(size)
-    const effective = downgraded
-      ? (model.ui.resolutions.includes('2k') ? '2k' as const : resolution)
-      : (model.ui.resolutions.includes(resolution) ? resolution : model.ui.resolutions[0])
-    return { size, resolution: effective }
-  }
-  return mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution)
-}
 
 /** 右侧参数面板：按能力和子工具模式渲染对应表单 */
 export default function ParamPanel({
@@ -249,7 +231,6 @@ export default function ParamPanel({
     const model = matchImageModel(models, modelProfileId) ?? models[0]
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
-    const mapped = outputPreview(model, sourceSize, resolution)
     const constraintSize = sourceSize ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution).size : ''
     const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
       || model.ui.resolutionRatioConstraints['4k'].includes(constraintSize)
@@ -279,6 +260,7 @@ export default function ParamPanel({
             <div style={labelStyle}>光质</div>
             <Segmented
               block
+              aria-label="光质"
               disabled={disabled}
               value={relight.quality}
               onChange={(value) => update({ quality: value as RelightOptions['quality'] })}
@@ -289,6 +271,7 @@ export default function ParamPanel({
             <div style={labelStyle}>色温</div>
             <Segmented
               block
+              aria-label="色温"
               disabled={disabled}
               value={relight.temperature}
               onChange={(value) => update({ temperature: value as RelightOptions['temperature'] })}
@@ -320,10 +303,9 @@ export default function ParamPanel({
               }))}
             />
           </div>
-          {mapped ? (
+          {!fourKAllowed ? (
             <p className="toolbox-hint" style={{ margin: '6px 0 0', fontSize: 12 }}>
-              预计输出 {mapped.size} · {mapped.resolution.toUpperCase()}
-              {!fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
+              当前比例不支持 4K，按 2K 生成。
             </p>
           ) : null}
         </div>
@@ -351,6 +333,16 @@ export default function ParamPanel({
               style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
               maxLength={noteMax}
               aria-label="补充说明"
+              onFocus={(event) => {
+                const target = event.currentTarget
+                // 吸底操作栏会盖住输入框底部；聚焦时主动把备注滚到视口中间。
+                // jsdom 等环境没有 scrollIntoView，跳过即可。
+                requestAnimationFrame(() => {
+                  if (typeof target.scrollIntoView === 'function') {
+                    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                  }
+                })
+              }}
               showCount={noteNearLimit ? {
                 formatter: ({ count: current, maxLength }) => `${current} / ${maxLength ?? noteMax}`,
               } : false}

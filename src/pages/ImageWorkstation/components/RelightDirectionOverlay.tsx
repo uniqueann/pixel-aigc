@@ -1,29 +1,13 @@
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react'
 import type { RelightDirection } from '@shared/relight'
 import { directionFromPoint } from './relightDirection'
+import { relightOverlayGeometry } from './relightOverlayGeometry'
 
 interface Props {
   direction: RelightDirection
   disabled?: boolean
   muted?: boolean
   onDirectionChange?: (direction: RelightDirection) => void
-}
-
-const PLANAR_UNITS: Record<Exclude<RelightDirection, 'front' | 'back'>, { x: number; y: number }> = {
-  top: { x: 0, y: -1 },
-  'top-right': { x: Math.SQRT1_2, y: -Math.SQRT1_2 },
-  right: { x: 1, y: 0 },
-  'bottom-right': { x: Math.SQRT1_2, y: Math.SQRT1_2 },
-  bottom: { x: 0, y: 1 },
-  'bottom-left': { x: -Math.SQRT1_2, y: Math.SQRT1_2 },
-  left: { x: -1, y: 0 },
-  'top-left': { x: -Math.SQRT1_2, y: -Math.SQRT1_2 },
-}
-
-function unitFor(direction: RelightDirection) {
-  if (direction === 'front') return { x: 0, y: 1 }
-  if (direction === 'back') return { x: 0, y: -1 }
-  return PLANAR_UNITS[direction]
 }
 
 function LightGlyph() {
@@ -35,7 +19,17 @@ function LightGlyph() {
   )
 }
 
-/** 预览图上的方向示意：主光箭头 + 虚线投影，并提供可拖动的光源手柄。 */
+/** 镜头徽标：正面光的光源在镜头方向，不能用底部箭头表达。 */
+function CameraGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+      <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.6" />
+      <circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  )
+}
+
+/** 预览图上的方向示意：平面光用实线主光箭头，正面用镜头徽标，逆光用背后辉光；虚线始终表示投影。 */
 export default function RelightDirectionOverlay({ direction, disabled = false, muted = false, onDirectionChange }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
@@ -59,18 +53,11 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
   }, [])
 
   const { width, height } = size
-  const min = Math.min(width, height)
   const center = { x: width / 2, y: height / 2 }
-  const outer = Math.max(0, min / 2 - 30)
-  const inner = Math.max(18, min * 0.17)
-  const unit = unitFor(direction)
-  const lightStart = { x: center.x + unit.x * outer, y: center.y + unit.y * outer }
-  const lightEnd = { x: center.x + unit.x * inner, y: center.y + unit.y * inner }
-  const shadowStart = { x: center.x - unit.x * inner, y: center.y - unit.y * inner }
-  const shadowEnd = { x: center.x - unit.x * outer, y: center.y - unit.y * outer }
-  const shadowAngle = Math.atan2(shadowEnd.y - shadowStart.y, shadowEnd.x - shadowStart.x) * 180 / Math.PI
-  const isBack = direction === 'back'
-  const rimRadius = Math.max(24, inner * 0.95)
+  const geometry = relightOverlayGeometry(direction, width, height)
+  const isPlanar = geometry.kind === 'planar'
+  const isFront = geometry.kind === 'front'
+  const isBack = geometry.kind === 'back'
 
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     if (disabled || !onDirectionChange) return
@@ -99,7 +86,13 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
   }
 
   return (
-    <div ref={rootRef} className={`relight-direction-overlay${muted ? ' is-muted' : ''}`} aria-hidden="true">
+    <div
+      ref={rootRef}
+      className={`relight-direction-overlay${muted ? ' is-muted' : ''}`}
+      data-direction={direction}
+      data-kind={geometry.kind}
+      aria-hidden="true"
+    >
       {width > 0 && height > 0 ? (
         <>
           <svg viewBox={`0 0 ${width} ${height}`} focusable="false">
@@ -109,10 +102,11 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
               </marker>
             </defs>
             <line
-              x1={shadowStart.x}
-              y1={shadowStart.y}
-              x2={shadowEnd.x}
-              y2={shadowEnd.y}
+              data-role="shadow"
+              x1={geometry.shadowStart.x}
+              y1={geometry.shadowStart.y}
+              x2={geometry.shadowEnd.x}
+              y2={geometry.shadowEnd.y}
               stroke="var(--color-text-secondary-strong)"
               strokeDasharray="4 6"
               strokeLinecap="round"
@@ -120,28 +114,31 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
               opacity=".75"
             />
             <ellipse
-              cx={shadowEnd.x}
-              cy={shadowEnd.y}
+              cx={geometry.shadowEnd.x}
+              cy={geometry.shadowEnd.y}
               rx="12"
               ry="4"
               fill="var(--color-text-muted)"
               opacity=".45"
-              transform={`rotate(${shadowAngle + 90} ${shadowEnd.x} ${shadowEnd.y})`}
+              transform={`rotate(${geometry.shadowAngle + 90} ${geometry.shadowEnd.x} ${geometry.shadowEnd.y})`}
             />
-            <line
-              x1={lightStart.x}
-              y1={lightStart.y}
-              x2={lightEnd.x}
-              y2={lightEnd.y}
-              stroke="var(--color-accent-text)"
-              strokeDasharray={isBack ? '5 5' : undefined}
-              strokeLinecap="round"
-              strokeWidth="2"
-              markerEnd={`url(#${markerId})`}
-            />
-            {isBack ? (
+            {isPlanar && geometry.lightStart && geometry.lightEnd ? (
+              <line
+                data-role="main-light"
+                x1={geometry.lightStart.x}
+                y1={geometry.lightStart.y}
+                x2={geometry.lightEnd.x}
+                y2={geometry.lightEnd.y}
+                stroke="var(--color-accent-text)"
+                strokeLinecap="round"
+                strokeWidth="2"
+                markerEnd={`url(#${markerId})`}
+              />
+            ) : null}
+            {isBack && geometry.rimRadius ? (
               <path
-                d={`M ${center.x - rimRadius} ${center.y - rimRadius * 0.15} A ${rimRadius} ${rimRadius} 0 0 1 ${center.x + rimRadius} ${center.y - rimRadius * 0.15}`}
+                data-role="rim-light"
+                d={`M ${center.x - geometry.rimRadius} ${center.y - geometry.rimRadius * 0.15} A ${geometry.rimRadius} ${geometry.rimRadius} 0 0 1 ${center.x + geometry.rimRadius} ${center.y - geometry.rimRadius * 0.15}`}
                 fill="none"
                 stroke="var(--color-accent-text)"
                 strokeLinecap="round"
@@ -152,8 +149,8 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
           </svg>
           <button
             type="button"
-            className="relight-light-handle"
-            style={{ left: lightStart.x - 22, top: lightStart.y - 22 }}
+            className={`relight-light-handle is-${geometry.kind}`}
+            style={{ left: geometry.handle.x - 22, top: geometry.handle.y - 22 }}
             tabIndex={-1}
             disabled={disabled || !onDirectionChange}
             onPointerDown={onPointerDown}
@@ -161,8 +158,21 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
             onPointerUp={stopDragging}
             onPointerCancel={stopDragging}
           >
-            <span className="relight-light-dot"><LightGlyph /></span>
+            <span className={`relight-light-dot is-${geometry.kind}`}>
+              {isFront ? <CameraGlyph /> : <LightGlyph />}
+            </span>
           </button>
+          {isPlanar ? null : (
+            <span
+              className={`relight-overlay-tag is-${geometry.kind}`}
+              style={{
+                left: geometry.handle.x,
+                top: isFront ? geometry.handle.y - 36 : geometry.handle.y + 28,
+              }}
+            >
+              {isFront ? '镜头光' : '逆光'}
+            </span>
+          )}
         </>
       ) : null}
     </div>

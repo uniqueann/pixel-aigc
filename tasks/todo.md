@@ -609,3 +609,42 @@
 - 空状态：新增 `RelightExample`，用同一商品的方向示意图表达左光与逆光，配「左光：左侧受光，影子向右」「逆光：轮廓发光，影子朝镜头」两行说明，避免伪造生成结果。
 - 帮助：修正为「左侧预览、右侧调参数」；新增「重新打光怎么读罗盘」小节，解释罗盘、光质、色温与预设；帮助链接改为新标签打开，避免离开后丢失上传图和备注。
 - 验证：`tsc`、`eslint --max-warnings 0`、Vitest 332 文件 / 2118 用例、`vite build` 全部通过；Playwright 覆盖 1366×768、1440×900、390 明暗主题与空状态，无横向溢出。
+
+## 重新打光 · 复查后 P1 + P2 修复（2026-11-04）
+
+目标：按复查报告（30/40）修深度语义 P1，并完成 3 个 P2。正面光采用「镜头徽标 + 向深处投影」，P3 重复正面留到下一轮。
+
+### P1 深度语义
+- [x] 定义视觉语法：实线永远 = 主光，虚线永远 = 投影；正面用镜头徽标 + 向画面深处退的投影；逆光用商品背后辉光 + 朝镜头投影
+- [x] 重构 `RelightDirectionOverlay`：移除 `front → bottom` 的映射；正面/背面使用独立几何；主光不再用虚线
+- [x] 同步 `RelightExample` 逆光示意图与 `docs/help/workstation.md` 图例文案
+- [x] 补回归测试：正面与底部几何/线型不同；逆光主光为实线；图例与渲染一致
+
+### P2 桌面空状态
+- [x] 1440/1366 首屏内完整显示正面/左光/逆光示例：移入空状态上传画布内部，保留 480px 拖拽区
+- [x] Playwright 断言：1440/1366/390 下示例 caption 与说明在页脚上方完整可见，无横向溢出
+
+### P2 1366 输出与备注
+- [x] 预计输出移到设置面板标题行，1366×768 首屏可见；分辨率行仍在页脚上方
+- [x] 备注聚焦时 `scrollIntoView({ block: 'center' })`（带 `typeof` 保护，兼容 jsdom），配合 `scroll-padding-bottom` / `scroll-margin-bottom` 自动滚入
+- [x] 1440/1366/390 三档验证备注净空：163.8 / 163.8 / 61.4px
+
+### P2 对比度与命名
+- [x] 浅色未选中光质/色温标签改为 `--color-text-secondary-strong`（#475569 on #f5f6f8 ≈ 7.1:1）；暗色 #b8b6bc on #17171a ≈ 9.4:1
+- [x] 两个 Segmented 补 `aria-label="光质"` / `"色温"`，ParamPanel 测试断言 radiogroup 名称
+- [x] 运行时检测器复跑：1440 仅剩壳层侧边栏 1.3:1；390 为 0；Relight 面板无新发现
+
+### 验证
+- [x] `tsc --noEmit`、`eslint --max-warnings 0`、Vitest 333 文件 / 2126 用例、`vite build`
+- [x] Playwright 1440×900 / 1366×768 / 390×844 明暗主题；深度语义、空状态、输出/备注、对比度
+- [x] 复查记录写回本文件
+
+### 复查记录（2026-11-04）
+
+- **P1 深度语义**：`front` 不再映射成 `bottom` 的 `{x:0,y:1}`；平面光保留实线主光箭头，正面光改用镜头徽标 + 「镜头光」标签，逆光改用商品背后的辉光 + 轮廓光 + 「逆光」标签，投影始终为虚线。1440 实测：正面无 `[data-role="main-light"]`、有 `.relight-light-dot.is-front`；底部有实线 `main-light`；逆光无主光箭头、有 `rim-light` 与 `.is-back`。
+- **P2 空状态**：`RelightExample` 移入空状态画布内部（`CanvasArea` 新增 `emptyExtra`），桌面保留 480px 拖拽区；三列网格展示正面/左光/逆光，1440 示例 214px 高、1366 214px、390 190px，均在页脚上方；390 无横向溢出，caption 单行。
+- **P2 输出与备注**：预计输出移到设置面板标题行（`workstation-settings-output`），1366 首屏可见「预计输出 1:1 · 2K」；备注聚焦后 `scrollIntoView` 居中，1440/1366/390 净空 163.8/163.8/61.4px；桌面滚动余量 96px 仅作用于 relight。
+- **P2 对比度与命名**：未选中 Segmented 标签 #475569 on #f5f6f8；两个分组可访问名称为「光质」「色温」。检测器 1440 仅剩壳层侧边栏 `#21cfa0 on #1fb38b` 1.3:1，390 为 0。
+- **验证**：最终改动后顺序复跑 `npx tsc --noEmit`、`npm run lint`、`npm test`（333 文件 / 2126 用例，21:59）、`npm run build` 全部通过；Playwright 覆盖 1440/1366/390 明暗主题、正面/底部/逆光、空状态、备注聚焦与吸顶紧凑条。
+- **截图**：`/tmp/relight-p1-1440-front.png`、`/tmp/relight-p1-1440-bottom.png`、`/tmp/relight-p1-1440-back.png`、`/tmp/relight-p2-1440-empty.png`、`/tmp/relight-p2-1366-bottom.png`、`/tmp/relight-mobile-empty-2.png`、`/tmp/relight-dark-front.png`、`/tmp/relight-dark-back.png`。
+- **未做**：P3「正面」重复 radio 留到下一轮；暗色侧边栏选中项 1.3:1 属于壳层级，未在本轮扩大范围。

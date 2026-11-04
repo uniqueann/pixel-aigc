@@ -43,6 +43,8 @@ interface Props {
   errorLabel?: string
   /** 叠加在画布上的方向示意等交互层。 */
   overlay?: ReactNode
+  /** 空状态上传框上方的教学示意，避免把示例推到首屏之外。 */
+  emptyExtra?: ReactNode
   /** 画布工具条上的叠加层开关。 */
   overlayToggle?: { label: string; pressed: boolean; onChange: () => void }
 }
@@ -122,6 +124,7 @@ export default function CanvasArea({
   processingLabel,
   errorLabel,
   overlay,
+  emptyExtra,
   overlayToggle,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
@@ -194,7 +197,8 @@ export default function CanvasArea({
 
   if (!imageUrl) {
     return (
-      <div className={`${canvasShellClass} is-empty`}>
+      <div className={`${canvasShellClass} is-empty${emptyExtra ? ' has-empty-extra' : ''}`}>
+        {emptyExtra ? <div className="workstation-empty-extra">{emptyExtra}</div> : null}
         <Upload.Dragger
           className="workstation-upload"
           accept="image/png,image/jpeg,image/webp"
@@ -314,7 +318,7 @@ export default function CanvasArea({
               type="button"
               className="workstation-overlay-toggle"
               aria-pressed={overlayToggle.pressed}
-              title="实线 = 主光方向；虚线 = 投影方向"
+              title="实线箭头 = 主光；镜头/辉光徽标 = 正面/逆光；虚线 = 投影"
               onClick={overlayToggle.onChange}
             >
               <BulbOutlined aria-hidden="true" />
