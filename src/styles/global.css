@@ -1841,6 +1841,11 @@ body.sidebar-resizing * {
   background: rgb(255 120 117 / 7%);
 }
 
+.generation-task-status.is-warning {
+  border-color: rgb(245 185 66 / 34%);
+  background: rgb(245 185 66 / 7%);
+}
+
 .generation-task-status-title {
   display: flex;
   align-items: center;
@@ -1849,7 +1854,7 @@ body.sidebar-resizing * {
 }
 
 .generation-task-status > span {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary-strong);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -1896,6 +1901,25 @@ body.sidebar-resizing * {
   color: var(--color-text-primary);
   font-size: 15px;
   font-weight: 600;
+}
+
+.workstation-panel-heading-row {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.workstation-preview-meta {
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.workstation-preview-meta.is-warning {
+  color: var(--color-warning-text);
 }
 
 .workstation-canvas-shell {
@@ -2079,9 +2103,36 @@ body.sidebar-resizing * {
 
 .workstation-canvas-footnote {
   align-self: flex-start;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary-strong);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.workstation-canvas-state {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 12px;
+  display: inline-flex;
+  max-width: calc(100% - 24px);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+}
+
+.workstation-canvas-state.is-warning {
+  border-color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 
 .workstation-canvas-shell:has(.workstation-paint-host) .workstation-canvas-footnote {
@@ -2248,6 +2299,22 @@ body.sidebar-resizing * {
   font-weight: 600;
 }
 
+.param-required {
+  margin-left: 2px;
+  color: var(--color-danger-text);
+}
+
+.workstation-prompt-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.workstation-prompt-templates .ant-btn {
+  font-size: 12px;
+}
+
 .image-workstation-tool-switcher,
 .toolbox-tool-switcher {
   flex: 0 0 auto;
@@ -2293,12 +2360,23 @@ body.sidebar-resizing * {
 }
 
 .image-workstation-settings .ant-input-textarea-show-count {
+  position: relative;
   display: flex;
   flex-direction: column;
 }
 
+/* Ant 默认把字数挂在输入框下方，会和提示词模板挤在同一行；收进输入框右下角。 */
+.image-workstation-settings .ant-input-textarea-show-count .ant-input-data-count {
+  top: auto;
+  right: 10px;
+  bottom: 8px;
+  pointer-events: none;
+}
+
 .image-workstation-settings .ant-input-textarea-show-count textarea {
   flex: 1;
+  padding-bottom: 24px;
+  transition: min-height 0.2s ease;
 }
 
 .image-workstation-settings .ant-segmented-item {
@@ -2375,7 +2453,7 @@ body.sidebar-resizing * {
   gap: 6px;
   background: var(--color-bg);
   border-top: 1px solid var(--color-border);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary-strong);
   font-size: 12px;
 }
 
@@ -2445,6 +2523,35 @@ body.sidebar-resizing * {
   max-width: 100%;
 }
 
+/* 对比度：实心品牌绿控件统一用深色文字；说明类小字提升到次级强色。 */
+.image-workstation-page .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled),
+.image-workstation-page .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):hover {
+  color: var(--color-on-accent);
+}
+
+.image-workstation-page .ant-input::placeholder,
+.image-workstation-page .ant-input-affix-wrapper input::placeholder {
+  color: var(--color-text-secondary);
+}
+
+.image-workstation-page .ant-input-data-count {
+  color: var(--color-text-secondary-strong);
+}
+
+.image-workstation-page .workstation-canvas-controls .ant-segmented-item:not(.ant-segmented-item-selected) .ant-segmented-item-label {
+  color: var(--color-text-secondary-strong);
+}
+
+.image-workstation-page .ant-upload-wrapper .ant-upload-drag p.ant-upload-hint {
+  color: var(--color-text-secondary-strong) !important;
+}
+
+.generation-count-picker .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled),
+.generation-count-picker .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):hover,
+.generation-count-picker .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled):active {
+  color: var(--color-on-accent);
+}
+
 .workstation-upload {
   width: min(520px, calc(100% - 24px));
   max-width: 100%;
@@ -2452,65 +2559,133 @@ body.sidebar-resizing * {
 
 .workstation-result-strip {
   display: flex;
-  min-height: 82px;
+  min-width: 0;
   padding-top: 12px;
-  align-items: center;
-  gap: 12px;
-  overflow-x: auto;
+  flex-direction: column;
+  gap: 10px;
   border-top: 1px solid var(--color-border);
-  overscroll-behavior-x: contain;
-  color: var(--color-text-secondary);
+  color: var(--color-text-secondary-strong);
   font-size: 12px;
+}
+
+.workstation-result-strip-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.workstation-result-strip-title {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workstation-result-strip-hint {
+  color: var(--color-text-secondary-strong);
 }
 
 .workstation-result-list {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .workstation-result-item {
   position: relative;
-  width: 58px;
-  height: 58px;
-  padding: 2px;
-  overflow: hidden;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 7px;
-  background: var(--color-surface-2);
-}
-
-.workstation-result-item.is-selected {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent);
+  display: flex;
+  width: 96px;
+  flex: 0 0 96px;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .workstation-result-thumb {
+  position: relative;
   display: block;
   width: 100%;
-  height: 100%;
+  height: 84px;
   padding: 0;
-  border: 0;
-  background: transparent;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-surface-2);
   cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.workstation-result-thumb:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.workstation-result-item.is-selected .workstation-result-thumb {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
 
 .workstation-result-item img {
   width: 100%;
   height: 100%;
-  border-radius: 4px;
   object-fit: cover;
 }
 
-.workstation-result-download {
+.workstation-result-index {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 62%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.workstation-result-badge {
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
+  left: 0;
+  padding: 2px 0;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.workstation-result-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+/* 候选卡的操作按钮排在缩略图下方，覆盖全局预览放大按钮的绝对定位。 */
+.workstation-result-actions .ant-btn {
+  position: static;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
   padding: 0;
-  color: #fff;
-  background: #000a;
+  opacity: 1;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface-2) !important;
+  color: var(--color-text-secondary-strong) !important;
+}
+
+.workstation-result-actions .ant-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary) !important;
 }
 
 .field-label {
@@ -4131,9 +4306,39 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .toolbox-settings-panel,
   .toolbox-image-card,
   .workstation-panel { padding: 12px; }
+  /* 移动端 8 个工具横向溢出：改为两行换行，所有工具一屏可见。 */
+  .image-workstation-tool-switcher .tool-switcher { overflow-x: visible; }
+  .image-workstation-tool-switcher .tool-switcher .ant-segmented { width: 100%; min-width: 0; }
+  .image-workstation-tool-switcher .tool-switcher .ant-segmented-group {
+    display: flex;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .image-workstation-tool-switcher .tool-switcher .ant-segmented-item {
+    display: inline-flex;
+    min-height: 44px;
+    flex: 0 0 auto;
+    align-items: center;
+  }
+  .image-workstation-tool-switcher .tool-switcher-fade { display: none; }
+  .workstation-result-item { width: 78px; flex-basis: 78px; }
+  .workstation-result-thumb { height: 68px; }
+  .workstation-result-badge { font-size: 9px; }
+  .workstation-prompt-templates .ant-btn { min-height: 40px; }
+  .image-workstation-footer-actions .ant-btn { min-height: 44px; }
+  .workstation-canvas-replace .ant-btn { min-height: 40px; }
+  .generation-count-picker .ant-radio-button-wrapper {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
   .image-workstation-footer {
     margin: 0 -12px;
     padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  /* 键盘聚焦到页脚后方内容时，预留吸底栏高度，避免焦点被遮住。 */
+  .app-main-content:has(.image-workstation-page) {
+    scroll-padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
   }
   .image-workstation-footer-info {
     flex-wrap: wrap;

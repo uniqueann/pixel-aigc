@@ -56,6 +56,14 @@ interface Props {
 const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
 const tallPromptSize = { minRows: 10, maxRows: 16 }
 
+/** 智能编辑的起步模板，避免用户面对空框自己发明 prompt。 */
+const SMART_EDIT_PROMPT_TEMPLATES = [
+  { label: '纯白背景', prompt: '换成纯白电商背景，保留商品细节和阴影' },
+  { label: '户外场景', prompt: '换成户外自然场景，保持商品颜色和材质' },
+  { label: '只调光线', prompt: '只调整光线和氛围，不改变商品结构和颜色' },
+  { label: '清理杂物', prompt: '去除背景杂物，保持商品主体完整' },
+] as const
+
 function outputPreview(
   model: PublicImageModel | undefined,
   sourceSize: { width: number; height: number } | undefined,
@@ -130,6 +138,9 @@ export default function ParamPanel({
     const retouch = capability === Capability.Retouch
     const fusion = capability === Capability.Fusion
     const model = matchImageModel(models, modelProfileId) ?? models[0]
+    const promptRequired = !variation && !retouch && !fusion
+    const promptLabel = retouch || fusion ? '补充说明（可选）' : variation ? '补充要求（可选）' : '编辑要求'
+    const promptMaxLength = fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
     const mapped = outputPreview(model, sourceSize, resolution)
@@ -165,7 +176,10 @@ export default function ParamPanel({
           </div>
         ) : null}
         <div>
-          <div style={labelStyle}>{retouch || fusion ? '补充说明（可选）' : variation ? '补充要求（可选）' : '编辑要求'}</div>
+          <div style={labelStyle} id="workstation-prompt-label">
+            {promptLabel}
+            {promptRequired ? <span className="param-required" aria-hidden="true">*</span> : null}
+          </div>
           <Input.TextArea
             value={smartEditPrompt}
             disabled={disabled}
@@ -174,9 +188,29 @@ export default function ParamPanel({
             autoSize={retouch ? { minRows: 3, maxRows: 6 } : { minRows: 4, maxRows: 8 }}
             styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
             style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
-            maxLength={fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH}
+            maxLength={promptMaxLength}
+            aria-labelledby="workstation-prompt-label"
+            aria-required={promptRequired || undefined}
             showCount
           />
+          {promptRequired ? (
+            <div className="workstation-prompt-templates" role="group" aria-label="提示词模板">
+              {SMART_EDIT_PROMPT_TEMPLATES.map(template => (
+                <Button
+                  key={template.label}
+                  size="small"
+                  disabled={disabled}
+                  onClick={() => {
+                    const current = smartEditPrompt.trim()
+                    const next = current ? `${current}；${template.prompt}` : template.prompt
+                    onSmartEditPromptChange(next.slice(0, promptMaxLength))
+                  }}
+                >
+                  {template.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
         </div>
         <div>
           {countHeading}
@@ -185,6 +219,7 @@ export default function ParamPanel({
         <div>
           <div style={labelStyle}>渲染分辨率</div>
           <Select
+            aria-label="渲染分辨率"
             style={{ width: '100%' }}
             value={resolution}
             disabled={disabled}
@@ -197,8 +232,8 @@ export default function ParamPanel({
           />
           {mapped ? (
             <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
-              预计输出比例 {mapped.size} · {mapped.resolution.toUpperCase()}
-              {!fourKAllowed ? '。当前比例不支持 4K，将以 2K 生成' : ''}
+              预计输出 {mapped.size} · {mapped.resolution.toUpperCase()}
+              {!fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
             </p>
           ) : null}
         </div>
@@ -285,6 +320,7 @@ export default function ParamPanel({
             styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
             style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
             maxLength={noteMax}
+            aria-label="补充说明"
             showCount
           />
         </div>
@@ -295,6 +331,7 @@ export default function ParamPanel({
         <div>
           <div style={labelStyle}>渲染分辨率</div>
           <Select
+            aria-label="渲染分辨率"
             style={{ width: '100%' }}
             value={resolution}
             disabled={disabled}
@@ -307,8 +344,8 @@ export default function ParamPanel({
           />
           {mapped ? (
             <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
-              预计输出比例 {mapped.size} · {mapped.resolution.toUpperCase()}
-              {!fourKAllowed ? '。当前比例不支持 4K，将以 2K 生成' : ''}
+              预计输出 {mapped.size} · {mapped.resolution.toUpperCase()}
+              {!fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
             </p>
           ) : null}
         </div>

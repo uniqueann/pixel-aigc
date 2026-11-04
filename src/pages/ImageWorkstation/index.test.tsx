@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
     error: null as Error | null,
     refetch: vi.fn(),
   },
-  controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined },
+  controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined, resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn() },
   controllerArgs: undefined as { modelProfileId?: string } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
@@ -59,6 +59,9 @@ describe('图片工作站配置提示', () => {
     mocks.controller.inputAsset = undefined
     mocks.controller.outputAssets = []
     mocks.controller.formLocked = false
+    mocks.controller.resultReadError = undefined
+    mocks.controller.readingResults = false
+    mocks.controller.retryRead.mockReset()
     mocks.fusion.product = undefined
     mocks.fusion.reference = undefined
     usePreferencesStore.setState({ preferences: defaultPreferences(), memoryEpoch: 0 })
@@ -227,6 +230,7 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 3 })
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     render(<App><ImageWorkstation /></App>)
+    fireEvent.change(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节'), { target: { value: '换成纯白背景' } })
     expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(false)
 
     cleanup()
@@ -235,6 +239,41 @@ describe('图片工作站配置提示', () => {
     render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 1 张 · 6 积分/)).toBeTruthy()
     expect(screen.queryByText(/生成 1 张 · 14 积分/)).toBeNull()
+  })
+
+  it('智能编辑未填写编辑要求时禁用生成，填写后恢复', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts['smart-edit'] = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
+    mocks.tool = 'smart-edit'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/生成 1 张 · 4 积分/).disabled).toBe(true)
+    fireEvent.change(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节'), { target: { value: '换成纯白背景' } })
+    expect(buttonByText(/生成 1 张 · 4 积分/).disabled).toBe(false)
+  })
+
+  it('结果读取失败时页脚以重试读取为主操作，生成按钮降级', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts['smart-edit'] = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
+    mocks.tool = 'smart-edit'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.change(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节'), { target: { value: '换成纯白背景' } })
+    const retryRead = screen.getByRole('button', { name: '重试读取' })
+    expect(retryRead.className).toContain('ant-btn-primary')
+    expect(buttonByText(/生成 1 张 · 4 积分/).className).toContain('ant-btn-default')
+    expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
+    fireEvent.click(retryRead)
+    expect(mocks.controller.retryRead).toHaveBeenCalledTimes(1)
   })
 
   it('确认重绘未配置后才显示不能用的提示', () => {
@@ -306,12 +345,14 @@ describe('图片工作站配置提示', () => {
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 0, creditsLoaded: false })
     const unknown = render(<App><ImageWorkstation /></App>)
+    fireEvent.change(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节'), { target: { value: '换成纯白背景' } })
     expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(false)
     expect(unknown.container.textContent).not.toContain('积分不足')
     unknown.unmount()
 
     useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 5, creditsLoaded: true })
     const short = render(<App><ImageWorkstation /></App>)
+    fireEvent.change(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节'), { target: { value: '换成纯白背景' } })
     expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(true)
     expect(short.container.textContent).toContain('积分不足（本次需 6 积分，当前可用 5 积分）')
     expect(screen.getByRole('button', { name: '去充值' })).toBeTruthy()
@@ -319,6 +360,7 @@ describe('图片工作站配置提示', () => {
 
     useUserStore.setState({ credits: 6, creditsLoaded: true })
     render(<App><ImageWorkstation /></App>)
+    fireEvent.change(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节'), { target: { value: '换成纯白背景' } })
     expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(false)
     expect(screen.queryByText(/积分不足/)).toBeNull()
   })

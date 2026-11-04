@@ -190,4 +190,38 @@ describe('共享单任务轮询', () => {
     expect(consume).not.toHaveBeenCalled()
     expect(useTaskStore.getState().tasks[task.id]).toBeUndefined()
   })
+  it('默认在任务成功时给出通用通知', async () => {
+    useUserStore.getState().setAccount({ userId: owner, runtimeScope: 'preview' } as AccountContext)
+    vi.useFakeTimers()
+    try {
+      mocks.get.mockResolvedValueOnce({ ...task, status: 'processing', pollAfterMs: 1_000 }).mockResolvedValue(task)
+      renderHook(() => useTaskPolling(task.id), { wrapper })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(mocks.success).toHaveBeenCalledTimes(1)
+    } finally {
+      cleanup()
+      client.clear()
+      await vi.runOnlyPendingTimersAsync()
+      vi.useRealTimers()
+    }
+  })
+  it('工作站关闭成功通知后不再弹通用提示，由页面在结果读取结束后统一给结论', async () => {
+    useUserStore.getState().setAccount({ userId: owner, runtimeScope: 'preview' } as AccountContext)
+    vi.useFakeTimers()
+    try {
+      mocks.get.mockResolvedValueOnce({ ...task, status: 'processing', pollAfterMs: 1_000 }).mockResolvedValue(task)
+      renderHook(() => useTaskPolling(task.id, undefined, true, { successNotification: false }), { wrapper })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+      expect(mocks.success).not.toHaveBeenCalled()
+    } finally {
+      cleanup()
+      client.clear()
+      await vi.runOnlyPendingTimersAsync()
+      vi.useRealTimers()
+    }
+  })
 })
