@@ -4314,6 +4314,8 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
     z-index: 1;
     box-shadow: 0 8px 20px rgb(17 17 20 / 14%);
   }
+  /* 设置面板建立独立层叠上下文，避免 AntD 选中项（z-index: 1）盖住吸顶卡。 */
+  .image-workstation-settings { z-index: 0; }
   .image-workstation-preview-panel.has-image .workstation-canvas-shell {
     height: 210px;
     min-height: 0;
