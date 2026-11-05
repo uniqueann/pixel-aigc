@@ -10,16 +10,24 @@ export interface CanvasDisplaySize {
   scale: number
 }
 
-/** 把 640×420 逻辑画布按容器宽度等比缩小，桌面够宽时保持原尺寸。 */
+/**
+ * 把 640×420 逻辑画布等比缩小，桌面够宽时保持原尺寸。
+ * 传入容器高度时同时受宽高约束，避免窄屏下画布底部被 shell 裁掉。
+ */
 export function workstationCanvasDisplaySize(
   containerWidth: number,
+  containerHeight?: number,
   logicalWidth = WORKSTATION_CANVAS_WIDTH,
   logicalHeight = WORKSTATION_CANVAS_HEIGHT,
 ): CanvasDisplaySize {
   if (!Number.isFinite(containerWidth) || containerWidth < 1 || logicalWidth < 1 || logicalHeight < 1) {
     return { width: Math.max(1, logicalWidth), height: Math.max(1, logicalHeight), scale: 1 }
   }
-  const width = Math.min(logicalWidth, Math.max(1, Math.floor(containerWidth)))
+  let width = Math.min(logicalWidth, Math.max(1, Math.floor(containerWidth)))
+  if (typeof containerHeight === 'number' && Number.isFinite(containerHeight) && containerHeight > 0) {
+    const heightLimitedWidth = Math.floor((containerHeight * logicalWidth) / logicalHeight)
+    width = Math.min(width, Math.max(1, heightLimitedWidth))
+  }
   const scale = width / logicalWidth
   return {
     width,

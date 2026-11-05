@@ -58,6 +58,8 @@ interface ControllerOptions {
   productAsset?: ImageAsset
   referenceAsset?: ImageAsset
   useProductAsset?: boolean
+  /** 成功后保留当前输入，用于重绘这类需要复用蒙版继续迭代的工具。 */
+  keepInputOnSuccess?: boolean
   /** 工作站自己的能力开关。裂变不写入全局 live capability。 */
   capabilityReady?: (capability: Capability) => boolean
 }
@@ -127,6 +129,7 @@ export function useImageWorkstationController({
   productAsset,
   referenceAsset,
   useProductAsset = false,
+  keepInputOnSuccess = false,
   capabilityReady = liveCapabilityReady,
   suiteBridge,
 }: ControllerOptions) {
@@ -307,7 +310,10 @@ export function useImageWorkstationController({
           const order = finalized.assets.filter(candidate => successful.some(result => result.id === candidate.id))
           registerGeneration({ ...adapted.generation, outputAssetIds: order.map(result => result.id) })
           setOutputAssetIds(order.map(result => result.id))
-          setInputAssetId(previous => previous && order.some(result => result.id === previous) ? previous : order[0].id)
+          setInputAssetId(previous => {
+            if (keepInputOnSuccess && previous) return previous
+            return previous && order.some(result => result.id === previous) ? previous : order[0].id
+          })
           setProtocolError(undefined)
           void persistHistory(completedTask, [available], ownerId, operationEpoch)
         } catch (error) {
@@ -324,7 +330,7 @@ export function useImageWorkstationController({
         setReadingResults(false)
       }
     }
-  }, [persistHistory, registerAsset, registerGeneration])
+  }, [keepInputOnSuccess, persistHistory, registerAsset, registerGeneration])
 
   const handlePolledTask = useCallback((nextTask: GenerationTask<unknown>) => {
     const context = submissionsRef.current.get(nextTask.id)

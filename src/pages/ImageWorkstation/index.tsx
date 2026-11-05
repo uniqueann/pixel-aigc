@@ -36,6 +36,7 @@ import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
+import RepaintGuide from './components/RepaintGuide'
 import { outputPreview } from './utils/outputPreview'
 import RelightDirectionOverlay from './components/RelightDirectionOverlay'
 import RelightExample from './components/RelightExample'
@@ -46,7 +47,7 @@ import { freeOutpaintGeometry, presetOutpaintGeometry } from './utils/outpaintGe
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
-import { creditQuote, creditQuoteBlocked, imageCreditAmount, outpaintCreditAmount, positiveQuoteCount } from '@/features/credits/quotes'
+import { creditQuote, creditQuoteBlocked, creditQuoteLabel, imageCreditAmount, outpaintCreditAmount, positiveQuoteCount } from '@/features/credits/quotes'
 import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { useImageModels } from '@/features/credits/useImageModels'
@@ -177,6 +178,7 @@ export default function ImageWorkstation() {
     productAsset: fusionProduct,
     referenceAsset: fusionReference,
     useProductAsset: fusionTool,
+    keepInputOnSuccess: activeTool.slug === 'repaint',
   })
   // 任务成功不等于结果可用：等结果读取结束后，由页面给出唯一结论。
   const notifiedResultRef = useRef<string>()
@@ -200,10 +202,12 @@ export default function ImageWorkstation() {
     if (controller.outputAssets.length > 0) {
       notification.success({
         message: '任务已完成',
-        description: `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
+        description: activeTool.slug === 'repaint'
+          ? `已生成 ${controller.outputAssets.length} 个结果，原图与蒙版已保留，可调整描述再生成一版。`
+          : `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
       })
     }
-  }, [controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, relightTool])
+  }, [activeTool.slug, controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, relightTool])
   // 重试读取期间由 readingResults 保持按钮反馈；重试仍失败时给出「仍无法读取」的结论。
   const handleRetryRead = async () => {
     setRetryReadFailedAgain(false)
@@ -239,11 +243,13 @@ export default function ImageWorkstation() {
   const replaceSourceAsset = controller.replaceSourceAsset
   const previewPanelRef = useRef<HTMLElement>(null)
   const settingsPanelRef = useRef<HTMLElement>(null)
-  const previewStuck = useStuckPreview(previewPanelRef, relightTool && previewHasImage)
+  // 重绘在移动端也用紧凑吸顶态：滚到设置区时隐藏步骤条并压低画布，避免遮住表单。
+  const previewStuck = useStuckPreview(previewPanelRef, (relightTool || activeTool.slug === 'repaint') && previewHasImage)
   const promptMinHeight = useWorkstationPromptHeight({
     previewPanelRef,
     settingsPanelRef,
     activeToolSlug: activeTool.slug,
+    enabled: activeTool.slug !== 'repaint',
   })
 
   const inpaintMode = activeTool.slug === 'repaint' ? 'repaint' : activeTool.slug === 'remove' ? 'remove' : undefined
@@ -304,8 +310,8 @@ export default function ImageWorkstation() {
     repaintBlocked: activeTool.slug === 'repaint' && repaintReady === false,
     retouchBlocked: retouchTool && normalizeRetouchDirections(retouchDirections).length === 0,
     fusionBlocked: fusionTool && (!fusionProduct || !fusionReference),
-    promptRequired: activeTool.capability === Capability.ImageEdit,
-    promptEmpty: !smartEditPrompt.trim(),
+    promptRequired: activeTool.capability === Capability.ImageEdit || activeTool.slug === 'repaint',
+    promptEmpty: !activePrompt.trim(),
     referenceCount: variationTool || fusionTool || activeTool.capability === Capability.ImageEdit || retouchTool || relightTool ? referenceCount : undefined,
     maxRefImages: activeModel?.ui.maxRefImages,
     mode: inpaintMode,
@@ -316,6 +322,10 @@ export default function ImageWorkstation() {
   }, [])
 
   const recoveryTool=activeTool.slug as TaskTool
+  const isDraftDirty = Boolean(activePrompt.trim() || hasMaskPaint)
+  const confirmRecovery = useTaskDraftGuard({ dirty: isDraftDirty,
+    reason:'当前包含未保存的提示词或涂抹蒙版，切换后将放弃草稿，是否继续？',
+    blocked:uploading || fusionLoading ? '正在读取输入图片，请完成后再切换' : undefined })
   const handleFusionUpload = async (slot: 'product' | 'reference', file: File) => {
     const actor=currentTaskActor();if(actor&&slot==='product')saveWorkstationSession(actor,recoveryTool,{input:undefined})
     controller.modifyParameters()
@@ -329,6 +339,7 @@ export default function ImageWorkstation() {
   }
 
   const handleImageUpload = useCallback(async (file: File) => {
+    if (hasMaskPaint && !await confirmRecovery('替换图片将清除当前蒙版，是否继续？')) return
     const actor=currentTaskActor();if(actor)saveWorkstationSession(actor,recoveryTool,{input:undefined})
     setUploading(true)
     try {
@@ -349,7 +360,7 @@ export default function ImageWorkstation() {
     } finally {
       setUploading(false)
     }
-  }, [message, replaceSourceAsset,recoveryTool])
+  }, [confirmRecovery, hasMaskPaint, message, replaceSourceAsset,recoveryTool])
 
   const uploadRef = useRef(handleImageUpload)
   useEffect(() => { uploadRef.current = handleImageUpload }, [handleImageUpload])
@@ -446,6 +457,10 @@ export default function ImageWorkstation() {
     }
     if (maskRequired && !hasMaskPaint) {
       message.warning(inpaintMode === 'repaint' ? '请先涂抹要重绘的区域' : '请先涂抹要消除的区域')
+      return
+    }
+    if (activeTool.slug === 'repaint' && !repaintPrompt.trim()) {
+      message.warning('请先填写重绘描述')
       return
     }
     // 新一轮生成重新判断读取结果，不沿用上一轮的「仍无法读取」结论。
@@ -558,6 +573,16 @@ export default function ImageWorkstation() {
         : controller.outputAssets.length > 0
           ? `已生成 ${controller.outputAssets.length} 张 · ${inputDescription}`
           : inputDescription
+  const repaintCreditLabel = activeTool.slug === 'repaint' && generateQuote.status !== 'loading' && generateQuote.status !== 'unavailable'
+    ? creditQuoteLabel(generateQuote)
+    : undefined
+  // 禁用原因不能只藏在 hover tooltip 里；与页脚已有信息重复时不重复展示。
+  const visibleBlockReason = blockReason && blockReason !== footerInfo && !creditBlocked && configurationReady !== undefined && toolReady
+    ? blockReason
+    : undefined
+  const repaintHasPreservedInput = activeTool.slug === 'repaint'
+    && controller.outputAssets.length > 0
+    && !controller.outputAssets.some(asset => asset.id === controller.inputAsset?.id)
   const recoveryRuntime = useRef({})
   useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) }, [])
   useEffect(() => useUserStore.subscribe((state, previous) => {
@@ -566,11 +591,6 @@ export default function ImageWorkstation() {
       releaseRuntimeImageUser(recoveryRuntime.current)
     }
   }), [])
-  const isDraftDirty = Boolean(activePrompt.trim() || hasMaskPaint)
-  const confirmRecovery = useTaskDraftGuard({ dirty: isDraftDirty,
-    reason:'当前包含未保存的提示词或涂抹蒙版，切换后将放弃草稿，是否继续？',
-    blocked:uploading || fusionLoading ? '正在读取输入图片，请完成后再切换' : undefined })
-
   const applyRecoveredInput=async(result:TaskCenterMedia,image:Awaited<ReturnType<typeof readRecoveryImage>>,detail:TaskCenterDetail,context:RecoveryActionContext)=>{
     assertRecoveryActor(context.actor,context.signal)
     const asset=createImageAsset({id:'asset:'+recoveredResultId(detail,result),name:'生成结果',url:result.url,objectKey:result.objectKey,width:image.width,height:image.height,mimeType:image.mimeType,source:'generation'})
@@ -642,11 +662,14 @@ export default function ImageWorkstation() {
       />
       <div className="image-workstation-main">
         <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
-          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
+          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${activeTool.slug === 'repaint' ? ' is-repaint' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
             <div className="workstation-panel-heading-row">
               <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
               <span className={`workstation-preview-meta${controller.resultReadError && !controller.readingResults ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
             </div>
+            {activeTool.slug === 'repaint' && controller.inputAsset && !edgeRefine ? (
+              <RepaintGuide step={!hasMaskPaint ? 1 : !repaintPrompt.trim() ? 2 : 3} />
+            ) : null}
             {relightTool ? (
               <div className="workstation-preview-compact-row">
                 <p className="workstation-preview-compact-summary">
@@ -698,13 +721,18 @@ export default function ImageWorkstation() {
               uploading={uploading}
               fusionUploading={fusionSelection.loading}
               uploadDisabled={controller.formLocked || Boolean(edgeRefine)}
+              paintDisabled={controller.formLocked || uploading || fusionLoading}
               refineMode={Boolean(edgeRefine)}
               onCompareModeChange={setCompareMode}
               onImageUpload={fusionTool ? (file) => { void handleFusionUpload('product', file) } : handleImageUpload}
               onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
               onReady={handleCanvasReady}
               onMaskChange={setHasMaskPaint}
-              uploadHint={activeTool.slug === 'remove' ? '上传图片后，涂抹需要消除的区域' : undefined}
+              uploadHint={activeTool.slug === 'remove'
+                ? '上传图片后，涂抹需要消除的区域'
+                : activeTool.slug === 'repaint'
+                  ? '上传后先涂抹要重绘的区域，再填写描述'
+                  : undefined}
               onPreview={(view) => {
                 const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
                 if (id) openAt(id)
@@ -717,8 +745,12 @@ export default function ImageWorkstation() {
               selectedAssetId={controller.inputAsset?.id}
               downloadingAssetId={downloadingAssetId}
               onSelect={(assetId) => {
-                controller.selectOutput(assetId)
-                setCompareMode('effect')
+                void (async () => {
+                  if (activeTool.slug === 'repaint' && hasMaskPaint
+                    && !await confirmRecovery('切换到该结果将清空当前蒙版，是否继续？')) return
+                  controller.selectOutput(assetId)
+                  setCompareMode('effect')
+                })()
               }}
               onDownload={(asset, index) => void handleDownload(asset, index)}
               onPreview={openAt}
@@ -776,6 +808,8 @@ export default function ImageWorkstation() {
               presetPlatform={presetPlatform}
               onPresetPlatformChange={presetPlatform => updateParameters({ presetPlatform })}
               promptMinHeight={promptMinHeight}
+              hasMaskPaint={hasMaskPaint}
+              repaintCreditLabel={repaintCreditLabel}
             />
           ) : null}
           {fusionTool ? <FusionInputStatus state={controller.inputPreparation} retryQuote={inputRetryQuote} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}
@@ -809,6 +843,11 @@ export default function ImageWorkstation() {
         <div className="image-workstation-footer-row">
           <div className="image-workstation-footer-info">
             <span className="image-workstation-input-description" title={footerInfo}>{footerInfo}</span>
+            {visibleBlockReason ? (
+              <span id="workstation-block-reason" className="image-workstation-block-reason" role="status">
+                {visibleBlockReason}
+              </span>
+            ) : null}
             {!edgeRefine && (
               <div className="image-workstation-footer-hints">
                 <CreditBalanceNotice quote={generateQuote} />
@@ -850,10 +889,13 @@ export default function ImageWorkstation() {
                       type={showRetryRead ? 'default' : 'primary'}
                       loading={controller.submitting}
                       quote={generateQuote}
+                      aria-describedby={visibleBlockReason ? 'workstation-block-reason' : undefined}
                       disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                       onClick={handleGenerate}
                     >
-                      {COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}
+                      {repaintHasPreservedInput
+                        ? '再生成一版'
+                        : COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}
                     </CreditActionButton>
                   </span>
                 </Tooltip>

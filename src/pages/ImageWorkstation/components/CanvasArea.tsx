@@ -28,6 +28,8 @@ interface Props {
   uploading?: boolean
   fusionUploading?: { product: boolean; reference: boolean }
   uploadDisabled?: boolean
+  /** 生成中锁定涂抹，但仍允许上传按钮沿用 uploadDisabled 的独立判断。 */
+  paintDisabled?: boolean
   refineMode?: boolean
   onCompareModeChange: (mode: 'original' | 'effect') => void
   onImageUpload: (file: File) => void
@@ -118,6 +120,7 @@ export default function CanvasArea({
   uploading = false,
   fusionUploading,
   uploadDisabled = false,
+  paintDisabled = false,
   refineMode = false,
   onCompareModeChange,
   onImageUpload,
@@ -242,7 +245,7 @@ export default function CanvasArea({
 
   if (interactionMode === 'mask-paint') {
     return (
-      <div className={canvasShellClass}>
+      <div className={`${canvasShellClass} is-mask-paint`}>
         <div className="workstation-canvas-controls">
           <div className="workstation-canvas-toolbar">
             <BrushToolbar
@@ -252,6 +255,7 @@ export default function CanvasArea({
               smartSelectReady={smartSelectReady}
               smartSelectError={Boolean(capabilityError)}
               refineMode={refineMode}
+              disabled={paintDisabled}
               canUndo={historyState.canUndo}
               canRedo={historyState.canRedo}
               onBrushSizeChange={setBrushSize}
@@ -279,6 +283,7 @@ export default function CanvasArea({
             tool={paintTool}
             smartSelectEnabled={smartSelectEnabled}
             refineMode={refineMode}
+            disabled={paintDisabled}
             onHistoryChange={setHistoryState}
             onMaskChange={onMaskChange}
             onToolChange={selectPaintTool}

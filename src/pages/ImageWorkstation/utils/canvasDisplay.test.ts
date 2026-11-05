@@ -32,4 +32,14 @@ describe('工作站画布窄屏显示', () => {
     expect(workstationCanvasDisplaySize(360).width).toBe(360)
     expect(workstationCanvasDisplaySize(360).scale).toBeCloseTo(360 / 640)
   })
+
+  it('容器高度不足时进一步收窄，保证画布完整显示', () => {
+    expect(workstationCanvasDisplaySize(800, 395)).toEqual({ width: 601, height: 394, scale: 601 / 640 })
+    expect(workstationCanvasDisplaySize(390, 252)).toEqual({ width: 384, height: 252, scale: 384 / 640 })
+  })
+
+  it('高度未布局或为 0 时退回只按宽度计算', () => {
+    expect(workstationCanvasDisplaySize(390, 0)).toEqual(workstationCanvasDisplaySize(390))
+    expect(workstationCanvasDisplaySize(390, Number.POSITIVE_INFINITY)).toEqual(workstationCanvasDisplaySize(390))
+  })
 })

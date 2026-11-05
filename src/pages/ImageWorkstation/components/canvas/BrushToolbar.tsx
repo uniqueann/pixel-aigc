@@ -19,6 +19,7 @@ interface Props {
   smartSelectReady: boolean | undefined
   smartSelectError?: boolean
   refineMode?: boolean
+  disabled?: boolean
   canUndo: boolean
   canRedo: boolean
   onBrushSizeChange: (size: number) => void
@@ -37,6 +38,7 @@ export default function BrushToolbar({
   smartSelectReady,
   smartSelectError = false,
   refineMode = false,
+  disabled = false,
   canUndo,
   canRedo,
   onBrushSizeChange,
@@ -66,6 +68,7 @@ export default function BrushToolbar({
           aria-pressed={tool === 'brush' && !smartSelectEnabled}
           type={tool === 'brush' && !smartSelectEnabled ? 'primary' : 'text'}
           icon={<EditOutlined />}
+          disabled={disabled}
           onClick={() => onToolChange('brush')}
         />
       </Tooltip>
@@ -76,6 +79,7 @@ export default function BrushToolbar({
           aria-pressed={tool === 'eraser' && !smartSelectEnabled}
           type={tool === 'eraser' && !smartSelectEnabled ? 'primary' : 'text'}
           icon={<DeleteOutlined />}
+          disabled={disabled}
           onClick={() => onToolChange('eraser')}
         />
       </Tooltip>
@@ -89,7 +93,7 @@ export default function BrushToolbar({
             aria-pressed={smartSelectEnabled}
             type={smartSelectEnabled ? 'primary' : 'text'}
             icon={<AimOutlined />}
-            disabled={refineMode || !smartSelectReady}
+            disabled={disabled || refineMode || !smartSelectReady}
             onClick={onSmartSelectToggle}
           />
         </span>
@@ -101,7 +105,7 @@ export default function BrushToolbar({
             aria-label="反选"
             type="text"
             icon={<SwapOutlined />}
-            disabled={refineMode}
+            disabled={disabled || refineMode}
             onClick={onInvert}
           />
         </span>
@@ -113,18 +117,19 @@ export default function BrushToolbar({
           min={4}
           max={80}
           value={brushSize}
+          disabled={disabled}
           onChange={onBrushSizeChange}
           tooltip={{ formatter: (value) => `${value}px` }}
         />
       </span>
       <Tooltip title="撤销">
-        <Button size="small" aria-label="撤销" type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} />
+        <Button size="small" aria-label="撤销" type="text" icon={<UndoOutlined />} disabled={disabled || !canUndo} onClick={onUndo} />
       </Tooltip>
       <Tooltip title="重做">
-        <Button size="small" aria-label="重做" type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} />
+        <Button size="small" aria-label="重做" type="text" icon={<RedoOutlined />} disabled={disabled || !canRedo} onClick={onRedo} />
       </Tooltip>
       <Tooltip title="清空蒙版">
-        <Button size="small" aria-label="清空蒙版" type="text" danger icon={<ClearOutlined />} onClick={onClear} />
+        <Button size="small" aria-label="清空蒙版" type="text" danger icon={<ClearOutlined />} disabled={disabled} onClick={onClear} />
       </Tooltip>
     </Space>
   )

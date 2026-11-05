@@ -83,6 +83,22 @@ describe('生成按钮禁用原因', () => {
     })).toBe(EMPTY_ERASE_MASK_MESSAGE)
   })
 
+  it('重绘先提示涂抹，已有蒙版后再提示填写描述', () => {
+    const base = {
+      toolReady: true,
+      hasInput: true,
+      formLocked: false,
+      maskRequired: true,
+      repaintBlocked: false,
+      promptRequired: true,
+      promptEmpty: true,
+      mode: 'repaint' as const,
+    }
+    expect(workstationGenerateBlockReason({ ...base, hasMaskPaint: false })).toBe('请先涂抹要重绘的区域')
+    expect(workstationGenerateBlockReason({ ...base, hasMaskPaint: true })).toBe('请先填写重绘描述')
+    expect(workstationGenerateBlockReason({ ...base, hasMaskPaint: true, promptEmpty: false })).toBeUndefined()
+  })
+
   it('精修未选方向时不能生成', () => {
     expect(workstationGenerateBlockReason({
       toolReady: true,
