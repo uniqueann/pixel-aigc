@@ -34,10 +34,12 @@ export function workstationGenerateBlockReason(input: {
     && input.referenceCount > input.maxRefImages
   ) return referenceImageLimitMessage(input.maxRefImages)
   if (input.formLocked) return '请等待当前任务完成'
-  if (input.promptRequired && input.promptEmpty) return '请先填写编辑要求'
   if (input.retouchBlocked) return '请先选择精修方向'
   if (input.repaintBlocked) return '重绘尚未配置'
   if (input.maskRequired && !input.hasMaskPaint) return emptyMaskMessage(input.mode)
+  if (input.promptRequired && input.promptEmpty) {
+    return input.mode === 'repaint' ? '请先填写重绘描述' : '请先填写编辑要求'
+  }
   if (input.insufficientCredits) return INSUFFICIENT_CREDITS_REASON
   return undefined
 }

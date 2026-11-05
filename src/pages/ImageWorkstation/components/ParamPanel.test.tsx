@@ -319,6 +319,15 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByText('与原图同尺寸')).toBeTruthy()
     expect(screen.getByText('每次 1 张')).toBeTruthy()
     expect(screen.getByText(/暂不支持切换模型/)).toBeTruthy()
+    expect(screen.getByText('尚未涂抹，在左侧图片上涂抹要重绘的区域')).toBeTruthy()
+    expect(screen.getByText('描述会应用到涂抹区域，未涂抹的部分保持不变。')).toBeTruthy()
+    expect(screen.queryByText('积分')).toBeNull()
+
+    rerender(<ParamPanel capability={Capability.Inpaint} mode="repaint" {...shared} hasMaskPaint repaintCreditLabel="5 积分" />)
+    expect(screen.getByText('蒙版已就绪，只会重绘涂抹区域')).toBeTruthy()
+    expect(screen.getByText('请填写重绘描述后再生成。')).toBeTruthy()
+    expect(screen.getByText('积分')).toBeTruthy()
+    expect(screen.getByText('5 积分')).toBeTruthy()
   })
 
   it('扩图不展示无效的模型、数量和尺寸选择', () => {

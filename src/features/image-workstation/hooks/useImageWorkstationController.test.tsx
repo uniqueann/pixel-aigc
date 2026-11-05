@@ -96,6 +96,7 @@ function ControllerHarness({
   productAsset,
   referenceAsset,
   useProductAsset,
+  keepInputOnSuccess,
   relight,
   source = initialAsset,
   onController,
@@ -110,6 +111,7 @@ function ControllerHarness({
   productAsset?: typeof initialAsset
   referenceAsset?: typeof initialAsset
   useProductAsset?: boolean
+  keepInputOnSuccess?: boolean
   relight?: RelightOptions
   source?: typeof initialAsset
   onController: (controller: Controller) => void
@@ -126,6 +128,7 @@ function ControllerHarness({
     productAsset,
     referenceAsset,
     useProductAsset,
+    keepInputOnSuccess,
     relight,
   })
   useEffect(() => onController(controller), [controller, onController])
@@ -431,13 +434,15 @@ describe('useImageWorkstationController 集成流程', () => {
       Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: () => 'blob:repaint-result' })
     }
     await act(async () => root.render(
-      <ControllerHarness tool="repaint" prompt="桌面上的透明玻璃花瓶" onController={captureController} />,
+      <ControllerHarness tool="repaint" prompt="桌面上的透明玻璃花瓶" keepInputOnSuccess onController={captureController} />,
     ))
 
     await act(async () => {
       await currentController.generate(canvasHandle)
     })
 
+    expect(currentController.outputAssets).toHaveLength(1)
+    expect(currentController.inputAsset?.id).toBe(initialAsset.id)
     expect(mocks.requestRepaint).toHaveBeenCalled()
     expect(mocks.requestRepaint.mock.calls[0][1]).toBe('data:image/png;base64,mask')
     expect(mocks.requestRepaint.mock.calls[0][2]).toBe('桌面上的透明玻璃花瓶')

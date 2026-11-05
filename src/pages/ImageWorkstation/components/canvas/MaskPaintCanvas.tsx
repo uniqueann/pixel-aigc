@@ -1,12 +1,13 @@
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { message } from 'antd'
-import { Canvas, Circle, FabricImage, Line, PencilBrush } from 'fabric'
+import { Canvas, Circle, FabricImage, Line, PencilBrush, Rect } from 'fabric'
 import { containRect } from '@shared/erase'
 import { invertContainedAlpha, MASK_PAINT_CSS, opaqueCount, sourcePoint, tintOverlayAsBrush } from '@shared/smart-select'
 import { applySmartSelectLookup, requestSmartSelect, SmartSelectRequestError, smartSelectErrorMessage, storeSmartSelectSession, type SmartSelectResult } from '@/services/api/smartSelect'
 import { WORKSTATION_CANVAS_HEIGHT, WORKSTATION_CANVAS_WIDTH } from '../../utils/canvasDisplay'
 import { exportEraseMask, exportPaintedMask, overlayHasPaint, type MaskExportResult } from '../../utils/maskExport'
 import { useCanvasDisplay } from '../../utils/useCanvasDisplay'
+import { brushCursorPlacement } from '../../utils/brushCursor'
 import type { PaintTool } from './BrushToolbar'
 
 const CANVAS_WIDTH = WORKSTATION_CANVAS_WIDTH
@@ -27,6 +28,8 @@ interface MaskPaintCanvasProps {
   tool: PaintTool
   smartSelectEnabled: boolean
   refineMode?: boolean
+  /** 生成中或读取结果时锁定涂抹。 */
+  disabled?: boolean
   onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void
   onMaskChange?: (hasPaint: boolean) => void
   /** 键盘 B/E 切换画笔与橡皮擦时同步工具条状态。 */
@@ -57,7 +60,7 @@ function flushOverlayHasPaint(canvas: Canvas | null, fallback: HTMLCanvasElement
 }
 
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange, onMaskChange, onToolChange, onBrushSizeChange },
+  { imageUrl, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, disabled = false, onHistoryChange, onMaskChange, onToolChange, onBrushSizeChange },
   ref,
 ) {
   const { hostRef, display } = useCanvasDisplay()
@@ -71,6 +74,8 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   const refineModeRef = useRef(refineMode)
   const brushSizeRef = useRef(brushSize)
   const smartSelectRef = useRef(smartSelectEnabled)
+  const disabledRef = useRef(disabled)
+  disabledRef.current = disabled
   const restoringRef = useRef(false)
   const selectingRef = useRef(false)
   const naturalRef = useRef(imageNaturalSize)
@@ -82,6 +87,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   const cursorRef = useRef<{ x: number; y: number } | null>(null)
   const spaceHeldRef = useRef(false)
   const strokeDirtyRef = useRef(false)
+  const brushCursorRef = useRef<HTMLDivElement>(null)
 
   const updateHistoryState = useCallback(
     (index: number, length: number) => {
@@ -114,6 +120,46 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     }
     return { x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT }
   }, [])
+
+  /** 指针涂抹同样裁到图片内容区；upperCanvas 的实时笔迹也一起裁，避免图外短暂可见。 */
+  const applyPaintClip = useCallback((canvas: Canvas) => {
+    const rect = paintRect()
+    canvas.clipPath = new Rect({
+      left: rect.x,
+      top: rect.y,
+      width: rect.width,
+      height: rect.height,
+      absolutePositioned: true,
+      selectable: false,
+      evented: false,
+    })
+    const upper = (canvas as Canvas & { upperCanvasEl?: HTMLCanvasElement }).upperCanvasEl
+    if (upper) {
+      upper.style.clipPath = `inset(${rect.y}px ${CANVAS_WIDTH - rect.x - rect.width}px ${CANVAS_HEIGHT - rect.y - rect.height}px ${rect.x}px)`
+    }
+    canvas.requestRenderAll()
+  }, [paintRect])
+
+  const hidePointerCursor = useCallback(() => {
+    if (brushCursorRef.current) brushCursorRef.current.style.display = 'none'
+  }, [])
+
+  const updatePointerCursor = useCallback((scene: { x: number; y: number } | null) => {
+    const element = brushCursorRef.current
+    if (!element) return
+    if (!scene || disabledRef.current || cursorRef.current) {
+      element.style.display = 'none'
+      return
+    }
+    const placement = brushCursorPlacement(scene, paintRect(), brushSizeRef.current)
+    element.style.display = 'block'
+    element.style.left = `${placement.left}px`
+    element.style.top = `${placement.top}px`
+    element.style.width = `${placement.size}px`
+    element.style.height = `${placement.size}px`
+    element.classList.toggle('is-outside', placement.outside)
+    element.classList.toggle('is-eraser', !refineModeRef.current && toolRef.current === 'eraser')
+  }, [paintRect])
 
   const keyboardPaintStyle = useCallback(() => {
     const refine = refineModeRef.current
@@ -197,6 +243,12 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     setKeyboardCursor(null)
   }, [])
 
+  useEffect(() => {
+    if (!disabled) return
+    deactivateKeyboardCursor()
+    hidePointerCursor()
+  }, [deactivateKeyboardCursor, disabled, hidePointerCursor])
+
   const restoreSnapshot = useCallback(
     async (nextIndex: number) => {
       const canvas = fabricCanvasRef.current
@@ -206,27 +258,31 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       restoringRef.current = true
       await canvas.loadFromJSON(snapshot)
       canvas.getObjects().forEach((object) => object.set({ selectable: false, evented: false }))
+      applyPaintClip(canvas)
       historyIndexRef.current = nextIndex
       restoringRef.current = false
       updateHistoryState(nextIndex, historyRef.current.length)
       onMaskChange?.(flushOverlayHasPaint(canvas, canvasElementRef.current))
     },
-    [onMaskChange, updateHistoryState],
+    [applyPaintClip, onMaskChange, updateHistoryState],
   )
 
   const clear = useCallback(() => {
     const canvas = fabricCanvasRef.current
-    if (!canvas) return
+    if (!canvas || disabledRef.current) return
     canvas.clear()
+    applyPaintClip(canvas)
     canvas.requestRenderAll()
     pushSnapshot()
-  }, [pushSnapshot])
+  }, [applyPaintClip, pushSnapshot])
 
   const undo = useCallback(() => {
+    if (disabledRef.current) return
     if (historyIndexRef.current > 0) void restoreSnapshot(historyIndexRef.current - 1)
   }, [restoreSnapshot])
 
   const redo = useCallback(() => {
+    if (disabledRef.current) return
     if (historyIndexRef.current < historyRef.current.length - 1) {
       void restoreSnapshot(historyIndexRef.current + 1)
     }
@@ -238,6 +294,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       hostRef.current?.blur()
       return
     }
+    if (disabledRef.current) return
     if (event.key === 'b' || event.key === 'B') {
       event.preventDefault()
       onToolChange?.('brush')
@@ -292,6 +349,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     if (event.key !== ' ') return
     event.preventDefault()
     spaceHeldRef.current = false
+    if (disabledRef.current) return
     if (strokeDirtyRef.current) {
       strokeDirtyRef.current = false
       pushSnapshot()
@@ -299,7 +357,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   }, [pushSnapshot])
 
   const handleKeyboardFocus = useCallback(() => {
-    if (hostRef.current?.matches(':focus-visible')) activateKeyboardCursor()
+    if (!disabledRef.current && hostRef.current?.matches(':focus-visible')) activateKeyboardCursor()
   }, [activateKeyboardCursor, hostRef])
 
   const handleKeyboardBlur = useCallback(() => {
@@ -348,6 +406,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   const invertSelection = useCallback(async () => {
     const canvas = fabricCanvasRef.current
     const natural = naturalRef.current
+    if (disabledRef.current) return
     if (!canvas || !natural?.width || !natural.height) throw new Error('蒙版画布尚未准备好')
     canvas.renderAll()
     const surface = paintSurface(canvas, canvasElementRef.current)
@@ -367,12 +426,13 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     if (!snapshotContext) throw new Error('当前浏览器不支持画布蒙版导出')
     snapshotContext.putImageData(new ImageData(inverted, surface.width, surface.height), 0, 0)
     canvas.clear()
+    applyPaintClip(canvas)
     const image = await FabricImage.fromURL(snapshot.toDataURL('image/png'))
     image.set({ left: 0, top: 0, selectable: false, evented: false, objectCaching: false })
     canvas.add(image)
     canvas.renderAll()
     pushSnapshot()
-  }, [pushSnapshot])
+  }, [applyPaintClip, pushSnapshot])
 
   useImperativeHandle(
     ref,
@@ -422,9 +482,38 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       ? (tool === 'brush' ? 'rgba(255, 0, 0, 0.9)' : 'rgba(0, 80, 255, 0.9)')
       : (tool === 'brush' ? MASK_PAINT_CSS : 'rgba(0, 0, 0, 1)')
     canvas.freeDrawingBrush = brush
-    canvas.isDrawingMode = !smartSelectEnabled
+    canvas.isDrawingMode = !disabled && !smartSelectEnabled
     canvas.contextTop.globalCompositeOperation = !refineMode && tool === 'eraser' ? 'destination-out' : 'source-over'
-  }, [brushSize, refineMode, smartSelectEnabled, tool])
+    if (disabled) hidePointerCursor()
+  }, [brushSize, disabled, hidePointerCursor, refineMode, smartSelectEnabled, tool])
+
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current
+    if (canvas) applyPaintClip(canvas)
+  }, [applyPaintClip, imageNaturalSize?.width, imageNaturalSize?.height])
+
+  // clipPath 同时裁掉了 upperCanvas 的命中区域，图片外收不到 Fabric 的 mouse:move；
+  // 用 host 的原生指针事件补齐图外虚线光标，并在离开画布时隐藏。
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const handleMove = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') return
+      const frame = host.querySelector<HTMLElement>('.workstation-paint-frame')
+      if (!frame || !display.scale) return
+      const rect = frame.getBoundingClientRect()
+      updatePointerCursor({
+        x: (event.clientX - rect.left) / display.scale,
+        y: (event.clientY - rect.top) / display.scale,
+      })
+    }
+    host.addEventListener('pointermove', handleMove)
+    host.addEventListener('pointerleave', hidePointerCursor)
+    return () => {
+      host.removeEventListener('pointermove', handleMove)
+      host.removeEventListener('pointerleave', hidePointerCursor)
+    }
+  }, [display.scale, hidePointerCursor, hostRef, updatePointerCursor])
 
   useEffect(() => {
     const canvasElement = canvasElementRef.current
@@ -439,6 +528,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       enableRetinaScaling: false,
     })
     fabricCanvasRef.current = canvas
+    applyPaintClip(canvas)
 
     const brush = new PencilBrush(canvas)
     brush.width = brushSizeRef.current
@@ -465,7 +555,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     })
 
     canvas.on('mouse:down', async ({ e }) => {
-      if (!smartSelectRef.current || selectingRef.current || refineModeRef.current) return
+      if (disabledRef.current || !smartSelectRef.current || selectingRef.current || refineModeRef.current) return
       const natural = naturalRef.current
       if (!natural?.width || !natural.height) {
         message.warning('无法读取原图尺寸')
@@ -528,7 +618,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       fabricCanvasRef.current = null
       void canvas.dispose()
     }
-  }, [imageUrl, onMaskChange, paintSelection, pushSnapshot, updateHistoryState])
+  }, [applyPaintClip, imageUrl, onMaskChange, paintSelection, pushSnapshot, updateHistoryState])
 
   return (
     <div
@@ -562,6 +652,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
           />
           <canvas ref={canvasElementRef} style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
+          <div ref={brushCursorRef} className="workstation-paint-brush-cursor" aria-hidden="true" />
           {keyboardCursor ? (
             <div
               className="workstation-paint-keyboard-cursor"
@@ -579,6 +670,9 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
           <div className="workstation-paint-keyboard-hint">
             方向键移动 · 空格涂抹 · B/E 切换 · [ ] 调笔刷 · Esc 退出
           </div>
+        ) : null}
+        {disabled ? (
+          <div className="workstation-paint-disabled-hint" role="status">正在生成，暂不可涂抹</div>
         ) : null}
       </div>
     </div>

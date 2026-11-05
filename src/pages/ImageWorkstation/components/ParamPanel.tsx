@@ -54,10 +54,15 @@ interface Props {
   relight?: RelightOptions
   onRelightChange?: (relight: RelightOptions) => void
   promptMinHeight?: number
+  /** 重绘：当前是否已有涂抹蒙版，用于面板状态与提示。 */
+  hasMaskPaint?: boolean
+  /** 重绘：已格式化的积分文案，报价未就绪时不传。 */
+  repaintCreditLabel?: string
 }
 
 const labelStyle = { display: 'block', marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
 const tallPromptSize = { minRows: 10, maxRows: 16 }
+const repaintPromptSize = { minRows: 4, maxRows: 8 }
 /** 服务端 server/bailian-repaint.ts 固定使用 wanx2.1-imageedit；这里只展示用户可读名称。 */
 const REPAINT_MODEL_LABEL = '通义万相 2.1 图像编辑'
 
@@ -101,8 +106,11 @@ export default function ParamPanel({
   relight = RELIGHT_DEFAULT,
   onRelightChange,
   promptMinHeight,
+  hasMaskPaint = false,
+  repaintCreditLabel,
 }: Props) {
   const repaintPromptId = useId()
+  const repaintHintId = useId()
   // null 表示跟随内容：有备注时默认展开，用户手动收起后保持收起。
   const [relightNoteOpen, setRelightNoteOpen] = useState<boolean | null>(null)
   const intro = title ? (
@@ -361,26 +369,41 @@ export default function ParamPanel({
   }
 
   if (mode === 'repaint') {
+    const promptMissing = hasMaskPaint && !repaintPrompt.trim()
+    // 未涂抹的引导由上方状态块和步骤条负责，这里只解释描述的作用，避免同一句话出现四次。
+    const repaintHint = promptMissing
+      ? '请填写重绘描述后再生成。'
+      : '描述会应用到涂抹区域，未涂抹的部分保持不变。'
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {intro}
+        <div
+          className={`workstation-repaint-mask-status${hasMaskPaint ? ' is-ready' : ''}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="workstation-repaint-mask-dot" aria-hidden="true" />
+          <span>{hasMaskPaint ? '蒙版已就绪，只会重绘涂抹区域' : '尚未涂抹，在左侧图片上涂抹要重绘的区域'}</span>
+        </div>
         <div>
           <label htmlFor={repaintPromptId} style={labelStyle}>
-            重绘描述<span aria-hidden="true"> *</span>
+            重绘描述<span className="param-required" aria-hidden="true">*</span>
           </label>
           <Input.TextArea
             id={repaintPromptId}
             aria-required="true"
+            aria-describedby={repaintHintId}
             value={repaintPrompt}
             disabled={disabled}
             onChange={(event) => onRepaintPromptChange(event.target.value)}
             placeholder="描述选区里要出现的内容，例如：桌面上的透明玻璃花瓶"
-            autoSize={tallPromptSize}
-            styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
-            style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
+            autoSize={repaintPromptSize}
             maxLength={MAX_ERASE_PROMPT_LENGTH}
             showCount
           />
+          <p id={repaintHintId} className={`workstation-repaint-hint${promptMissing ? ' is-warning' : ''}`}>
+            {repaintHint}
+          </p>
         </div>
         <div>
           <div style={labelStyle}>输出</div>
@@ -397,6 +420,12 @@ export default function ParamPanel({
               <dt>数量</dt>
               <dd>每次 1 张</dd>
             </div>
+            {repaintCreditLabel ? (
+              <div>
+                <dt>积分</dt>
+                <dd>{repaintCreditLabel}</dd>
+              </div>
+            ) : null}
           </dl>
           <p className="workstation-repaint-contract-note">
             重绘使用固定模型，暂不支持切换模型、调整分辨率或张数。

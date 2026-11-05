@@ -8,7 +8,7 @@ export function useCanvasDisplay() {
   useEffect(() => {
     const element = hostRef.current
     if (!element) return
-    const update = () => setDisplay(workstationCanvasDisplaySize(element.clientWidth))
+    const update = () => setDisplay(workstationCanvasDisplaySize(element.clientWidth, element.clientHeight))
     update()
     const observer = new ResizeObserver(update)
     observer.observe(element)

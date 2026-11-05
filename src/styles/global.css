@@ -2679,10 +2679,59 @@ body.sidebar-resizing * {
   pointer-events: none;
 }
 
+/* 指针笔刷光标：跟随鼠标显示实际笔刷大小，图片外改成虚线提示不会生效。 */
+.workstation-paint-brush-cursor {
+  position: absolute;
+  z-index: 2;
+  display: none;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.workstation-paint-brush-cursor.is-eraser,
+.workstation-paint-brush-cursor.is-outside {
+  border-style: dashed;
+}
+
+.workstation-paint-brush-cursor.is-outside {
+  opacity: 0.55;
+}
+
+.workstation-paint-disabled-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  z-index: 3;
+  max-width: calc(100% - 16px);
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 .workstation-paint-stage {
   position: relative;
   transform-origin: top left;
   touch-action: none;
+}
+
+.workstation-paint-stage canvas {
+  cursor: crosshair;
+}
+
+@media (hover: none) {
+  .workstation-paint-brush-cursor {
+    display: none !important;
+  }
 }
 
 .tool-switcher-frame {
@@ -2905,6 +2954,120 @@ body.sidebar-resizing * {
   line-height: 1.5;
 }
 
+/* 重绘上传后的三步引导，让「涂抹 → 描述 → 生成」成为可见路径。 */
+.workstation-repaint-guide {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+}
+
+.workstation-repaint-steps {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.workstation-repaint-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.workstation-repaint-step + .workstation-repaint-step::before {
+  content: "→";
+  margin-right: 3px;
+  color: var(--color-text-muted);
+}
+
+.workstation-repaint-step-index {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.workstation-repaint-step.is-current {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.workstation-repaint-step.is-current .workstation-repaint-step-index {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.workstation-repaint-step.is-complete .workstation-repaint-step-index {
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.workstation-repaint-guide-status {
+  margin: 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.workstation-repaint-mask-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workstation-repaint-mask-status.is-ready {
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.workstation-repaint-mask-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+}
+
+.workstation-repaint-mask-status.is-ready .workstation-repaint-mask-dot {
+  background: var(--color-accent);
+}
+
+.workstation-repaint-hint {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workstation-repaint-hint.is-warning {
+  color: var(--color-warning-text);
+}
+
 .param-required {
   margin-left: 2px;
   color: var(--color-danger-text);
@@ -3086,6 +3249,16 @@ body.sidebar-resizing * {
   align-items: center;
   gap: 8px;
   overflow: hidden;
+}
+
+.image-workstation-block-reason {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-warning-text);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .image-workstation-input-description {
@@ -4960,9 +5133,19 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
     min-height: 0;
     padding: 8px 10px;
   }
+  /* 涂抹类工具需要更大的画布；高度约束会保证画面完整，不再被 shell 裁切。 */
+  .image-workstation-preview-panel.has-image .workstation-canvas-shell.is-mask-paint {
+    height: 320px;
+  }
   .image-workstation-preview-panel.has-image .workstation-canvas-footnote { display: none; }
   .app-main-content:has(.image-workstation-preview-panel.has-image) {
     scroll-padding-top: 320px;
+  }
+  .app-main-content:has(.image-workstation-preview-panel.is-repaint.has-image) {
+    scroll-padding-top: 430px;
+  }
+  .app-main-content:has(.image-workstation-preview-panel.is-repaint.has-image) .image-workstation-settings {
+    scroll-margin-top: 430px;
   }
   /* 吸顶后压缩成紧凑条：只保留画面和方向摘要，避免盖住设置面板。 */
   .image-workstation-preview-panel.is-relight .workstation-canvas-shell {
@@ -4983,6 +5166,10 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
     padding: 4px 8px;
     gap: 0;
   }
+  .image-workstation-preview-panel.is-stuck .workstation-canvas-shell.is-mask-paint {
+    height: 180px;
+  }
+  .image-workstation-preview-panel.is-stuck .workstation-repaint-guide { display: none; }
   .image-workstation-preview-panel.is-stuck .workstation-preview-compact-row { display: flex; }
   .image-workstation-preview-panel.is-stuck .workstation-preview-compact-summary { display: block; }
   .app-main-content:has(.image-workstation-preview-panel.is-relight.has-image) {
@@ -5020,7 +5207,48 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .workstation-result-badge { font-size: 9px; }
   .workstation-prompt-templates .ant-btn { min-height: 40px; }
   .image-workstation-footer-actions .ant-btn { min-height: 44px; }
-  .workstation-canvas-replace .ant-btn { min-height: 40px; }
+  .workstation-canvas-replace .ant-btn { min-height: 44px; }
+  /* 涂抹工具条在移动端保持单行横滑，避免换行吃掉画布高度。 */
+  .workstation-canvas-shell.is-mask-paint .workstation-canvas-controls {
+    flex-wrap: nowrap;
+  }
+  .workstation-canvas-shell.is-mask-paint .workstation-canvas-toolbar {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .workstation-canvas-shell.is-mask-paint .workstation-canvas-toolbar::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  .workstation-canvas-shell.is-mask-paint .workstation-canvas-toolbar > .ant-space {
+    /* Ant Space 的 wrap 属性以内联样式设置，必须 !important 才能改为单行横滑。 */
+    flex-wrap: nowrap !important;
+    width: max-content;
+    max-width: none;
+  }
+  .workstation-canvas-shell.is-mask-paint .workstation-canvas-toolbar .ant-space-item {
+    flex: 0 0 auto;
+  }
+  .workstation-canvas-shell.is-mask-paint .workstation-canvas-toolbar .ant-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .workstation-canvas-shell.is-mask-paint .workstation-canvas-toolbar .ant-slider {
+    min-height: 44px;
+  }
+  .image-workstation-tool-switcher .ant-segmented-item-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding-block: 4px;
+    line-height: 1.3;
+  }
   /* 保持横滑 + 两侧渐隐；只加高触控区域，文字仍居中。 */
   .generation-count-picker .ant-radio-button-wrapper {
     height: 44px;

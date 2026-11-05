@@ -126,7 +126,7 @@ describe('图片工作站配置提示', () => {
   it.each(['smart-edit', 'relight', 'variation', 'fusion', 'retouch', 'repaint'])('%s 等待配置时不闪现未上线提示', async (tool) => {
     mocks.tool = tool
     const { container, rerender } = render(<App><ImageWorkstation /></App>)
-    expect(screen.getByRole('status', { hidden: true }).textContent).toBe('正在加载功能配置…')
+    expect(screen.getByText('正在加载功能配置…').getAttribute('role')).toBe('status')
     expect(container.textContent).not.toContain('即将上线')
     expect(container.textContent).not.toContain('还不能用')
     expect(buttonByText(/生成(?: \d+ 张)? ·/).disabled).toBe(true)
@@ -432,6 +432,26 @@ describe('图片工作站配置提示', () => {
     fireEvent.change(screen.getByPlaceholderText('例如：换成纯白电商背景，保留商品细节'), { target: { value: '换成纯白背景' } })
     expect(buttonByText(/生成 1 张 · 6 积分/).disabled).toBe(false)
     expect(screen.queryByText(/积分不足/)).toBeNull()
+  })
+
+  it('重绘有图未涂抹时展示步骤与页脚可见禁用原因', () => {
+    mocks.tool = 'repaint'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('先在左侧图片上涂抹要重绘的区域')).toBeTruthy()
+    expect(screen.getByText('请先涂抹要重绘的区域')).toBeTruthy()
+    expect(buttonByText(/生成 · 5 积分/).disabled).toBe(true)
+    expect(screen.getByText('请先涂抹要重绘的区域').closest('#workstation-block-reason')).toBeTruthy()
+  })
+
+  it('重绘已有结果且输入仍是原图时，主按钮显示再生成一版', () => {
+    mocks.tool = 'repaint'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
+    render(<App><ImageWorkstation /></App>)
+    expect(buttonByText(/再生成一版/)).toBeTruthy()
   })
 
   it('消除和扩图在已知余额不足时显示积分不足，未知余额不拦截', () => {
