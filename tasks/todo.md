@@ -691,3 +691,26 @@
 - **验证**：`npx tsc --noEmit`、`npm run lint`、`npm test`（333 文件 / 2132 用例）、`npm run build` 全部通过；Playwright 1440/1366 明暗、390 明暗吸顶、错误态与开关联动均通过，控制台 0 错误。
 - **检测器**：1440 仅剩壳层侧边栏 `#21cfa0 on #1fb38b` 1.3:1（预存在）；390 为 0；错误态 CDP 扫描仅命中 AntD tooltip 箭头的 `organic-clip-path` 假阳性（`ant-tooltip-arrow::before`，非业务代码）。
 - **截图**：`/tmp/relight-fixes-1440-light-error.png`、`/tmp/relight-fixes-1366-dark-error.png`、`/tmp/relight-fixes-390-light-stuck.png`、`/tmp/relight-fixes-390-dark-stuck.png`。
+
+## 重新打光 · 复查后全部修复（2026-11-05）
+
+目标：按最新 critique 的 Action Summary 修完全部 5 个 Priority Issues，并收尾术语、选中态、触控目标与深色叠加层对比度；工具页签裁剪（壳层）暂不处理。
+
+- [x] P1 重试反馈：重试期间保留主按钮 loading，页脚与预览 meta 显示「正在读取结果」，连续失败给出「仍无法读取」结论
+- [x] P2 无结果预览：无结果时隐藏「原图/效果」对比，脚注改为「调整右侧参数后生成，结果会显示在这里」；读取失败时不显示误导脚注
+- [x] P2 移动端页脚：无结果隐藏「下载结果」；生成按钮独占整行；错误态「重试读取」保持主色主操作，与生成同排等高
+- [x] P2 逆光网格：透明度 0.55 → 0.8，补「点任一平面方向可切回平面光」提示
+- [x] P2 非方形图叠加层：按 `object-fit: contain` 后的内容矩形定位，补纯函数与测试
+- [x] 收尾：深度行选中态与网格统一；术语统一为「正面光 / 逆光」「暖色 / 中性 / 冷色」；移动端开关 44px；深色叠加层加 surface 光晕
+- [x] 验证：tsc、lint、相关测试、全量测试、build、Playwright 1440/1366/390 明暗、错误态、非方形图
+
+### 复查记录（待填）
+
+- 测试：333 个测试文件 / 2138 个用例全部通过；`tsc --noEmit`、`npm run lint`、`npm run build` 通过。
+- Playwright（1440 明 / 1366 暗 / 390 明，使用 480×160 非方图）：
+  - 叠加层 frame 与 `object-fit: contain` 内容矩形误差 < 0.02px（1440：left 55 / top 90.92 / 640×213.33）。
+  - 无结果时对比 Segmented 数量为 0，脚注为「调整右侧参数后生成，结果会显示在这里」；读取失败时脚注为 null。
+  - 重试点击后按钮进入 `ant-btn-loading` + 「正在读取」，页脚显示「正在读取结果 · 请稍候」；再次失败后页脚变为「仍无法读取 · 可免费重试或重新生成」。
+  - 移动端：生成按钮整行 366×44；错误态重试 141×44 + 生成 217×44 同一行，无横向溢出；吸顶开关 44×44。
+  - 逆光：平面网格 opacity 0.8，深度行选中态实心品牌绿，hover 对比度 light 6.12:1 / dark 9.46:1。
+  - 深色叠加层线条带 `drop-shadow` surface 光晕，控制台 0 error。

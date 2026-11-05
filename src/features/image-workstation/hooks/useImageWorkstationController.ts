@@ -148,6 +148,8 @@ export function useImageWorkstationController({
   const latestResultVersionRef = useRef<string>()
   const appliedTaskVersionsRef = useRef(new Set<string>())
   const readingVersionsRef = useRef(new Set<string>())
+  // 记录最近一次结果读取是否失败：读取错误在 applyCompletedTask 内部消化，不靠异常冒泡。
+  const readFailureRef = useRef(false)
   const epochRef = useRef(0)
   const readAbortRef = useRef(new AbortController())
   const [readingResults, setReadingResults] = useState(false)
@@ -317,7 +319,10 @@ export function useImageWorkstationController({
       if (current() && failures === 0) appliedTaskVersionsRef.current.add(version)
     } finally {
       readingVersionsRef.current.delete(version)
-      if (current()) setReadingResults(false)
+      if (current()) {
+        readFailureRef.current = failures > 0
+        setReadingResults(false)
+      }
     }
   }, [persistHistory, registerAsset, registerGeneration])
 
@@ -412,15 +417,23 @@ export function useImageWorkstationController({
   const retryRead = useCallback(async () => {
     const epoch = epochRef.current
     setResultReadError(undefined); setReadingResults(true)
+    readFailureRef.current = false
     const recovery = syncRecoveryRef.current
+    let failed = false
     try {
       if (recovery && recovery.epoch === epochRef.current) await recovery.complete(await downloadImageResult(recovery.descriptor, '图片', readAbortRef.current.signal, recovery.ownerId))
       else if (task?.status === 'succeeded') {
         const context = submissionsRef.current.get(task.id)
         if (context) await applyCompletedTask(task, [], context.ownerId, undefined, context.epoch)
       }
-    } catch (error) { if (epoch === epochRef.current) setResultReadError(error instanceof Error ? error.message : '读取失败，请重试读取') }
-    finally { if (epoch === epochRef.current) setReadingResults(false) }
+    } catch (error) {
+      if (epoch === epochRef.current) {
+        failed = true
+        setResultReadError(error instanceof Error ? error.message : '读取失败，请重试读取')
+      }
+    } finally { if (epoch === epochRef.current) setReadingResults(false) }
+    // 返回是否读取成功，页面据此区分首次失败与重试后仍失败。
+    return !(failed || readFailureRef.current)
   }, [applyCompletedTask, task])
   const retrySave = useCallback(async () => {
     setHistoryError(undefined)

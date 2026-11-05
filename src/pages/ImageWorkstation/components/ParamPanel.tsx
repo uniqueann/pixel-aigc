@@ -276,9 +276,9 @@ export default function ParamPanel({
               value={relight.temperature}
               onChange={(value) => update({ temperature: value as RelightOptions['temperature'] })}
               options={[
-                { label: '暖', value: 'warm' },
+                { label: '暖色', value: 'warm' },
                 { label: '中性', value: 'neutral' },
-                { label: '冷', value: 'cool' },
+                { label: '冷色', value: 'cool' },
               ]}
             />
           </div>

@@ -1,7 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { relightOverlayGeometry } from './relightOverlayGeometry'
+import { relightImageContentBox, relightOverlayGeometry } from './relightOverlayGeometry'
 
 const SIZE = 320
+
+describe('relightImageContentBox', () => {
+  it('非方图按 contain 居中，叠加层只覆盖真实画面', () => {
+    const box = relightImageContentBox(
+      { left: 0, top: 0, width: 750, height: 395 },
+      { left: 55, top: 0, width: 640, height: 395 },
+      480,
+      160,
+    )
+    expect(box).not.toBeNull()
+    expect(box!.left).toBeCloseTo(55)
+    expect(box!.top).toBeCloseTo(90.83, 1)
+    expect(box!.width).toBeCloseTo(640)
+    expect(box!.height).toBeCloseTo(213.33, 1)
+  })
+
+  it('图片尚未加载时返回 null，调用方回退到舞台尺寸', () => {
+    expect(relightImageContentBox(
+      { left: 0, top: 0, width: 750, height: 395 },
+      { left: 0, top: 0, width: 750, height: 395 },
+      0,
+      0,
+    )).toBeNull()
+  })
+})
 
 describe('relightOverlayGeometry', () => {
   it('平面光用实线主光箭头，投影落在光源反方向', () => {

@@ -50,7 +50,7 @@ const CELLS: CompassCell[] = [
 
 const DEPTH_OPTIONS = [
   { id: 'front', label: '正面光' },
-  { id: 'back', label: '背面 · 逆光' },
+  { id: 'back', label: '逆光' },
 ] as const
 
 function ProductGlyph() {
@@ -124,7 +124,9 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
   }
 
   const summary = `主光：${RELIGHT_DIRECTION_LABELS[value.direction]} · ${RELIGHT_QUALITY_LABELS[value.quality]} · ${RELIGHT_TEMPERATURE_LABELS[value.temperature]}`
-  const hint = RELIGHT_DIRECTION_HINTS[value.direction]
+  const hint = isBack
+    ? `${RELIGHT_DIRECTION_HINTS.back} 点任一平面方向可切回平面光。`
+    : RELIGHT_DIRECTION_HINTS[value.direction]
 
   return (
     <div className={`relight-compass${isBack ? ' is-back' : ''}`}>
