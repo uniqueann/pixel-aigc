@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined, resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn() },
-  controllerArgs: undefined as { modelProfileId?: string } | undefined,
+  controllerArgs: undefined as { modelProfileId?: string; keepInputOnSuccess?: boolean } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
   fusion: {
@@ -51,7 +51,7 @@ function buttonByText(name: RegExp) {
 describe('图片工作站配置提示', () => {
   beforeEach(() => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
-    mocks.status.capabilities = { imageEdit: undefined, variation: undefined, repaint: undefined, smartSelect: undefined }
+    mocks.status.capabilities = { imageEdit: undefined, variation: undefined, repaint: undefined, erase: undefined, smartSelect: undefined }
     mocks.status.error = null
     mocks.status.refetch.mockReset()
     mocks.models = []
@@ -131,7 +131,7 @@ describe('图片工作站配置提示', () => {
     expect(container.textContent).not.toContain('还不能用')
     expect(buttonByText(/生成(?: \d+ 张)? ·/).disabled).toBe(true)
 
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     rerender(<App><ImageWorkstation /></App>)
     expect(screen.queryByText('正在加载功能配置…')).toBeNull()
     expect(container.textContent).not.toContain('即将上线')
@@ -163,7 +163,7 @@ describe('图片工作站配置提示', () => {
 
   it('未上传时展示裂变和融合示例，上传后收起', () => {
     mocks.tool = 'variation'
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     const view = render(<App><ImageWorkstation /></App>)
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByRole('heading', { name: '裂变' })).toBeTruthy()
@@ -190,7 +190,7 @@ describe('图片工作站配置提示', () => {
     preferences.image.counts = { 'smart-edit': 1, relight: 1, variation: 2, fusion: 1, retouch: 1 }
     usePreferencesStore.setState({ preferences, memoryEpoch: 1 })
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     const cases = [
       ['smart-edit', '生成 1 张 · 4 积分'],
       ['relight', '生成 1 张 · 4 积分'],
@@ -219,7 +219,7 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
     mocks.tool = 'smart-edit'
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     const view = render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 1 张 · 4 积分/).disabled).toBe(true)
     fireEvent.click(screen.getByRole('radio', { name: '2' }))
@@ -249,7 +249,7 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
     mocks.tool = 'smart-edit'
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 1 张 · 4 积分/).disabled).toBe(true)
@@ -264,7 +264,7 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
     mocks.tool = 'smart-edit'
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
     render(<App><ImageWorkstation /></App>)
@@ -284,7 +284,7 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
     mocks.tool = 'relight'
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
     render(<App><ImageWorkstation /></App>)
     expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
@@ -299,7 +299,7 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
     mocks.tool = 'smart-edit'
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
     const view = render(<App><ImageWorkstation /></App>)
@@ -323,7 +323,7 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
     mocks.tool = 'smart-edit'
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
     mocks.controller.retryRead.mockResolvedValue(false)
@@ -359,7 +359,7 @@ describe('图片工作站配置提示', () => {
     mocks.tool = 'remove'
     const remove = render(<App><ImageWorkstation /></App>)
     expect(screen.getByText('上传图片后，涂抹需要消除的区域')).toBeTruthy()
-    expect(screen.getByText('上传图片后，涂抹需要消除的区域（智能选区不消耗积分）。')).toBeTruthy()
+    expect(screen.getByText('智能选区不消耗积分；也可以直接用画笔涂抹。')).toBeTruthy()
     remove.unmount()
     mocks.tool = 'outpaint'
     render(<App><ImageWorkstation /></App>)
@@ -378,7 +378,7 @@ describe('图片工作站配置提示', () => {
     const qwen = publicImageModel(IMAGE_MODEL_PROFILES.find(item => item.id === 'bailian:qwen-image-3.0')!)
     mocks.models = [gpt, qwen]
     mocks.tool = 'smart-edit'
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     const view = render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 1 张 · 4 积分/)).toBeTruthy()
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '模型' }))
@@ -410,7 +410,7 @@ describe('图片工作站配置提示', () => {
     usePreferencesStore.setState({ preferences, memoryEpoch: 6 })
     mocks.tool = 'smart-edit'
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 0, creditsLoaded: false })
     const unknown = render(<App><ImageWorkstation /></App>)
@@ -434,9 +434,40 @@ describe('图片工作站配置提示', () => {
     expect(screen.queryByText(/积分不足/)).toBeNull()
   })
 
+  it('消除有图未涂抹时展示步骤、蒙版状态与固定契约', () => {
+    mocks.tool = 'remove'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByRole('list', { name: '消除步骤' })).toBeTruthy()
+    expect(screen.getByText('先在左侧图片上涂抹要消除的区域')).toBeTruthy()
+    expect(screen.getByText('尚未涂抹，在左侧图片上涂抹要消除的区域')).toBeTruthy()
+    expect(screen.getByText('请先涂抹要消除的区域')).toBeTruthy()
+    expect(screen.getByText('通义万相 2.1 图像编辑')).toBeTruthy()
+    expect(buttonByText(/生成 · 5 积分/).disabled).toBe(true)
+  })
+
+  it('消除接入涂抹类吸顶态标记，吸顶后由紧凑条接管状态说明', () => {
+    mocks.tool = 'remove'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(container.querySelector('.image-workstation-preview-panel.is-inpaint')).toBeTruthy()
+    expect(screen.getByText('尚未涂抹，回到画布继续涂抹')).toBeTruthy()
+  })
+
+  it('确认消除未配置后显示不可用提示并禁用生成', () => {
+    mocks.tool = 'remove'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: false, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getAllByText('消除服务暂不可用，请稍后重试或联系客服。').length).toBeGreaterThan(0)
+    expect(buttonByText(/生成 · 5 积分/).disabled).toBe(true)
+  })
+
   it('重绘有图未涂抹时展示步骤与页脚可见禁用原因', () => {
     mocks.tool = 'repaint'
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
     render(<App><ImageWorkstation /></App>)
     expect(screen.getByText('先在左侧图片上涂抹要重绘的区域')).toBeTruthy()
@@ -445,9 +476,23 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByText('请先涂抹要重绘的区域').closest('#workstation-block-reason')).toBeTruthy()
   })
 
+  it('消除成功后保留原图与蒙版，主推下载并可再生成一版', () => {
+    mocks.tool = 'remove'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
+    render(<App><ImageWorkstation /></App>)
+    expect(mocks.controllerArgs?.keepInputOnSuccess).toBe(true)
+    expect(screen.getByText('本次结果')).toBeTruthy()
+    expect(buttonByText(/再生成一版/)).toBeTruthy()
+    expect(buttonByText(/再生成一版/).className).not.toContain('ant-btn-primary')
+    expect(buttonByText(/下载结果/).className).toContain('ant-btn-primary')
+    expect(screen.getByRole('radiogroup', { name: '对比原图与效果' })).toBeTruthy()
+  })
+
   it('重绘已有结果且输入仍是原图时，主按钮显示再生成一版', () => {
     mocks.tool = 'repaint'
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
     mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
     render(<App><ImageWorkstation /></App>)
@@ -456,7 +501,7 @@ describe('图片工作站配置提示', () => {
 
   it('消除和扩图在已知余额不足时显示积分不足，未知余额不拦截', () => {
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
     useUserStore.setState({ userId: '11111111-1111-4111-8111-111111111111', credits: 1, creditsLoaded: true })
     mocks.tool = 'remove'

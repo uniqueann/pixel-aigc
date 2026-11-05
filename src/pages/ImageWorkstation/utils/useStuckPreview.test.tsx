@@ -74,4 +74,29 @@ describe('吸顶状态观察', () => {
     unmount()
     expect(removeEventListener).not.toHaveBeenCalled()
   })
+
+  it('把吸顶卡实测高度写入滚动锚点变量，切到桌面或卸载时清理', () => {
+    const { unmount } = render(<Preview />)
+    const viewport = screen.getByTestId('viewport')
+    const panel = screen.getByTestId('panel')
+    const rect = (height: number) => ({
+      x: 0, y: 0, width: 320, height, top: 0, left: 0, right: 320, bottom: height,
+      toJSON: () => ({}),
+    }) as DOMRect
+
+    vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue(rect(432))
+    fireEvent.scroll(viewport)
+    expect(viewport.style.getPropertyValue('--workstation-sticky-height')).toBe('432px')
+
+    mobile = false
+    act(() => onMediaChange())
+    expect(viewport.style.getPropertyValue('--workstation-sticky-height')).toBe('')
+
+    mobile = true
+    act(() => onMediaChange())
+    expect(viewport.style.getPropertyValue('--workstation-sticky-height')).toBe('432px')
+
+    unmount()
+    expect(viewport.style.getPropertyValue('--workstation-sticky-height')).toBe('')
+  })
 })
