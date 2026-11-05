@@ -49,6 +49,10 @@ interface Props {
   overlayToggle?: { label: string; pressed: boolean; onChange: () => void }
   /** 叠加层开关旁的指针操作提示。 */
   overlayHint?: string
+  /** 没有结果时隐藏原图/效果对比，只保留当前预览。 */
+  compareAvailable?: boolean
+  /** 覆盖画布底部说明；传 null 隐藏说明。 */
+  footnote?: string | null
 }
 
 const canvasShellClass = 'workstation-canvas-shell'
@@ -129,6 +133,8 @@ export default function CanvasArea({
   emptyExtra,
   overlayToggle,
   overlayHint,
+  compareAvailable = true,
+  footnote,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -307,15 +313,24 @@ export default function CanvasArea({
     )
   }
 
+  const viewingOriginal = compareMode === 'original' || !compareAvailable
+  const defaultFootnote = interactionMode === 'params-only'
+    ? compareAvailable
+      ? '选择满意的结果后，可继续进行二次编辑'
+      : '调整右侧参数后生成，结果会显示在这里'
+    : '该功能即将上线，敬请期待'
+
   return (
     <div className={canvasShellClass}>
       <div className="workstation-canvas-controls">
         <div className="workstation-canvas-toolbar">
-          <Segmented
-            value={compareMode}
-            options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
-            onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
-          />
+          {compareAvailable ? (
+            <Segmented
+              value={compareMode}
+              options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
+              onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
+            />
+          ) : null}
           {overlayToggle ? (
             <>
               <button
@@ -336,17 +351,17 @@ export default function CanvasArea({
       </div>
       <div className="workstation-preview-stage">
         <img
-          src={compareMode === 'original' ? originalImageUrl ?? imageUrl : imageUrl}
-          alt={compareMode === 'original' ? '原始图片' : '当前编辑效果'}
+          src={viewingOriginal ? originalImageUrl ?? imageUrl : imageUrl}
+          alt={viewingOriginal ? '原始图片' : '当前编辑效果'}
           className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
           tabIndex={onPreview ? 0 : undefined}
           role={onPreview ? 'button' : undefined}
-          aria-label={onPreview ? `打开${compareMode === 'original' ? '原图' : '效果'}大图` : undefined}
-          onClick={onPreview ? () => onPreview(compareMode) : undefined}
+          aria-label={onPreview ? `打开${viewingOriginal ? '原图' : '效果'}大图` : undefined}
+          onClick={onPreview ? () => onPreview(viewingOriginal ? 'original' : 'effect') : undefined}
           onKeyDown={onPreview ? event => {
             if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
-            onPreview(compareMode)
+            onPreview(viewingOriginal ? 'original' : 'effect')
           } : undefined}
         />
         {overlay}
@@ -361,10 +376,8 @@ export default function CanvasArea({
           <span>{processingLabel}</span>
         </div>
       ) : null}
-      {errorLabel || processingLabel ? null : (
-        <div className="workstation-canvas-footnote">
-          {interactionMode === 'params-only' ? '选择满意的结果后，可继续进行二次编辑' : '该功能即将上线，敬请期待'}
-        </div>
+      {errorLabel || processingLabel || footnote === null ? null : (
+        <div className="workstation-canvas-footnote">{footnote ?? defaultFootnote}</div>
       )}
     </div>
   )

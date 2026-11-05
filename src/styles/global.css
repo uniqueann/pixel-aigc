@@ -2253,6 +2253,12 @@ body.sidebar-resizing * {
   color: var(--color-on-accent);
 }
 
+/* 选中格在 hover 时仍保持实心绿上的深色文字，避免暗色主题被 hover 提亮成低对比。 */
+.relight-compass-cell[aria-checked='true']:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
 .relight-compass-center {
   display: flex;
   width: 100%;
@@ -2285,8 +2291,9 @@ body.sidebar-resizing * {
   outline-offset: 2px;
 }
 
+/* 逆光只弱化平面网格，仍保持可读与可点，不让人误以为整组禁用。 */
 .relight-compass.is-back .relight-compass-cell:not(:disabled) {
-  opacity: 0.55;
+  opacity: 0.8;
 }
 
 .relight-compass.is-back .relight-compass-cell:hover:not(:disabled) {
@@ -2322,8 +2329,13 @@ body.sidebar-resizing * {
 
 .relight-depth button[aria-checked='true'] {
   border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-  color: var(--color-accent-text);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.relight-depth button[aria-checked='true']:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 .relight-depth button:disabled {
@@ -2417,13 +2429,25 @@ body.sidebar-resizing * {
   margin-top: 8px;
 }
 
-/* 预览图上的方向示意与拖动手柄。 */
+/* 叠加层铺满舞台，内部 frame 对齐 object-fit: contain 后的真实画面。 */
 .relight-direction-overlay {
   position: absolute;
   z-index: 2;
   inset: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
+}
+
+.relight-overlay-frame {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* 光线示意叠在任意照片上：给线和投影加一圈与画布同色的柔边，亮暗背景都可辨。 */
+.relight-direction-overlay [data-role='main-light'],
+.relight-direction-overlay [data-role='shadow'],
+.relight-direction-overlay [data-role='rim-light'] {
+  filter: drop-shadow(0 0 2px var(--color-surface));
 }
 
 .relight-direction-overlay.is-muted {
@@ -2479,7 +2503,7 @@ body.sidebar-resizing * {
   color: var(--color-accent-text);
 }
 
-/* 镜头光用圆角方形，和平面光的圆形光源区分；逆光加一圈辉光。 */
+/* 正面光用圆角方形，和平面光的圆形光源区分；逆光加一圈辉光。 */
 .relight-light-dot.is-front {
   border-radius: 8px;
 }
@@ -4904,7 +4928,12 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .relight-compass-hint { text-align: left; }
   .relight-presets button { height: 44px; }
   .relight-note-toggle { min-height: 44px; }
-  .workstation-overlay-toggle { height: 36px; }
+  .workstation-overlay-toggle { height: 44px; }
+  .workstation-preview-compact-toggle {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
   .workstation-overlay-hint { display: none; }
   .workstation-result-item { width: 78px; flex-basis: 78px; }
   .workstation-result-thumb { height: 68px; }
@@ -4936,7 +4965,10 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .image-workstation-footer-actions { width: 100%; }
   .image-workstation-footer-actions > .ant-btn,
   .image-workstation-footer-actions > span { flex: 1; }
+  /* 主操作占两倍宽度，避免「生成」被两个次要按钮挤成窄条换行。 */
+  .image-workstation-footer-actions > span { flex-grow: 2; }
   .image-workstation-footer-actions > span > .ant-btn { width: 100%; }
+  .image-workstation-footer-actions .ant-btn { height: 44px; white-space: nowrap; }
   .toolbox-watermark-footer { align-items: stretch; flex-direction: column; margin: 0 -12px; padding-inline: 12px; }
   .toolbox-footer-actions > .ant-btn { flex: 1; }
   .toolbox-image-drop { min-height: 112px; gap: 10px; padding: 12px; }

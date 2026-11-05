@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react'
 import type { RelightDirection } from '@shared/relight'
 import { directionFromPoint } from './relightDirection'
-import { relightOverlayGeometry } from './relightOverlayGeometry'
+import { relightImageContentBox, relightOverlayGeometry } from './relightOverlayGeometry'
 
 interface Props {
   direction: RelightDirection
@@ -32,8 +32,10 @@ function CameraGlyph() {
 /** 预览图上的方向示意：平面光用实线主光箭头，正面用镜头徽标，逆光用背后辉光；虚线始终表示投影。 */
 export default function RelightDirectionOverlay({ direction, disabled = false, muted = false, onDirectionChange }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const [frame, setFrame] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const markerId = `relight-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
 
   useEffect(() => {
@@ -52,7 +54,33 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
     return () => observer.disconnect()
   }, [])
 
-  const { width, height } = size
+  // 对齐 object-fit: contain 后的真实画面；图片加载完成或尺寸变化时重新测量。
+  useEffect(() => {
+    const root = rootRef.current
+    const stage = root?.parentElement
+    const image = stage?.querySelector<HTMLImageElement>('img.workstation-preview-image')
+    if (!stage || !image) return
+    const measure = () => {
+      const stageRect = stage.getBoundingClientRect()
+      const imageRect = image.getBoundingClientRect()
+      const box = relightImageContentBox(stageRect, imageRect, image.naturalWidth, image.naturalHeight)
+      setFrame(box ?? { left: 0, top: 0, width: stageRect.width, height: stageRect.height })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(stage)
+    observer.observe(image)
+    image.addEventListener('load', measure)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      image.removeEventListener('load', measure)
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
+
+  const width = frame?.width ?? size.width
+  const height = frame?.height ?? size.height
   const center = { x: width / 2, y: height / 2 }
   const geometry = relightOverlayGeometry(direction, width, height)
   const isPlanar = geometry.kind === 'planar'
@@ -68,7 +96,8 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
 
   const onPointerMove = (event: PointerEvent<HTMLSpanElement>) => {
     if (!draggingRef.current || disabled || !onDirectionChange) return
-    const rect = rootRef.current?.getBoundingClientRect()
+    const frameRect = frameRef.current?.getBoundingClientRect()
+    const rect = frameRect && frameRect.width > 0 ? frameRect : rootRef.current?.getBoundingClientRect()
     if (!rect) return
     const next = directionFromPoint(
       event.clientX - (rect.left + rect.width / 2),
@@ -94,7 +123,13 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
       aria-hidden="true"
     >
       {width > 0 && height > 0 ? (
-        <>
+        <div
+          ref={frameRef}
+          className="relight-overlay-frame"
+          style={frame
+            ? { left: frame.left, top: frame.top, width: frame.width, height: frame.height }
+            : { inset: 0 }}
+        >
           <svg viewBox={`0 0 ${width} ${height}`} focusable="false">
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -169,10 +204,10 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
                 top: isFront ? geometry.handle.y - 36 : geometry.handle.y + 28,
               }}
             >
-              {isFront ? '镜头光' : '逆光'}
+              {isFront ? '正面光' : '逆光'}
             </span>
           )}
-        </>
+        </div>
       ) : null}
     </div>
   )

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { App } from 'antd'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IMAGE_MODEL_PROFILES, defaultImageModel, publicImageModel } from '@shared/image-models'
 import { defaultPreferences } from '@shared/preferences'
@@ -62,6 +62,7 @@ describe('图片工作站配置提示', () => {
     mocks.controller.resultReadError = undefined
     mocks.controller.readingResults = false
     mocks.controller.retryRead.mockReset()
+    mocks.controller.retryRead.mockResolvedValue(true)
     mocks.fusion.product = undefined
     mocks.fusion.reference = undefined
     usePreferencesStore.setState({ preferences: defaultPreferences(), memoryEpoch: 0 })
@@ -289,6 +290,57 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
     expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
     expect(screen.getByRole('button', { name: '重试读取' }).getAttribute('title')).toBe('任务已完成，但结果读取失败。可免费重试，不会重复扣费。')
+  })
+
+  it('重试读取期间按钮与页脚持续给出反馈', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts['smart-edit'] = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
+    mocks.tool = 'smart-edit'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
+    const view = render(<App><ImageWorkstation /></App>)
+    fireEvent.click(screen.getByRole('button', { name: '重试读取' }))
+    expect(mocks.controller.retryRead).toHaveBeenCalledTimes(1)
+
+    mocks.controller.readingResults = true
+    mocks.controller.resultReadError = undefined
+    view.rerender(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('正在读取结果 · 请稍候')).toBeTruthy()
+    expect(screen.getByText('正在读取结果', { selector: '.workstation-preview-meta' })).toBeTruthy()
+    const readingButton = screen.getByRole('button', { name: /正在读取/ })
+    expect(readingButton.className).toContain('ant-btn-loading')
+    expect(readingButton.className).toContain('ant-btn-primary')
+  })
+
+  it('重试读取再次失败时给出「仍无法读取」的结论', async () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts['smart-edit'] = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
+    mocks.tool = 'smart-edit'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
+    mocks.controller.retryRead.mockResolvedValue(false)
+    const view = render(<App><ImageWorkstation /></App>)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '重试读取' }))
+    })
+
+    mocks.controller.readingResults = true
+    mocks.controller.resultReadError = undefined
+    view.rerender(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('正在读取结果 · 请稍候')).toBeTruthy()
+
+    mocks.controller.readingResults = false
+    mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
+    view.rerender(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('仍无法读取 · 可免费重试或重新生成')).toBeTruthy()
   })
 
   it('确认重绘未配置后才显示不能用的提示', () => {

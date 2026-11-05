@@ -61,7 +61,7 @@ export const RELIGHT_DIRECTION_LABELS: Record<RelightDirection, string> = {
   right: '右侧',
   top: '顶部',
   bottom: '底部',
-  front: '正面',
+  front: '正面光',
   back: '逆光',
   'top-left': '左上',
   'top-right': '右上',

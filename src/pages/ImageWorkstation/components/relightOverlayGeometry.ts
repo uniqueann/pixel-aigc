@@ -23,6 +23,42 @@ export interface RelightOverlayGeometry {
   rimRadius?: number
 }
 
+export interface RelightOverlayBox {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+interface BoxRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/**
+ * object-fit: contain 会把画面居中放进 img 盒子，四周留出空白。
+ * 叠加层要对齐真实画面而不是盒子，否则非方图上的光源和投影会落到留白里。
+ */
+export function relightImageContentBox(
+  stage: BoxRect,
+  image: BoxRect,
+  naturalWidth: number,
+  naturalHeight: number,
+): RelightOverlayBox | null {
+  if (!naturalWidth || !naturalHeight || image.width <= 0 || image.height <= 0) return null
+  const scale = Math.min(image.width / naturalWidth, image.height / naturalHeight)
+  const width = naturalWidth * scale
+  const height = naturalHeight * scale
+  return {
+    left: image.left - stage.left + (image.width - width) / 2,
+    top: image.top - stage.top + (image.height - height) / 2,
+    width,
+    height,
+  }
+}
+
 const PLANAR_UNITS: Record<Exclude<RelightDirection, 'front' | 'back'>, OverlayPoint> = {
   top: { x: 0, y: -1 },
   'top-right': { x: Math.SQRT1_2, y: -Math.SQRT1_2 },

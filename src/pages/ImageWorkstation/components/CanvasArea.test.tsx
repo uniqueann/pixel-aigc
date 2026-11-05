@@ -33,4 +33,15 @@ describe('工作站恢复任务的预览占位',()=>{
     expect(screen.getByRole('alert').textContent).toContain('结果暂时无法读取')
     expect(screen.queryByText('正在生成，结果会显示在下方')).toBeNull()
   })
+  it('没有结果时隐藏原图/效果切换，脚注说明下一步',()=>{
+    render(<CanvasArea {...props} interactionMode="params-only" imageUrl="blob:current" compareAvailable={false}/>)
+    expect(screen.queryByText('原图')).toBeNull()
+    expect(screen.queryByText('效果')).toBeNull()
+    expect(screen.getByAltText('原始图片').getAttribute('src')).toBe('blob:current')
+    expect(screen.getByText('调整右侧参数后生成，结果会显示在这里')).toBeTruthy()
+  })
+  it('脚注传 null 时完全隐藏',()=>{
+    render(<CanvasArea {...props} imageUrl="blob:current" footnote={null}/>)
+    expect(document.querySelector('.workstation-canvas-footnote')).toBeNull()
+  })
 })

@@ -78,7 +78,7 @@ describe('RelightCompass', () => {
     rerender(<RelightCompass value={{ ...RELIGHT_DEFAULT, direction: 'back' }} onChange={() => undefined} />)
     checked = checkedRadios()
     expect(checked).toHaveLength(1)
-    expect(checked[0].getAttribute('aria-label')).toMatch(/^背面 · 逆光/)
+    expect(checked[0].getAttribute('aria-label')).toMatch(/^逆光/)
 
     rerender(<RelightCompass value={{ ...RELIGHT_DEFAULT, direction: 'left' }} onChange={() => undefined} />)
     checked = checkedRadios()
@@ -88,9 +88,11 @@ describe('RelightCompass', () => {
 
   it('逆光时网格不选中，点击平面方位回到平面光', () => {
     const onChange = renderCompass({ direction: 'back' })
-    expect(screen.getByRole('radio', { name: /^背面 · 逆光/ }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: /^逆光/ }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByRole('radio', { name: /^左上光/ }).getAttribute('aria-checked')).toBe('false')
     expect(screen.getByText('主光：逆光 · 柔光 · 中性')).toBeTruthy()
+    // 逆光弱化网格后仍要告诉用户怎么回到平面光。
+    expect(screen.getByText('主光从商品背后而来，轮廓发光，投影铺向镜头。 点任一平面方向可切回平面光。')).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: /^左上光/ }))
     expect(onChange).toHaveBeenLastCalledWith({ ...RELIGHT_DEFAULT, direction: 'top-left' })
   })
@@ -112,7 +114,7 @@ describe('RelightCompass', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...RELIGHT_DEFAULT, direction: 'front' })
     fireEvent.keyDown(screen.getByRole('radio', { name: /^正面光/ }), { key: 'ArrowRight' })
     expect(onChange).toHaveBeenLastCalledWith({ ...RELIGHT_DEFAULT, direction: 'back' })
-    fireEvent.keyDown(screen.getByRole('radio', { name: /^背面 · 逆光/ }), { key: 'ArrowUp' })
+    fireEvent.keyDown(screen.getByRole('radio', { name: /^逆光/ }), { key: 'ArrowUp' })
     expect(onChange).toHaveBeenLastCalledWith({ ...RELIGHT_DEFAULT, direction: 'bottom' })
   })
 
@@ -120,7 +122,7 @@ describe('RelightCompass', () => {
     renderCompass({ direction: 'front' })
     expect(screen.getByRole('radio', { name: /^正面光/ }).getAttribute('tabindex')).toBe('0')
     expect(screen.getByRole('radio', { name: /^左上光/ }).getAttribute('tabindex')).toBe('-1')
-    expect(screen.getByRole('radio', { name: /^背面 · 逆光/ }).getAttribute('tabindex')).toBe('-1')
+    expect(screen.getByRole('radio', { name: /^逆光/ }).getAttribute('tabindex')).toBe('-1')
   })
 
   it('生成中禁用所有控件，但保留选中态', () => {
@@ -128,6 +130,6 @@ describe('RelightCompass', () => {
     expect(screen.getByRole('radio', { name: /^右侧光/ }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByRole('radio', { name: /^右侧光/ })).toHaveProperty('disabled', true)
     expect(screen.getByRole('radio', { name: /^正面光/ })).toHaveProperty('disabled', true)
-    expect(screen.getByRole('radio', { name: /^背面 · 逆光/ })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('radio', { name: /^逆光/ })).toHaveProperty('disabled', true)
   })
 })

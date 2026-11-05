@@ -64,7 +64,7 @@ describe('RelightDirectionOverlay', () => {
     const { container } = render(<RelightDirectionOverlay direction="front" />)
     expect(container.querySelector('[data-role="main-light"]')).toBeNull()
     expect(container.querySelector('.relight-light-dot.is-front')).toBeTruthy()
-    expect(container.querySelector('.relight-overlay-tag')?.textContent).toBe('镜头光')
+    expect(container.querySelector('.relight-overlay-tag')?.textContent).toBe('正面光')
   })
 
   it('逆光不渲染主光箭头，渲染背后辉光与轮廓光', () => {

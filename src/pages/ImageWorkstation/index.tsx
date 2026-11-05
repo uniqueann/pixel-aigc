@@ -103,6 +103,7 @@ export default function ImageWorkstation() {
   const [fusionNote, setFusionNote] = useState('')
   const [relightNote, setRelightNote] = useState('')
   const [relightOverlayEnabled, setRelightOverlayEnabled] = useState(true)
+  const [retryReadFailedAgain, setRetryReadFailedAgain] = useState(false)
   const imageConfiguration = useImageModels('image_edit')
   const variationConfiguration = useImageModels('variation')
   const imageModels = imageConfiguration.models
@@ -203,19 +204,35 @@ export default function ImageWorkstation() {
       })
     }
   }, [controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, relightTool])
+  // 重试读取期间由 readingResults 保持按钮反馈；重试仍失败时给出「仍无法读取」的结论。
+  const handleRetryRead = async () => {
+    setRetryReadFailedAgain(false)
+    const succeeded = await controller.retryRead()
+    if (!succeeded) setRetryReadFailedAgain(true)
+  }
   const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
   const relightOutput = relightTool
     ? outputPreview(activeModel, controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined, effectiveParameters.resolution)
     : undefined
-  const previewMeta = controller.resultReadError
-    ? '结果暂时无法读取'
-    : controller.active || controller.submitting
-      ? '正在生成'
-      : controller.outputAssets.length > 0
-        ? `已生成 ${controller.outputAssets.length} 张`
-        : controller.inputAsset
-          ? `${controller.inputAsset.width}×${controller.inputAsset.height}`
-          : '等待上传'
+  const previewMeta = controller.readingResults
+    ? '正在读取结果'
+    : controller.resultReadError
+      ? '结果暂时无法读取'
+      : controller.active || controller.submitting
+        ? '正在生成'
+        : controller.outputAssets.length > 0
+          ? `已生成 ${controller.outputAssets.length} 张`
+          : controller.inputAsset
+            ? `${controller.inputAsset.width}×${controller.inputAsset.height}`
+            : '等待上传'
+  // 无结果时脚注给出下一步；读取中/读取失败时隐藏，避免描述不存在的「效果」。
+  const previewFootnote = relightTool
+    ? controller.readingResults || controller.resultReadError
+      ? null
+      : controller.outputAssets.length === 0
+        ? '调整右侧参数后生成，结果会显示在这里'
+        : undefined
+    : undefined
   const previewHasImage = Boolean(fusionTool ? fusionProduct : showSourcePreview ? controller.inputAsset : undefined)
   const showRelightOverlay = relightTool && previewHasImage && relightOverlayEnabled
   const muteRelightOverlay = showRelightOverlay && compareMode === 'effect' && controller.outputAssets.length > 0
@@ -431,6 +448,8 @@ export default function ImageWorkstation() {
       message.warning(inpaintMode === 'repaint' ? '请先涂抹要重绘的区域' : '请先涂抹要消除的区域')
       return
     }
+    // 新一轮生成重新判断读取结果，不沿用上一轮的「仍无法读取」结论。
+    setRetryReadFailedAgain(false)
     try {
       await controller.generate(canvasHandleRef.current)
       message.success('任务已提交')
@@ -515,7 +534,7 @@ export default function ImageWorkstation() {
   const bridgeBlock = bridgeId && (!suiteBinding || (controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey) !== suiteBinding.inputObjectKey)
     ? '请恢复本会话输入后再提交，已有结果可以显式回填' : undefined
   const blockReason = bridgeBlock ?? generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
-  const canRetryRead = Boolean(controller.resultReadError) && !controller.readingResults
+  const showRetryRead = Boolean(controller.resultReadError) || controller.readingResults
   const example = toolExample(activeTool.slug)
   const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
   const { previewRef, footerRef, sticky } = useStickyPreview(true)
@@ -528,13 +547,17 @@ export default function ImageWorkstation() {
       : controller.inputAsset
         ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
         : '请先上传需要处理的图片'
-  const footerInfo = controller.resultReadError
-    ? '结果暂时无法读取 · 可免费重试'
-    : controller.active || controller.submitting
-      ? '正在生成 · 请稍候'
-      : controller.outputAssets.length > 0
-        ? `已生成 ${controller.outputAssets.length} 张 · ${inputDescription}`
-        : inputDescription
+  const footerInfo = controller.readingResults
+    ? '正在读取结果 · 请稍候'
+    : controller.resultReadError
+      ? retryReadFailedAgain
+        ? '仍无法读取 · 可免费重试或重新生成'
+        : '结果暂时无法读取 · 可免费重试'
+      : controller.active || controller.submitting
+        ? '正在生成 · 请稍候'
+        : controller.outputAssets.length > 0
+          ? `已生成 ${controller.outputAssets.length} 张 · ${inputDescription}`
+          : inputDescription
   const recoveryRuntime = useRef({})
   useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) }, [])
   useEffect(() => useUserStore.subscribe((state, previous) => {
@@ -622,7 +645,7 @@ export default function ImageWorkstation() {
           <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
             <div className="workstation-panel-heading-row">
               <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
-              <span className={`workstation-preview-meta${controller.resultReadError ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
+              <span className={`workstation-preview-meta${controller.resultReadError && !controller.readingResults ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
             </div>
             {relightTool ? (
               <div className="workstation-preview-compact-row">
@@ -686,6 +709,8 @@ export default function ImageWorkstation() {
                 const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
                 if (id) openAt(id)
               }}
+              compareAvailable={controller.outputAssets.length > 0}
+              footnote={previewFootnote}
             />
             <ImageAssetStrip
               assets={controller.outputAssets}
@@ -799,27 +824,30 @@ export default function ImageWorkstation() {
               </>
             ) : (
               <>
-                <Button
-                  icon={<DownloadOutlined />}
-                  disabled={!selectedResult || controller.formLocked}
-                  loading={Boolean(selectedResult && downloadingAssetId === selectedResult.id)}
-                  onClick={() => void handleDownload(selectedResult, Math.max(0, controller.outputAssets.findIndex((asset) => asset.id === selectedResult?.id)))}
-                >
-                  下载结果
-                </Button>
-                {canRetryRead ? (
+                {selectedResult ? (
                   <Button
-                    type="primary"
-                    title="任务已完成，但结果读取失败。可免费重试，不会重复扣费。"
-                    onClick={() => void controller.retryRead()}
+                    icon={<DownloadOutlined />}
+                    disabled={controller.formLocked}
+                    loading={downloadingAssetId === selectedResult.id}
+                    onClick={() => void handleDownload(selectedResult, Math.max(0, controller.outputAssets.findIndex((asset) => asset.id === selectedResult.id)))}
                   >
-                    重试读取
+                    下载结果
                   </Button>
                 ) : null}
-                <Tooltip title={canRetryRead ? '重新生成会再次计费，建议先重试读取' : blockReason}>
+                {showRetryRead ? (
+                  <Button
+                    type="primary"
+                    loading={controller.readingResults}
+                    title="任务已完成，但结果读取失败。可免费重试，不会重复扣费。"
+                    onClick={() => void handleRetryRead()}
+                  >
+                    {controller.readingResults ? '正在读取' : '重试读取'}
+                  </Button>
+                ) : null}
+                <Tooltip title={showRetryRead ? '重新生成会再次计费，建议先重试读取' : blockReason}>
                   <span>
                     <CreditActionButton data-task-generate
-                      type={canRetryRead ? 'default' : 'primary'}
+                      type={showRetryRead ? 'default' : 'primary'}
                       loading={controller.submitting}
                       quote={generateQuote}
                       disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
