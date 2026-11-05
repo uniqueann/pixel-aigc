@@ -54,17 +54,17 @@ interface Props {
   relight?: RelightOptions
   onRelightChange?: (relight: RelightOptions) => void
   promptMinHeight?: number
-  /** 重绘：当前是否已有涂抹蒙版，用于面板状态与提示。 */
+  /** 涂抹类工具：当前是否已有涂抹蒙版，用于面板状态与提示。 */
   hasMaskPaint?: boolean
-  /** 重绘：已格式化的积分文案，报价未就绪时不传。 */
-  repaintCreditLabel?: string
+  /** 涂抹类工具：已格式化的积分文案，报价未就绪时不传。 */
+  inpaintCreditLabel?: string
 }
 
 const labelStyle = { display: 'block', marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
 const tallPromptSize = { minRows: 10, maxRows: 16 }
 const repaintPromptSize = { minRows: 4, maxRows: 8 }
-/** 服务端 server/bailian-repaint.ts 固定使用 wanx2.1-imageedit；这里只展示用户可读名称。 */
-const REPAINT_MODEL_LABEL = '通义万相 2.1 图像编辑'
+/** 消除与重绘都由服务端固定使用 wanx2.1-imageedit；这里只展示用户可读名称。 */
+const INPAINT_MODEL_LABEL = '通义万相 2.1 图像编辑'
 
 /** 智能编辑的起步模板，避免用户面对空框自己发明 prompt。 */
 const SMART_EDIT_PROMPT_TEMPLATES = [
@@ -107,10 +107,11 @@ export default function ParamPanel({
   onRelightChange,
   promptMinHeight,
   hasMaskPaint = false,
-  repaintCreditLabel,
+  inpaintCreditLabel,
 }: Props) {
   const repaintPromptId = useId()
   const repaintHintId = useId()
+  const erasePromptId = useId()
   // null 表示跟随内容：有备注时默认展开，用户手动收起后保持收起。
   const [relightNoteOpen, setRelightNoteOpen] = useState<boolean | null>(null)
   const intro = title ? (
@@ -378,11 +379,11 @@ export default function ParamPanel({
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {intro}
         <div
-          className={`workstation-repaint-mask-status${hasMaskPaint ? ' is-ready' : ''}`}
+          className={`workstation-inpaint-mask-status${hasMaskPaint ? ' is-ready' : ''}`}
           role="status"
           aria-live="polite"
         >
-          <span className="workstation-repaint-mask-dot" aria-hidden="true" />
+          <span className="workstation-inpaint-mask-dot" aria-hidden="true" />
           <span>{hasMaskPaint ? '蒙版已就绪，只会重绘涂抹区域' : '尚未涂抹，在左侧图片上涂抹要重绘的区域'}</span>
         </div>
         <div>
@@ -401,16 +402,16 @@ export default function ParamPanel({
             maxLength={MAX_ERASE_PROMPT_LENGTH}
             showCount
           />
-          <p id={repaintHintId} className={`workstation-repaint-hint${promptMissing ? ' is-warning' : ''}`}>
+          <p id={repaintHintId} className={`workstation-inpaint-hint${promptMissing ? ' is-warning' : ''}`}>
             {repaintHint}
           </p>
         </div>
         <div>
           <div style={labelStyle}>输出</div>
-          <dl className="workstation-repaint-contract">
+          <dl className="workstation-inpaint-contract">
             <div>
               <dt>模型</dt>
-              <dd>{REPAINT_MODEL_LABEL}</dd>
+              <dd>{INPAINT_MODEL_LABEL}</dd>
             </div>
             <div>
               <dt>尺寸</dt>
@@ -420,14 +421,14 @@ export default function ParamPanel({
               <dt>数量</dt>
               <dd>每次 1 张</dd>
             </div>
-            {repaintCreditLabel ? (
+            {inpaintCreditLabel ? (
               <div>
                 <dt>积分</dt>
-                <dd>{repaintCreditLabel}</dd>
+                <dd>{inpaintCreditLabel}</dd>
               </div>
             ) : null}
           </dl>
-          <p className="workstation-repaint-contract-note">
+          <p className="workstation-inpaint-contract-note">
             重绘使用固定模型，暂不支持切换模型、调整分辨率或张数。
           </p>
         </div>
@@ -439,21 +440,58 @@ export default function ParamPanel({
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       {intro}
       {mode === 'remove' ? (
-        <div>
-          <p className="toolbox-hint" style={{ margin: '0 0 8px', fontSize: 12 }}>上传图片后，涂抹需要消除的区域（智能选区不消耗积分）。</p>
-          <div style={labelStyle}>背景描述（可选）</div>
-          <Input.TextArea
-            value={erasePrompt}
-            disabled={disabled}
-            onChange={(event) => onErasePromptChange(event.target.value)}
-            placeholder="消除小物体可留空；大面积消除建议描述期望补充的背景（请勿输入「删除某某」）"
-            autoSize={tallPromptSize}
-            styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
-            style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
-            maxLength={MAX_ERASE_PROMPT_LENGTH}
-            showCount
-          />
-        </div>
+        <>
+          <div
+            className={`workstation-inpaint-mask-status${hasMaskPaint ? ' is-ready' : ''}`}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="workstation-inpaint-mask-dot" aria-hidden="true" />
+            <span>{hasMaskPaint ? '蒙版已就绪，只会修改涂抹区域' : '尚未涂抹，在左侧图片上涂抹要消除的区域'}</span>
+          </div>
+          <div>
+            <p className="toolbox-hint" style={{ margin: '0 0 8px', fontSize: 12 }}>智能选区不消耗积分；也可以直接用画笔涂抹。</p>
+            <label htmlFor={erasePromptId} style={labelStyle}>背景描述（可选）</label>
+            <Input.TextArea
+              id={erasePromptId}
+              value={erasePrompt}
+              disabled={disabled}
+              onChange={(event) => onErasePromptChange(event.target.value)}
+              placeholder="消除小物体可留空；大面积消除建议描述期望补充的背景（请勿输入「删除某某」）"
+              autoSize={tallPromptSize}
+              styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
+              style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
+              maxLength={MAX_ERASE_PROMPT_LENGTH}
+              showCount
+            />
+          </div>
+          <div>
+            <div style={labelStyle}>输出</div>
+            <dl className="workstation-inpaint-contract">
+              <div>
+                <dt>模型</dt>
+                <dd>{INPAINT_MODEL_LABEL}</dd>
+              </div>
+              <div>
+                <dt>尺寸</dt>
+                <dd>与原图同尺寸</dd>
+              </div>
+              <div>
+                <dt>数量</dt>
+                <dd>每次 1 张</dd>
+              </div>
+              {inpaintCreditLabel ? (
+                <div>
+                  <dt>积分</dt>
+                  <dd>{inpaintCreditLabel}</dd>
+                </div>
+              ) : null}
+            </dl>
+            <p className="workstation-inpaint-contract-note">
+              消除使用固定模型，暂不支持切换模型、调整分辨率或张数。
+            </p>
+          </div>
+        </>
       ) : null}
       {capability === Capability.Outpaint ? (
         <>

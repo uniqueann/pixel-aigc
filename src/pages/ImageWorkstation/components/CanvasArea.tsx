@@ -17,6 +17,8 @@ export type CanvasHandle = MaskPaintCanvasHandle | OutpaintCanvasHandle
 interface Props {
   interactionMode: InteractionMode
   imageUrl?: string
+  /** 涂抹类工具：已有结果时用于「原图/效果」对比。 */
+  resultImageUrl?: string
   imageObjectKey?: string
   referenceImageUrl?: string
   originalImageUrl?: string
@@ -109,6 +111,7 @@ function FusionSlot({
 export default function CanvasArea({
   interactionMode,
   imageUrl,
+  resultImageUrl,
   imageObjectKey,
   referenceImageUrl,
   originalImageUrl,
@@ -244,6 +247,7 @@ export default function CanvasArea({
   }
 
   if (interactionMode === 'mask-paint') {
+    const comparingResult = compareAvailable && compareMode === 'effect' && Boolean(resultImageUrl)
     return (
       <div className={`${canvasShellClass} is-mask-paint`}>
         <div className="workstation-canvas-controls">
@@ -255,7 +259,7 @@ export default function CanvasArea({
               smartSelectReady={smartSelectReady}
               smartSelectError={Boolean(capabilityError)}
               refineMode={refineMode}
-              disabled={paintDisabled}
+              disabled={paintDisabled || comparingResult}
               canUndo={historyState.canUndo}
               canRedo={historyState.canRedo}
               onBrushSizeChange={setBrushSize}
@@ -271,12 +275,25 @@ export default function CanvasArea({
               onClear={() => maskHandleRef.current?.clear()}
             />
           </div>
-          {!refineMode && <div className="workstation-canvas-replace">{replaceButton}</div>}
+          <div className="workstation-canvas-actions">
+            {compareAvailable ? (
+              <Segmented
+                size="small"
+                aria-label="对比原图与效果"
+                value={compareMode}
+                options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
+                onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
+              />
+            ) : null}
+            {!refineMode && <div className="workstation-canvas-replace">{replaceButton}</div>}
+          </div>
         </div>
         <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载蒙版画布…</div>}>
           <MaskPaintCanvas
             ref={setMaskHandle}
             imageUrl={imageUrl}
+            previewImageUrl={resultImageUrl}
+            comparing={comparingResult}
             imageObjectKey={imageObjectKey}
             imageNaturalSize={imageNaturalSize}
             brushSize={brushSize}
@@ -290,7 +307,9 @@ export default function CanvasArea({
             onBrushSizeChange={setBrushSize}
           />
         </Suspense>
-        {smartSelectEnabled ? (
+        {comparingResult ? (
+          <div className="workstation-canvas-footnote">正在查看生成效果；切回「原图」可继续涂抹。</div>
+        ) : smartSelectEnabled ? (
           <div className="workstation-canvas-footnote">点击主体自动选取轮廓；文字、水印或细节建议使用画笔涂抹。</div>
         ) : null}
       </div>

@@ -36,7 +36,7 @@ import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
-import RepaintGuide from './components/RepaintGuide'
+import InpaintGuide from './components/InpaintGuide'
 import { outputPreview } from './utils/outputPreview'
 import RelightDirectionOverlay from './components/RelightDirectionOverlay'
 import RelightExample from './components/RelightExample'
@@ -116,7 +116,7 @@ export default function ImageWorkstation() {
   const [repaintPrompt, setRepaintPrompt] = useState('')
   const [outpaintTargetSize, setOutpaintTargetSize] = useState<{ width: number; height: number }>()
   const [edgeRefine, setEdgeRefine] = useState<EdgeRefineHandoff | null>(null)
-  const { capabilities: { repaint: repaintReady, imageEdit: imageEditReady, variation: variationReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
+  const { capabilities: { erase: eraseReady, repaint: repaintReady, imageEdit: imageEditReady, variation: variationReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
   const [hasMaskPaint, setHasMaskPaint] = useState(false)
   const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
   const edgeRefineFinishedRef = useRef(false)
@@ -138,7 +138,7 @@ export default function ImageWorkstation() {
   const capabilityReady = useCallback((capability: Capability) => capabilityState(capability) === true, [capabilityState])
   const toolReady = isWorkstationToolReady(activeTool, capabilityReady)
   const toolState = toolReady ? true : isWorkstationToolReady(activeTool, capability => capabilityState(capability) !== false) ? undefined : false
-  const configurationReady = activeTool.slug === 'repaint' ? repaintReady : toolState
+  const configurationReady = activeTool.slug === 'repaint' ? repaintReady : activeTool.slug === 'remove' ? eraseReady : toolState
   const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode) && toolState !== false
   const variationTool = activeTool.capability === Capability.Variation
   const retouchTool = activeTool.slug === 'retouch'
@@ -178,7 +178,7 @@ export default function ImageWorkstation() {
     productAsset: fusionProduct,
     referenceAsset: fusionReference,
     useProductAsset: fusionTool,
-    keepInputOnSuccess: activeTool.slug === 'repaint',
+    keepInputOnSuccess: activeTool.slug === 'repaint' || activeTool.slug === 'remove',
   })
   // 任务成功不等于结果可用：等结果读取结束后，由页面给出唯一结论。
   const notifiedResultRef = useRef<string>()
@@ -243,8 +243,9 @@ export default function ImageWorkstation() {
   const replaceSourceAsset = controller.replaceSourceAsset
   const previewPanelRef = useRef<HTMLElement>(null)
   const settingsPanelRef = useRef<HTMLElement>(null)
-  // 重绘在移动端也用紧凑吸顶态：滚到设置区时隐藏步骤条并压低画布，避免遮住表单。
-  const previewStuck = useStuckPreview(previewPanelRef, (relightTool || activeTool.slug === 'repaint') && previewHasImage)
+  // 涂抹类工具（消除/重绘）在移动端用紧凑吸顶态：滚到设置区时隐藏步骤条并压低画布，避免遮住表单。
+  const inpaintTool = activeTool.slug === 'repaint' || activeTool.slug === 'remove'
+  const previewStuck = useStuckPreview(previewPanelRef, (relightTool || inpaintTool) && previewHasImage)
   const promptMinHeight = useWorkstationPromptHeight({
     previewPanelRef,
     settingsPanelRef,
@@ -252,7 +253,7 @@ export default function ImageWorkstation() {
     enabled: activeTool.slug !== 'repaint',
   })
 
-  const inpaintMode = activeTool.slug === 'repaint' ? 'repaint' : activeTool.slug === 'remove' ? 'remove' : undefined
+  const inpaintMode = inpaintTool ? (activeTool.slug === 'repaint' ? 'repaint' : 'remove') : undefined
   const selectedPreset = PLATFORM_SIZE_PRESETS.find((preset) => preset.platform === presetPlatform)
   const presetTargetSize = useMemo(() => outpaintMode === 'preset' && selectedPreset
     ? { width: selectedPreset.width, height: selectedPreset.height }
@@ -308,6 +309,7 @@ export default function ImageWorkstation() {
     maskRequired,
     hasMaskPaint,
     repaintBlocked: activeTool.slug === 'repaint' && repaintReady === false,
+    removeBlocked: activeTool.slug === 'remove' && eraseReady === false,
     retouchBlocked: retouchTool && normalizeRetouchDirections(retouchDirections).length === 0,
     fusionBlocked: fusionTool && (!fusionProduct || !fusionReference),
     promptRequired: activeTool.capability === Capability.ImageEdit || activeTool.slug === 'repaint',
@@ -466,8 +468,9 @@ export default function ImageWorkstation() {
     // 新一轮生成重新判断读取结果，不沿用上一轮的「仍无法读取」结论。
     setRetryReadFailedAgain(false)
     try {
-      await controller.generate(canvasHandleRef.current)
-      message.success('任务已提交')
+      const submitted = await controller.generate(canvasHandleRef.current)
+      // 同步工具在 await 返回时已经完成，完成态由页面统一提示，避免「已提交」与「已完成」双 toast。
+      if (submitted?.status !== 'succeeded') message.success('任务已提交')
     } catch (error) {
       if (isPreparationCancelled(error)) return
       const description = error instanceof Error ? error.message : '请检查 API 服务是否已启动'
@@ -573,16 +576,18 @@ export default function ImageWorkstation() {
         : controller.outputAssets.length > 0
           ? `已生成 ${controller.outputAssets.length} 张 · ${inputDescription}`
           : inputDescription
-  const repaintCreditLabel = activeTool.slug === 'repaint' && generateQuote.status !== 'loading' && generateQuote.status !== 'unavailable'
+  const inpaintCreditLabel = inpaintMode && generateQuote.status !== 'loading' && generateQuote.status !== 'unavailable'
     ? creditQuoteLabel(generateQuote)
     : undefined
   // 禁用原因不能只藏在 hover tooltip 里；与页脚已有信息重复时不重复展示。
   const visibleBlockReason = blockReason && blockReason !== footerInfo && !creditBlocked && configurationReady !== undefined && toolReady
     ? blockReason
     : undefined
-  const repaintHasPreservedInput = activeTool.slug === 'repaint'
+  const inpaintHasPreservedInput = Boolean(inpaintMode)
     && controller.outputAssets.length > 0
     && !controller.outputAssets.some(asset => asset.id === controller.inputAsset?.id)
+  // 涂抹类工具完成后，「下载结果」是主操作；「再生成一版」降为次操作。
+  const downloadIsPrimary = Boolean(inpaintMode) && controller.outputAssets.length > 0 && Boolean(selectedResult)
   const recoveryRuntime = useRef({})
   useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) }, [])
   useEffect(() => useUserStore.subscribe((state, previous) => {
@@ -662,13 +667,23 @@ export default function ImageWorkstation() {
       />
       <div className="image-workstation-main">
         <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
-          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${activeTool.slug === 'repaint' ? ' is-repaint' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
+          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${inpaintTool ? ' is-inpaint' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
             <div className="workstation-panel-heading-row">
               <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
               <span className={`workstation-preview-meta${controller.resultReadError && !controller.readingResults ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
             </div>
-            {activeTool.slug === 'repaint' && controller.inputAsset && !edgeRefine ? (
-              <RepaintGuide step={!hasMaskPaint ? 1 : !repaintPrompt.trim() ? 2 : 3} />
+            {inpaintMode && controller.inputAsset && !edgeRefine ? (
+              <InpaintGuide
+                mode={inpaintMode}
+                step={!hasMaskPaint ? 1 : inpaintMode === 'repaint' && !repaintPrompt.trim() ? 2 : 3}
+              />
+            ) : null}
+            {inpaintMode && !edgeRefine ? (
+              <div className="workstation-preview-compact-row">
+                <p className="workstation-preview-compact-summary">
+                  {hasMaskPaint ? '蒙版已就绪，可继续涂抹或生成' : '尚未涂抹，回到画布继续涂抹'}
+                </p>
+              </div>
             ) : null}
             {relightTool ? (
               <div className="workstation-preview-compact-row">
@@ -710,6 +725,7 @@ export default function ImageWorkstation() {
               } : undefined}
               overlayHint={relightTool && previewHasImage && relightOverlayEnabled ? '拖动光源可微调' : undefined}
               imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
+              resultImageUrl={controller.outputAssets.length > 0 ? selectedResult?.url : undefined}
               imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
               referenceImageUrl={fusionTool ? fusionReference?.url : undefined}
               originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}
@@ -743,10 +759,11 @@ export default function ImageWorkstation() {
             <ImageAssetStrip
               assets={controller.outputAssets}
               selectedAssetId={controller.inputAsset?.id}
+              variant={inpaintMode ? 'inpaint-result' : 'next-input'}
               downloadingAssetId={downloadingAssetId}
               onSelect={(assetId) => {
                 void (async () => {
-                  if (activeTool.slug === 'repaint' && hasMaskPaint
+                  if (inpaintMode && hasMaskPaint
                     && !await confirmRecovery('切换到该结果将清空当前蒙版，是否继续？')) return
                   controller.selectOutput(assetId)
                   setCompareMode('effect')
@@ -770,7 +787,9 @@ export default function ImageWorkstation() {
             error={capabilityError}
             unavailableMessage={activeTool.slug === 'repaint'
               ? '重绘服务暂不可用，请稍后重试或联系客服。'
-              : `${COMING_SOON_SUBMIT_MESSAGE}。`}
+              : activeTool.slug === 'remove'
+                ? '消除服务暂不可用，请稍后重试或联系客服。'
+                : `${COMING_SOON_SUBMIT_MESSAGE}。`}
             onRetry={() => void refetchCapabilities()}
           />
           {toolState !== false ? (
@@ -809,7 +828,7 @@ export default function ImageWorkstation() {
               onPresetPlatformChange={presetPlatform => updateParameters({ presetPlatform })}
               promptMinHeight={promptMinHeight}
               hasMaskPaint={hasMaskPaint}
-              repaintCreditLabel={repaintCreditLabel}
+              inpaintCreditLabel={inpaintCreditLabel}
             />
           ) : null}
           {fusionTool ? <FusionInputStatus state={controller.inputPreparation} retryQuote={inputRetryQuote} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}
@@ -865,6 +884,7 @@ export default function ImageWorkstation() {
               <>
                 {selectedResult ? (
                   <Button
+                    type={downloadIsPrimary ? 'primary' : 'default'}
                     icon={<DownloadOutlined />}
                     disabled={controller.formLocked}
                     loading={downloadingAssetId === selectedResult.id}
@@ -886,14 +906,14 @@ export default function ImageWorkstation() {
                 <Tooltip title={showRetryRead ? '重新生成会再次计费，建议先重试读取' : blockReason}>
                   <span>
                     <CreditActionButton data-task-generate
-                      type={showRetryRead ? 'default' : 'primary'}
+                      type={showRetryRead || downloadIsPrimary ? 'default' : 'primary'}
                       loading={controller.submitting}
                       quote={generateQuote}
                       aria-describedby={visibleBlockReason ? 'workstation-block-reason' : undefined}
                       disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                       onClick={handleGenerate}
                     >
-                      {repaintHasPreservedInput
+                      {inpaintHasPreservedInput
                         ? '再生成一版'
                         : COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}
                     </CreditActionButton>
@@ -904,7 +924,7 @@ export default function ImageWorkstation() {
           </div>
         </div>
       </div>
-      <PreviewGallery {...galleryProps} onDownload={item => {
+      <PreviewGallery {...galleryProps} downloadLabel="下载图片" downloadTooltip="下载图片" onDownload={item => {
         const index = controller.outputAssets.findIndex(asset => asset.id === item.id)
         if (index >= 0) return handleDownload(controller.outputAssets[index], index)
       }} />

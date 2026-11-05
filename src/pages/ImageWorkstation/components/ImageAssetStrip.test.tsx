@@ -56,4 +56,34 @@ describe('智能编辑候选结果条', () => {
     expect(onDownload).toHaveBeenCalledWith(assets[0], 0)
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
+
+  it('涂抹类工具把结果条写成本次结果，选中项表示当前原图', () => {
+    render(
+      <ImageAssetStrip
+        assets={assets}
+        selectedAssetId="asset-1"
+        variant="inpaint-result"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+      />,
+    )
+    expect(screen.getByText('本次结果')).toBeTruthy()
+    expect(screen.getByText('第 1 张已作为当前原图，可继续编辑')).toBeTruthy()
+    expect(screen.getByText('当前原图')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '选择结果 1，当前作为原图' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: '放大结果 2' })).toBeTruthy()
+  })
+
+  it('涂抹类工具未选中结果时提示可继续编辑或直接下载', () => {
+    render(
+      <ImageAssetStrip
+        assets={assets}
+        variant="inpaint-result"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+      />,
+    )
+    expect(screen.getByText('点击缩略图可基于该结果继续编辑，或直接下载')).toBeTruthy()
+    expect(screen.queryByText('下一轮输入')).toBeNull()
+  })
 })

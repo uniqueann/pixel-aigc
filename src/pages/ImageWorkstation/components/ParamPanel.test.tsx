@@ -307,8 +307,16 @@ describe('智能编辑参数面板', () => {
     const erase = screen.getByPlaceholderText(/大面积消除建议描述期望补充的背景/)
     expect(erase).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
     expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
-    expect(screen.getByText('上传图片后，涂抹需要消除的区域（智能选区不消耗积分）。')).toBeTruthy()
-    expect(screen.queryByText('通义万相 2.1 图像编辑')).toBeNull()
+    expect(screen.getByLabelText('背景描述（可选）')).toBe(erase)
+    expect(screen.getByText('智能选区不消耗积分；也可以直接用画笔涂抹。')).toBeTruthy()
+    expect(screen.getByText('尚未涂抹，在左侧图片上涂抹要消除的区域')).toBeTruthy()
+    expect(screen.getByText('通义万相 2.1 图像编辑')).toBeTruthy()
+    expect(screen.getByText('与原图同尺寸')).toBeTruthy()
+    expect(screen.getByText('每次 1 张')).toBeTruthy()
+    expect(screen.getByText(/消除使用固定模型/)).toBeTruthy()
+
+    rerender(<ParamPanel capability={Capability.Inpaint} mode="remove" {...shared} hasMaskPaint />)
+    expect(screen.getByText('蒙版已就绪，只会修改涂抹区域')).toBeTruthy()
 
     rerender(<ParamPanel capability={Capability.Inpaint} mode="repaint" {...shared} />)
     const repaint = screen.getByPlaceholderText(/透明玻璃花瓶/)
@@ -323,7 +331,7 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByText('描述会应用到涂抹区域，未涂抹的部分保持不变。')).toBeTruthy()
     expect(screen.queryByText('积分')).toBeNull()
 
-    rerender(<ParamPanel capability={Capability.Inpaint} mode="repaint" {...shared} hasMaskPaint repaintCreditLabel="5 积分" />)
+    rerender(<ParamPanel capability={Capability.Inpaint} mode="repaint" {...shared} hasMaskPaint inpaintCreditLabel="5 积分" />)
     expect(screen.getByText('蒙版已就绪，只会重绘涂抹区域')).toBeTruthy()
     expect(screen.getByText('请填写重绘描述后再生成。')).toBeTruthy()
     expect(screen.getByText('积分')).toBeTruthy()

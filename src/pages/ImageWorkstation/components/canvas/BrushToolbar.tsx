@@ -110,17 +110,21 @@ export default function BrushToolbar({
           />
         </span>
       </Tooltip>
-      <span style={{ display: 'inline-block', width: 84, padding: '0 8px' }}>
-        <Slider
-          ariaLabelForHandle="笔刷大小"
-          ariaValueTextFormatterForHandle={(value) => `${value} 像素`}
-          min={4}
-          max={80}
-          value={brushSize}
-          disabled={disabled}
-          onChange={onBrushSizeChange}
-          tooltip={{ formatter: (value) => `${value}px` }}
-        />
+      {/* 触控下 Slider 的 tooltip 只在拖动时出现，常驻数值让当前笔刷大小始终可见。 */}
+      <span className="workstation-brush-size">
+        <span className="workstation-brush-size-slider">
+          <Slider
+            ariaLabelForHandle="笔刷大小"
+            ariaValueTextFormatterForHandle={(value) => `${value} 像素`}
+            min={4}
+            max={80}
+            value={brushSize}
+            disabled={disabled}
+            onChange={onBrushSizeChange}
+            tooltip={{ formatter: (value) => `${value}px` }}
+          />
+        </span>
+        <span className="workstation-brush-size-value" aria-hidden="true">{brushSize}px</span>
       </span>
       <Tooltip title="撤销">
         <Button size="small" aria-label="撤销" type="text" icon={<UndoOutlined />} disabled={disabled || !canUndo} onClick={onUndo} />

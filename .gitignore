@@ -11,3 +11,4 @@ vite.config.d.ts
 
 supabase/.temp/
 .vercel
+.impeccable/

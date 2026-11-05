@@ -22,6 +22,10 @@ const MAX_BRUSH_SIZE = 80
 
 interface MaskPaintCanvasProps {
   imageUrl: string
+  /** 查看效果时替换底图；画布保持挂载，避免丢失蒙版。 */
+  previewImageUrl?: string
+  /** 正在查看效果：隐藏蒙版层并锁定涂抹。 */
+  comparing?: boolean
   imageObjectKey?: string
   imageNaturalSize?: { width: number; height: number }
   brushSize: number
@@ -60,7 +64,7 @@ function flushOverlayHasPaint(canvas: Canvas | null, fallback: HTMLCanvasElement
 }
 
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, disabled = false, onHistoryChange, onMaskChange, onToolChange, onBrushSizeChange },
+  { imageUrl, previewImageUrl, comparing = false, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, disabled = false, onHistoryChange, onMaskChange, onToolChange, onBrushSizeChange },
   ref,
 ) {
   const { hostRef, display } = useCanvasDisplay()
@@ -76,6 +80,8 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   const smartSelectRef = useRef(smartSelectEnabled)
   const disabledRef = useRef(disabled)
   disabledRef.current = disabled
+  const comparingRef = useRef(comparing)
+  comparingRef.current = comparing
   const restoringRef = useRef(false)
   const selectingRef = useRef(false)
   const naturalRef = useRef(imageNaturalSize)
@@ -147,7 +153,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   const updatePointerCursor = useCallback((scene: { x: number; y: number } | null) => {
     const element = brushCursorRef.current
     if (!element) return
-    if (!scene || disabledRef.current || cursorRef.current) {
+    if (!scene || disabledRef.current || comparingRef.current || cursorRef.current) {
       element.style.display = 'none'
       return
     }
@@ -244,10 +250,10 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   }, [])
 
   useEffect(() => {
-    if (!disabled) return
+    if (!disabled && !comparing) return
     deactivateKeyboardCursor()
     hidePointerCursor()
-  }, [deactivateKeyboardCursor, disabled, hidePointerCursor])
+  }, [comparing, deactivateKeyboardCursor, disabled, hidePointerCursor])
 
   const restoreSnapshot = useCallback(
     async (nextIndex: number) => {
@@ -294,7 +300,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       hostRef.current?.blur()
       return
     }
-    if (disabledRef.current) return
+    if (disabledRef.current || comparingRef.current) return
     if (event.key === 'b' || event.key === 'B') {
       event.preventDefault()
       onToolChange?.('brush')
@@ -357,7 +363,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   }, [pushSnapshot])
 
   const handleKeyboardFocus = useCallback(() => {
-    if (!disabledRef.current && hostRef.current?.matches(':focus-visible')) activateKeyboardCursor()
+    if (!disabledRef.current && !comparingRef.current && hostRef.current?.matches(':focus-visible')) activateKeyboardCursor()
   }, [activateKeyboardCursor, hostRef])
 
   const handleKeyboardBlur = useCallback(() => {
@@ -482,10 +488,16 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       ? (tool === 'brush' ? 'rgba(255, 0, 0, 0.9)' : 'rgba(0, 80, 255, 0.9)')
       : (tool === 'brush' ? MASK_PAINT_CSS : 'rgba(0, 0, 0, 1)')
     canvas.freeDrawingBrush = brush
-    canvas.isDrawingMode = !disabled && !smartSelectEnabled
+    canvas.isDrawingMode = !disabled && !smartSelectEnabled && !comparing
     canvas.contextTop.globalCompositeOperation = !refineMode && tool === 'eraser' ? 'destination-out' : 'source-over'
-    if (disabled) hidePointerCursor()
-  }, [brushSize, disabled, hidePointerCursor, refineMode, smartSelectEnabled, tool])
+    // Fabric 的实时笔迹画在 upperCanvas 上；对比效果时两层一起隐藏并阻断指针。
+    const upper = (canvas as Canvas & { upperCanvasEl?: HTMLCanvasElement }).upperCanvasEl
+    if (upper) {
+      upper.style.opacity = comparing ? '0' : ''
+      upper.style.pointerEvents = comparing ? 'none' : ''
+    }
+    if (disabled || comparing) hidePointerCursor()
+  }, [brushSize, comparing, disabled, hidePointerCursor, refineMode, smartSelectEnabled, tool])
 
   useEffect(() => {
     const canvas = fabricCanvasRef.current
@@ -524,11 +536,17 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
       selection: false,
-      isDrawingMode: true,
+      isDrawingMode: !disabledRef.current && !smartSelectRef.current && !comparingRef.current,
       enableRetinaScaling: false,
     })
     fabricCanvasRef.current = canvas
     applyPaintClip(canvas)
+
+    const upper = (canvas as Canvas & { upperCanvasEl?: HTMLCanvasElement }).upperCanvasEl
+    if (upper) {
+      upper.style.opacity = comparingRef.current ? '0' : ''
+      upper.style.pointerEvents = comparingRef.current ? 'none' : ''
+    }
 
     const brush = new PencilBrush(canvas)
     brush.width = brushSizeRef.current
@@ -555,7 +573,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     })
 
     canvas.on('mouse:down', async ({ e }) => {
-      if (disabledRef.current || !smartSelectRef.current || selectingRef.current || refineModeRef.current) return
+      if (disabledRef.current || comparingRef.current || !smartSelectRef.current || selectingRef.current || refineModeRef.current) return
       const natural = naturalRef.current
       if (!natural?.width || !natural.height) {
         message.warning('无法读取原图尺寸')
@@ -646,12 +664,21 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
           }}
         >
           <img
-            src={imageUrl}
-            alt="待处理原图"
+            src={comparing && previewImageUrl ? previewImageUrl : imageUrl}
+            alt={comparing ? '当前生成效果' : '待处理原图'}
             draggable={false}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
           />
-          <canvas ref={canvasElementRef} style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
+          <canvas
+            ref={canvasElementRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              touchAction: 'none',
+              opacity: comparing ? 0 : 1,
+              pointerEvents: comparing ? 'none' : undefined,
+            }}
+          />
           <div ref={brushCursorRef} className="workstation-paint-brush-cursor" aria-hidden="true" />
           {keyboardCursor ? (
             <div
@@ -673,6 +700,8 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         ) : null}
         {disabled ? (
           <div className="workstation-paint-disabled-hint" role="status">正在生成，暂不可涂抹</div>
+        ) : comparing ? (
+          <div className="workstation-paint-disabled-hint" role="status">正在查看生成效果，切回「原图」可继续涂抹</div>
         ) : null}
       </div>
     </div>

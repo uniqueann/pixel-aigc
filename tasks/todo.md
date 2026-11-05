@@ -833,3 +833,97 @@
 - 重绘接入移动端 `useStuckPreview`：吸顶时隐藏步骤条、shell 180px，设置区可见。
 - 开发环境走 mock 任务网关，生成结果读取失败，无法在浏览器验证成功态；成功保留输入由 controller 单测覆盖，主按钮文案由 index 单测覆盖。
 - 面板文案去重：未涂抹时只保留步骤条、蒙版状态与页脚原因，描述框下方改为解释描述作用。
+
+# 图片工作站「消除」流程脚手架（impeccable onboard）
+
+目标：让「消除」复用「重绘」的步骤引导、蒙版状态与固定输出契约，并把服务就绪状态接入生成门禁。
+
+## 计划
+
+- [x] 抽出共享 `InpaintGuide`（remove / repaint 两种文案），删除 `RepaintGuide`
+- [x] 消除有图后展示步骤条与蒙版状态
+- [x] ParamPanel 消除分支补蒙版状态、固定契约（模型/尺寸/数量/积分）与可访问标签
+- [x] `configurationReady` 接入 `erase` 能力标志；不可用时展示 banner 并禁用生成
+- [x] 样式类从 `workstation-repaint-*` 统一为 `workstation-inpaint-*`
+- [x] 更新 ParamPanel / index 测试，新增消除不可用与引导断言
+
+## 验收
+
+- [x] `npx vitest run` 全量 334 文件 / 2148 用例通过
+- [x] `npx tsc --noEmit -p tsconfig.json` 通过
+- [x] `npm run lint` 通过
+- [x] `npm run build` 通过（仅既有 chunk 体积警告）
+- [x] `impeccable detect --json` 0 发现（regex-only）
+- [ ] 浏览器走查（本会话无浏览器自动化，未执行）
+
+## 复查记录
+
+- 消除步骤：涂抹区域 → 补充说明（可选）→ 生成；有蒙版即进入第 3 步，因为描述可留空。
+- 消除与重绘共用 `workstation-inpaint-*` 样式；旧类名已无残留。
+- 契约文案来自服务端事实：`wanx2.1-imageedit`、原图同尺寸、每次 1 张、5 积分。
+- 消除服务不可用时，CapabilityStatus 与页脚禁用原因都会给出同一句提示（两处重复，后续可去重）。
+- 描述框的自动拉伸与 3–4 行改造属于下一轮（描述字段/无障碍）范围，本轮未动。
+
+# 图片工作站「消除」成功态与可迭代（impeccable harden）
+
+目标：让消除完成后保留原图与蒙版、能直接对比与再生成，并把「下载结果」提升为完成后的主操作。
+
+## 计划
+
+- [x] 消除与重绘一样开启 `keepInputOnSuccess`，成功后原图与蒙版保留
+- [x] 蒙版画布支持「原图/效果」对比：结果图替换底图、蒙版层隐藏并锁定涂抹
+- [x] 结果条新增 `inpaint-result` 变体：本次结果 / 当前原图 / 基于结果继续编辑
+- [x] 成功后「下载结果」升为主按钮，「再生成一版」降为次按钮
+- [x] 同步工具完成时不再弹「任务已提交」，避免与「任务已完成」双 toast
+- [x] 画廊下载文案从「下载原图」改为「下载图片」
+- [x] 选择结果作为新原图前，若有蒙版先确认
+
+## 验收
+
+- [x] `npx vitest run` 全量 334 文件 / 2151 用例通过
+- [x] `npx tsc --noEmit -p tsconfig.json` 通过
+- [x] `npm run lint` 通过
+- [x] `npm run build` 通过（仅既有 chunk 体积警告）
+- [x] `impeccable detect --json` 0 发现（regex-only）
+- [ ] 浏览器走查（本会话无浏览器自动化，未执行）
+
+## 复查记录
+
+- 成功后 `inputAsset` 保持原图，蒙版画布不重建；`compareMode` 默认 `effect`，画布直接展示结果图，切回「原图」恢复涂抹。
+- 对比层用 `opacity: 0` 隐藏画布而不是卸载，避免 Fabric 历史与笔迹丢失；`pointerEvents: none` + `isDrawingMode=false` 防止误涂。
+- Fabric 的实时笔迹在 `upperCanvasEl` 上，隐藏时必须同时处理 upper 层，否则实时笔迹仍会露出；智能选区点击也加了 comparing 守卫。
+- 结果条选中态现在表示「当前原图」，不再是「下一轮输入」。
+- 生成按钮文案由 `inpaintHasPreservedInput` 控制，消除与重绘一致。
+- 遗留：mask-paint 分支仍未渲染 processing/error 浮层；结果读取失败依赖页脚与任务状态区。移动端对比开关的占位需在下一轮走查。
+
+# 图片工作站「消除」移动端体验（impeccable adapt）
+
+目标：消除在 ≤560px 下与重绘一致地进入紧凑吸顶态，滚动锚点跟随真实卡片高度，涂抹工具条与结果条满足触控尺寸。
+
+## 计划
+
+- [x] 消除接入 `useStuckPreview`，吸顶后压缩为紧凑条（保留画布与状态摘要）
+- [x] 滚动锚点改为测量吸顶卡真实高度，写入 `--workstation-sticky-height`，替换按工具写死的 320/430
+- [x] 结果条操作按钮在移动端 ≥44px，缩略图同步放宽避免挤压
+- [x] 画笔大小在触控下常驻显示数值，不再只靠拖动中的 tooltip
+- [x] 更新 `useStuckPreview` 测试，覆盖高度变量写入与清理
+
+## 验收
+
+- [x] `npx vitest run` 全量 335 文件 / 2155 用例通过
+- [x] `npx tsc --noEmit -p tsconfig.json` 通过
+- [x] `npm run lint` 通过
+- [x] `npm run build` 通过（仅既有 chunk 体积警告）
+- [x] `impeccable detect --json` 0 发现（regex-only）
+- [x] 静态走查：导出消除页 DOM + 构建 CSS，用无头 Chromium 在 390px 下截图核对完整态与吸顶态
+- [ ] 真机走查（登录态不可得，未在真实页面点击验证）
+
+## 复查记录
+
+- 滚动锚点改为测量：`useStuckPreview` 把吸顶卡实测高度写入滚动容器的 `--workstation-sticky-height`，`ResizeObserver` 补测结果条等异步内容；桌面或卸载时清理变量。CSS 只保留一个 fallback 320px。
+- 实测数据（390px 宽）：消除完整态卡片约 465px，吸顶紧凑态约 212px。旧规则给消除的是 320px，键盘聚焦时会差 145px 被吸顶卡遮住，这是本轮修掉的根因。
+- 消除与重绘共用 `is-inpaint` 标记；`is-repaint` 已无残留。吸顶后由紧凑条接管状态说明（「蒙版已就绪…」/「尚未涂抹，回到画布继续涂抹」），边缘精修模式不显示该条。
+- 结果条移动端：缩略图卡片 92px、缩略图 72px、操作按钮 44×44，两个按钮并排不再挤压。
+- 画笔大小常驻数值：Slider 旁显示 `${brushSize}px`，触控端不必拖动才能读到值；`aria-hidden` 避免与滑块的「N 像素」重复播报。
+- 已知：涂抹工具条在移动端仍是单行横滑；有对比开关时（已有结果）工具条可视区域更窄，笔刷大小需要横向滑动才能看到，替换图片按钮占据固定宽度。若要进一步优化，可把「替换图片」在移动端收成图标按钮。
+- 截图方式：临时 vitest 用例导出页面 DOM，注入 `dist` 构建 CSS，用 `chrome-headless-shell` 截图；用例与临时文件已删除。

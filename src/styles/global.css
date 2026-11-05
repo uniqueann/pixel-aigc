@@ -2575,6 +2575,13 @@ body.sidebar-resizing * {
   z-index: 3;
 }
 
+.workstation-canvas-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
 .workstation-canvas-replace {
   z-index: 4;
 }
@@ -2917,8 +2924,8 @@ body.sidebar-resizing * {
   font-weight: 600;
 }
 
-/* 重绘固定管线契约：把模型、尺寸、张数摊开，避免用户以为是页面缺了控件。 */
-.workstation-repaint-contract {
+/* 涂抹类工具固定管线契约：把模型、尺寸、张数摊开，避免用户以为是页面缺了控件。 */
+.workstation-inpaint-contract {
   display: grid;
   gap: 6px;
   margin: 0;
@@ -2929,33 +2936,33 @@ body.sidebar-resizing * {
   font-size: 12px;
 }
 
-.workstation-repaint-contract > div {
+.workstation-inpaint-contract > div {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
 
-.workstation-repaint-contract dt {
+.workstation-inpaint-contract dt {
   color: var(--color-text-secondary-strong);
 }
 
-.workstation-repaint-contract dd {
+.workstation-inpaint-contract dd {
   margin: 0;
   color: var(--color-text-primary);
   font-weight: 500;
   text-align: right;
 }
 
-.workstation-repaint-contract-note {
+.workstation-inpaint-contract-note {
   margin: 6px 0 0;
   color: var(--color-text-secondary-strong);
   font-size: 12px;
   line-height: 1.5;
 }
 
-/* 重绘上传后的三步引导，让「涂抹 → 描述 → 生成」成为可见路径。 */
-.workstation-repaint-guide {
+/* 涂抹类工具上传后的三步引导，让「涂抹 → 补充 → 生成」成为可见路径。 */
+.workstation-inpaint-guide {
   display: flex;
   width: 100%;
   flex-wrap: wrap;
@@ -2965,7 +2972,7 @@ body.sidebar-resizing * {
   margin-bottom: 8px;
 }
 
-.workstation-repaint-steps {
+.workstation-inpaint-steps {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
@@ -2978,20 +2985,20 @@ body.sidebar-resizing * {
   font-size: 12px;
 }
 
-.workstation-repaint-step {
+.workstation-inpaint-step {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   white-space: nowrap;
 }
 
-.workstation-repaint-step + .workstation-repaint-step::before {
+.workstation-inpaint-step + .workstation-inpaint-step::before {
   content: "→";
   margin-right: 3px;
   color: var(--color-text-muted);
 }
 
-.workstation-repaint-step-index {
+.workstation-inpaint-step-index {
   display: inline-flex;
   width: 18px;
   height: 18px;
@@ -3003,30 +3010,30 @@ body.sidebar-resizing * {
   line-height: 1;
 }
 
-.workstation-repaint-step.is-current {
+.workstation-inpaint-step.is-current {
   color: var(--color-text-primary);
   font-weight: 600;
 }
 
-.workstation-repaint-step.is-current .workstation-repaint-step-index {
+.workstation-inpaint-step.is-current .workstation-inpaint-step-index {
   border-color: var(--color-accent);
   background: var(--color-accent);
   color: var(--color-on-accent);
 }
 
-.workstation-repaint-step.is-complete .workstation-repaint-step-index {
+.workstation-inpaint-step.is-complete .workstation-inpaint-step-index {
   border-color: var(--color-accent);
   color: var(--color-accent-text);
 }
 
-.workstation-repaint-guide-status {
+.workstation-inpaint-guide-status {
   margin: 0;
   color: var(--color-text-secondary-strong);
   font-size: 12px;
   line-height: 1.4;
 }
 
-.workstation-repaint-mask-status {
+.workstation-inpaint-mask-status {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -3039,12 +3046,12 @@ body.sidebar-resizing * {
   line-height: 1.5;
 }
 
-.workstation-repaint-mask-status.is-ready {
+.workstation-inpaint-mask-status.is-ready {
   border-color: var(--color-accent);
   color: var(--color-text-primary);
 }
 
-.workstation-repaint-mask-dot {
+.workstation-inpaint-mask-dot {
   width: 8px;
   height: 8px;
   margin-top: 5px;
@@ -3053,18 +3060,18 @@ body.sidebar-resizing * {
   background: var(--color-text-muted);
 }
 
-.workstation-repaint-mask-status.is-ready .workstation-repaint-mask-dot {
+.workstation-inpaint-mask-status.is-ready .workstation-inpaint-mask-dot {
   background: var(--color-accent);
 }
 
-.workstation-repaint-hint {
+.workstation-inpaint-hint {
   margin: 6px 0 0;
   color: var(--color-text-secondary-strong);
   font-size: 12px;
   line-height: 1.5;
 }
 
-.workstation-repaint-hint.is-warning {
+.workstation-inpaint-hint.is-warning {
   color: var(--color-warning-text);
 }
 
@@ -3327,6 +3334,30 @@ body.sidebar-resizing * {
 .workstation-canvas-toolbar .ant-slider .ant-slider-handle:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+}
+
+/* 笔刷大小：滑块 + 常驻数值；触控端不再依赖拖动中的 tooltip。 */
+.workstation-brush-size {
+  display: inline-flex;
+  width: 120px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.workstation-brush-size-slider {
+  display: inline-block;
+  min-width: 64px;
+  flex: 1 1 auto;
+}
+
+.workstation-brush-size-value {
+  flex: 0 0 auto;
+  min-width: 4ch;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .image-workstation-page .ant-input::placeholder,
@@ -5138,14 +5169,12 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
     height: 320px;
   }
   .image-workstation-preview-panel.has-image .workstation-canvas-footnote { display: none; }
+  /* 吸顶卡高度由脚本按实际渲染结果写入，工具与内容变化时锚点自动跟随。 */
   .app-main-content:has(.image-workstation-preview-panel.has-image) {
-    scroll-padding-top: 320px;
+    scroll-padding-top: var(--workstation-sticky-height, 320px);
   }
-  .app-main-content:has(.image-workstation-preview-panel.is-repaint.has-image) {
-    scroll-padding-top: 430px;
-  }
-  .app-main-content:has(.image-workstation-preview-panel.is-repaint.has-image) .image-workstation-settings {
-    scroll-margin-top: 430px;
+  .app-main-content:has(.image-workstation-preview-panel.has-image) .image-workstation-settings {
+    scroll-margin-top: var(--workstation-sticky-height, 320px);
   }
   /* 吸顶后压缩成紧凑条：只保留画面和方向摘要，避免盖住设置面板。 */
   .image-workstation-preview-panel.is-relight .workstation-canvas-shell {
@@ -5169,7 +5198,7 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   .image-workstation-preview-panel.is-stuck .workstation-canvas-shell.is-mask-paint {
     height: 180px;
   }
-  .image-workstation-preview-panel.is-stuck .workstation-repaint-guide { display: none; }
+  .image-workstation-preview-panel.is-stuck .workstation-inpaint-guide { display: none; }
   .image-workstation-preview-panel.is-stuck .workstation-preview-compact-row { display: flex; }
   .image-workstation-preview-panel.is-stuck .workstation-preview-compact-summary { display: block; }
   .app-main-content:has(.image-workstation-preview-panel.is-relight.has-image) {
@@ -5202,8 +5231,10 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
     flex-basis: 44px;
   }
   .workstation-overlay-hint { display: none; }
-  .workstation-result-item { width: 78px; flex-basis: 78px; }
-  .workstation-result-thumb { height: 68px; }
+  /* 缩略图操作按钮满足 44px 触控；卡片同步放宽，避免两个按钮互相挤压。 */
+  .workstation-result-item { width: 92px; flex-basis: 92px; }
+  .workstation-result-thumb { height: 72px; }
+  .workstation-result-actions .ant-btn { width: 44px; height: 44px; min-width: 44px; }
   .workstation-result-badge { font-size: 9px; }
   .workstation-prompt-templates .ant-btn { min-height: 40px; }
   .image-workstation-footer-actions .ant-btn { min-height: 44px; }
