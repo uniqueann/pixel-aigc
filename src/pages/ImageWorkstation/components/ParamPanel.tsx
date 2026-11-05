@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Button, Checkbox, Input, Segmented, Select, Space } from 'antd'
 import { DownOutlined } from '@ant-design/icons'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
@@ -56,8 +56,10 @@ interface Props {
   promptMinHeight?: number
 }
 
-const labelStyle = { marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
+const labelStyle = { display: 'block', marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
 const tallPromptSize = { minRows: 10, maxRows: 16 }
+/** 服务端 server/bailian-repaint.ts 固定使用 wanx2.1-imageedit；这里只展示用户可读名称。 */
+const REPAINT_MODEL_LABEL = '通义万相 2.1 图像编辑'
 
 /** 智能编辑的起步模板，避免用户面对空框自己发明 prompt。 */
 const SMART_EDIT_PROMPT_TEMPLATES = [
@@ -100,6 +102,7 @@ export default function ParamPanel({
   onRelightChange,
   promptMinHeight,
 }: Props) {
+  const repaintPromptId = useId()
   // null 表示跟随内容：有备注时默认展开，用户手动收起后保持收起。
   const [relightNoteOpen, setRelightNoteOpen] = useState<boolean | null>(null)
   const intro = title ? (
@@ -362,8 +365,12 @@ export default function ParamPanel({
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {intro}
         <div>
-          <div style={labelStyle}>重绘描述</div>
+          <label htmlFor={repaintPromptId} style={labelStyle}>
+            重绘描述<span aria-hidden="true"> *</span>
+          </label>
           <Input.TextArea
+            id={repaintPromptId}
+            aria-required="true"
             value={repaintPrompt}
             disabled={disabled}
             onChange={(event) => onRepaintPromptChange(event.target.value)}
@@ -374,6 +381,26 @@ export default function ParamPanel({
             maxLength={MAX_ERASE_PROMPT_LENGTH}
             showCount
           />
+        </div>
+        <div>
+          <div style={labelStyle}>输出</div>
+          <dl className="workstation-repaint-contract">
+            <div>
+              <dt>模型</dt>
+              <dd>{REPAINT_MODEL_LABEL}</dd>
+            </div>
+            <div>
+              <dt>尺寸</dt>
+              <dd>与原图同尺寸</dd>
+            </div>
+            <div>
+              <dt>数量</dt>
+              <dd>每次 1 张</dd>
+            </div>
+          </dl>
+          <p className="workstation-repaint-contract-note">
+            重绘使用固定模型，暂不支持切换模型、调整分辨率或张数。
+          </p>
         </div>
       </Space>
     )

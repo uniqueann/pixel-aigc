@@ -281,6 +281,8 @@ export default function CanvasArea({
             refineMode={refineMode}
             onHistoryChange={setHistoryState}
             onMaskChange={onMaskChange}
+            onToolChange={selectPaintTool}
+            onBrushSizeChange={setBrushSize}
           />
         </Suspense>
         {smartSelectEnabled ? (

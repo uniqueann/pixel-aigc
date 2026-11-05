@@ -63,6 +63,7 @@ export default function BrushToolbar({
         <Button
           size="small"
           aria-label="画笔"
+          aria-pressed={tool === 'brush' && !smartSelectEnabled}
           type={tool === 'brush' && !smartSelectEnabled ? 'primary' : 'text'}
           icon={<EditOutlined />}
           onClick={() => onToolChange('brush')}
@@ -72,6 +73,7 @@ export default function BrushToolbar({
         <Button
           size="small"
           aria-label="橡皮擦"
+          aria-pressed={tool === 'eraser' && !smartSelectEnabled}
           type={tool === 'eraser' && !smartSelectEnabled ? 'primary' : 'text'}
           icon={<DeleteOutlined />}
           onClick={() => onToolChange('eraser')}
@@ -84,6 +86,7 @@ export default function BrushToolbar({
           <Button
             size="small"
             aria-label={SMART_SELECT_LABEL}
+            aria-pressed={smartSelectEnabled}
             type={smartSelectEnabled ? 'primary' : 'text'}
             icon={<AimOutlined />}
             disabled={refineMode || !smartSelectReady}
@@ -105,7 +108,8 @@ export default function BrushToolbar({
       </Tooltip>
       <span style={{ display: 'inline-block', width: 84, padding: '0 8px' }}>
         <Slider
-          aria-label="笔刷大小"
+          ariaLabelForHandle="笔刷大小"
+          ariaValueTextFormatterForHandle={(value) => `${value} 像素`}
           min={4}
           max={80}
           value={brushSize}

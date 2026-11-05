@@ -308,12 +308,17 @@ describe('智能编辑参数面板', () => {
     expect(erase).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
     expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
     expect(screen.getByText('上传图片后，涂抹需要消除的区域（智能选区不消耗积分）。')).toBeTruthy()
+    expect(screen.queryByText('通义万相 2.1 图像编辑')).toBeNull()
 
     rerender(<ParamPanel capability={Capability.Inpaint} mode="repaint" {...shared} />)
     const repaint = screen.getByPlaceholderText(/透明玻璃花瓶/)
     expect(repaint).toHaveProperty('maxLength', MAX_ERASE_PROMPT_LENGTH)
     expect(screen.getByText(`0 / ${MAX_ERASE_PROMPT_LENGTH}`)).toBeTruthy()
     expect(screen.queryByText(/智能选区不消耗积分/)).toBeNull()
+    expect(screen.getByText('通义万相 2.1 图像编辑')).toBeTruthy()
+    expect(screen.getByText('与原图同尺寸')).toBeTruthy()
+    expect(screen.getByText('每次 1 张')).toBeTruthy()
+    expect(screen.getByText(/暂不支持切换模型/)).toBeTruthy()
   })
 
   it('扩图不展示无效的模型、数量和尺寸选择', () => {

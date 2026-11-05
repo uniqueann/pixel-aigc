@@ -714,3 +714,76 @@
   - 移动端：生成按钮整行 366×44；错误态重试 141×44 + 生成 217×44 同一行，无横向溢出；吸顶开关 44×44。
   - 逆光：平面网格 opacity 0.8，深度行选中态实心品牌绿，hover 对比度 light 6.12:1 / dark 9.46:1。
   - 深色叠加层线条带 `drop-shadow` surface 光晕，控制台 0 error。
+
+# 图片工作站 · 重绘 P0 可访问性与固定契约（2026-11-05）
+
+目标：修复重绘的 P0 可访问性阻塞；把「固定管线」契约显性化；不改动其他工具的行为。本轮只出方案，不写代码。
+
+## 范围
+
+- P0：键盘/读屏可完成涂抹；描述框与笔刷滑块的可访问名称；深色侧边栏选中态对比度。
+- 契约：重绘参数面板说明固定模型、输出尺寸、张数；修正帮助页。
+- 不做（后续 P1）：多模型接入、移动端适配、上传后引导改版、蒙版状态保护。
+
+## 计划（P0 已实现）
+
+### 1. 画布键盘操作（P0）
+
+- [x] `MaskPaintCanvas.tsx` 涂抹容器增加可聚焦入口：`tabIndex={0}`、`role="application"`、`aria-label="蒙版涂抹画布"`、`aria-describedby` 指向操作说明；Esc 释放焦点。
+- [x] 键盘光标状态：方向键移动（Shift 加速）、Space 落笔、B/E 切换画笔/橡皮擦、`[`/`]` 调整笔刷、Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 重做。
+- [x] 键盘笔迹复用现有 Fabric 落笔路径，确保与指针笔迹共用蒙版导出、撤销栈和 `onMaskChange`。
+- [x] 仅在键盘聚焦时显示「方向键移动 · 空格落笔 · B/E 切换 · [ ] 调笔刷」提示。
+- 备选方案未采用：自由手绘键盘化已实现，无需矩形选区兜底。
+
+### 2. 读屏名称（P0）
+
+- [x] `ParamPanel.tsx:365`：`<div style={labelStyle}>重绘描述</div>` 改为 `<label htmlFor>`，TextArea 加 `id` 与 `aria-required="true"`，并显示可见必填标记。
+- [x] `BrushToolbar.tsx`：Slider 改用 `ariaLabelForHandle="笔刷大小"`，补 `ariaValueTextFormatterForHandle`（如「28 像素」）。
+- [x] 画笔/橡皮擦/智能选区按钮补 `aria-pressed`，让读屏知道当前工具。
+
+### 3. 对比度（P0）
+
+- [x] 侧边栏选中态（`global.css:323-324`）：文字与图标改用 `var(--color-on-accent)`；明暗两套主题均已实测。
+- [x] 工作站页脚主按钮补可见焦点环，统一 `--color-focus-ring`、`outline-offset: 2px`。
+- [x] 笔刷 Slider 补 `:focus-visible` 焦点环。
+
+### 4. 固定管线契约（已实现）
+
+- [x] `ParamPanel.tsx` repaint 分支增加「输出」信息块：模型「通义万相 2.1 图像编辑」、与原图同尺寸、每次 1 张；积分由按钮显示。
+- [x] 补说明：「重绘使用固定模型，暂不支持切换模型、调整分辨率或张数。」
+- [x] `docs/help/workstation.md` 的重绘条目、通用参数说明与计价说明已同步。
+- [x] 不新增假模型下拉；模型名使用用户可读名称，不暴露 `wanx2.1-imageedit` 内部 ID。
+
+## 验收
+
+- [x] 键盘-only：上传 → 涂抹 → 描述 → 生成已验证；本机 mock 未产出可读取结果，结果读取沿用现有按钮。
+- [x] 读屏：描述框报「重绘描述，必填」；笔刷滑块报名称与当前值；工具切换报选中态。
+- [x] 对比度：深色侧边栏选中态 ≥ 4.5:1；主按钮与滑块焦点环可见。
+- [x] 契约：参数面板与帮助页对重绘的模型/尺寸/张数/积分描述一致。
+- [x] 回归：全量测试通过；改动仅限重绘画布、参数面板与共享壳层样式。
+- [x] 验证：`npx tsc --noEmit`、`npm run lint`、全量 `npm test`、`npm run build`、Playwright 明暗 + 键盘走查。
+
+### 复查记录（2026-11-05 · P0 可访问性）
+
+- **键盘涂抹**：Tab 17 次到达 `.workstation-paint-host`，`:focus-visible` 为 true；方向键移动 + Space 落笔后「生成」按钮由禁用变可用；Ctrl+Z 撤销后恢复禁用，Ctrl+Shift+Z 重做后再次可用；E 切换橡皮擦后 Space 可清除蒙版（残留 6 个像素，低于 32 阈值）；`]` 将笔刷 28→32，`aria-valuetext` 同步为「32 像素」；Esc 后焦点回到 body、光标消失。
+- **读屏名称**：host 为 `role=application` + `aria-label=蒙版涂抹画布` + `aria-describedby`；描述框 `getByLabel(/重绘描述/)` 命中且 `aria-required=true`；滑块 handle 为 `aria-label=笔刷大小`、`aria-valuenow=28`、`aria-valuetext=28 像素`、`tabindex=0`；画笔/橡皮擦 `aria-pressed` 随工具切换。
+- **对比度**：浅色侧边栏选中态 `rgb(7,19,15) on rgb(209,230,221)` ≈ 14.5:1；深色 `rgb(7,19,15) on rgb(31,179,139)` = 7.10:1。
+- **焦点环**：滑块与生成按钮均计算为 `outline: rgb(17,24,39) solid 2px; outline-offset: 2px`，截图可见。
+- **蒙版导出**：键盘涂抹后填写描述并提交，未出现「请先涂抹」错误，出现「任务已提交」；控制台 0 error。
+- **测试与构建**：333 个测试文件 / 2138 个用例通过；`tsc --noEmit`、ESLint、`npm run build` 通过；`impeccable detect` 对改动 TSX 返回 0 发现（regex-only）。
+- **截图**：`/tmp/repaint-keyboard-light.png`、`/tmp/repaint-keyboard-dark.png`、`/tmp/repaint-slider-focus.png`、`/tmp/repaint-generate-focus-wide.png`。
+
+### 复查记录（2026-11-05 · 固定管线契约）
+
+- **参数面板**：重绘分支新增「输出」区块，展示模型「通义万相 2.1 图像编辑」、尺寸「与原图同尺寸」、数量「每次 1 张」；下方说明「重绘使用固定模型，暂不支持切换模型、调整分辨率或张数」。积分仍由生成按钮展示。
+- **对比度**：契约块标签与说明文字 12px；浅色 `rgb(71,85,105) on rgb(240,242,245)` = 6.76:1，深色 `rgb(184,182,188) on rgb(41,41,46)` = 7.21:1。
+- **布局**：1440×900 下契约块位于右栏 y=528、高 90.5px，完整可见；明暗主题截图无裁切。
+- **帮助页**：`/help/workstation` 已验证包含重绘固定模型/尺寸说明、通用参数例外与计价范围。
+- **测试与构建**：333 文件 / 2138 用例通过；`tsc --noEmit`、ESLint、`npm run build` 通过；`impeccable detect` 返回 0 发现。
+- **截图**：`/tmp/repaint-contract-light.png`、`/tmp/repaint-contract-dark.png`、`/tmp/repaint-help-light.png`。
+
+## 风险
+
+- Fabric 键盘光标需复用现有 contain 缩放坐标转换，避免蒙版偏移。
+- `role="application"` 会让读屏进入应用模式，必须配 `aria-describedby` 和 Esc 退出说明。
+- 侧边栏选中态是壳层样式，影响所有页面，需全站截图回归。

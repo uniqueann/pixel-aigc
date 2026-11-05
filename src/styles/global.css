@@ -320,8 +320,9 @@ a {
   text-overflow: ellipsis;
 }
 
-.app-sidebar-menu.ant-menu .ant-menu-item-selected { color: var(--color-accent-text); }
-.app-sidebar-menu.ant-menu .ant-menu-item-selected .ant-menu-item-icon { color: var(--color-accent-text); }
+/* 选中项背景是实心品牌绿（暗色由 Ant 派生），文字必须用 on-accent 才够对比。 */
+.app-sidebar-menu.ant-menu .ant-menu-item-selected { color: var(--color-on-accent); }
+.app-sidebar-menu.ant-menu .ant-menu-item-selected .ant-menu-item-icon { color: var(--color-on-accent); }
 
 .app-sidebar-menu .nav-item-badge {
   flex: none;
@@ -370,7 +371,7 @@ a {
 }
 
 .app-sidebar-menu.ant-menu-inline-collapsed .ant-menu-item-selected .ant-menu-item-icon {
-  color: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 .app-sidebar-account {
@@ -2643,6 +2644,41 @@ body.sidebar-resizing * {
   touch-action: none;
 }
 
+/* 画布本身可聚焦，焦点环画在实际画面外框上，避免套住整块 flex 容器。 */
+.workstation-paint-host:focus { outline: none; }
+.workstation-paint-host:focus-visible .workstation-paint-frame {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.workstation-paint-keyboard-cursor {
+  position: absolute;
+  z-index: 2;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.workstation-paint-keyboard-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  z-index: 3;
+  max-width: calc(100% - 16px);
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 .workstation-paint-stage {
   position: relative;
   transform-origin: top left;
@@ -2830,6 +2866,43 @@ body.sidebar-resizing * {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* 重绘固定管线契约：把模型、尺寸、张数摊开，避免用户以为是页面缺了控件。 */
+.workstation-repaint-contract {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  font-size: 12px;
+}
+
+.workstation-repaint-contract > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workstation-repaint-contract dt {
+  color: var(--color-text-secondary-strong);
+}
+
+.workstation-repaint-contract dd {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-weight: 500;
+  text-align: right;
+}
+
+.workstation-repaint-contract-note {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .param-required {
@@ -3074,6 +3147,13 @@ body.sidebar-resizing * {
 .image-workstation-footer-actions .credit-action-button.ant-btn-default:not(:disabled):focus-visible {
   border-color: var(--color-accent-text);
   color: var(--color-accent-text);
+}
+
+/* 主按钮与笔刷滑块的焦点环统一用高对比前景色。 */
+.image-workstation-footer-actions .credit-action-button.ant-btn-primary:not(:disabled):focus-visible,
+.workstation-canvas-toolbar .ant-slider .ant-slider-handle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .image-workstation-page .ant-input::placeholder,
