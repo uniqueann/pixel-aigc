@@ -1,6 +1,6 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { message } from 'antd'
-import { Canvas, FabricImage, PencilBrush } from 'fabric'
+import { Canvas, Circle, FabricImage, Line, PencilBrush } from 'fabric'
 import { containRect } from '@shared/erase'
 import { invertContainedAlpha, MASK_PAINT_CSS, opaqueCount, sourcePoint, tintOverlayAsBrush } from '@shared/smart-select'
 import { applySmartSelectLookup, requestSmartSelect, SmartSelectRequestError, smartSelectErrorMessage, storeSmartSelectSession, type SmartSelectResult } from '@/services/api/smartSelect'
@@ -13,6 +13,11 @@ const CANVAS_WIDTH = WORKSTATION_CANVAS_WIDTH
 const CANVAS_HEIGHT = WORKSTATION_CANVAS_HEIGHT
 const MAX_HISTORY = 20
 const SMART_SELECT_TOAST_KEY = 'workstation-smart-select'
+/** 键盘光标每次移动的逻辑像素；按住 Shift 加速。 */
+const KEYBOARD_STEP = 4
+const KEYBOARD_STEP_FAST = 16
+const MIN_BRUSH_SIZE = 4
+const MAX_BRUSH_SIZE = 80
 
 interface MaskPaintCanvasProps {
   imageUrl: string
@@ -24,6 +29,10 @@ interface MaskPaintCanvasProps {
   refineMode?: boolean
   onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void
   onMaskChange?: (hasPaint: boolean) => void
+  /** 键盘 B/E 切换画笔与橡皮擦时同步工具条状态。 */
+  onToolChange?: (tool: PaintTool) => void
+  /** 键盘 [ / ] 调整笔刷大小时同步工具条状态。 */
+  onBrushSizeChange?: (size: number) => void
 }
 
 export interface MaskPaintCanvasHandle {
@@ -48,7 +57,7 @@ function flushOverlayHasPaint(canvas: Canvas | null, fallback: HTMLCanvasElement
 }
 
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange, onMaskChange },
+  { imageUrl, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, onHistoryChange, onMaskChange, onToolChange, onBrushSizeChange },
   ref,
 ) {
   const { hostRef, display } = useCanvasDisplay()
@@ -68,6 +77,11 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   const sessionRef = useRef<{ imageUrl: string; session: SmartSelectResult['session'] } | null>(null)
   naturalRef.current = imageNaturalSize
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false })
+  const keyboardHelpId = useId()
+  const [keyboardCursor, setKeyboardCursor] = useState<{ x: number; y: number } | null>(null)
+  const cursorRef = useRef<{ x: number; y: number } | null>(null)
+  const spaceHeldRef = useRef(false)
+  const strokeDirtyRef = useRef(false)
 
   const updateHistoryState = useCallback(
     (index: number, length: number) => {
@@ -91,6 +105,97 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     updateHistoryState(historyIndexRef.current, nextHistory.length)
     onMaskChange?.(flushOverlayHasPaint(canvas, canvasElementRef.current))
   }, [onMaskChange, updateHistoryState])
+
+  /** 键盘涂抹限定在图片实际内容区，避免在 contain 黑边上画出无效蒙版。 */
+  const paintRect = useCallback(() => {
+    const natural = naturalRef.current
+    if (natural?.width && natural.height) {
+      return containRect(natural.width, natural.height, CANVAS_WIDTH, CANVAS_HEIGHT)
+    }
+    return { x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT }
+  }, [])
+
+  const keyboardPaintStyle = useCallback(() => {
+    const refine = refineModeRef.current
+    const activeTool = toolRef.current
+    const color = refine
+      ? (activeTool === 'brush' ? 'rgba(255, 0, 0, 0.9)' : 'rgba(0, 80, 255, 0.9)')
+      : (activeTool === 'brush' ? MASK_PAINT_CSS : 'rgba(0, 0, 0, 1)')
+    const eraser = !refine && activeTool === 'eraser'
+    const globalCompositeOperation: 'destination-out' | 'source-over' = eraser ? 'destination-out' : 'source-over'
+    return { color, globalCompositeOperation, eraser }
+  }, [])
+
+  const paintKeyboardDab = useCallback((point: { x: number; y: number }) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const { color, globalCompositeOperation, eraser } = keyboardPaintStyle()
+    const dab = new Circle({
+      left: point.x,
+      top: point.y,
+      originX: 'center',
+      originY: 'center',
+      // 橡皮擦略放大 1px，覆盖画笔圆形的抗锯齿边缘，避免留下红圈。
+      radius: Math.max(1, brushSizeRef.current / 2 + (eraser ? 1 : 0)),
+      fill: color,
+      selectable: false,
+      evented: false,
+      objectCaching: false,
+      globalCompositeOperation,
+    })
+    canvas.add(dab)
+    canvas.renderAll()
+    strokeDirtyRef.current = true
+    onMaskChange?.(flushOverlayHasPaint(canvas, canvasElementRef.current))
+  }, [keyboardPaintStyle, onMaskChange])
+
+  const paintKeyboardSegment = useCallback((from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const { color, globalCompositeOperation, eraser } = keyboardPaintStyle()
+    const segment = new Line([from.x, from.y, to.x, to.y], {
+      stroke: color,
+      strokeWidth: brushSizeRef.current + (eraser ? 2 : 0),
+      strokeLineCap: 'round',
+      strokeLineJoin: 'round',
+      selectable: false,
+      evented: false,
+      objectCaching: false,
+      globalCompositeOperation,
+    })
+    canvas.add(segment)
+    canvas.renderAll()
+    strokeDirtyRef.current = true
+    onMaskChange?.(flushOverlayHasPaint(canvas, canvasElementRef.current))
+  }, [keyboardPaintStyle, onMaskChange])
+
+  const activateKeyboardCursor = useCallback(() => {
+    if (cursorRef.current) return
+    const rect = paintRect()
+    const start = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+    cursorRef.current = start
+    setKeyboardCursor(start)
+  }, [paintRect])
+
+  const moveKeyboardCursor = useCallback((dx: number, dy: number) => {
+    const rect = paintRect()
+    const current = cursorRef.current ?? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+    const next = {
+      x: Math.min(rect.x + rect.width, Math.max(rect.x, current.x + dx)),
+      y: Math.min(rect.y + rect.height, Math.max(rect.y, current.y + dy)),
+    }
+    if (spaceHeldRef.current && (next.x !== current.x || next.y !== current.y)) {
+      paintKeyboardSegment(current, next)
+    }
+    cursorRef.current = next
+    setKeyboardCursor(next)
+  }, [paintKeyboardSegment, paintRect])
+
+  const deactivateKeyboardCursor = useCallback(() => {
+    cursorRef.current = null
+    spaceHeldRef.current = false
+    setKeyboardCursor(null)
+  }, [])
 
   const restoreSnapshot = useCallback(
     async (nextIndex: number) => {
@@ -126,6 +231,84 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       void restoreSnapshot(historyIndexRef.current + 1)
     }
   }, [restoreSnapshot])
+
+  const handleKeyboardKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      hostRef.current?.blur()
+      return
+    }
+    if (event.key === 'b' || event.key === 'B') {
+      event.preventDefault()
+      onToolChange?.('brush')
+      return
+    }
+    if (event.key === 'e' || event.key === 'E') {
+      event.preventDefault()
+      onToolChange?.('eraser')
+      return
+    }
+    if (event.key === '[' || event.code === 'BracketLeft') {
+      event.preventDefault()
+      onBrushSizeChange?.(Math.max(MIN_BRUSH_SIZE, brushSizeRef.current - KEYBOARD_STEP))
+      return
+    }
+    if (event.key === ']' || event.code === 'BracketRight') {
+      event.preventDefault()
+      onBrushSizeChange?.(Math.min(MAX_BRUSH_SIZE, brushSizeRef.current + KEYBOARD_STEP))
+      return
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+      event.preventDefault()
+      if (event.shiftKey) redo()
+      else undo()
+      return
+    }
+    if (event.key === ' ') {
+      event.preventDefault()
+      activateKeyboardCursor()
+      if (!event.repeat) {
+        spaceHeldRef.current = true
+        const point = cursorRef.current
+        if (point) paintKeyboardDab(point)
+      }
+      return
+    }
+    const step = event.shiftKey ? KEYBOARD_STEP_FAST : KEYBOARD_STEP
+    const directions: Record<string, [number, number]> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    }
+    const direction = directions[event.key]
+    if (!direction) return
+    event.preventDefault()
+    activateKeyboardCursor()
+    moveKeyboardCursor(direction[0], direction[1])
+  }, [activateKeyboardCursor, hostRef, moveKeyboardCursor, onBrushSizeChange, onToolChange, paintKeyboardDab, redo, undo])
+
+  const handleKeyboardKeyUp = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== ' ') return
+    event.preventDefault()
+    spaceHeldRef.current = false
+    if (strokeDirtyRef.current) {
+      strokeDirtyRef.current = false
+      pushSnapshot()
+    }
+  }, [pushSnapshot])
+
+  const handleKeyboardFocus = useCallback(() => {
+    if (hostRef.current?.matches(':focus-visible')) activateKeyboardCursor()
+  }, [activateKeyboardCursor, hostRef])
+
+  const handleKeyboardBlur = useCallback(() => {
+    if (strokeDirtyRef.current) {
+      strokeDirtyRef.current = false
+      pushSnapshot()
+    }
+    deactivateKeyboardCursor()
+  }, [deactivateKeyboardCursor, pushSnapshot])
 
   const paintSelection = useCallback(async (result: SmartSelectResult, natural: { width: number; height: number }) => {
     const canvas = fabricCanvasRef.current
@@ -348,7 +531,21 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   }, [imageUrl, onMaskChange, paintSelection, pushSnapshot, updateHistoryState])
 
   return (
-    <div ref={hostRef} className="workstation-paint-host">
+    <div
+      ref={hostRef}
+      className="workstation-paint-host"
+      tabIndex={0}
+      role="application"
+      aria-label="蒙版涂抹画布"
+      aria-describedby={keyboardHelpId}
+      onKeyDown={handleKeyboardKeyDown}
+      onKeyUp={handleKeyboardKeyUp}
+      onFocus={handleKeyboardFocus}
+      onBlur={handleKeyboardBlur}
+    >
+      <p id={keyboardHelpId} className="sr-only">
+        使用方向键移动笔刷，按住空格涂抹；B 切换画笔，E 切换橡皮擦；左右方括号调整笔刷大小；Ctrl 或 Command 加 Z 撤销，加 Shift 加 Z 重做；Esc 退出画布。
+      </p>
       <div className="workstation-paint-frame" style={{ width: display.width, height: display.height }}>
         <div
           className="workstation-paint-stage"
@@ -364,8 +561,25 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
             draggable={false}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
           />
-          <canvas ref={canvasElementRef} aria-label="蒙版涂抹画布" style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
+          <canvas ref={canvasElementRef} style={{ position: 'absolute', inset: 0, touchAction: 'none' }} />
+          {keyboardCursor ? (
+            <div
+              className="workstation-paint-keyboard-cursor"
+              aria-hidden="true"
+              style={{
+                left: keyboardCursor.x,
+                top: keyboardCursor.y,
+                width: brushSize,
+                height: brushSize,
+              }}
+            />
+          ) : null}
         </div>
+        {keyboardCursor ? (
+          <div className="workstation-paint-keyboard-hint">
+            方向键移动 · 空格涂抹 · B/E 切换 · [ ] 调笔刷 · Esc 退出
+          </div>
+        ) : null}
       </div>
     </div>
   )

@@ -348,7 +348,9 @@ describe('图片工作站配置提示', () => {
     mocks.status.capabilities.repaint = false
     render(<App><ImageWorkstation /></App>)
     expect(screen.getByText('重绘服务暂不可用，请稍后重试或联系客服。')).toBeTruthy()
-    expect(screen.getByText('重绘描述')).toBeTruthy()
+    const repaintPrompt = screen.getByLabelText(/重绘描述/)
+    expect(repaintPrompt).toBeTruthy()
+    expect(repaintPrompt.getAttribute('aria-required')).toBe('true')
     expect(screen.queryByText(/智能选区不消耗积分/)).toBeNull()
     expect(screen.queryByText('上传图片后，涂抹需要消除的区域')).toBeNull()
   })
