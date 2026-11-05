@@ -13,10 +13,12 @@ vi.mock('@/services/api/imageModels', () => ({
   ]),
 }))
 
+// CI 并行跑全量测试时 jsdom 事件循环可能被挤压，报价链路需要比默认 1s 更长的等待窗口。
+const ASYNC_UI_TIMEOUT = { timeout: 3000 }
 const contract = JSON.parse(readFileSync('docs/verification/ecommerce-suite/phase-one/contract-fixtures.json', 'utf8'))
 const project = contract.project
 const clickEstimate = async () => {
-  await waitFor(() => expect((screen.getByRole('button', { name: /预估费用/ }) as HTMLButtonElement).disabled).toBe(false))
+  await waitFor(() => expect((screen.getByRole('button', { name: /预估费用/ }) as HTMLButtonElement).disabled).toBe(false), ASYNC_UI_TIMEOUT)
   fireEvent.click(screen.getByRole('button', { name: /预估费用/ }))
 }
 const slotOf = (key: string) => project.config.slots.find((slot: { key: string }) => slot.key === key)
@@ -50,18 +52,18 @@ describe('单槽位生成面板费用确认', () => {
     const quote = makeQuote(slot.id, 'image_edit', 12, 2)
     const { client, onSubmit } = setup('scene', quote)
     await clickEstimate()
-    await waitFor(() => expect(screen.getByRole('button', { name: '确认生成 2 张 · 12 积分' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('button', { name: '确认生成 2 张 · 12 积分' })).toBeTruthy(), ASYNC_UI_TIMEOUT)
     expect(client.quote).toHaveBeenCalledTimes(1)
     expect(onSubmit).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '确认生成 2 张 · 12 积分' }))
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(quote))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(quote), ASYNC_UI_TIMEOUT)
   })
 
   it('返回修改会丢弃预估，不提交', async () => {
     const slot = slotOf('scene')
     const { onSubmit } = setup('scene', makeQuote(slot.id, 'image_edit', 12, 2))
     await clickEstimate()
-    fireEvent.click(await screen.findByRole('button', { name: '返回修改' }))
+    fireEvent.click(await screen.findByRole('button', { name: '返回修改' }, ASYNC_UI_TIMEOUT))
     expect(screen.queryByRole('button', { name: /确认生成/ })).toBeNull()
     expect(onSubmit).not.toHaveBeenCalled()
   })
@@ -70,7 +72,7 @@ describe('单槽位生成面板费用确认', () => {
     const slot = slotOf('main')
     const quote = makeQuote(slot.id, 'reuse', 0)
     const { onSubmit } = setup('main', quote)
-    fireEvent.click(await screen.findByRole('button', { name: '确认底图设置 · 免费' }))
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(quote))
+    fireEvent.click(await screen.findByRole('button', { name: '确认底图设置 · 免费' }, ASYNC_UI_TIMEOUT))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(quote), ASYNC_UI_TIMEOUT)
   })
 })
