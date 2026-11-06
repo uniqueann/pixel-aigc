@@ -380,6 +380,16 @@ describe('图片任务存储状态机', () => {
       undefined,
       1,
     )).toEqual({ cost: 0.039359, currency: 'USD' })
+    expect(applyCatalogVendorCost(
+      { model_profile_id: 'gpt-image-2.6-flare', provider_params: { resolution: '2k' } },
+      { outputImageCount: 1 },
+      1,
+    )).toEqual({ outputImageCount: 1, cost: 0.08832, currency: 'USD' })
+    expect(applyCatalogVendorCost(
+      { model_profile_id: 'gpt-image-2.6-flare', provider_params: { resolution: '1k' } },
+      { cost: 0.05, currency: 'USD' },
+      1,
+    )).toEqual({ cost: 0.05, currency: 'USD' })
   })
 
   it('把上游 cost / credits_cost 写入已有 provider_params JSON', async () => {

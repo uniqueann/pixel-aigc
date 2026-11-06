@@ -20,11 +20,22 @@ import {
   DEFAULT_AI_GATEWAY_MAX_PARALLEL,
   DEFAULT_AI_GATEWAY_POLL_INTERVAL_MS,
   DEFAULT_AI_GATEWAY_TASK_TIMEOUT_MS,
+  aiGatewayGptImageSettings,
   aiGatewayImageAvailable,
   aiGatewayImageSettings,
   type AiGatewayImageSettings,
 } from './config.js'
 import { classifyAiGatewayFailure, clipGatewayLog, readGatewayFailure } from './errors.js'
+import {
+  GPT_IMAGE_CAPABILITIES,
+  GPT_IMAGE_MAX_REFERENCE_IMAGES,
+  GPT_IMAGE_QUALITY,
+  buildGptImageRequest,
+  isAllowedGptImageSize,
+  isGptImageModel,
+  mapGptImageRequest,
+  withGptImageTokenCost,
+} from './gpt-image.js'
 import { AI_GATEWAY_IMAGE_CAPABILITIES, AI_GATEWAY_IMAGE_RATIOS, buildAiGatewayChatBody, mapAiGatewayImageRequest } from './mapping.js'
 import {
   aiGatewayResultKey,
@@ -32,6 +43,7 @@ import {
   decodeAiGatewayTask,
   encodeAiGatewayTask,
   parseAiGatewayImageResponse,
+  parseAiGatewayImagesApiResponse,
   type ParsedAiGatewayUsage,
 } from './response.js'
 
@@ -136,6 +148,7 @@ export function createAiGatewayImageProvider(
   readConfig: (env?: NodeJS.ProcessEnv) => AiGatewayImageSettings | null = aiGatewayImageSettings,
   store: AiGatewayResultStore = r2AiGatewayResultStore(),
   readOidc: () => Promise<string> = readVercelOidcToken,
+  readGptConfig: (env?: NodeJS.ProcessEnv) => AiGatewayImageSettings | null = aiGatewayGptImageSettings,
 ): ImageProvider {
   const settingsOf = (env?: NodeJS.ProcessEnv) => {
     const settings = readConfig(env)
@@ -193,19 +206,118 @@ export function createAiGatewayImageProvider(
     return { payload, started }
   }
 
-  async function generate(input: ProviderSubmitInput, ctx: ProviderContext, key: string) {
-    const existing = await store.getObject(key,ctx.signal)
-    if (existing?.bytes.byteLength) {
-      const usage = await readUsage(store,key,ctx.signal)
-      ctx.log({ stage: 'ai-gateway-image-replay', requestId: ctx.requestId, ordinal: input.ordinal ?? 0, ...usageLog(usage) })
-      return {
-        providerTaskId: encodeAiGatewayTask({
-          key,
-          mimeType: existing.contentType?.startsWith('image/') ? existing.contentType : 'image/png',
-          ...(usage ? { usage } : {}),
-        }),
+  function settingsFor(model: string | undefined) {
+    if (isGptImageModel(model)) {
+      const gpt = readGptConfig()
+      if (!gpt) throw new ProviderError('INVALID_KEY', '尚未配置 AI Gateway 凭证', false, 503)
+      return gpt
+    }
+    return settingsOf()
+  }
+
+  async function replay(ctx: ProviderContext, key: string, ordinal: number) {
+    const existing = await store.getObject(key, ctx.signal)
+    if (!existing?.bytes.byteLength) return undefined
+    const usage = await readUsage(store, key, ctx.signal)
+    ctx.log({ stage: 'ai-gateway-image-replay', requestId: ctx.requestId, ordinal, ...usageLog(usage) })
+    return {
+      providerTaskId: encodeAiGatewayTask({
+        key,
+        mimeType: existing.contentType?.startsWith('image/') ? existing.contentType : 'image/png',
+        ...(usage ? { usage } : {}),
+      }),
+    }
+  }
+
+  async function storeUsage(key: string, usage: ParsedAiGatewayUsage | undefined, ctx: ProviderContext) {
+    if (!usage) return
+    try {
+      await store.putObject(usageKey(key), Buffer.from(JSON.stringify(usage)), 'application/json', ctx.signal)
+    } catch (error) {
+      ctx.log({
+        stage: 'ai-gateway-image-usage-store',
+        requestId: ctx.requestId,
+        error: error instanceof Error ? error.name : 'error',
+      })
+    }
+  }
+
+  function referenceUrl(url: string) {
+    if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(url)) return url
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol === 'https:') return url
+    } catch {
+      return undefined
+    }
+    return undefined
+  }
+
+  async function generateGpt(input: ProviderSubmitInput, ctx: ProviderContext, key: string) {
+    const cached = await replay(ctx, key, input.ordinal ?? 0)
+    if (cached) return cached
+    const size = input.providerParams.size
+    if (typeof size !== 'string' || !isAllowedGptImageSize(size)) {
+      throw new ProviderError('INVALID_PARAMS', '图片尺寸不被支持', false, 400)
+    }
+    if (input.providerParams.quality !== undefined && input.providerParams.quality !== GPT_IMAGE_QUALITY) {
+      throw new ProviderError('INVALID_PARAMS', '图片质量不被支持', false, 400)
+    }
+    const images = input.images.map(image => referenceUrl(image.url))
+    if (images.some(url => !url)) throw new ProviderError('INVALID_PARAMS', '参考图地址无效', false, 400)
+    const settings = settingsFor(input.model)
+    const token = await bearerToken(settings, readOidc)
+    const request = buildGptImageRequest({
+      model: input.model || settings.model,
+      prompt: input.prompt,
+      images: images.filter((url): url is string => Boolean(url)).map(url => ({ url })),
+      size,
+    })
+    const url = `${settings.baseUrl}/${request.path}`
+    const { payload, started } = await postChat(url, request.body, settings, token, ctx)
+    const parsed = parseAiGatewayImagesApiResponse(payload)
+    let image = parsed.images[0]
+    if (!image && parsed.remoteUrl) {
+      try {
+        const downloaded = await ctx.fetch(parsed.remoteUrl, { signal: operationSignal(ctx, settings.requestTimeoutMs) })
+        if (!downloaded.ok) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回图片', false, 502)
+        const bytes = new Uint8Array(await downloaded.arrayBuffer())
+        const mimeType = downloaded.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png'
+        if (bytes.byteLength && mimeType.startsWith('image/')) image = { bytes, mimeType }
+      } catch (error) {
+        if (error instanceof ProviderError) throw error
+        const timeout = isAbortOrTimeout(error)
+        throw new ProviderError(
+          timeout ? 'TIMEOUT' : 'BAD_RESPONSE',
+          timeout ? '图片服务请求超时，请稍后重试' : '图片服务没有返回图片',
+          false,
+          timeout ? 504 : 502,
+        )
       }
     }
+    const usage = withGptImageTokenCost(parsed.usage)
+    ctx.log({
+      stage: 'ai-gateway-image-submit',
+      status: 200,
+      host: requestHost(url),
+      ms: ctx.now() - started,
+      requestId: ctx.requestId,
+      size,
+      quality: GPT_IMAGE_QUALITY,
+      referenceCount: input.images.length,
+      imageCount: image ? 1 : 0,
+      ...(parsed.shape ? { imageShape: parsed.shape } : {}),
+      ...usageLog(usage),
+    })
+    if (!image) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回图片', false, 502)
+    await store.putObject(key, image.bytes, image.mimeType, ctx.signal)
+    await storeUsage(key, usage, ctx)
+    return { providerTaskId: encodeAiGatewayTask({ key, mimeType: image.mimeType, ...(usage ? { usage } : {}) }) }
+  }
+
+  async function generate(input: ProviderSubmitInput, ctx: ProviderContext, key: string) {
+    const cached = await replay(ctx, key, input.ordinal ?? 0)
+    if (cached) return cached
     const settings = settingsOf()
     const aspectRatio = input.providerParams.aspectRatio
     const imageSize = input.providerParams.imageSize
@@ -239,42 +351,35 @@ export function createAiGatewayImageProvider(
     const image = parsed.images[0]
     if (!image) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回图片', false, 502)
     await store.putObject(key, image.bytes, image.mimeType,ctx.signal)
-    if (parsed.usage) {
-      try {
-        await store.putObject(usageKey(key), Buffer.from(JSON.stringify(parsed.usage)), 'application/json',ctx.signal)
-      } catch (error) {
-        ctx.log({
-          stage: 'ai-gateway-image-usage-store',
-          requestId: ctx.requestId,
-          error: error instanceof Error ? error.name : 'error',
-        })
-      }
-    }
+    await storeUsage(key, parsed.usage, ctx)
     return { providerTaskId: encodeAiGatewayTask({ key, mimeType: image.mimeType, ...(parsed.usage ? { usage: parsed.usage } : {}) }) }
   }
 
   return {
     id: 'ai-gateway',
-    capabilities(): ProviderCapabilities {
+    capabilities(model: string): ProviderCapabilities {
+      const source = isGptImageModel(model) ? GPT_IMAGE_CAPABILITIES : AI_GATEWAY_IMAGE_CAPABILITIES
       return {
-        ...AI_GATEWAY_IMAGE_CAPABILITIES,
-        operations: [...AI_GATEWAY_IMAGE_CAPABILITIES.operations],
-        ratios: [...AI_GATEWAY_IMAGE_CAPABILITIES.ratios],
-        resolutions: [...AI_GATEWAY_IMAGE_CAPABILITIES.resolutions],
+        ...source,
+        operations: [...source.operations],
+        ratios: [...source.ratios],
+        resolutions: [...source.resolutions],
       }
     },
     configured(env?: NodeJS.ProcessEnv) {
-      return readConfig(env) !== null
+      return readConfig(env) !== null || readGptConfig(env) !== null
     },
     acceptsModel(model: string, env?: NodeJS.ProcessEnv) {
+      if (isGptImageModel(model)) return readGptConfig(env) !== null
       const settings = readConfig(env)
       return aiGatewayImageAvailable(env) && settings?.model === model
     },
     mapRequest(req: NormalizedImageRequest, model: string) {
+      if (isGptImageModel(model)) return mapGptImageRequest(req, model)
       return mapAiGatewayImageRequest(req, model)
     },
     jobPolicy(env?: NodeJS.ProcessEnv) {
-      const settings = readConfig(env)
+      const settings = readConfig(env) ?? readGptConfig(env)
       return {
         taskTimeoutMs: settings?.taskTimeoutMs ?? DEFAULT_AI_GATEWAY_TASK_TIMEOUT_MS,
         pollIntervalMs: settings?.pollIntervalMs ?? DEFAULT_AI_GATEWAY_POLL_INTERVAL_MS,
@@ -284,7 +389,9 @@ export function createAiGatewayImageProvider(
     },
     async submit(input, ctx) {
       if (input.mask) throw new ProviderError('INVALID_PARAMS', '当前模型不支持蒙版', false, 400)
-      if (input.images.length > AI_GATEWAY_MAX_REFERENCE_IMAGES) {
+      const gpt = isGptImageModel(input.model)
+      const maxRefs = gpt ? GPT_IMAGE_MAX_REFERENCE_IMAGES : AI_GATEWAY_MAX_REFERENCE_IMAGES
+      if (input.images.length > maxRefs) {
         throw new ProviderError('INVALID_PARAMS', '参考图数量超过上限', false, 400)
       }
       if (!input.prompt.trim()) throw new ProviderError('INVALID_PARAMS', '请填写画面描述', false, 400)
@@ -292,7 +399,7 @@ export function createAiGatewayImageProvider(
       const key = imageKey(safeRequestId(ctx.requestId),ordinal,ctx)
       const pending = inflight.get(key)
       if (pending) return pending
-      const run = generate(input, ctx, key).finally(() => { inflight.delete(key) })
+      const run = (gpt ? generateGpt(input, ctx, key) : generate(input, ctx, key)).finally(() => { inflight.delete(key) })
       inflight.set(key, run)
       return run
     },

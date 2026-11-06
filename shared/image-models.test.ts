@@ -3,6 +3,9 @@ import { PROMPT_MAX_LENGTH } from './prompt-limits'
 import {
   DRAGONCODE_RATIOS,
   DRAGONCODE_SIZES,
+  GPT_IMAGE_26_MODEL,
+  GPT_IMAGE_26_PROFILE_ID,
+  GPT_IMAGE_26_SPEED_HINT,
   IMAGE_MODEL_PROFILES,
   LEGACY_NANO_BANANA_PROFILE_ID,
   NANO_BANANA_MODEL,
@@ -126,9 +129,44 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(JSON.stringify(publicImageModel(gpt!))).not.toContain('vendorCost')
   })
 
+  it('GPT Image 2.6 默认关闭，积分高于 4/6/14，展示名不带 Flare', () => {
+    const profile = IMAGE_MODEL_PROFILES.find(item => item.id === GPT_IMAGE_26_PROFILE_ID)
+    expect(profile).toMatchObject({
+      provider: 'ai-gateway',
+      vendor: 'openai',
+      model: GPT_IMAGE_26_MODEL,
+      label: 'GPT Image 2.6',
+      enabled: false,
+      operations: ['image_edit', 'text_to_image', 'variation'],
+      pricing: {
+        unit: 'image',
+        creditsPerImage: { '1k': 10, '2k': 18, '4k': 32 },
+        vendorCost: { '1k': '0.043470', '2k': '0.088320', '4k': '0.146820' },
+        vendorCurrency: 'USD',
+      },
+    })
+    expect(profile?.label).not.toMatch(/flare/i)
+    expect(profile?.ui.supportsMask).toBe(false)
+    expect(profile?.ui.maxRefImages).toBe(16)
+    expect(profile?.ui.resolutions).toEqual(['1k', '2k', '4k'])
+    expect(profile?.defaultFor).toBeUndefined()
+    expect(profile?.pricing.creditsPerImage['1k']).toBeGreaterThan(4)
+    expect(profile?.pricing.creditsPerImage['2k']).toBeGreaterThan(6)
+    expect(profile?.pricing.creditsPerImage['4k']).toBeGreaterThan(14)
+    const published = publicImageModel(profile!)
+    expect(published.pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 10, '2k': 18, '4k': 32 } })
+    expect(JSON.stringify(published)).not.toContain('vendorCost')
+    expect(JSON.stringify(published)).not.toContain('0.043470')
+    expect(defaultImageModel('text_to_image')?.id).toBe('dragoncode:gpt-image-2')
+    const chinese = [...GPT_IMAGE_26_SPEED_HINT].filter(char => /\p{Script=Han}/u.test(char)).length
+    expect(chinese).toBeGreaterThanOrEqual(2)
+    expect(chinese).toBeLessThanOrEqual(8)
+  })
+
   it('按厂商而不是接入渠道给出图标标识', () => {
     expect(IMAGE_MODEL_PROFILES.map(profile => [profile.id, profile.vendor])).toEqual([
       ['dragoncode:gpt-image-2', 'openai'],
+      [GPT_IMAGE_26_PROFILE_ID, 'openai'],
       ['bailian:qwen-image-3.0', 'qwen'],
       ['bailian:qwen-image-3.0-pro', 'qwen'],
       ['bailian:qwen-image-2.1-pro', 'qwen'],
@@ -170,6 +208,9 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(hint('bailian:qwen-image-2.1-pro', 'text_to_image')).toBe('2K 同价')
     expect(hint('bailian:qwen-image-2.1-pro', 'single_image')).toBe('2K 同价')
     expect(hint('bailian:qwen-image-2.1-pro', 'image_input')).toBe('最多 10 张参考图')
+    expect(hint(GPT_IMAGE_26_PROFILE_ID, 'text_to_image')).toBe('生成更快')
+    expect(hint(GPT_IMAGE_26_PROFILE_ID, 'image_input')).toBe('生成更快')
+    expect(hint(GPT_IMAGE_26_PROFILE_ID, 'single_image')).toBe('生成更快')
     expect(hint(NANO_BANANA_PROFILE_ID, 'text_to_image')).toBe('支持 4K')
     expect(hint(NANO_BANANA_PROFILE_ID, 'image_input')).toBe('支持 4K')
     for (const profile of IMAGE_MODEL_PROFILES) {

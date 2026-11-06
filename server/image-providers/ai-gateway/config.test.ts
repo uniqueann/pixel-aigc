@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { GPT_IMAGE_26_MODEL } from '../../../shared/image-models.js'
 import {
   DEFAULT_AI_GATEWAY_BASE_URL,
+  aiGatewayGptImageAvailable,
+  aiGatewayGptImageEnabled,
+  aiGatewayGptImageSettings,
   aiGatewayImageAvailable,
   aiGatewayImageEnabled,
   aiGatewayImageSettings,
@@ -9,6 +13,7 @@ import {
 const KEYS = [
   'AI_GATEWAY_API_KEY',
   'AI_GATEWAY_IMAGE_ENABLED',
+  'AI_GATEWAY_GPT_IMAGE_ENABLED',
   'AI_GATEWAY_BASE_URL',
   'AI_GATEWAY_IMAGE_REQUEST_TIMEOUT_MS',
   'AI_GATEWAY_IMAGE_MAX_PARALLEL',
@@ -29,6 +34,7 @@ describe('AI Gateway 图片配置', () => {
   it('缺少凭证或开关不是精确的 true 时不可用', () => {
     delete process.env.AI_GATEWAY_API_KEY
     delete process.env.AI_GATEWAY_IMAGE_ENABLED
+    delete process.env.AI_GATEWAY_GPT_IMAGE_ENABLED
     delete process.env.VERCEL_OIDC_TOKEN
     delete process.env.VERCEL
     expect(aiGatewayImageEnabled()).toBe(false)
@@ -78,5 +84,34 @@ describe('AI Gateway 图片配置', () => {
     process.env.VERCEL = '1'
     expect(aiGatewayImageAvailable()).toBe(true)
     expect(aiGatewayImageSettings()?.apiKey).toBeUndefined()
+  })
+
+  it('GPT Image 2.6 使用独立开关，不跟随 Nano Banana', () => {
+    process.env.AI_GATEWAY_API_KEY = 'gw-test-key'
+    process.env.AI_GATEWAY_IMAGE_ENABLED = 'true'
+    delete process.env.AI_GATEWAY_GPT_IMAGE_ENABLED
+    expect(aiGatewayGptImageEnabled()).toBe(false)
+    expect(aiGatewayGptImageAvailable()).toBe(false)
+    expect(aiGatewayImageAvailable()).toBe(true)
+
+    process.env.AI_GATEWAY_GPT_IMAGE_ENABLED = 'TRUE'
+    expect(aiGatewayGptImageAvailable()).toBe(false)
+    process.env.AI_GATEWAY_GPT_IMAGE_ENABLED = 'true'
+    delete process.env.AI_GATEWAY_IMAGE_ENABLED
+    expect(aiGatewayImageAvailable()).toBe(false)
+    expect(aiGatewayGptImageSettings()).toMatchObject({
+      apiKey: 'gw-test-key',
+      baseUrl: DEFAULT_AI_GATEWAY_BASE_URL,
+      model: GPT_IMAGE_26_MODEL,
+    })
+
+    delete process.env.AI_GATEWAY_API_KEY
+    delete process.env.VERCEL
+    delete process.env.VERCEL_OIDC_TOKEN
+    expect(aiGatewayGptImageAvailable()).toBe(false)
+    process.env.VERCEL_OIDC_TOKEN = 'oidc-from-env'
+    expect(aiGatewayGptImageAvailable()).toBe(true)
+    expect(aiGatewayGptImageSettings()?.apiKey).toBeUndefined()
+    expect(aiGatewayImageAvailable()).toBe(false)
   })
 })
