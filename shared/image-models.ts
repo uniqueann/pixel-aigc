@@ -40,6 +40,18 @@ export const LEGACY_NANO_BANANA_PROFILE_ID = 'openrouter:gemini-nano-banana-2.1'
 /** 上游模型名。Gateway 与 OpenRouter 都使用它，不是任务里的 profile id。 */
 export const NANO_BANANA_MODEL = 'google/gemini-nano-banana-2.1'
 
+/**
+ * 渠道无关的目录 id。任务上的 provider 是 `ai-gateway`，上游模型名才带 openai/。
+ * 只在 `AI_GATEWAY_GPT_IMAGE_ENABLED=true` 且 Gateway 凭证就绪时列入模型列表。
+ */
+export const GPT_IMAGE_26_PROFILE_ID = 'gpt-image-2.6-flare'
+export const GPT_IMAGE_26_MODEL = 'openai/gpt-image-2.6-flare'
+/**
+ * GPT Image 2.6 出现在下拉列表时，盖到 DragonCode「GPT Image 2」选项上的短标签。
+ * 静态目录仍写「支持 4K」，开关关闭时模型列表与现在一致。
+ */
+export const GPT_IMAGE_26_SPEED_HINT = '更快请选 2.6'
+
 export function canonicalizeImageModelProfileId<T extends string | null | undefined>(id: T): T {
   if (id === LEGACY_NANO_BANANA_PROFILE_ID) return NANO_BANANA_PROFILE_ID as T
   return id
@@ -121,6 +133,37 @@ export const IMAGE_MODEL_PROFILES: ImageModelProfile[] = [
     defaultFor: ['image_edit', 'variation'],
     hints: { text_to_image: '支持 4K', image_input: '支持 4K', single_image: '支持 4K' },
     enabled: true,
+  },
+  // 开关关闭时不要把 enabled 改成 true：积分说明和本地 Mock 只看这个字段。
+  // 服务端只在 AI_GATEWAY_GPT_IMAGE_ENABLED=true 且 Gateway 凭证就绪时列入 /api/image-models。
+  // 不挂在 AI_GATEWAY_IMAGE_ENABLED 上，那个开关只负责 Nano Banana。
+  // 积分高于 GPT Image 2 / Nano Banana 的 4/6/14。Gateway 按 token 计费（输入约 $5/M、输出约 $30/M），
+  // 没有按尺寸的固定单价；默认 quality=medium。vendorCost 是该档正方形、medium 的输出成本估算，
+  // 不含文本和参考图输入。详见 docs/ai-gateway-gpt-image-2.6.md。
+  {
+    id: GPT_IMAGE_26_PROFILE_ID,
+    provider: 'ai-gateway',
+    vendor: 'openai',
+    model: GPT_IMAGE_26_MODEL,
+    label: 'GPT Image 2.6',
+    operations: ['image_edit', 'text_to_image', 'variation'],
+    ui: {
+      supportsMask: false,
+      maxCount: 4,
+      resolutions: ['1k', '2k', '4k'],
+      sizeMode: 'ratio',
+      ratios: [...DRAGONCODE_RATIOS],
+      maxRefImages: 16,
+      promptMaxLength: PROMPT_MAX_LENGTH,
+    },
+    pricing: {
+      unit: 'image',
+      creditsPerImage: { '1k': 10, '2k': 18, '4k': 32 },
+      vendorCost: { '1k': '0.043470', '2k': '0.088320', '4k': '0.146820' },
+      vendorCurrency: 'USD',
+    },
+    hints: { text_to_image: '生成更快', image_input: '生成更快', single_image: '生成更快' },
+    enabled: false,
   },
   // 开关关闭时不要把 enabled 改成 true：积分说明和本地 Mock 只看这个字段。
   // 服务端在 QWEN_IMAGE_ENABLED=true 且已配置百炼 Key 时才把它们列入 /api/image-models。
@@ -271,7 +314,7 @@ export function imageModelVendor(id: string | null | undefined): ImageModelVendo
   const canonical = canonicalizeImageModelProfileId(id)
   const listed = IMAGE_MODEL_PROFILES.find(profile => profile.id === canonical)
   if (listed) return listed.vendor
-  if (canonical === 'dragoncode:gpt-image-2' || /(?:^|:)gpt-image-2$/.test(canonical)) return 'openai'
+  if (canonical === 'dragoncode:gpt-image-2' || canonical === GPT_IMAGE_26_PROFILE_ID || canonical === GPT_IMAGE_26_MODEL || /(?:^|:)gpt-image-2$/.test(canonical)) return 'openai'
   if (canonical.startsWith('bailian:qwen-image') || canonical.startsWith('qwen:')) return 'qwen'
   if (canonical.includes('gemini-nano-banana')) return 'google'
   return undefined
