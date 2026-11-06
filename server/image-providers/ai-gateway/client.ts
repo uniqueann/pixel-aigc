@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readVercelOidcToken } from '../../ai-gateway-auth.js'
 export { readVercelOidcToken } from '../../ai-gateway-auth.js'
 import type { NormalizedImageRequest } from '../../../shared/image-generation.js'
+import { GPT_IMAGE_26_MODEL } from '../../../shared/image-models.js'
 import { HttpError } from '../../errors.js'
 import { getObject, putObject } from '../../storage.js'
 import { isAbortOrTimeout, operationSignal, requestHost } from '../http.js'
@@ -20,10 +21,13 @@ import {
   DEFAULT_AI_GATEWAY_MAX_PARALLEL,
   DEFAULT_AI_GATEWAY_POLL_INTERVAL_MS,
   DEFAULT_AI_GATEWAY_TASK_TIMEOUT_MS,
+  GPT_IMAGE_MAX_REFERENCE_IMAGES,
+  aiGatewayGptImageSettings,
   aiGatewayImageAvailable,
   aiGatewayImageSettings,
   type AiGatewayImageSettings,
 } from './config.js'
+import { buildGptImageApiRequest, GPT_IMAGE_CAPABILITIES, isGptImagePixelSize, mapGptImageRequest } from './gpt-image-mapping.js'
 import { classifyAiGatewayFailure, clipGatewayLog, readGatewayFailure } from './errors.js'
 import { AI_GATEWAY_IMAGE_CAPABILITIES, AI_GATEWAY_IMAGE_RATIOS, buildAiGatewayChatBody, mapAiGatewayImageRequest } from './mapping.js'
 import {
@@ -32,6 +36,7 @@ import {
   decodeAiGatewayTask,
   encodeAiGatewayTask,
   parseAiGatewayImageResponse,
+  parseAiGatewayImagesApiResponse,
   type ParsedAiGatewayUsage,
 } from './response.js'
 
@@ -136,6 +141,7 @@ export function createAiGatewayImageProvider(
   readConfig: (env?: NodeJS.ProcessEnv) => AiGatewayImageSettings | null = aiGatewayImageSettings,
   store: AiGatewayResultStore = r2AiGatewayResultStore(),
   readOidc: () => Promise<string> = readVercelOidcToken,
+  readGptConfig: (env?: NodeJS.ProcessEnv) => AiGatewayImageSettings | null = aiGatewayGptImageSettings,
 ): ImageProvider {
   const settingsOf = (env?: NodeJS.ProcessEnv) => {
     const settings = readConfig(env)
@@ -143,7 +149,16 @@ export function createAiGatewayImageProvider(
     return settings
   }
 
-  async function postChat(url: string, body: unknown, settings: AiGatewayImageSettings, token: string, ctx: ProviderContext) {
+  function settingsFor(model: string) {
+    if (model === GPT_IMAGE_26_MODEL) {
+      const settings = readGptConfig()
+      if (!settings) throw new ProviderError('INVALID_KEY', '尚未配置 AI Gateway 凭证', false, 503)
+      return settings
+    }
+    return settingsOf()
+  }
+
+  async function postJson(url: string, body: unknown, settings: AiGatewayImageSettings, token: string, ctx: ProviderContext) {
     const started = ctx.now()
     let response: Response
     try {
@@ -206,22 +221,68 @@ export function createAiGatewayImageProvider(
         }),
       }
     }
-    const settings = settingsOf()
+    const gptImage = input.model === GPT_IMAGE_26_MODEL
+    const settings = settingsFor(input.model)
     const aspectRatio = input.providerParams.aspectRatio
     const imageSize = input.providerParams.imageSize
-    if (!isRatio(aspectRatio) || !isImageSize(imageSize)) {
+    const pixelSize = input.providerParams.size
+    if (gptImage) {
+      if (typeof pixelSize !== 'string' || !isGptImagePixelSize(pixelSize)) {
+        throw new ProviderError('INVALID_PARAMS', '图片尺寸不被支持', false, 400)
+      }
+    } else if (!isRatio(aspectRatio) || !isImageSize(imageSize)) {
       throw new ProviderError('INVALID_PARAMS', '图片尺寸不被支持', false, 400)
     }
     const token = await bearerToken(settings, readOidc)
-    const body = buildAiGatewayChatBody({
+    const gptRequest = gptImage
+      ? buildGptImageApiRequest({
+        model: input.model || settings.model,
+        prompt: input.prompt,
+        size: String(pixelSize),
+        images: input.images,
+      })
+      : undefined
+    const body = gptRequest?.body ?? buildAiGatewayChatBody({
       model: input.model || settings.model,
       prompt: input.prompt,
       images: input.images,
-      aspectRatio,
-      imageSize,
+      aspectRatio: String(aspectRatio),
+      imageSize: imageSize as '1K' | '2K' | '4K',
     })
-    const url = `${settings.baseUrl}/chat/completions`
-    const { payload, started } = await postChat(url, body, settings, token, ctx)
+    const url = `${settings.baseUrl}/${gptRequest?.endpoint ?? 'chat/completions'}`
+    const { payload, started } = await postJson(url, body, settings, token, ctx)
+    if (gptImage) {
+      const parsed = parseAiGatewayImagesApiResponse(payload)
+      ctx.log({
+        stage: 'ai-gateway-image-submit',
+        status: 200,
+        host: requestHost(url),
+        ms: ctx.now() - started,
+        requestId: ctx.requestId,
+        endpoint: gptRequest?.endpoint,
+        size: pixelSize,
+        quality: 'medium',
+        referenceCount: input.images.length,
+        imageCount: parsed.images.length,
+        imageShape: 'images-b64',
+        ...usageLog(parsed.usage),
+      })
+      const image = parsed.images[0]
+      if (!image) throw new ProviderError('BAD_RESPONSE', '图片服务没有返回图片', false, 502)
+      await store.putObject(key, image.bytes, image.mimeType, ctx.signal)
+      if (parsed.usage) {
+        try {
+          await store.putObject(usageKey(key), Buffer.from(JSON.stringify(parsed.usage)), 'application/json', ctx.signal)
+        } catch (error) {
+          ctx.log({
+            stage: 'ai-gateway-image-usage-store',
+            requestId: ctx.requestId,
+            error: error instanceof Error ? error.name : 'error',
+          })
+        }
+      }
+      return { providerTaskId: encodeAiGatewayTask({ key, mimeType: image.mimeType, ...(parsed.usage ? { usage: parsed.usage } : {}) }) }
+    }
     const parsed = parseAiGatewayImageResponse(payload)
     ctx.log({
       stage: 'ai-gateway-image-submit',
@@ -255,7 +316,15 @@ export function createAiGatewayImageProvider(
 
   return {
     id: 'ai-gateway',
-    capabilities(): ProviderCapabilities {
+    capabilities(model: string): ProviderCapabilities {
+      if (model === GPT_IMAGE_26_MODEL) {
+        return {
+          ...GPT_IMAGE_CAPABILITIES,
+          operations: [...GPT_IMAGE_CAPABILITIES.operations],
+          ratios: [...GPT_IMAGE_CAPABILITIES.ratios],
+          resolutions: [...GPT_IMAGE_CAPABILITIES.resolutions],
+        }
+      }
       return {
         ...AI_GATEWAY_IMAGE_CAPABILITIES,
         operations: [...AI_GATEWAY_IMAGE_CAPABILITIES.operations],
@@ -264,17 +333,19 @@ export function createAiGatewayImageProvider(
       }
     },
     configured(env?: NodeJS.ProcessEnv) {
-      return readConfig(env) !== null
+      return readConfig(env) !== null || readGptConfig(env) !== null
     },
     acceptsModel(model: string, env?: NodeJS.ProcessEnv) {
+      if (model === GPT_IMAGE_26_MODEL) return readGptConfig(env)?.model === model
       const settings = readConfig(env)
       return aiGatewayImageAvailable(env) && settings?.model === model
     },
     mapRequest(req: NormalizedImageRequest, model: string) {
+      if (model === GPT_IMAGE_26_MODEL) return mapGptImageRequest(req, model)
       return mapAiGatewayImageRequest(req, model)
     },
     jobPolicy(env?: NodeJS.ProcessEnv) {
-      const settings = readConfig(env)
+      const settings = readConfig(env) ?? readGptConfig(env)
       return {
         taskTimeoutMs: settings?.taskTimeoutMs ?? DEFAULT_AI_GATEWAY_TASK_TIMEOUT_MS,
         pollIntervalMs: settings?.pollIntervalMs ?? DEFAULT_AI_GATEWAY_POLL_INTERVAL_MS,
@@ -284,7 +355,8 @@ export function createAiGatewayImageProvider(
     },
     async submit(input, ctx) {
       if (input.mask) throw new ProviderError('INVALID_PARAMS', '当前模型不支持蒙版', false, 400)
-      if (input.images.length > AI_GATEWAY_MAX_REFERENCE_IMAGES) {
+      const maxRefs = input.model === GPT_IMAGE_26_MODEL ? GPT_IMAGE_MAX_REFERENCE_IMAGES : AI_GATEWAY_MAX_REFERENCE_IMAGES
+      if (input.images.length > maxRefs) {
         throw new ProviderError('INVALID_PARAMS', '参考图数量超过上限', false, 400)
       }
       if (!input.prompt.trim()) throw new ProviderError('INVALID_PARAMS', '请填写画面描述', false, 400)

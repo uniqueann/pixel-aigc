@@ -4,7 +4,7 @@ import { configuredImageModels, imageModelsAvailable, publicConfiguredImageModel
 const KEYS = [
   'DRAGONCODE_API_KEY', 'DASHSCOPE_API_KEY', 'QWEN_IMAGE_ENABLED', 'QWEN_IMAGE_API_KEY', 'QWEN_IMAGE_MODELS',
   'OPENROUTER_API_KEY', 'OPENROUTER_IMAGE_ENABLED', 'OPENROUTER_BASE_URL',
-  'AI_GATEWAY_API_KEY', 'AI_GATEWAY_IMAGE_ENABLED', 'VERCEL', 'VERCEL_OIDC_TOKEN',
+  'AI_GATEWAY_API_KEY', 'AI_GATEWAY_IMAGE_ENABLED', 'AI_GATEWAY_GPT_IMAGE_ENABLED', 'VERCEL', 'VERCEL_OIDC_TOKEN',
   'AIGC_IMAGE_MOCK_PROVIDER', 'VERCEL_ENV', 'AIGC_RUNTIME_SCOPE',
 ] as const
 const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
@@ -15,6 +15,7 @@ beforeEach(() => {
   delete process.env.OPENROUTER_BASE_URL
   delete process.env.AI_GATEWAY_API_KEY
   delete process.env.AI_GATEWAY_IMAGE_ENABLED
+  delete process.env.AI_GATEWAY_GPT_IMAGE_ENABLED
   delete process.env.VERCEL_OIDC_TOKEN
   delete process.env.VERCEL
   delete process.env.AIGC_IMAGE_MOCK_PROVIDER
@@ -134,5 +135,43 @@ describe('图片模型目录', () => {
     delete process.env.VERCEL
     delete process.env.VERCEL_OIDC_TOKEN
     expect(configuredImageModels('text_to_image')[0].provider).toBe('openrouter')
+  })
+
+  it('GPT Image 开关关闭时，即使 Nano Banana 已走 Gateway 也不列出 GPT Image 2.6', () => {
+    process.env.DRAGONCODE_API_KEY = 'sk-dragon'
+    process.env.AI_GATEWAY_API_KEY = 'gw-test-key'
+    process.env.AI_GATEWAY_IMAGE_ENABLED = 'true'
+    delete process.env.AI_GATEWAY_GPT_IMAGE_ENABLED
+    const models = publicConfiguredImageModels('text_to_image')
+    expect(models.map(model => model.id)).toEqual(['dragoncode:gpt-image-2', 'gemini-nano-banana-2.1'])
+    expect(models[0].defaultFor).toEqual(['image_edit', 'variation'])
+    expect(models[0].hints?.text_to_image).toBe('支持 4K')
+    expect(configuredImageModels('text_to_image').find(model => model.id === 'gemini-nano-banana-2.1')?.provider).toBe('ai-gateway')
+  })
+
+  it('独立开关和凭证就绪后列出 GPT Image 2.6，DragonCode 仍是默认，报价高于 4/6/14', () => {
+    process.env.DRAGONCODE_API_KEY = 'sk-dragon'
+    process.env.AI_GATEWAY_API_KEY = 'gw-test-key'
+    process.env.AI_GATEWAY_GPT_IMAGE_ENABLED = 'true'
+    delete process.env.AI_GATEWAY_IMAGE_ENABLED
+    const models = publicConfiguredImageModels('text_to_image')
+    expect(models.map(model => model.id)).toEqual(['dragoncode:gpt-image-2', 'gpt-image-2.6-flare'])
+    expect(models[0].defaultFor).toEqual(['image_edit', 'variation'])
+    expect(models[0].hints?.text_to_image).toBe('若想生成更快，可选 GPT Image 2.6')
+    expect(models[1]).toMatchObject({
+      label: 'GPT Image 2.6',
+      provider: 'ai-gateway',
+      vendor: 'openai',
+      model: 'openai/gpt-image-2.6-flare',
+      pricing: { creditsPerImage: { '1k': 8, '2k': 16, '4k': 28 } },
+    })
+    expect(models[1].ui.supportsMask).toBe(false)
+    expect(models[1].defaultFor).toBeUndefined()
+    expect(JSON.stringify(models)).not.toContain('vendorCost')
+    expect(JSON.stringify(models)).not.toContain('0.090000')
+    expect(publicConfiguredImageModels('image_edit').map(model => model.id)).toEqual(models.map(model => model.id))
+    expect(publicConfiguredImageModels('variation').map(model => model.id)).toEqual(models.map(model => model.id))
+    expect(configuredImageModels('text_to_image')[1]).toMatchObject({ provider: 'ai-gateway', enabled: false })
+    expect(configuredImageModels('text_to_image').some(model => model.id === 'gemini-nano-banana-2.1')).toBe(false)
   })
 })
