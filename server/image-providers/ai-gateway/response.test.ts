@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { MOCK_PNG_1X1 } from '../mock.js'
+import { withGptImageTokenCost } from './gpt-image.js'
 import {
   aiGatewayResultKey,
   aiGatewayResultUrl,
   decodeAiGatewayTask,
   encodeAiGatewayTask,
   parseAiGatewayImageResponse,
+  parseAiGatewayImagesApiResponse,
 } from './response.js'
 
 const jpeg = Buffer.from(MOCK_PNG_1X1).toString('base64')
@@ -33,5 +35,38 @@ describe('AI Gateway 图片响应', () => {
     expect(aiGatewayResultKey(aiGatewayResultUrl(key))).toBe(key)
     expect(aiGatewayResultKey('ai-gateway-object:temporary/openrouter-results/x/0.img')).toBeUndefined()
     expect(decodeAiGatewayTask('or1.abc')).toBeUndefined()
+  })
+
+  it('Images API 读取 b64_json，有 usage.cost 时不改写', () => {
+    const parsed = parseAiGatewayImagesApiResponse({
+      output_format: 'png',
+      data: [{ b64_json: jpeg }],
+      usage: { input_tokens: 100, output_tokens: 1756, total_tokens: 1856, cost: 0.04 },
+    })
+    expect(parsed.shape).toBe('images-b64')
+    expect(parsed.images[0]?.mimeType).toBe('image/png')
+    expect(parsed.images[0]?.bytes.byteLength).toBe(MOCK_PNG_1X1.byteLength)
+    expect(parsed.usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 1756,
+      totalTokens: 1856,
+      cost: 0.04,
+    })
+    expect(withGptImageTokenCost(parsed.usage)?.cost).toBe(0.04)
+  })
+
+  it('没有 usage.cost 时解析器不估算，调用方再按 $5/M 和 $30/M 还原', () => {
+    const derived = parseAiGatewayImagesApiResponse({
+      data: [{ b64_json: jpeg }],
+      usage: { input_tokens: 100, output_tokens: 1756, total_tokens: 1856 },
+    })
+    expect(derived.usage?.cost).toBeUndefined()
+    expect(withGptImageTokenCost(derived.usage)?.cost).toBe(0.05318)
+    const totalOnly = parseAiGatewayImagesApiResponse({
+      data: [{ b64_json: jpeg }],
+      usage: { total_tokens: 1856 },
+    })
+    expect(totalOnly.usage).toEqual({ totalTokens: 1856 })
+    expect(withGptImageTokenCost(totalOnly.usage)).toEqual({ totalTokens: 1856 })
   })
 })

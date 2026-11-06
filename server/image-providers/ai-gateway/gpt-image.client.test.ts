@@ -111,4 +111,20 @@ describe('AI Gateway GPT Image 2.6 客户端', () => {
     expect(gpt.acceptsModel!(GPT_IMAGE_26_MODEL)).toBe(true)
     expect(gpt.acceptsModel!('google/gemini-nano-banana-2.1')).toBe(false)
   })
+
+  it('只打开 Nano Banana 时不能提交 GPT Image，超过 16 张参考图也不打上游', async () => {
+    const fetchImpl = vi.fn()
+    const nanoOnly = createAiGatewayImageProvider(
+      () => ({ ...settings, model: 'google/gemini-nano-banana-2.1' }),
+      memoryStore(),
+      vi.fn(),
+      () => null,
+    )
+    await expect(nanoOnly.submit!(input, context(fetchImpl))).rejects.toMatchObject({ code: 'INVALID_KEY' })
+    await expect(provider().submit!({
+      ...input,
+      images: Array.from({ length: 17 }, () => ({ url: 'https://r2.test/a.png' })),
+    }, context(fetchImpl))).rejects.toMatchObject({ code: 'INVALID_PARAMS' })
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
 })
