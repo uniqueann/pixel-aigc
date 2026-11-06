@@ -11,8 +11,6 @@ export const DEFAULT_AI_GATEWAY_INITIAL_POLL_DELAY_MS = 130_000
 export const DEFAULT_AI_GATEWAY_POLL_INTERVAL_MS = 2_000
 export const DEFAULT_AI_GATEWAY_MAX_PARALLEL = 4
 export const AI_GATEWAY_MAX_REFERENCE_IMAGES = 14
-/** OpenAI Images edits 最多 16 张参考图。只用于 GPT Image 2.6，不影响 Nano Banana。 */
-export const GPT_IMAGE_MAX_REFERENCE_IMAGES = 16
 
 export interface AiGatewayImageSettings {
   /** 有 API Key 时优先使用。缺省表示请求时再取 Vercel OIDC。 */
@@ -47,12 +45,12 @@ function httpsBase(raw: string | undefined) {
   }
 }
 
-/** Nano Banana 主开关。只有精确的 true 才打开，避免仅配置凭证就把模型露出来。 */
+/** Nano Banana 开关。只有精确的 true 才打开，避免仅配置凭证就把模型露出来。 */
 export function aiGatewayImageEnabled(env: NodeJS.ProcessEnv = process.env) {
   return env.AI_GATEWAY_IMAGE_ENABLED?.trim() === 'true'
 }
 
-/** GPT Image 2.6 独立开关。不读取 AI_GATEWAY_IMAGE_ENABLED。 */
+/** GPT Image 2.6 开关。与 Nano Banana 分开，只有精确的 true 才打开。 */
 export function aiGatewayGptImageEnabled(env: NodeJS.ProcessEnv = process.env) {
   return env.AI_GATEWAY_GPT_IMAGE_ENABLED?.trim() === 'true'
 }
@@ -70,7 +68,7 @@ function gatewayConnection(env: NodeJS.ProcessEnv) {
   }
 }
 
-function gatewayTiming(env: NodeJS.ProcessEnv) {
+function imageTimeouts(env: NodeJS.ProcessEnv) {
   return {
     requestTimeoutMs: readNumber(env, 'AI_GATEWAY_IMAGE_REQUEST_TIMEOUT_MS', DEFAULT_AI_GATEWAY_REQUEST_TIMEOUT_MS, 5_000, 110_000),
     taskTimeoutMs: readNumber(env, 'AI_GATEWAY_IMAGE_TASK_TIMEOUT_MS', DEFAULT_AI_GATEWAY_TASK_TIMEOUT_MS, 30_000, 900_000),
@@ -84,14 +82,14 @@ export function aiGatewayImageSettings(env: NodeJS.ProcessEnv = process.env): Ai
   if (!aiGatewayImageEnabled(env)) return null
   const connection = gatewayConnection(env)
   if (!connection) return null
-  return { ...connection, model: NANO_BANANA_MODEL, ...gatewayTiming(env) }
+  return { ...connection, ...imageTimeouts(env), model: NANO_BANANA_MODEL }
 }
 
 export function aiGatewayGptImageSettings(env: NodeJS.ProcessEnv = process.env): AiGatewayImageSettings | null {
   if (!aiGatewayGptImageEnabled(env)) return null
   const connection = gatewayConnection(env)
   if (!connection) return null
-  return { ...connection, model: GPT_IMAGE_26_MODEL, ...gatewayTiming(env) }
+  return { ...connection, ...imageTimeouts(env), model: GPT_IMAGE_26_MODEL }
 }
 
 export function aiGatewayImageAvailable(env: NodeJS.ProcessEnv = process.env) {

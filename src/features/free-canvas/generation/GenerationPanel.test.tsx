@@ -219,7 +219,7 @@ describe('自由画布文生图侧栏', () => {
     renderPanel({ models: [model, qwen, wide], modelProfileId: model.id })
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '文生图模型' }))
     expect([...document.querySelectorAll('.ant-select-item-option .model-choice-hint')].map(item => item.textContent))
-      .toEqual(['若想生成更快，可选 GPT Image 2.6', '最省积分', '2K 同价'])
+      .toEqual(['支持 4K', '最省积分', '2K 同价'])
     expect(document.querySelector('.ant-select-selection-item .model-choice-hint')).toBeNull()
   })
 

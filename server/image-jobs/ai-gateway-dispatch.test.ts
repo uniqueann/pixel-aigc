@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
-import { LEGACY_NANO_BANANA_PROFILE_ID, NANO_BANANA_PROFILE_ID } from '../../shared/image-models.js'
+import { GPT_IMAGE_26_PROFILE_ID, LEGACY_NANO_BANANA_PROFILE_ID, NANO_BANANA_PROFILE_ID } from '../../shared/image-models.js'
 import { createAiGatewayImageProvider, type AiGatewayResultStore } from '../image-providers/ai-gateway/client.js'
 import { aiGatewayImageSettings } from '../image-providers/ai-gateway/config.js'
 import { MOCK_PNG_1X1 } from '../image-providers/mock.js'
@@ -15,7 +15,7 @@ import {
 
 const user = { id: '00000000-0000-4000-8000-000000000001', email: 'alice@example.com', suggestedName: 'A', avatarUrl: null, providers: ['email'] }
 const KEYS = [
-  'AI_GATEWAY_API_KEY', 'AI_GATEWAY_IMAGE_ENABLED', 'VERCEL', 'VERCEL_OIDC_TOKEN',
+  'AI_GATEWAY_API_KEY', 'AI_GATEWAY_IMAGE_ENABLED', 'AI_GATEWAY_GPT_IMAGE_ENABLED', 'VERCEL', 'VERCEL_OIDC_TOKEN',
   'OPENROUTER_API_KEY', 'OPENROUTER_IMAGE_ENABLED', 'DRAGONCODE_API_KEY',
 ] as const
 const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]))
@@ -203,5 +203,73 @@ describe('AI Gateway Nano Banana 任务', () => {
     expect(billing.release).toHaveBeenCalledWith(created.bundle.job.id)
     expect(billing.settle).not.toHaveBeenCalled()
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AI Gateway GPT Image 2.6 任务', () => {
+  it('文生图走 images/generations，编辑走 images/edits，都不打 chat completions', async () => {
+    process.env.AI_GATEWAY_API_KEY = 'gw-test-key'
+    process.env.AI_GATEWAY_GPT_IMAGE_ENABLED = 'true'
+    delete process.env.AI_GATEWAY_IMAGE_ENABLED
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({
+      data: [{ b64_json: jpeg }],
+      usage: { input_tokens: 20, output_tokens: 1449, total_tokens: 1469, cost: 0.0501 },
+    }))
+    const { rt, provider } = runtime(fetchImpl)
+    const store = createMemoryStore(user.id)
+    const created = await createImageJobInStore(store, user, createImageTaskSchema.parse({
+      capability: 'text_to_image',
+      requestId: '00000000-0000-4000-8000-000000000941',
+      modelProfileId: GPT_IMAGE_26_PROFILE_ID,
+      params: { prompt: '橙色香水瓶置于浅色木桌', size: { width: 1024, height: 1024 }, count: 1, resolution: '1k' },
+    }), rt)
+    expect(created.bundle.job).toMatchObject({
+      provider: 'ai-gateway',
+      model_profile_id: GPT_IMAGE_26_PROFILE_ID,
+      credits_reserved: 10,
+    })
+    expect(created.bundle.job.provider_params).toMatchObject({ model: 'openai/gpt-image-2.6-flare', size: '1024x1024', quality: 'medium' })
+    await (await import('./service.js')).runProviderSubmits(created.bundle, provider, user.id, rt)
+    expect(String(fetchImpl.mock.calls[0][0])).toBe('https://ai-gateway.vercel.sh/v1/images/generations')
+    expect(String(fetchImpl.mock.calls[0][0])).not.toContain('chat/completions')
+    const body = JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))
+    expect(body.quality).toBe('medium')
+    expect(body).not.toHaveProperty('providerOptions')
+    expect(body).not.toHaveProperty('messages')
+
+    const editFetch = vi.fn().mockImplementation(async () => jsonResponse({
+      data: [{ b64_json: jpeg }],
+      usage: { total_tokens: 100 },
+    }))
+    const editRuntime = runtime(editFetch)
+    const editStore = createMemoryStore(user.id)
+    const sourceKey = `temporary/task-inputs/${user.id}/source.png`
+    const edit = await createImageJobInStore(editStore, user, createImageTaskSchema.parse({
+      capability: 'image_edit',
+      requestId: '00000000-0000-4000-8000-000000000942',
+      modelProfileId: GPT_IMAGE_26_PROFILE_ID,
+      params: {
+        sourceImageKey: sourceKey,
+        prompt: '换成白底',
+        count: 1,
+        resolution: '2k',
+        sourceWidth: 1280,
+        sourceHeight: 720,
+        size: { width: 2048, height: 1152 },
+      },
+    }), editRuntime.rt)
+    expect(edit.bundle.job.credits_reserved).toBe(18)
+    const outcomes = await (await import('./service.js')).runProviderSubmits(edit.bundle, editRuntime.provider, user.id, editRuntime.rt)
+    const finished = await finishSubmittedImageJob(editStore, edit.bundle, outcomes, editRuntime.rt, editRuntime.provider)
+    expect(String(editFetch.mock.calls[0][0])).toBe('https://ai-gateway.vercel.sh/v1/images/edits')
+    expect(String(editFetch.mock.calls[0][0])).not.toContain('chat/completions')
+    const editBody = JSON.parse(String(editFetch.mock.calls[0][1]?.body))
+    expect(editBody).toMatchObject({
+      model: 'openai/gpt-image-2.6-flare',
+      quality: 'medium',
+      size: '2048x1152',
+      images: [{ image_url: `https://r2.test/${sourceKey}` }],
+    })
+    expect(finished.job.provider_params.vendor).toMatchObject({ cost: 0.08832, currency: 'USD' })
   })
 })

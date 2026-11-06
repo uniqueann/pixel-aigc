@@ -5,6 +5,7 @@ import {
   DRAGONCODE_SIZES,
   GPT_IMAGE_26_MODEL,
   GPT_IMAGE_26_PROFILE_ID,
+  GPT_IMAGE_26_SPEED_HINT,
   IMAGE_MODEL_PROFILES,
   LEGACY_NANO_BANANA_PROFILE_ID,
   NANO_BANANA_MODEL,
@@ -117,7 +118,18 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(defaultImageModel('text_to_image')?.id).toBe('dragoncode:gpt-image-2')
   })
 
-  it('GPT Image 2.6 默认关闭，积分高于 4/6/14，公开接口不含供应商成本', () => {
+  it('GPT Image 2 积分与 Nano Banana 2.1 相同，供应商成本保持原值', () => {
+    const gpt = IMAGE_MODEL_PROFILES.find(item => item.id === 'dragoncode:gpt-image-2')
+    const nano = IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)
+    expect(gpt?.pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
+    expect(gpt?.pricing.creditsPerImage).toEqual(nano?.pricing.creditsPerImage)
+    expect(gpt?.pricing.vendorCost).toEqual({ '1k': '0.0085', '2k': '0.014', '4k': '0.021' })
+    expect(gpt?.pricing.vendorCurrency).toBeUndefined()
+    expect(publicImageModel(gpt!).pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 } })
+    expect(JSON.stringify(publicImageModel(gpt!))).not.toContain('vendorCost')
+  })
+
+  it('GPT Image 2.6 默认关闭，积分高于 4/6/14，展示名不带 Flare', () => {
     const profile = IMAGE_MODEL_PROFILES.find(item => item.id === GPT_IMAGE_26_PROFILE_ID)
     expect(profile).toMatchObject({
       provider: 'ai-gateway',
@@ -128,36 +140,27 @@ describe('nearestRatio / mapDragonCodeSize', () => {
       operations: ['image_edit', 'text_to_image', 'variation'],
       pricing: {
         unit: 'image',
-        creditsPerImage: { '1k': 8, '2k': 16, '4k': 28 },
-        vendorCost: { '1k': '0.090000', '2k': '0.150000', '4k': '0.220000' },
+        creditsPerImage: { '1k': 10, '2k': 18, '4k': 32 },
+        vendorCost: { '1k': '0.043470', '2k': '0.088320', '4k': '0.146820' },
         vendorCurrency: 'USD',
       },
     })
-    expect(profile?.defaultFor).toBeUndefined()
+    expect(profile?.label).not.toMatch(/flare/i)
     expect(profile?.ui.supportsMask).toBe(false)
     expect(profile?.ui.maxRefImages).toBe(16)
     expect(profile?.ui.resolutions).toEqual(['1k', '2k', '4k'])
+    expect(profile?.defaultFor).toBeUndefined()
+    expect(profile?.pricing.creditsPerImage['1k']).toBeGreaterThan(4)
+    expect(profile?.pricing.creditsPerImage['2k']).toBeGreaterThan(6)
+    expect(profile?.pricing.creditsPerImage['4k']).toBeGreaterThan(14)
     const published = publicImageModel(profile!)
-    expect(published.pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 8, '2k': 16, '4k': 28 } })
+    expect(published.pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 10, '2k': 18, '4k': 32 } })
     expect(JSON.stringify(published)).not.toContain('vendorCost')
-    expect(JSON.stringify(published)).not.toContain('0.090000')
-    const gpt = IMAGE_MODEL_PROFILES.find(item => item.id === 'dragoncode:gpt-image-2')
-    expect(gpt?.defaultFor).toEqual(['image_edit', 'variation'])
-    expect(gpt?.pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
+    expect(JSON.stringify(published)).not.toContain('0.043470')
     expect(defaultImageModel('text_to_image')?.id).toBe('dragoncode:gpt-image-2')
-    expect(defaultImageModel('image_edit')?.id).toBe('dragoncode:gpt-image-2')
-    expect(imageModelVendor(GPT_IMAGE_26_PROFILE_ID)).toBe('openai')
-  })
-
-  it('GPT Image 2 积分与 Nano Banana 2.1 相同，供应商成本保持原值', () => {
-    const gpt = IMAGE_MODEL_PROFILES.find(item => item.id === 'dragoncode:gpt-image-2')
-    const nano = IMAGE_MODEL_PROFILES.find(item => item.id === NANO_BANANA_PROFILE_ID)
-    expect(gpt?.pricing.creditsPerImage).toEqual({ '1k': 4, '2k': 6, '4k': 14 })
-    expect(gpt?.pricing.creditsPerImage).toEqual(nano?.pricing.creditsPerImage)
-    expect(gpt?.pricing.vendorCost).toEqual({ '1k': '0.0085', '2k': '0.014', '4k': '0.021' })
-    expect(gpt?.pricing.vendorCurrency).toBeUndefined()
-    expect(publicImageModel(gpt!).pricing).toEqual({ unit: 'image', creditsPerImage: { '1k': 4, '2k': 6, '4k': 14 } })
-    expect(JSON.stringify(publicImageModel(gpt!))).not.toContain('vendorCost')
+    const chinese = [...GPT_IMAGE_26_SPEED_HINT].filter(char => /\p{Script=Han}/u.test(char)).length
+    expect(chinese).toBeGreaterThanOrEqual(2)
+    expect(chinese).toBeLessThanOrEqual(8)
   })
 
   it('按厂商而不是接入渠道给出图标标识', () => {
@@ -193,9 +196,9 @@ describe('nearestRatio / mapDragonCodeSize', () => {
       const profile = IMAGE_MODEL_PROFILES.find(item => item.id === id)
       return imageModelHint(publicImageModel(profile!), scope)
     }
-    expect(hint('dragoncode:gpt-image-2', 'text_to_image')).toBe('若想生成更快，可选 GPT Image 2.6')
-    expect(hint('dragoncode:gpt-image-2', 'image_input')).toBe('若想生成更快，可选 GPT Image 2.6')
-    expect(hint('dragoncode:gpt-image-2', 'single_image')).toBe('若想生成更快，可选 GPT Image 2.6')
+    expect(hint('dragoncode:gpt-image-2', 'text_to_image')).toBe('支持 4K')
+    expect(hint('dragoncode:gpt-image-2', 'image_input')).toBe('支持 4K')
+    expect(hint('dragoncode:gpt-image-2', 'single_image')).toBe('支持 4K')
     expect(hint('bailian:qwen-image-3.0', 'text_to_image')).toBe('最省积分')
     expect(hint('bailian:qwen-image-3.0', 'image_input')).toBe('最省积分')
     expect(hint('bailian:qwen-image-3.0', 'single_image')).toBe('最省积分')
@@ -205,6 +208,9 @@ describe('nearestRatio / mapDragonCodeSize', () => {
     expect(hint('bailian:qwen-image-2.1-pro', 'text_to_image')).toBe('2K 同价')
     expect(hint('bailian:qwen-image-2.1-pro', 'single_image')).toBe('2K 同价')
     expect(hint('bailian:qwen-image-2.1-pro', 'image_input')).toBe('最多 10 张参考图')
+    expect(hint(GPT_IMAGE_26_PROFILE_ID, 'text_to_image')).toBe('生成更快')
+    expect(hint(GPT_IMAGE_26_PROFILE_ID, 'image_input')).toBe('生成更快')
+    expect(hint(GPT_IMAGE_26_PROFILE_ID, 'single_image')).toBe('生成更快')
     expect(hint(NANO_BANANA_PROFILE_ID, 'text_to_image')).toBe('支持 4K')
     expect(hint(NANO_BANANA_PROFILE_ID, 'image_input')).toBe('支持 4K')
     for (const profile of IMAGE_MODEL_PROFILES) {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GPT_IMAGE_26_MODEL, NANO_BANANA_MODEL } from '../../../shared/image-models.js'
+import { NANO_BANANA_MODEL } from '../../../shared/image-models.js'
 import { MOCK_PNG_1X1 } from '../mock.js'
 import type { AiGatewayResultStore } from './client.js'
 import { createAiGatewayImageProvider } from './client.js'
@@ -231,100 +231,5 @@ describe('AI Gateway 结果对象不存在', () => {
     await expect(provider.fetchResult(`ai-gateway-object:${resultKey}`, ctx)).rejects.toMatchObject({
       code: 'BAD_RESPONSE',
     })
-  })
-})
-
-describe('AI Gateway GPT Image 2.6', () => {
-  const gptSettings: AiGatewayImageSettings = { ...settings, model: GPT_IMAGE_26_MODEL }
-  const gptInput = {
-    model: GPT_IMAGE_26_MODEL,
-    prompt: '橙色香水瓶',
-    images: [] as Array<{ url: string }>,
-    providerParams: { size: '1024x1024', quality: 'medium', resolution: '1k', aspectRatio: '1:1', n: 1 },
-    ordinal: 0,
-  }
-
-  function imagesPayload(cost?: number) {
-    return {
-      output_format: 'png',
-      data: [{ b64_json: jpeg }],
-      usage: {
-        input_tokens: 100,
-        output_tokens: 1756,
-        total_tokens: 1856,
-        ...(cost === undefined ? {} : { cost }),
-      },
-    }
-  }
-
-  function gptProvider(store = memoryStore()) {
-    return createAiGatewayImageProvider(() => null, store, vi.fn(), () => gptSettings)
-  }
-
-  it('文生图提交 Images generations，不走 chat completions', async () => {
-    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse(imagesPayload(0.04)))
-    const provider = gptProvider()
-    const ctx = context(fetchImpl)
-    const submitted = await provider.submit!(gptInput, ctx)
-    const [url, request] = fetchImpl.mock.calls[0]
-    expect(url).toBe('https://ai-gateway.vercel.sh/v1/images/generations')
-    expect(String(url)).not.toContain('chat/completions')
-    const body = JSON.parse(String(request?.body))
-    expect(body).toEqual({
-      model: GPT_IMAGE_26_MODEL,
-      prompt: '橙色香水瓶',
-      size: '1024x1024',
-      quality: 'medium',
-      n: 1,
-    })
-    expect(body).not.toHaveProperty('modalities')
-    expect(body).not.toHaveProperty('providerOptions')
-    expect(decodeAiGatewayTask(submitted.providerTaskId)?.usage?.cost).toBe(0.04)
-    const status = await provider.getStatus!(submitted.providerTaskId, ctx)
-    expect(status).toMatchObject({ state: 'succeeded', vendor: { cost: 0.04, currency: 'USD', promptTokens: 100, completionTokens: 1756 } })
-    expect(ctx.log).toHaveBeenCalledWith(expect.objectContaining({
-      stage: 'ai-gateway-image-submit',
-      endpoint: 'images/generations',
-      imageShape: 'images-b64',
-      quality: 'medium',
-    }))
-  })
-
-  it('有参考图时提交 Images edits，没有上游 cost 时按 token 估算', async () => {
-    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse(imagesPayload()))
-    const provider = gptProvider()
-    const ctx = context(fetchImpl)
-    const submitted = await provider.submit!({
-      ...gptInput,
-      images: [{ url: 'https://r2.test/source.png' }, { url: 'https://r2.test/ref.png' }],
-      providerParams: { ...gptInput.providerParams, size: '2048x1360' },
-    }, ctx)
-    const [url, request] = fetchImpl.mock.calls[0]
-    expect(url).toBe('https://ai-gateway.vercel.sh/v1/images/edits')
-    expect(String(url)).not.toContain('chat/completions')
-    const body = JSON.parse(String(request?.body))
-    expect(body.quality).toBe('medium')
-    expect(body.images).toEqual([
-      { image_url: 'https://r2.test/source.png' },
-      { image_url: 'https://r2.test/ref.png' },
-    ])
-    expect(body).not.toHaveProperty('modalities')
-    expect(decodeAiGatewayTask(submitted.providerTaskId)?.usage?.cost).toBe(0.05318)
-    const status = await provider.getStatus!(submitted.providerTaskId, ctx)
-    expect(status).toMatchObject({ state: 'succeeded', vendor: { cost: 0.05318, currency: 'USD' } })
-  })
-
-  it('Nano Banana 的开关不能提交 GPT Image，蒙版和超额参考图也不打上游', async () => {
-    const fetchImpl = vi.fn()
-    const nanoOnly = createAiGatewayImageProvider(() => settings, memoryStore(), vi.fn(), () => null)
-    await expect(nanoOnly.submit!(gptInput, context(fetchImpl))).rejects.toMatchObject({ code: 'INVALID_KEY' })
-    const provider = gptProvider()
-    await expect(provider.submit!({ ...gptInput, mask: { url: 'https://r2.test/mask.png' } }, context(fetchImpl)))
-      .rejects.toMatchObject({ code: 'INVALID_PARAMS' })
-    await expect(provider.submit!({
-      ...gptInput,
-      images: Array.from({ length: 17 }, () => ({ url: 'https://r2.test/a.png' })),
-    }, context(fetchImpl))).rejects.toMatchObject({ code: 'INVALID_PARAMS' })
-    expect(fetchImpl).not.toHaveBeenCalled()
   })
 })

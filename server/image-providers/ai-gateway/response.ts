@@ -6,24 +6,18 @@ import {
 export type ParsedAiGatewayUsage = ParsedOpenRouterUsage
 export const parseAiGatewayImageResponse = parseOpenRouterImageResponse
 
-/** Gateway 标价：输入约 $5/M，输出 $30/M。只在 Images API 没给 usage.cost 时用来估算。 */
-export const GPT_IMAGE_INPUT_USD_PER_MILLION = 5
-export const GPT_IMAGE_OUTPUT_USD_PER_MILLION = 30
-
-export function gatewayImageTokenCost(inputTokens?: number, outputTokens?: number) {
-  if (inputTokens === undefined && outputTokens === undefined) return undefined
-  const raw = ((inputTokens ?? 0) * GPT_IMAGE_INPUT_USD_PER_MILLION
-    + (outputTokens ?? 0) * GPT_IMAGE_OUTPUT_USD_PER_MILLION) / 1_000_000
-  if (!Number.isFinite(raw) || raw < 0) return undefined
-  return Math.round(raw * 1_000_000) / 1_000_000
+export interface ParsedAiGatewayImagesResult {
+  images: Array<{ bytes: Uint8Array; mimeType: string }>
+  remoteUrl?: string
+  usage?: ParsedAiGatewayUsage
+  shape?: 'images-b64'
 }
 
-function mimeFromImageBytes(bytes: Uint8Array, format: string) {
+function sniffImageMime(bytes: Uint8Array) {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png'
-  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[8] === 0x57 && bytes[9] === 0x45) return 'image/webp'
-  if (format === 'jpeg' || format === 'jpg') return 'image/jpeg'
-  if (format === 'webp') return 'image/webp'
+  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return 'image/webp'
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif'
   return 'image/png'
 }
 
@@ -32,42 +26,54 @@ function decodeBase64Image(raw: string) {
   return bytes.byteLength ? Uint8Array.from(bytes) : undefined
 }
 
-/**
- * Images API 的 usage。优先用上游 cost（含 0）。
- * 没有 cost 但有 input/output token 时，按 $5/M、$30/M 估算。
- * 只有 total_tokens 时不估算，交给目录 vendorCost。
- */
-export function readImagesApiUsage(payload: unknown): ParsedAiGatewayUsage | undefined {
+function readImagesApiUsage(payload: unknown): ParsedAiGatewayUsage | undefined {
   if (!isRecord(payload) || !isRecord(payload.usage)) return undefined
   const usage = payload.usage
   const promptTokens = finite(usage.prompt_tokens) ?? finite(usage.input_tokens)
   const completionTokens = finite(usage.completion_tokens) ?? finite(usage.output_tokens)
   const totalTokens = finite(usage.total_tokens)
-  const upstream = finite(usage.cost)
-  const cost = upstream ?? gatewayImageTokenCost(promptTokens, completionTokens)
+  const cost = finite(usage.cost)
   if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined && cost === undefined) {
     return undefined
   }
-  return { promptTokens, completionTokens, totalTokens, cost }
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...(cost !== undefined ? { cost } : {}),
+  }
 }
 
-/** GPT Image 走 Images API，结果在 data[].b64_json，不走 Chat Completions。 */
-export function parseAiGatewayImagesApiResponse(payload: unknown): {
-  images: Array<{ bytes: Uint8Array; mimeType: string }>
-  usage?: ParsedAiGatewayUsage
-} {
-  const images: Array<{ bytes: Uint8Array; mimeType: string }> = []
+/** Images API 的 data[].b64_json。没有 base64 时留下第一条 https 结果地址，由调用方下载。 */
+export function parseAiGatewayImagesApiResponse(payload: unknown): ParsedAiGatewayImagesResult {
+  const images: ParsedAiGatewayImagesResult['images'] = []
+  let remoteUrl: string | undefined
   const root = isRecord(payload) ? payload : undefined
-  const format = root && typeof root.output_format === 'string' ? root.output_format.trim().toLowerCase() : ''
   const data = root && Array.isArray(root.data) ? root.data : []
   for (const item of data) {
-    if (!isRecord(item) || typeof item.b64_json !== 'string') continue
-    const bytes = decodeBase64Image(item.b64_json)
-    if (!bytes) continue
-    images.push({ bytes, mimeType: mimeFromImageBytes(bytes, format) })
+    if (!isRecord(item)) continue
+    if (typeof item.b64_json === 'string') {
+      const bytes = decodeBase64Image(item.b64_json)
+      if (bytes) images.push({ bytes, mimeType: sniffImageMime(bytes) })
+      continue
+    }
+    if (typeof item.url !== 'string' || images.length || remoteUrl) continue
+    const url = item.url.trim()
+    const dataUrl = /^data:([^;,]+)?;base64,([\s\S]+)$/i.exec(url)
+    if (dataUrl) {
+      const bytes = decodeBase64Image(dataUrl[2] ?? '')
+      const mimeType = (dataUrl[1] || 'image/png').trim().toLowerCase()
+      if (bytes && mimeType.startsWith('image/')) images.push({ bytes, mimeType })
+      continue
+    }
+    if (url.startsWith('https://')) remoteUrl = url
   }
-  const usage = readImagesApiUsage(payload)
-  return { images, ...(usage ? { usage } : {}) }
+  return {
+    images,
+    ...(remoteUrl && !images.length ? { remoteUrl } : {}),
+    usage: readImagesApiUsage(payload),
+    ...(images.length ? { shape: 'images-b64' as const } : {}),
+  }
 }
 
 export interface StoredAiGatewayTask {

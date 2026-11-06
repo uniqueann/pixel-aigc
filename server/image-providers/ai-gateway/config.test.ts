@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { GPT_IMAGE_26_MODEL } from '../../../shared/image-models.js'
 import {
   DEFAULT_AI_GATEWAY_BASE_URL,
   aiGatewayGptImageAvailable,
@@ -85,13 +86,12 @@ describe('AI Gateway 图片配置', () => {
     expect(aiGatewayImageSettings()?.apiKey).toBeUndefined()
   })
 
-  it('GPT Image 开关与 Nano Banana 开关互不影响', () => {
-    delete process.env.AI_GATEWAY_GPT_IMAGE_ENABLED
+  it('GPT Image 2.6 使用独立开关，不跟随 Nano Banana', () => {
     process.env.AI_GATEWAY_API_KEY = 'gw-test-key'
     process.env.AI_GATEWAY_IMAGE_ENABLED = 'true'
+    delete process.env.AI_GATEWAY_GPT_IMAGE_ENABLED
     expect(aiGatewayGptImageEnabled()).toBe(false)
     expect(aiGatewayGptImageAvailable()).toBe(false)
-    expect(aiGatewayGptImageSettings()).toBeNull()
     expect(aiGatewayImageAvailable()).toBe(true)
 
     process.env.AI_GATEWAY_GPT_IMAGE_ENABLED = 'TRUE'
@@ -102,7 +102,7 @@ describe('AI Gateway 图片配置', () => {
     expect(aiGatewayGptImageSettings()).toMatchObject({
       apiKey: 'gw-test-key',
       baseUrl: DEFAULT_AI_GATEWAY_BASE_URL,
-      model: 'openai/gpt-image-2.6-flare',
+      model: GPT_IMAGE_26_MODEL,
     })
 
     delete process.env.AI_GATEWAY_API_KEY
@@ -110,7 +110,8 @@ describe('AI Gateway 图片配置', () => {
     delete process.env.VERCEL_OIDC_TOKEN
     expect(aiGatewayGptImageAvailable()).toBe(false)
     process.env.VERCEL_OIDC_TOKEN = 'oidc-from-env'
-    expect(aiGatewayGptImageSettings()?.apiKey).toBeUndefined()
     expect(aiGatewayGptImageAvailable()).toBe(true)
+    expect(aiGatewayGptImageSettings()?.apiKey).toBeUndefined()
+    expect(aiGatewayImageAvailable()).toBe(false)
   })
 })

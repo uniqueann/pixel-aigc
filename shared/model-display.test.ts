@@ -7,6 +7,7 @@ describe('modelDisplayName', () => {
     expect(modelDisplayName('openrouter:gemini-nano-banana-2.1')).toBe('Nano Banana 2.1')
     expect(modelDisplayName('dragoncode:gpt-image-2')).toBe('GPT Image 2')
     expect(modelDisplayName('gpt-image-2.6-flare')).toBe('GPT Image 2.6')
+    expect(modelDisplayName('gpt-image-2.6-flare')).not.toMatch(/flare/i)
     expect(modelDisplayName('bailian:qwen-image-3.0')).toBe('Qwen Image 3.0')
     expect(modelDisplayName('bailian:qwen-image-3.0-pro')).toBe('Qwen Image 3.0 Pro')
     expect(modelDisplayName('seedance-2-0-fast')).toBe('Seedance 2.0 fast')
@@ -15,7 +16,7 @@ describe('modelDisplayName', () => {
     expect(modelDisplayName('fixture')).toBe('历史模型')
     expect(modelDisplayName(null)).toBe('不适用')
     expect(modelDisplayName(undefined)).toBe('不适用')
-    for (const id of ['gemini-nano-banana-2.1', 'openrouter:gemini-nano-banana-2.1', 'dragoncode:gpt-image-2', 'gpt-image-2.6-flare', 'bailian:qwen-image-3.0']) {
+    for (const id of ['gemini-nano-banana-2.1', 'openrouter:gemini-nano-banana-2.1', 'dragoncode:gpt-image-2', 'bailian:qwen-image-3.0']) {
       const label = modelDisplayName(id)
       expect(label).not.toBe(id)
       expect(label).not.toMatch(/openrouter|ai-gateway|dragoncode|bailian/i)
