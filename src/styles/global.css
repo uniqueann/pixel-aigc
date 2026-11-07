@@ -4195,8 +4195,9 @@ body.sidebar-resizing * {
 .auth-screen .auth-password-toggle::after { content: ''; position: absolute; inset: -11px; }
 /* 认证页键盘焦点：链接与按钮统一使用高对比焦点环，覆盖 antd reset 的 outline: none。 */
 .auth-screen a:focus-visible,
-.auth-screen .ant-btn:focus-visible,
 .auth-screen .auth-password-toggle:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; border-radius: 2px; }
+/* 按钮保留 antd 自身圆角，只加焦点环，避免聚焦时按钮形状跳变。 */
+.auth-screen .ant-btn:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
 .auth-wordmark { width: 176px; line-height: 0; }
 /* 触屏上把输入框、按钮与链接的命中区补到 44px。 */
 @media (max-width: 480px) {
