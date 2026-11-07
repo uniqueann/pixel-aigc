@@ -113,6 +113,10 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const [hydrating, setHydrating] = useState(authEnabled)
   const [workstationItems, setWorkstationItems] = useState<WorkstationHistoryListItem[]>([])
   const [emailItems, setEmailItems] = useState<TaskSummary[]>([])
+  /** 邮件任务服务端分页：固定每页 20 条，total 由接口返回。 */
+  const [emailPage, setEmailPage] = useState(1)
+  const [emailTotal, setEmailTotal] = useState(0)
+  const [loadingMoreEmails, setLoadingMoreEmails] = useState(false)
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({})
   const previewVersionsRef = useRef<Record<string, string>>({})
   const previewUrlsRef = useRef<Record<string, string>>({})
@@ -176,17 +180,52 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       if (authEnabled && showLoading) {
         try {
           const response = await listTasks({ capability: Capability.EmailAssist, page: 1 })
-          if (isActive()) setEmailItems(response.items)
+          if (isActive()) {
+            setEmailItems(response.items)
+            setEmailPage(1)
+            setEmailTotal(response.total)
+          }
         } catch {
-          if (isActive()) setEmailItems([])
+          if (isActive()) {
+            setEmailItems([])
+            setEmailPage(1)
+            setEmailTotal(0)
+          }
         }
       } else if (!authEnabled) {
-        if (current()) setEmailItems([])
+        if (current()) {
+          setEmailItems([])
+          setEmailPage(1)
+          setEmailTotal(0)
+        }
       }
     } finally {
       if (current()) setLoading(false)
     }
   }, [ownerId])
+
+  /** 追加下一页邮件任务；按 id 去重，避免接口重叠或重复点击产生重复卡片。 */
+  const loadMoreEmails = useCallback(async () => {
+    if (loadingMoreEmails) return
+    const version = refreshVersionRef.current
+    setLoadingMoreEmails(true)
+    try {
+      const nextPage = emailPage + 1
+      const response = await listTasks({ capability: Capability.EmailAssist, page: nextPage })
+      // 期间发生了刷新或切换账号，本次结果已过期，直接丢弃。
+      if (version !== refreshVersionRef.current) return
+      setEmailItems(previous => [
+        ...previous,
+        ...response.items.filter(item => !previous.some(existing => existing.id === item.id)),
+      ])
+      setEmailTotal(response.total)
+      setEmailPage(nextPage)
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '邮件任务加载失败')
+    } finally {
+      setLoadingMoreEmails(false)
+    }
+  }, [emailPage, loadingMoreEmails, message])
 
   useEffect(() => {
     let active = true
@@ -294,6 +333,10 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   /** 只有带本机历史记录的作品能批量删除，邮件任务不在批量范围内。 */
   const selectableVisible = useMemo(() => visible.filter((item) => item.record), [visible])
   const canSelect = selectableVisible.length > 0
+  /** 只有邮件任务走服务端分页；选择模式下隐藏，避免批量操作期间列表长度变化。 */
+  const canLoadMoreEmails = authEnabled && !selecting
+    && (filter === 'all' || filter === 'email')
+    && emailItems.length < emailTotal
   const allVisibleSelected = selectableVisible.length > 0
     && selectableVisible.every((item) => selectedIds.has(item.id))
   const previewItems: PreviewItem[] = visible.flatMap(item => item.record ? [{
@@ -754,6 +797,16 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           ))}
         </div>
       )}
+      {canLoadMoreEmails ? (
+        <div className="assets-load-more">
+          <Button loading={loadingMoreEmails} onClick={() => void loadMoreEmails()}>
+            加载更多邮件任务
+          </Button>
+          <p className="assets-load-more-hint" role="status">
+            已加载 {emailItems.length} / 共 {emailTotal} 个邮件任务
+          </p>
+        </div>
+      ) : null}
       {selecting ? (
         <div className="assets-selection-bar" role="group" aria-label="批量操作">
           <span className="assets-selection-count" aria-live="polite">已选 {selectedCount} 项</span>

@@ -5075,6 +5075,24 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   font-size: 12px;
 }
 
+.assets-load-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+.assets-load-more .ant-btn {
+  min-width: 220px;
+}
+
+.assets-load-more-hint {
+  margin: 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+}
+
 .assets-page > .ant-alert {
   margin-bottom: 16px;
 }
