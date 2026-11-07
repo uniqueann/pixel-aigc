@@ -57,6 +57,7 @@ describe('账号页邮箱链接', () => {
     auth.exchangeCodeForSession.mockReset()
     auth.resend.mockReset()
     auth.resetPasswordForEmail.mockReset()
+    auth.signInWithPassword.mockReset()
   })
 
   afterEach(() => {
@@ -187,5 +188,17 @@ describe('账号页邮箱链接', () => {
     expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('user@example.com', {
       redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
     })
+  })
+
+  it('密码可见性按钮可切换且不会提交表单', () => {
+    visit('/login')
+    render(<AuthPages />)
+    const password = screen.getByLabelText('密码') as HTMLInputElement
+    expect(password.type).toBe('password')
+    fireEvent.click(screen.getByRole('button', { name: '显示密码' }))
+    expect(password.type).toBe('text')
+    fireEvent.click(screen.getByRole('button', { name: '隐藏密码' }))
+    expect(password.type).toBe('password')
+    expect(auth.signInWithPassword).not.toHaveBeenCalled()
   })
 })
