@@ -5102,7 +5102,7 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   align-items: center;
   gap: 10px;
   padding: 48px 0;
-  color: var(--color-text-secondary);
+  color: var(--color-text-secondary-strong);
 }
 
 .assets-grid {
@@ -5239,8 +5239,61 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
 }
 
 .assets-cover:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+}
+
+/* 键盘焦点统一用高对比前景色：AntD 默认焦点色在明暗主题下都低于 3:1。 */
+.assets-page .ant-btn:focus-visible,
+.assets-page .ant-input:focus-visible,
+.assets-page .ant-input-affix-wrapper:has(:focus-visible),
+.assets-page .ant-select-focused .ant-select-selector,
+.assets-page .ant-segmented:has(:focus-visible) {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* 空态说明文字：AntD 默认 colorTextDescription 浅色主题只有 3.36:1。 */
+.assets-page .ant-empty-description {
+  color: var(--color-text-secondary-strong);
+}
+
+/* 触控目标：桌面 40px，移动端 44px。 */
+.assets-page .ant-btn {
+  min-height: 40px;
+}
+
+/* 图标按钮的宽度也要跟上高度，否则仍是 32px 的命中区。 */
+.assets-view-switch .ant-btn {
+  width: 40px;
+  min-width: 40px;
+}
+
+.assets-page .ant-input-affix-wrapper {
+  min-height: 40px;
+}
+
+.assets-page .ant-select-single,
+.assets-page .ant-select-single .ant-select-selector {
+  height: 40px;
+}
+
+.assets-page .ant-select-single .ant-select-selection-item,
+.assets-page .ant-select-single .ant-select-selection-placeholder {
+  line-height: 38px;
+}
+
+.assets-page .ant-segmented-item-label {
+  min-height: 40px;
+  line-height: 40px;
+}
+
+.assets-card-menu.ant-dropdown .ant-dropdown-menu-item {
+  min-height: 40px;
+}
+
+.assets-delete-confirm .ant-btn {
+  min-height: 40px;
 }
 
 .assets-card-details {
@@ -5281,9 +5334,9 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   top: 8px;
   right: 8px;
   display: grid;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
   padding: 0;
   place-items: center;
   border-color: transparent;
@@ -5395,6 +5448,18 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   gap: 4px;
 }
 
+/* 批量删除用可读的危险色，AntD 默认 #ff4d4f 在浅色主题只有 3.27:1。 */
+.assets-selection-actions .ant-btn-dangerous:not(:disabled) {
+  color: var(--color-danger-text);
+  border-color: var(--color-danger-text);
+}
+
+.assets-selection-actions .ant-btn-dangerous:not(:disabled):hover {
+  color: var(--color-danger-text);
+  border-color: var(--color-danger-text);
+  background: var(--color-danger-soft);
+}
+
 .assets-card-list {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr) auto;
@@ -5424,9 +5489,9 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
 
 .assets-card-list .assets-card-more.ant-btn {
   position: static;
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
   background: transparent;
   backdrop-filter: none;
 }
@@ -5476,17 +5541,28 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .assets-sort { width: 104px; }
   .assets-select-toggle.ant-btn { padding-inline: 6px; }
   .assets-groups { gap: 20px; }
-  /* 选择条同样贴边，按钮保持 40px 触控高度。 */
+  /* 选择条同样贴边，按钮保持 44px 触控高度。 */
   .assets-selection-bar {
     margin: 12px -12px 0;
     padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
   }
   .assets-selection-bar::after { height: 12px; }
-  .assets-selection-actions .ant-btn { min-height: 40px; }
-  .assets-card-more.ant-btn { top: 6px; right: 6px; width: 40px; min-width: 40px; height: 40px; }
+  /* 移动端触控目标统一到 44px。 */
+  .assets-page .ant-btn,
+  .assets-page .ant-input-affix-wrapper,
+  .assets-page .ant-select-single,
+  .assets-page .ant-select-single .ant-select-selector,
+  .assets-page .ant-segmented-item-label,
+  .assets-card-menu.ant-dropdown .ant-dropdown-menu-item,
+  .assets-delete-confirm .ant-btn { min-height: 44px; }
+  .assets-view-switch .ant-btn { width: 44px; min-width: 44px; }
+  .assets-page .ant-select-single .ant-select-selection-item,
+  .assets-page .ant-select-single .ant-select-selection-placeholder { line-height: 42px; }
+  .assets-page .ant-segmented-item-label { line-height: 44px; }
+  .assets-card-more.ant-btn { top: 6px; right: 6px; width: 44px; min-width: 44px; height: 44px; }
   .assets-card-list { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; padding: 6px; }
   .assets-card-list .assets-cover { width: 64px; height: 48px; }
-  .assets-card-list .assets-card-more.ant-btn { width: 40px; min-width: 40px; height: 40px; }
+  .assets-card-list .assets-card-more.ant-btn { width: 44px; min-width: 44px; height: 44px; }
   .app-main-content { padding: 12px; }
   .toolbox-preview-panel,
   .toolbox-settings-panel,

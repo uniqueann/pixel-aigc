@@ -31,7 +31,13 @@ export default function VideoPoster({ posterKey, ownerId, retentionExpiresAt, va
       {variant === 'cover'
         ? <img className="cover-backdrop" src={poster.url} alt="" loading="lazy" decoding="async" />
         : null}
-      <img src={poster.url} loading="lazy" alt="视频封面" onError={() => setPoster(undefined)} />
+      <img
+        src={poster.url}
+        loading="lazy"
+        decoding="async"
+        alt={variant === 'cover' ? '' : '视频封面'}
+        onError={() => setPoster(undefined)}
+      />
     </>
   )
 }

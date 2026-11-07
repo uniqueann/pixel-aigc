@@ -241,10 +241,51 @@ describe('我的资产缩略图预览入口', () => {
     fireEvent.change(input, { target: { value: '不存在的关键词' } })
     await waitFor(() => screen.getByText('没有找到匹配「不存在的关键词」的作品'))
 
+    // 0 结果也要播报，否则读屏用户不知道筛选已经生效。
+    const count = document.querySelector('.assets-search-count')
+    expect(count?.getAttribute('role')).toBe('status')
+    expect(count?.textContent).toBe('找到 0 个作品')
+
     fireEvent.click(screen.getByRole('button', { name: '清除搜索' }))
     await waitFor(() => expect(screen.getByRole('button', { name: coverName })).toBeTruthy())
     expect(input.value).toBe('')
     expect(document.activeElement).toBe(input)
+  })
+
+  it('加载中状态用 role=status 播报', () => {
+    const { container } = renderAssets()
+    const loading = container.querySelector('.assets-loading')
+    expect(loading?.getAttribute('role')).toBe('status')
+    expect(loading?.textContent).toContain('正在加载作品')
+  })
+
+  it('筛选页签有中文组名称', async () => {
+    renderAssets()
+    await waitForCover()
+    expect(screen.getByRole('radiogroup', { name: '筛选作品类型' })).toBeTruthy()
+  })
+
+  it('卡片菜单项带上作品名，读屏能区分目标', async () => {
+    renderAssets()
+    await waitForCover()
+    const trigger = screen.getByRole('button', { name: '更多操作：将耳机放在咖啡桌中央，保持细节' })
+    fireEvent.click(trigger)
+    expect(await screen.findByRole('menuitem', { name: /下载「将耳机放在咖啡桌中央，保持细节」/ })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: /删除「将耳机放在咖啡桌中央，保持细节」/ })).toBeTruthy()
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu')
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('选择模式下按 Escape 退出', async () => {
+    renderAssets()
+    await waitForCover()
+    const toggle = screen.getByRole('button', { name: /^选\s*择$/ })
+    fireEvent.click(toggle)
+    expect(document.querySelector('.assets-selection-bar')).toBeTruthy()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('.assets-selection-bar')).toBeNull())
+    expect(screen.getByRole('button', { name: coverName }).getAttribute('aria-pressed')).toBeNull()
   })
 
   it('切换到最早优先后按时间正序，并写回偏好', async () => {
@@ -424,7 +465,7 @@ describe('我的资产缩略图预览入口', () => {
     expect(document.querySelector('.assets-selection-bar')).toBeNull()
     expect(document.querySelector('.sr-only')?.textContent).toContain('已删除 2 条作品')
 
-    fireEvent.click(await screen.findByRole('button', { name: '撤销' }))
+    fireEvent.click(await screen.findByRole('button', { name: /撤销删除/ }))
     await waitFor(() => expect(restoreWorkstationHistory).toHaveBeenCalledTimes(2))
     expect(restoreWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-1')
     expect(restoreWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-2')
@@ -495,7 +536,7 @@ describe('我的资产缩略图预览入口', () => {
     await waitFor(() => expect(deleteWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-1'))
     expect(document.querySelector('.sr-only')?.textContent).toContain('已删除')
 
-    fireEvent.click(await screen.findByRole('button', { name: '撤销' }))
+    fireEvent.click(await screen.findByRole('button', { name: /撤销删除/ }))
     await waitFor(() => expect(restoreWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-1'))
     await waitFor(() => expect(document.querySelector('.sr-only')?.textContent).toContain('已恢复'))
   })
