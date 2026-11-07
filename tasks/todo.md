@@ -1052,3 +1052,35 @@
 - 检测器：`impeccable detect --json src/pages/Assets/index.tsx` 返回 `[]`。
 - 截图：`/tmp/assets-critique/search-sort/01-desktop-light.png` … `08-desktop-delete-search.png`。
 - 未做：日期分组、批量选择、分页、URL 里的 `?q=`、拼音首字母搜索。
+
+# 我的资产 · 按日期分组（2026-11-07）
+
+目标：作品墙按本地日历日分组，组标题吸顶；组顺序跟随当前排序。
+
+## 计划
+
+- [x] 新增纯函数 `groupAssetsByDay`（`src/pages/Assets/groupByDay.ts`）：本地日键，今天/昨天/月日/年月日，无效时间归入「时间未知」
+- [x] 组顺序与组内顺序完全保留 `visible` 顺序，排序控件无需改动
+- [x] 页面改为 section + h2 + 每组独立网格/列表；`gridRef` 上移到 `.assets-groups`
+- [x] 卡片渲染抽成普通函数 `renderCard`，避免每次渲染重建组件类型
+- [x] 组标题吸顶（`top:0` + `::before` 盖住 20px 内容区 padding），沿用邮件批量摘要的写法
+- [x] 补页面级 `sr-only` h1（放在 live region 之后，保持现有测试选择器）
+- [x] 补单测：四种标签、顺序保留、无效时间；页面分组与排序反转、搜索后只剩命中组
+
+## 验收
+
+- [x] 4 个日期桶（今天 6 / 昨天 6 / 今年 4 / 去年 3）分组与数量正确
+- [x] 标题层级：H1 我的资产 + H2 今天 / 昨天 / 10月2日 / 2025年12月31日
+- [x] 滚动时标题吸顶在内容区顶部（scrollerTop 56 + 20px padding），上方无卡片露出；明暗主题一致
+- [x] 最早优先时组顺序反转；搜索「耳机」后 4 个组各 1 条，计数 4
+- [x] 删除后焦点仍落到下一张封面（18 条，各组数量正确）
+- [x] 列表视图每组独立容器；390 无横向滚动，组间距 20px
+- [x] 0 console error
+
+## 复查
+
+- 测试：`npx vitest run` 338 个文件 / 2187 个用例通过；`tsc --noEmit`、`npm run lint`、`npm run build` 通过。
+- 检测器：`impeccable detect --json src/pages/Assets/index.tsx` 返回 `[]`。
+- 截图：`/tmp/assets-critique/date-groups/01-desktop-light.png` … `09-mobile-light.png`。
+- 已知：跨午夜不自动重排，刷新或列表变化后更新；无效时间归入「时间未知」。
+- 未做：可折叠分组、本周/更早桶、每组数量、组标题跳转。
