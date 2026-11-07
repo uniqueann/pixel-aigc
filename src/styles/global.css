@@ -5156,6 +5156,8 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   background: var(--color-canvas);
   color: var(--color-text-secondary);
   cursor: zoom-in;
+  /* 铺底用负层级压在内容下方，同时把层级关在封面里。 */
+  isolation: isolate;
 }
 
 .assets-card:hover .assets-cover,
@@ -5163,16 +5165,31 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   border-color: var(--color-accent);
 }
 
-/* 竖图 contain 后两侧留白，用同一张缩略图铺底，避免大块中性灰。 */
-.assets-cover-backdrop {
+/* 同图模糊铺底：图片与视频海报共用，避免 contain 后的留白变成大块中性灰。 */
+.cover-backdrop {
   position: absolute;
   inset: -16px;
-  background-position: center;
-  background-size: cover;
+  z-index: -1;
+  width: calc(100% + 32px);
+  height: calc(100% + 32px);
+  object-fit: cover;
   filter: blur(24px);
   opacity: 0.4;
   pointer-events: none;
   transform: scale(1.12);
+}
+
+/* 封面占位：图片/视频/邮件缺媒体时共用裸图标，和首页最近作品同一语言。 */
+.assets-cover .cover-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--color-text-secondary);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.assets-card-list .cover-placeholder {
+  font-size: 22px;
 }
 
 .assets-cover-image {
@@ -5182,20 +5199,10 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   object-fit: contain;
 }
 
-.assets-cover img {
+.assets-cover img:not(.cover-backdrop) {
   width: 100%;
   height: 100%;
   object-fit: contain;
-}
-
-.assets-cover .preview-video-poster {
-  position: relative;
-}
-
-.assets-cover-empty {
-  position: relative;
-  color: var(--color-text-secondary-strong);
-  font-size: 12px;
 }
 
 .assets-video-duration {
@@ -5210,9 +5217,7 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
 }
 
 .assets-cover-email {
-  color: var(--color-text-secondary);
   cursor: pointer;
-  font-size: 26px;
 }
 
 .assets-cover:focus-visible {
