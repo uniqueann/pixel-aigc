@@ -218,9 +218,11 @@ describe('我的资产缩略图预览入口', () => {
     renderAssets()
     await waitForCover()
     expect(document.querySelectorAll('.assets-card')).toHaveLength(2)
+    expect(document.querySelectorAll('.assets-group')).toHaveLength(2)
 
     fireEvent.change(screen.getByRole('textbox', { name: '搜索作品' }), { target: { value: '梧桐树' } })
     await waitFor(() => expect(document.querySelectorAll('.assets-card')).toHaveLength(1))
+    expect(document.querySelectorAll('.assets-group')).toHaveLength(1)
     expect(cardTitles()[0]).toContain('橘猫')
     const count = document.querySelector('.assets-search-count')
     expect(count?.getAttribute('role')).toBe('status')
@@ -282,6 +284,26 @@ describe('我的资产缩略图预览入口', () => {
 
     fireEvent.click(cover)
     expect(screen.getByTestId('location').textContent).toBe('/email?mode=single&taskId=mail-1')
+  })
+
+  it('作品按日期分组，最早优先时组顺序反转', async () => {
+    // 用本地时间构造，避免断言依赖测试机器的时区。
+    const at = (month: number, day: number) => new Date(2026, month - 1, day, 10).toISOString()
+    const newer = { ...historyItem, id: 'hist-newer', prompt: '较新的作品', createdAt: at(10, 2) }
+    const older = { ...historyItem, id: 'hist-older', prompt: '更早的作品', createdAt: at(9, 1) }
+    vi.mocked(listHistoryPreviews).mockResolvedValue([older, newer])
+    renderAssets()
+    await waitFor(() => screen.getByRole('button', { name: '查看较新的作品大图' }))
+
+    const groupLabels = () => Array.from(document.querySelectorAll('.assets-group-title')).map(node => node.textContent)
+    expect(groupLabels()).toHaveLength(2)
+    expect(groupLabels()[0]).toContain('10月2日')
+    expect(groupLabels()[1]).toContain('9月1日')
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '排序方式' }))
+    fireEvent.click(await screen.findByText('最早优先', { selector: '.ant-select-item-option-content' }))
+    await waitFor(() => expect(groupLabels()[0]).toContain('9月1日'))
+    expect(groupLabels()[1]).toContain('10月2日')
   })
 
   it('删除前必须确认，取消不会删除作品', async () => {

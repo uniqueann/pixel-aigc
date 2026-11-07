@@ -5092,6 +5092,41 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   gap: 6px;
 }
 
+/* 日期分组：组标题吸顶，滚动时始终知道自己在哪一天。 */
+.assets-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.assets-group {
+  min-width: 0;
+}
+
+.assets-group-title {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 0 10px;
+  padding: 8px 0;
+  background: var(--color-bg);
+  color: var(--color-text-secondary-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 吸顶停在内容区 padding 下沿；用页面底色盖住上方 20px，避免卡片从缝里露出。 */
+.assets-group-title::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  left: 0;
+  top: -20px;
+  height: 20px;
+  background: var(--color-bg);
+  pointer-events: none;
+}
+
 /* 作品墙瓦片：封面承载作品，文字只留标题与工具/时间，操作收进「更多」。 */
 .assets-card {
   position: relative;
@@ -5328,6 +5363,7 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   /* 搜索框吃掉剩余宽度，排序固定，390px 下输入框仍可输入。 */
   .assets-search { max-width: none; }
   .assets-sort { width: 104px; }
+  .assets-groups { gap: 20px; }
   .assets-card-more.ant-btn { top: 6px; right: 6px; width: 40px; min-width: 40px; height: 40px; }
   .assets-card-list { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; padding: 6px; }
   .assets-card-list .assets-cover { width: 64px; height: 48px; }
