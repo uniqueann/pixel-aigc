@@ -138,6 +138,26 @@ describe('邮件助手单个与批量页面', () => {
     expect(mocks.get).toHaveBeenCalledWith('已完成邮件')
   })
 
+  it('taskId 深链直接打开对应历史任务', async () => {
+    mocks.auth = true
+    mocks.get.mockResolvedValue({ ...completed('邮件任务一'), params: { sourceText: '深链邮件正文', operation: 'reply', language: 'zh' }, resultText: '深链结果' })
+    mocks.list.mockResolvedValue({ items: [{ id: '邮件任务一', capability: Capability.EmailAssist, status: 'succeeded', operation: 'reply', preview: '深链邮件', createdAt: '2026-10-04', updatedAt: '2026-10-04' }], total: 1 })
+    entry = '/email?mode=single&taskId=邮件任务一'
+    render(<EmailAssistant />, { wrapper })
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('邮件任务一'))
+    await waitFor(() => expect(screen.getByPlaceholderText('粘贴需要处理的邮件内容')).toHaveProperty('value', '深链邮件正文'))
+    expect(screen.getByLabelText('生成结果')).toHaveProperty('value', '深链结果')
+  })
+
+  it('taskId 读取失败时提示并回到普通单个入口', async () => {
+    mocks.auth = true
+    mocks.get.mockRejectedValue(new Error('邮件任务不存在'))
+    mocks.list.mockResolvedValue({ items: [], total: 0 })
+    entry = '/email?mode=single&taskId=坏任务'
+    render(<><EmailAssistant /><EntryControls /></>, { wrapper })
+    await waitFor(() => expect(screen.getByTestId('entry-url').textContent).toBe('?mode=single'))
+  })
+
   it('默认单个模式，页签切换保留单个输入和批量预览', async () => {
     render(<EmailAssistant />, { wrapper })
     fireEvent.change(screen.getByPlaceholderText('粘贴需要处理的邮件内容'), { target: { value: '保留原始邮件' } })

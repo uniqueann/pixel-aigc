@@ -418,7 +418,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
                     type="button"
                     aria-label={`查看邮件任务：${name}`}
                     title="查看邮件任务"
-                    onClick={() => navigate('/email')}
+                    onClick={() => navigate(`/email?mode=single&taskId=${encodeURIComponent(item.email?.id ?? item.id)}`)}
                   >
                     <MailOutlined />
                   </button>

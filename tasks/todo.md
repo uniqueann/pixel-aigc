@@ -991,3 +991,31 @@
 - 截图：`/tmp/assets-critique/cards/01-grid-dark.png` … `08-menu-mobile.png`。
 - 已知：视频卡多一行「到期」，所在网格行比其他行高 18px；视频工具名沿用现有 `modelDisplayName` 逻辑（未知模型显示「历史模型」）。
 - 未做：邮件深链、搜索/排序/日期分组/批量、分页、页面级 h1。
+
+# 我的资产 · 邮件任务深链（2026-11-07）
+
+目标：邮件资产卡片一键打开对应邮件任务，表单与结果直接可见；不改任务中心的 `?task=kind:id` 恢复流程。
+
+## 计划
+
+- [x] 约定 URL：`/email?mode=single&taskId=<id>`，与 `?task=email_task:<id>`（恢复横幅）区分开
+- [x] 资产页邮件封面跳转携带 `taskId`
+- [x] 邮件页读取 `taskId`，一次性调用 `openTask(id)`；关闭「恢复最新任务」避免抢占
+- [x] 读取失败时 toast 提示并清掉 `taskId`，回到普通单个入口
+- [x] StrictMode 下用微任务 + active 标记保证只发一次有效请求
+- [x] 补单测：资产卡片跳转 URL、深链打开任务、失败回退
+
+## 验收
+
+- [x] `/email?mode=single&taskId=<mock 任务>` 直接显示原邮件正文、操作类型、语言与生成结果
+- [x] 不存在的 taskId：提示「模拟任务不存在…」，URL 回到 `?mode=single`
+- [x] 资产卡片点击后地址为 `/email?mode=single&taskId=<id>`
+- [x] 任务中心的 `?task=email_task:<id>` 恢复流程未受影响
+
+## 复查
+
+- 测试：`npx vitest run` 337 个文件 / 2177 个用例通过；`tsc --noEmit`、`npm run lint`、`npm run build` 通过。
+- 浏览器：`VITE_AUTH_MODE=disabled VITE_GENERATION_MODE=mock`，生成一条 mock 邮件任务后深链打开，正文/结果/状态均正确；无效 id 回退正常；0 console error。
+- 检测器：`impeccable detect --json src/pages/Assets/index.tsx src/pages/EmailAssistant/index.tsx` 返回 `[]`。
+- 截图：`/tmp/assets-critique/email-deeplink/01-generated.png` … `03-invalid.png`。
+- 已知：深链后 URL 保留 `taskId`，用户点「新建任务」后刷新仍会回到旧任务；任务不在历史第一页时「最近 7 天」下拉可能没有该选项。

@@ -2,7 +2,7 @@
 
 import { App } from 'antd'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Capability } from '@/types'
 
@@ -52,11 +52,18 @@ import { useUserStore } from '@/store/useUserStore'
 import { deleteWorkstationHistory, listHistoryPreviews, restoreWorkstationHistory } from '@/features/assets/workstationHistory'
 import { downloadOwnedVideo } from '@/services/api/ownedVideos'
 
+/** 记录卡片跳转后的地址，用于验证邮件深链参数。 */
+function LocationProbe() {
+  const location = useLocation()
+  return <output data-testid="location">{location.pathname}{location.search}</output>
+}
+
 function renderAssets() {
   return render(
     <MemoryRouter>
       <App>
         <Assets />
+        <LocationProbe />
       </App>
     </MemoryRouter>,
   )
@@ -208,6 +215,9 @@ describe('我的资产缩略图预览入口', () => {
     const cover = await waitFor(() => screen.getByRole('button', { name: '查看邮件任务：关于下周的排期' }))
     expect(cover.classList.contains('assets-cover-email')).toBe(true)
     expect(screen.getByText(/邮件助手 · 回复/)).toBeTruthy()
+
+    fireEvent.click(cover)
+    expect(screen.getByTestId('location').textContent).toBe('/email?mode=single&taskId=mail-1')
   })
 
   it('删除前必须确认，取消不会删除作品', async () => {

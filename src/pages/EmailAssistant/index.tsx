@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useOutletContext, useSearchParams } from 'react-router-dom'
-import { Alert, Button } from 'antd'
+import { Alert, App, Button } from 'antd'
 import { authEnabled } from '@/cloud/client'
 import ToolSwitcher from '@/components/ToolSwitcher'
 import { useEmailAssistantController } from '@/features/email-assistant/useEmailAssistantController'
@@ -21,16 +21,38 @@ export default function EmailAssistant() {
 
 function EmailAssistantSession() {
   const { openModelSettings } = useOutletContext<{ openModelSettings: () => void }>()
+  const { message } = App.useApp()
   const [params, setParams] = useSearchParams()
   const { key: entryKey } = useLocation()
   const mode = params.get('mode') === 'batch' ? 'batch' : 'single'
   const entryOperation = mode === 'single' ? EMAIL_OPERATIONS.find(item => item.value === params.get('operation'))?.value : undefined
+  /** 资产页深链：`?taskId=` 表示直接打开这条邮件任务，与任务中心的 `?task=kind:id` 恢复流程互不影响。 */
+  const deepLinkTaskId = params.get('taskId') ?? undefined
   const [batchVisited, setBatchVisited] = useState(mode === 'batch')
   const configuration = useEmailModelConfiguration()
   const gate = useEmailGenerationGate()
-  const single = useEmailAssistantController({ autoRestoreLatest: !entryOperation && !params.has('mode') && !params.has('task'),readOnlyRecovery:params.has('task') })
+  const single = useEmailAssistantController({ autoRestoreLatest: !entryOperation && !params.has('mode') && !params.has('task') && !deepLinkTaskId,readOnlyRecovery:params.has('task') })
   const batch = useEmailBatchController(gate)
   const { settingsQuery, profilesQuery } = configuration
+  const openTask = single.openTask
+  const openedDeepLinkRef = useRef<string>()
+  useEffect(() => {
+    if (!deepLinkTaskId) return
+    let active = true
+    // 放到微任务里，StrictMode 的挂载-清理-再挂载只保留最后一次请求。
+    queueMicrotask(() => {
+      if (!active || openedDeepLinkRef.current === deepLinkTaskId) return
+      openedDeepLinkRef.current = deepLinkTaskId
+      void openTask(deepLinkTaskId).catch(error => {
+        if (!active) return
+        message.error(error instanceof Error ? error.message : '邮件任务加载失败')
+        const next = new URLSearchParams(params)
+        next.delete('taskId'); next.set('mode', 'single')
+        setParams(next, { replace: true })
+      })
+    })
+    return () => { active = false }
+  }, [deepLinkTaskId, message, openTask, params, setParams])
   useEffect(() => {
     if (mode === 'batch' && !batchVisited) queueMicrotask(() => setBatchVisited(true))
   }, [mode, batchVisited])
