@@ -58,6 +58,7 @@ describe('账号页邮箱链接', () => {
     auth.resend.mockReset()
     auth.resetPasswordForEmail.mockReset()
     auth.signInWithPassword.mockReset()
+    auth.signOut.mockReset()
   })
 
   afterEach(() => {
@@ -237,6 +238,20 @@ describe('账号页邮箱链接', () => {
     expect(confirmInput.getAttribute('aria-describedby')).toBe('auth-confirm-error')
     expect(auth.signUp).not.toHaveBeenCalled()
     await waitFor(() => expect(document.activeElement).toBe(confirmInput))
+  })
+
+  it('账号停用页复用认证页模板', async () => {
+    auth.signOut.mockResolvedValue({ error: null })
+    visit('/account-disabled')
+    render(<AuthPages />)
+    expect(screen.getByRole('img', { name: 'Pixel AIGC' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '账号已停用' })).toBeTruthy()
+    expect(screen.getByText('当前账号暂时无法使用 Pixel AIGC，请联系管理员。')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '产品介绍' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '隐私政策' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '退出并切换账号' }))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login'))
+    expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' })
   })
 
   it('密码可见性按钮可切换且不会提交表单', () => {

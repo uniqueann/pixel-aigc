@@ -61,6 +61,15 @@ function PasswordField({ id, label, placeholder, autoComplete, minLength, invali
   />
 }
 
+// 认证页共用的法务入口，避免停用页与配置错误页各写一份。
+function LegalLinks() {
+  return <Space wrap>
+    <a href="/about" target="_blank" rel="noopener noreferrer">产品介绍</a>
+    <a href="/privacy" target="_blank" rel="noopener noreferrer">隐私政策</a>
+    <a href="https://contentup.cc/terms" target="_blank" rel="noopener noreferrer">服务条款</a>
+  </Space>
+}
+
 export default function AuthPages() {
   const path = window.location.pathname
   const params = new URLSearchParams(window.location.search)
@@ -209,10 +218,19 @@ export default function AuthPages() {
     }, submitFallback)
   }
 
-  if (!authEnabled || cloudConfigurationError) return <div className="project-recovery-screen"><Alert type="error" message={cloudConfigurationError ?? '账号系统尚未启用'} /></div>
-  if (path === '/account-disabled') return <div className="project-recovery-screen"><h2>账号已停用</h2>
+  if (!authEnabled || cloudConfigurationError) return <div className="project-recovery-screen auth-screen">
+    <PixelWordmark className="auth-wordmark" />
+    <h2>账号系统不可用</h2>
+    <Alert type="error" showIcon message={cloudConfigurationError ?? '当前环境未启用账号系统。'} />
+    <LegalLinks />
+  </div>
+  if (path === '/account-disabled') return <div className="project-recovery-screen auth-screen">
+    <PixelWordmark className="auth-wordmark" />
+    <h2>账号已停用</h2>
     <p>当前账号暂时无法使用 Pixel AIGC，请联系管理员。</p>
-    <Button onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>退出并切换账号</Button></div>
+    <Button type="primary" block onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>退出并切换账号</Button>
+    <LegalLinks />
+  </div>
   const labels: Record<string,string> = { '/login': '登录', '/register': '注册', '/verify-email': '验证邮箱', '/forgot-password': '找回密码', '/reset-password': '设置新密码', '/auth/callback': '正在完成验证' }
   return <div className="project-recovery-screen auth-screen">
     <PixelWordmark className="auth-wordmark" />
@@ -278,10 +296,6 @@ export default function AuthPages() {
       {path === '/login' && <><a href={`/register?next=${encodeURIComponent(next)}`}>注册账号</a><a href="/forgot-password">忘记密码</a></>}
       {path === '/auth/callback' || path === '/reset-password' ? <a href="/forgot-password">重新申请重置邮件</a> : null}
     </Space>
-    <Space wrap>
-      <a href="/about" target="_blank" rel="noopener noreferrer">产品介绍</a>
-      <a href="/privacy" target="_blank" rel="noopener noreferrer">隐私政策</a>
-      <a href="https://contentup.cc/terms" target="_blank" rel="noopener noreferrer">服务条款</a>
-    </Space>
+    <LegalLinks />
   </div>
 }
