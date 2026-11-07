@@ -214,7 +214,7 @@ export default function AuthPages() {
     <p>当前账号暂时无法使用 Pixel AIGC，请联系管理员。</p>
     <Button onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>退出并切换账号</Button></div>
   const labels: Record<string,string> = { '/login': '登录', '/register': '注册', '/verify-email': '验证邮箱', '/forgot-password': '找回密码', '/reset-password': '设置新密码', '/auth/callback': '正在完成验证' }
-  return <div className="project-recovery-screen auth-screen" style={{ maxWidth: 420, margin: '10vh auto', gap: 16 }}>
+  return <div className="project-recovery-screen auth-screen">
     <PixelWordmark className="auth-wordmark" />
     <h2>{labels[path] ?? '账号'}</h2>
     {path === '/verify-email' && <p>注册邮件已发送，如需重发请输入邮箱。</p>}
