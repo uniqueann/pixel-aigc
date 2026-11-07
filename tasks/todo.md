@@ -1116,3 +1116,33 @@
 - 截图：`/tmp/assets-critique/selection/01-enter-selection-dark.png` … `08-selection-mobile-full.png`。
 - 已知：批量超过 20 条时最早的快照会被裁掉，撤销只能恢复剩余部分并给出 warning。
 - 未做：批量下载（需要打包 zip）、跨页全选、拖动框选、邮件任务批量删除。
+
+# 我的资产 · 统一封面（2026-11-07）
+
+目标：图片/视频/邮件/缺缩略图四类封面共用同一套铺底与占位语言，沿用首页「最近作品」的裸图标写法。
+
+## 计划
+
+- [x] 新增 `CoverPlaceholder`（只有图标，无类型文案，`aria-hidden`），图片/视频/邮件共用
+- [x] 铺底改为 `<img class="cover-backdrop" loading="lazy">`，图片与视频海报共用；`isolation: isolate` + `z-index: -1` 保证不压住时长角标与勾选圈
+- [x] `VideoPoster` 新增 `variant: 'strip' | 'cover'`（默认 strip），cover 时加铺底、缺海报用统一占位、海报 `onError` 回退；铺底与海报共用 `posterKey/userId/ownerId` 守卫
+- [x] 邮件封面保留 `assets-cover assets-cover-email`，内容换成 MailOutlined 占位
+- [x] 无缩略图从「查看原图」文字换成 PictureOutlined 占位
+- [x] 清理 `.assets-cover-backdrop`、`.assets-cover-empty`、`.assets-cover .preview-video-poster`
+- [x] 单测：VideoPoster 四个用例（铺底、缺海报、加载失败、结果条不回归）；资产页补邮件占位与无缩略图占位
+
+## 验收
+
+- [x] 9 张卡（6 图 + 1 无缩略图 + 1 有海报视频 + 1 无海报视频）：7 个铺底、2 个占位（picture / play-circle），无 `.preview-video-poster`
+- [x] 铺底 `position: absolute; z-index: -1; object-fit: cover`，封面 `isolation: isolate`；时长角标与勾选圈 hit-test 均命中自身
+- [x] 占位图标 28px（网格）/ 22px（列表），暗色 4.0:1、浅色 4.3:1（非文本 ≥3:1）
+- [x] 1440 明暗、390 浅色：四类封面底色/圆角一致，无横向滚动，0 console error
+- [x] 选择模式与批量删除不回归；视频时长角标正常
+- [x] `impeccable detect` 两个文件均返回 `[]`
+
+## 复查
+
+- 测试：`npx vitest run` 339 个文件 / 2196 个用例通过；`tsc --noEmit`、`npm run lint`、`npm run build` 通过。
+- 截图：`/tmp/assets-critique/cover-unify/01-grid-dark.png` … `05-grid-mobile-light.png`（海报用路由拦截返回 data URL 验证）。
+- 已知：图片缩略图自身损坏仍显示破图（需要 per-card onError）；视频卡多一行「到期」导致行高差异未处理。
+- 未做：首页 RecentWorks 对齐铺底、分页、其余无障碍补全。

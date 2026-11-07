@@ -280,10 +280,24 @@ describe('我的资产缩略图预览入口', () => {
     renderAssets()
     const cover = await waitFor(() => screen.getByRole('button', { name: '查看邮件任务：关于下周的排期' }))
     expect(cover.classList.contains('assets-cover-email')).toBe(true)
+    expect(cover.querySelector('.cover-placeholder .anticon-mail')).toBeTruthy()
     expect(screen.getByText(/邮件助手 · 回复/)).toBeTruthy()
 
     fireEvent.click(cover)
     expect(screen.getByTestId('location').textContent).toBe('/email?mode=single&taskId=mail-1')
+  })
+
+  it('没有缩略图的作品用统一封面占位', async () => {
+    vi.mocked(listHistoryPreviews).mockResolvedValue([{
+      ...historyItem,
+      id: 'hist-no-thumb',
+      prompt: '没有缩略图的作品',
+      thumbnail: undefined,
+    }])
+    renderAssets()
+    const cover = await waitFor(() => screen.getByRole('button', { name: '查看没有缩略图的作品大图' }))
+    expect(cover.querySelector('.cover-placeholder .anticon-picture')).toBeTruthy()
+    expect(cover.querySelector('img')).toBeNull()
   })
 
   it('作品按日期分组，最早优先时组顺序反转', async () => {

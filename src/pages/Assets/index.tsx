@@ -1,9 +1,10 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AppstoreOutlined, CheckOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, SearchOutlined, UnorderedListOutlined,
+  AppstoreOutlined, CheckOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, PictureOutlined, SearchOutlined, UnorderedListOutlined,
 } from '@ant-design/icons'
 import { App, Alert, Button, Dropdown, Input, Segmented, Select, Space, Spin, Tooltip, type InputRef } from 'antd'
+import CoverPlaceholder from '@/components/CoverPlaceholder'
 import EmptyState from '@/components/EmptyState'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import VideoPoster from '@/components/VideoPoster'
@@ -561,20 +562,22 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           >
             {item.record.video ? (
               <>
-                <VideoPoster posterKey={item.record.video.posterKey} retentionExpiresAt={item.record.video.retentionExpiresAt} ownerId={ownerId} />
+                <VideoPoster posterKey={item.record.video.posterKey} retentionExpiresAt={item.record.video.retentionExpiresAt} ownerId={ownerId} variant="cover" />
                 <span className="assets-video-duration">{item.record.video.durationSeconds} 秒</span>
               </>
             ) : item.previewUrl ? (
               <>
-                <span
-                  className="assets-cover-backdrop"
-                  aria-hidden="true"
-                  style={{ backgroundImage: `url("${item.previewUrl}")` }}
+                <img
+                  className="cover-backdrop"
+                  src={item.previewUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
                 />
                 <img className="assets-cover-image" src={item.previewUrl} alt="" loading="lazy" decoding="async" />
               </>
             ) : (
-              <span className="assets-cover-empty">查看原图</span>
+              <CoverPlaceholder icon={<PictureOutlined />} />
             )}
             {inSelection ? (
               <span className="assets-select-check" aria-hidden="true">{selected ? <CheckOutlined /> : null}</span>
@@ -590,7 +593,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
             title={selecting ? '邮件任务暂不支持批量操作' : '查看邮件任务'}
             onClick={() => navigate(`/email?mode=single&taskId=${encodeURIComponent(item.email?.id ?? item.id)}`)}
           >
-            <MailOutlined />
+            <CoverPlaceholder icon={<MailOutlined />} />
           </button>
         )}
         <div className="assets-card-details">
