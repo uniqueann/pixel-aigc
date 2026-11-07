@@ -30,6 +30,21 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   bad_oauth_callback: '登录回调无效，请重新发起登录。',
 }
 
+export type AuthField = 'email' | 'password' | 'confirm'
+
+// 能明确归属到某个字段的错误，直接显示在字段下方。
+const AUTH_ERROR_FIELDS: Record<string, AuthField | AuthField[]> = {
+  invalid_credentials: ['email', 'password'],
+  email_not_confirmed: 'email',
+  email_exists: 'email',
+  user_already_exists: 'email',
+  email_address_invalid: 'email',
+  email_address_not_authorized: 'email',
+  over_email_send_rate_limit: 'email',
+  weak_password: 'password',
+  same_password: 'password',
+}
+
 // 少数错误没有 code，只能按 Supabase 的英文文案兜底匹配。
 const MESSAGE_PATTERNS: Array<[string, string]> = [
   ['invalid login credentials', 'invalid_credentials'],
@@ -44,13 +59,36 @@ const MESSAGE_PATTERNS: Array<[string, string]> = [
   ['for security purposes, you can only request this after', 'over_email_send_rate_limit'],
 ]
 
+const MESSAGE_FIELD_PATTERNS: Array<[string, AuthField | AuthField[]]> = [
+  ['invalid login credentials', ['email', 'password']],
+  ['email not confirmed', 'email'],
+  ['user already registered', 'email'],
+  ['password should be at least', 'password'],
+  ['password is too weak', 'password'],
+  ['new password should be different', 'password'],
+  ['unable to validate email address', 'email'],
+  ['for security purposes, you can only request this after', 'email'],
+]
+
 const hasChinese = (value: string) => /[一-鿿]/.test(value)
 
-export function authErrorMessage(error: unknown, fallback: string): string {
-  const message = error instanceof Error ? error.message : ''
-  const code = typeof error === 'object' && error !== null && 'code' in error
+function errorCode(error: unknown): string {
+  return typeof error === 'object' && error !== null && 'code' in error
     ? String((error as { code?: unknown }).code ?? '')
     : ''
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : ''
+}
+
+function toFields(value: AuthField | AuthField[]): AuthField[] {
+  return Array.isArray(value) ? value : [value]
+}
+
+export function authErrorMessage(error: unknown, fallback: string): string {
+  const code = errorCode(error)
+  const message = errorMessage(error)
 
   if (code && AUTH_ERROR_MESSAGES[code]) return AUTH_ERROR_MESSAGES[code]
   // 本项目自己抛出的中文校验信息优先保留，例如密码长度与恢复会话失效。
@@ -60,4 +98,12 @@ export function authErrorMessage(error: unknown, fallback: string): string {
   if (matched) return AUTH_ERROR_MESSAGES[matched[1]]
   if (message) console.error('[auth] 未映射的错误：', error)
   return fallback
+}
+
+export function authErrorFields(error: unknown): AuthField[] {
+  const code = errorCode(error)
+  if (code && AUTH_ERROR_FIELDS[code]) return toFields(AUTH_ERROR_FIELDS[code])
+  const lower = errorMessage(error).toLowerCase()
+  const matched = MESSAGE_FIELD_PATTERNS.find(([pattern]) => lower.includes(pattern))
+  return matched ? toFields(matched[1]) : []
 }
