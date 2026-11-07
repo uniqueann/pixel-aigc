@@ -75,6 +75,11 @@ async function waitForCover() {
   return waitFor(() => screen.getByRole('button', { name: coverName }))
 }
 
+/** 按 DOM 顺序取卡片标题，用来断言排序结果。 */
+function cardTitles() {
+  return Array.from(document.querySelectorAll('.assets-card-title')).map(node => node.textContent)
+}
+
 function expectThumbnailKeepsPreviewAccess(cover: HTMLElement) {
   expect(cover.classList.contains('assets-cover')).toBe(true)
   expect(cover.getAttribute('aria-label')).toMatch(/^查看.+大图$/)
@@ -200,6 +205,65 @@ describe('我的资产缩略图预览入口', () => {
     const meta = document.querySelector('.assets-card-meta')?.textContent ?? ''
     expect(meta).toContain('融合')
     expect(meta).not.toContain('已完成')
+  })
+
+  it('搜索覆盖整段提示词，标题被截断也能命中', async () => {
+    const cat = {
+      ...historyItem,
+      id: 'hist-cat',
+      prompt: '一只橘猫趴在窗台上晒太阳，窗外是秋天的梧桐树',
+      createdAt: '2026-10-01T09:00:00.000Z',
+    }
+    vi.mocked(listHistoryPreviews).mockResolvedValue([historyItem, cat])
+    renderAssets()
+    await waitForCover()
+    expect(document.querySelectorAll('.assets-card')).toHaveLength(2)
+
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索作品' }), { target: { value: '梧桐树' } })
+    await waitFor(() => expect(document.querySelectorAll('.assets-card')).toHaveLength(1))
+    expect(cardTitles()[0]).toContain('橘猫')
+    const count = document.querySelector('.assets-search-count')
+    expect(count?.getAttribute('role')).toBe('status')
+    expect(count?.textContent).toBe('找到 1 个作品')
+  })
+
+  it('搜索无结果时给出空状态，清除后恢复并聚焦输入框', async () => {
+    renderAssets()
+    await waitForCover()
+    const input = screen.getByRole('textbox', { name: '搜索作品' }) as HTMLInputElement
+    fireEvent.change(input, { target: { value: '不存在的关键词' } })
+    await waitFor(() => screen.getByText('没有找到匹配「不存在的关键词」的作品'))
+
+    fireEvent.click(screen.getByRole('button', { name: '清除搜索' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: coverName })).toBeTruthy())
+    expect(input.value).toBe('')
+    expect(document.activeElement).toBe(input)
+  })
+
+  it('切换到最早优先后按时间正序，并写回偏好', async () => {
+    const older = { ...historyItem, id: 'hist-older', prompt: '更早的作品', createdAt: '2026-09-01T09:00:00.000Z' }
+    vi.mocked(listHistoryPreviews).mockResolvedValue([older, historyItem])
+    renderAssets()
+    await waitForCover()
+    expect(cardTitles()).toEqual(['将耳机放在咖啡桌中央，保持细节', '更早的作品'])
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '排序方式' }))
+    fireEvent.click(await screen.findByText('最早优先', { selector: '.ant-select-item-option-content' }))
+    await waitFor(() => expect(cardTitles()).toEqual(['更早的作品', '将耳机放在咖啡桌中央，保持细节']))
+    expect(usePreferencesStore.getState().preferences.recent.assetsSort).toBe('oldest')
+  })
+
+  it('首屏排序读取偏好', async () => {
+    const older = { ...historyItem, id: 'hist-older', prompt: '更早的作品', createdAt: '2026-09-01T09:00:00.000Z' }
+    vi.mocked(listHistoryPreviews).mockResolvedValue([older, historyItem])
+    const current = usePreferencesStore.getState().preferences
+    usePreferencesStore.setState({
+      preferences: { ...current, recent: { ...current.recent, assetsSort: 'oldest' } },
+    })
+    renderAssets()
+    await waitForCover()
+    await waitFor(() => expect(cardTitles()).toEqual(['更早的作品', '将耳机放在咖啡桌中央，保持细节']))
+    expect(document.querySelector('.ant-select-selection-item')?.textContent).toBe('最早优先')
   })
 
   it('邮件任务与图片作品使用同一套卡片结构', async () => {

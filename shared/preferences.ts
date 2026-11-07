@@ -57,7 +57,12 @@ const email = z.object({
   language: emailLanguageSchema, operation: z.enum(['reply', 'summarize', 'polish', 'grammar']),
   polishStyles: z.array(z.enum(['clear', 'shorten', 'lengthen', 'simplify'])).max(4),
 }).strict()
-const recent = z.object({ page: z.string().refine(isPreferencePage), assetsView: z.enum(['grid', 'list']) }).strict()
+/** 排序可以缺省：旧缓存和旧云端数据没有该字段，缺省时按最近优先处理。 */
+const recent = z.object({
+  page: z.string().refine(isPreferencePage),
+  assetsView: z.enum(['grid', 'list']),
+  assetsSort: z.enum(['newest', 'oldest']).optional(),
+}).strict()
 export const preferencesSchema = z.object({
   version: z.literal(1), workbench,
   image: z.object({ counts, resolution, rememberParameters: z.boolean(), lastUsed: imageMemorySchema }).strict(),
@@ -90,7 +95,7 @@ export function defaultPreferences(): PersonalizationPreferences {
     workbench: { startPage: '/', rememberSidebar: true, assetsView: 'remember' },
     image: { counts: { 'smart-edit': 1, relight: 2, variation: 2, fusion: 1, retouch: 1 }, resolution: '2k', rememberParameters: true, lastUsed: {} },
     email: { language: 'zh', operation: 'reply', polishStyles: ['clear'] },
-    recent: { page: '/', assetsView: 'grid' },
+    recent: { page: '/', assetsView: 'grid', assetsSort: 'newest' },
   }
 }
 

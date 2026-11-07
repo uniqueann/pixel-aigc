@@ -5033,6 +5033,41 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   flex-shrink: 0;
 }
 
+/* 搜索与排序：页签选内容，这一行只改变呈现方式；没有作品时不出现。 */
+.assets-filter-bar {
+  margin-bottom: 16px;
+}
+
+.assets-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assets-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 320px;
+}
+
+/* 占位符也是文本：AntD 默认 25% 透明度在浅色和深色下都低于 4.5:1。 */
+.assets-page .ant-input::placeholder,
+.assets-page .ant-input-affix-wrapper input::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1;
+}
+
+.assets-sort {
+  flex: 0 0 auto;
+  width: 112px;
+}
+
+.assets-search-count {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+}
+
 .assets-page > .ant-alert {
   margin-bottom: 16px;
 }
@@ -5290,6 +5325,9 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
 @media (max-width: 560px) {
   /* 作品墙在窄屏保持两列，缩略图仍能辨认作品。 */
   .assets-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  /* 搜索框吃掉剩余宽度，排序固定，390px 下输入框仍可输入。 */
+  .assets-search { max-width: none; }
+  .assets-sort { width: 104px; }
   .assets-card-more.ant-btn { top: 6px; right: 6px; width: 40px; min-width: 40px; height: 40px; }
   .assets-card-list { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; padding: 6px; }
   .assets-card-list .assets-cover { width: 64px; height: 48px; }
