@@ -4156,6 +4156,16 @@ body.sidebar-resizing * {
 .auth-screen > .ant-alert,
 .auth-screen > .ant-space { width: 100%; }
 .auth-screen h2 { margin: 0; }
+/* 认证页对比度：主按钮用深色字，浅色主题链接改用更深的强调文字色。 */
+.auth-screen .ant-btn-primary,
+.auth-screen .ant-btn-primary:not(:disabled):hover { color: var(--color-on-accent); }
+.auth-screen a { color: var(--color-accent-text); }
+.auth-screen a:hover { color: var(--color-accent-text); text-decoration: underline; text-underline-offset: 3px; }
+/* 占位符是当前唯一字段标识，必须达到 4.5:1，不能沿用 antd 的 25% 透明度。 */
+.auth-screen .ant-input::placeholder { color: var(--color-text-secondary); opacity: 1; }
+/* 认证页键盘焦点：链接与按钮统一使用高对比焦点环，覆盖 antd reset 的 outline: none。 */
+.auth-screen a:focus-visible,
+.auth-screen .ant-btn:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; border-radius: 2px; }
 .auth-wordmark { width: 176px; line-height: 0; }
 .post-login-loading {
   display: grid;
