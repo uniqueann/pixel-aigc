@@ -959,3 +959,35 @@
 - 检测器：`impeccable detect --json src/pages/Assets/index.tsx` 返回 `[]`（regex-only，覆盖有限）。
 - 截图：`/tmp/assets-critique/verify/01-grid-dark.png` … `08-mobile-light.png`。
 - 未做：卡片信息架构、搜索/排序/批量、邮件深链、全局 h1 与其余无障碍项，均留在下一轮。
+
+# 我的资产 · 作品卡片改造（2026-11-07）
+
+目标：按已确认的「首页最近作品作品墙」方向重构卡片：作品优先、竖图不留死白、操作收起；不动检索与分页。
+
+## 计划
+
+- [x] 抽出 `formatShortDateTime`（`src/utils/datetime.ts`），`dashboardTime` 保留为别名，资产页不再反向依赖 dashboard
+- [x] 卡片改为封面 + 标题（提示词首句）+「工具 · 时间」，去掉每条「已完成」
+- [x] 封面 4:3 + `contain` + 同图模糊铺底；视频保留时长角标与到期行
+- [x] 操作收进「更多」：下载 / 删除；精确指针设备 hover 显示，触屏常驻
+- [x] 邮件任务统一为图标封面，标题用邮件预览首句
+- [x] 列表视图复用同一信息层级，入口统一为封面
+- [x] 移动端两列
+- [x] 补单测：信息层级、邮件卡片、视频菜单下载；删除/撤销回归
+
+## 验收
+
+- [x] 网格 1440 下 5 列、390 下 2 列；封面 4:3、`object-fit: contain`、模糊铺底生效
+- [x] 标题为提示词首句，次级行「工具 · 时间」，成功状态不再显示「已完成」
+- [x] 「更多」菜单含下载/删除；删除确认、5 秒撤销、aria-live、焦点回收正常（12→11→12）
+- [x] 触屏「更多」40×40，桌面 30×30；无横向滚动
+- [x] 明暗主题对比度：标题 15.27 / 16.41，次级行 8.91 / 7.01，占位文字 5.64 / 6.12
+
+## 复查
+
+- 测试：`npx vitest run` 337 个文件 / 2175 个用例通过；`npm run lint`、`npm run build` 通过。
+- 浏览器：1440 明暗、390 触摸（`hasTouch`），0 console error；需先启动 `npm run dev:api`，否则 `/api/capabilities` 返回 500。
+- 检测器：`impeccable detect --json src/pages/Assets/index.tsx` 返回 `[]`。
+- 截图：`/tmp/assets-critique/cards/01-grid-dark.png` … `08-menu-mobile.png`。
+- 已知：视频卡多一行「到期」，所在网格行比其他行高 18px；视频工具名沿用现有 `modelDisplayName` 逻辑（未知模型显示「历史模型」）。
+- 未做：邮件深链、搜索/排序/日期分组/批量、分页、页面级 h1。
