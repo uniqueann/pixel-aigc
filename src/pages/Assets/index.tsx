@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, SearchOutlined, UnorderedListOutlined,
+  AppstoreOutlined, CheckOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, SearchOutlined, UnorderedListOutlined,
 } from '@ant-design/icons'
 import { App, Alert, Button, Dropdown, Input, Segmented, Select, Space, Spin, Tooltip, type InputRef } from 'antd'
 import EmptyState from '@/components/EmptyState'
@@ -43,6 +43,8 @@ import { groupAssetsByDay } from './groupByDay'
 type Filter = 'all' | 'workstation' | 'video' | 'email'
 type ViewMode = 'grid' | 'list'
 type SortOrder = 'newest' | 'oldest'
+/** 批量删除的 toast 用一个固定 key，撤销后手动关闭。 */
+const BATCH_DELETE_KEY = 'asset-deleted-batch'
 function initialViewMode(): ViewMode {
   const { workbench, recent } = usePreferencesStore.getState().preferences
   return workbench.assetsView === 'remember' ? recent.assetsView : workbench.assetsView
@@ -119,6 +121,11 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const gridRef = useRef<HTMLDivElement>(null)
   /** 删除后把焦点交给同一位置的下一张作品，避免焦点落回 body。 */
   const focusAfterDeleteRef = useRef<number | null>(null)
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const selectToggleRef = useRef<HTMLButtonElement | HTMLAnchorElement>(null)
+  /** 退出选择模式后把焦点还给「选择」按钮（只在主动退出时）。 */
+  const restoreSelectFocusRef = useRef(false)
 
   const changeViewMode = (mode: ViewMode) => {
     setViewMode(mode)
@@ -283,6 +290,11 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const searching = items.length > 0 && searchTokens.length > 0
   const trimmedQuery = deferredQuery.trim()
   const groups = useMemo(() => groupAssetsByDay(visible), [visible])
+  /** 只有带本机历史记录的作品能批量删除，邮件任务不在批量范围内。 */
+  const selectableVisible = useMemo(() => visible.filter((item) => item.record), [visible])
+  const canSelect = selectableVisible.length > 0
+  const allVisibleSelected = selectableVisible.length > 0
+    && selectableVisible.every((item) => selectedIds.has(item.id))
   const previewItems: PreviewItem[] = visible.flatMap(item => item.record ? [{
     id: item.id,
     mediaType: item.record?.mediaType,
@@ -315,6 +327,141 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     }
   }
 
+  /** 选择模式：封面点击切换选中，不再打开画廊。 */
+  const enterSelection = () => {
+    setSelecting(true)
+    setSelectedIds(new Set())
+    // 焦点交给第一张可选封面，键盘用户可以直接空格勾选。
+    requestAnimationFrame(() => {
+      gridRef.current?.querySelector<HTMLElement>('.assets-cover:not(.assets-cover-email)')?.focus()
+    })
+  }
+
+  const exitSelection = () => {
+    restoreSelectFocusRef.current = true
+    setSelecting(false)
+    setSelectedIds(new Set())
+  }
+
+  useEffect(() => {
+    if (selecting || !restoreSelectFocusRef.current) return
+    restoreSelectFocusRef.current = false
+    selectToggleRef.current?.focus()
+  }, [selecting])
+
+  /** 只统计仍在作品列表里的选中项：刷新或删除后失效的 id 不计入。 */
+  const selectedCount = useMemo(
+    () => items.filter((item) => item.record && selectedIds.has(item.id)).length,
+    [items, selectedIds],
+  )
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  /** 全选只作用于当前筛选/搜索结果里可选的作品。 */
+  const toggleSelectAll = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (allVisibleSelected) for (const item of selectableVisible) next.delete(item.id)
+      else for (const item of selectableVisible) next.add(item.id)
+      return next
+    })
+  }
+
+  /** 本地移除作品并释放缩略图的 object URL。 */
+  const applyRemoved = (ids: string[]) => {
+    const removed = new Set(ids)
+    setWorkstationItems((current) => current.filter((candidate) => !removed.has(candidate.id)))
+    const nextUrls = { ...previewUrlsRef.current }
+    for (const id of ids) {
+      const url = nextUrls[id]
+      if (url) URL.revokeObjectURL(url)
+      delete nextUrls[id]
+    }
+    previewUrlsRef.current = nextUrls
+    setPreviewUrls(nextUrls)
+  }
+
+  const undoBatchDelete = async (ids: string[]) => {
+    message.destroy(BATCH_DELETE_KEY)
+    let restored = 0
+    for (const id of ids) {
+      try {
+        if (await restoreWorkstationHistory(ownerId, id)) restored += 1
+      } catch {
+        // 单条恢复失败不影响其余作品
+      }
+    }
+    try {
+      await refresh(() => isCurrentWorkstationHistoryOwner(ownerId), false)
+    } catch {
+      // 恢复已完成，刷新失败不改变结果提示
+    }
+    setAnnouncement(`已恢复 ${restored} 条作品`)
+    if (restored === ids.length) message.success(`已恢复 ${restored} 条作品`)
+    else if (restored > 0) message.warning(`已恢复 ${restored} 条，其余撤销记录已满或已过期`)
+    else message.warning('撤销窗口已结束，作品无法恢复')
+  }
+
+  const removeSelected = async (targets: LibraryItem[]) => {
+    const deleted: string[] = []
+    for (const item of targets) {
+      if (!item.record || !isCurrentWorkstationHistoryOwner(ownerId)) break
+      try {
+        await deleteWorkstationHistory(ownerId, item.record.id)
+        deleted.push(item.id)
+      } catch {
+        // 单条失败继续删除其余作品，最后统一提示
+      }
+    }
+    if (!deleted.length) {
+      message.error('删除失败，请重试')
+      return
+    }
+    if (!isCurrentWorkstationHistoryOwner(ownerId)) return
+    applyRemoved(deleted)
+    setSelecting(false)
+    setSelectedIds(new Set())
+    focusAfterDeleteRef.current = 0
+    setAnnouncement(`已删除 ${deleted.length} 条作品`)
+    message.open({
+      key: BATCH_DELETE_KEY,
+      type: 'success',
+      duration: 5,
+      content: (
+        <span>
+          已删除 {deleted.length} 条作品
+          <Button className="assets-undo-link" type="text" size="small" onClick={() => void undoBatchDelete(deleted)}>
+            撤销
+          </Button>
+        </span>
+      ),
+    })
+    if (deleted.length < targets.length) {
+      message.warning(`${targets.length - deleted.length} 条删除失败，请重试`)
+    }
+  }
+
+  const confirmBatchDelete = () => {
+    const targets = items.filter((item) => item.record && selectedIds.has(item.id))
+    if (!targets.length) return
+    modal.confirm({
+      className: 'assets-delete-confirm',
+      title: `删除选中的 ${targets.length} 条作品？`,
+      content: '选中的作品将从本机作品历史中删除，5 秒内可撤销。',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => removeSelected(targets),
+    })
+  }
+
   const undoDelete = async (id: string, name: string) => {
     message.destroy(`asset-deleted-${id}`)
     try {
@@ -340,13 +487,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       if (!isCurrentWorkstationHistoryOwner(ownerId)) return
       await deleteWorkstationHistory(ownerId, record.id)
       if (!isCurrentWorkstationHistoryOwner(ownerId)) return
-      setWorkstationItems((current) => current.filter((candidate) => candidate.id !== record.id))
-      const url = previewUrlsRef.current[record.id]
-      if (url) URL.revokeObjectURL(url)
-      const nextUrls = { ...previewUrlsRef.current }
-      delete nextUrls[record.id]
-      previewUrlsRef.current = nextUrls
-      setPreviewUrls(nextUrls)
+      applyRemoved([record.id])
       focusAfterDeleteRef.current = removedIndex
       setAnnouncement(`已删除「${name}」，剩余 ${Math.max(0, visible.length - 1)} 项`)
       message.open({
@@ -398,15 +539,25 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const renderCard = (item: LibraryItem) => {
     const name = assetDisplayName(item)
     const isVideo = item.kind === 'video'
+    const selectable = Boolean(item.record)
+    const selected = selecting && selectable && selectedIds.has(item.id)
+    const inSelection = selecting && selectable
+    const coverLabel = inSelection
+      ? `${selected ? '取消选择' : '选择'}${name}`
+      : isVideo ? `播放${name}` : `查看${name}大图`
     return (
-      <article key={item.id} className={`assets-card${viewMode === 'list' ? ' assets-card-list' : ''}`}>
+      <article
+        key={item.id}
+        className={`assets-card${viewMode === 'list' ? ' assets-card-list' : ''}${inSelection ? ' is-selectable' : ''}${selected ? ' is-selected' : ''}`}
+      >
         {item.record ? (
           <button
             className="assets-cover"
             type="button"
-            aria-label={isVideo ? `播放${name}` : `查看${name}大图`}
-            title={isVideo ? '播放视频' : '查看大图'}
-            onClick={() => openAt(item.id)}
+            aria-label={coverLabel}
+            aria-pressed={inSelection ? selected : undefined}
+            title={inSelection ? (selected ? '取消选择' : '选择') : isVideo ? '播放视频' : '查看大图'}
+            onClick={() => (inSelection ? toggleSelect(item.id) : openAt(item.id))}
           >
             {item.record.video ? (
               <>
@@ -425,13 +576,18 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
             ) : (
               <span className="assets-cover-empty">查看原图</span>
             )}
+            {inSelection ? (
+              <span className="assets-select-check" aria-hidden="true">{selected ? <CheckOutlined /> : null}</span>
+            ) : null}
           </button>
         ) : (
           <button
-            className="assets-cover assets-cover-email"
+            className={`assets-cover assets-cover-email${selecting ? ' assets-cover-unselectable' : ''}`}
             type="button"
             aria-label={`查看邮件任务：${name}`}
-            title="查看邮件任务"
+            aria-disabled={selecting || undefined}
+            disabled={selecting}
+            title={selecting ? '邮件任务暂不支持批量操作' : '查看邮件任务'}
             onClick={() => navigate(`/email?mode=single&taskId=${encodeURIComponent(item.email?.id ?? item.id)}`)}
           >
             <MailOutlined />
@@ -447,7 +603,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
             <div className="assets-card-expiry">{formatShortDateTime(item.record.video.retentionExpiresAt)} 到期</div>
           ) : null}
         </div>
-        {item.record ? (
+        {item.record && !selecting ? (
           <Dropdown
             trigger={['click']}
             overlayClassName="assets-card-menu"
@@ -547,6 +703,16 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
               onChange={(value) => changeSort(value as SortOrder)}
               options={[{ value: 'newest', label: '最近优先' }, { value: 'oldest', label: '最早优先' }]}
             />
+            {canSelect && !selecting ? (
+              <Button
+                ref={selectToggleRef}
+                type="text"
+                className="assets-select-toggle"
+                onClick={enterSelection}
+              >
+                选择
+              </Button>
+            ) : null}
           </div>
           {searching && visible.length > 0
             ? <p className="assets-search-count" role="status">找到 {visible.length} 个作品</p>
@@ -585,6 +751,16 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           ))}
         </div>
       )}
+      {selecting ? (
+        <div className="assets-selection-bar" role="group" aria-label="批量操作">
+          <span className="assets-selection-count" aria-live="polite">已选 {selectedCount} 项</span>
+          <div className="assets-selection-actions">
+            <Button type="text" onClick={toggleSelectAll}>{allVisibleSelected ? '取消全选' : '全选'}</Button>
+            <Button danger disabled={selectedCount === 0} onClick={confirmBatchDelete}>删除</Button>
+            <Button type="text" onClick={exitSelection}>取消</Button>
+          </div>
+        </div>
+      ) : null}
       <PreviewGallery {...galleryProps} onDownload={item => {
         const record = workstationItems.find(candidate => candidate.id === item.id)
         if (record) return downloadRecord(record, runtimeImageBlob(item.fullSrc))
