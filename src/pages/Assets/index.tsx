@@ -128,6 +128,8 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const focusAfterDeleteRef = useRef<number | null>(null)
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  /** 当前打开的卡片菜单：rc-dropdown 不会给触发器加 aria-expanded，这里自己受控。 */
+  const [openMenuId, setOpenMenuId] = useState<string>()
   const selectToggleRef = useRef<HTMLButtonElement | HTMLAnchorElement>(null)
   /** 退出选择模式后把焦点还给「选择」按钮（只在主动退出时）。 */
   const restoreSelectFocusRef = useRef(false)
@@ -221,7 +223,9 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       setEmailTotal(response.total)
       setEmailPage(nextPage)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '邮件任务加载失败')
+      const text = error instanceof Error ? error.message : '邮件任务加载失败'
+      message.error(text)
+      setAnnouncement(text)
     } finally {
       setLoadingMoreEmails(false)
     }
@@ -365,7 +369,9 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
         mimeType: record.mimeType,
       }))
     } catch (error) {
-      message.error({ content: downloadFailureMessage(error), duration: 4 })
+      const text = downloadFailureMessage(error)
+      message.error({ content: text, duration: 4 })
+      setAnnouncement(text)
     } finally {
       setDownloadingId(undefined)
     }
@@ -375,17 +381,33 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const enterSelection = () => {
     setSelecting(true)
     setSelectedIds(new Set())
+    // 菜单在选中封面时会卸载，清掉受控状态避免退出选择后自动弹出。
+    setOpenMenuId(undefined)
     // 焦点交给第一张可选封面，键盘用户可以直接空格勾选。
     requestAnimationFrame(() => {
       gridRef.current?.querySelector<HTMLElement>('.assets-cover:not(.assets-cover-email)')?.focus()
     })
   }
 
-  const exitSelection = () => {
+  const exitSelection = useCallback(() => {
     restoreSelectFocusRef.current = true
     setSelecting(false)
     setSelectedIds(new Set())
-  }
+  }, [])
+
+  /** 选择模式下按 Escape 退出；搜索框与确认框保留自己的 Escape 行为。 */
+  useEffect(() => {
+    if (!selecting) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const target = event.target
+      if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]')) return
+      if (document.querySelector('.ant-modal-wrap')) return
+      exitSelection()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [exitSelection, selecting])
 
   useEffect(() => {
     if (selecting || !restoreSelectFocusRef.current) return
@@ -447,10 +469,16 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     } catch {
       // 恢复已完成，刷新失败不改变结果提示
     }
-    setAnnouncement(`已恢复 ${restored} 条作品`)
-    if (restored === ids.length) message.success(`已恢复 ${restored} 条作品`)
-    else if (restored > 0) message.warning(`已恢复 ${restored} 条，其余撤销记录已满或已过期`)
-    else message.warning('撤销窗口已结束，作品无法恢复')
+    if (restored === ids.length) {
+      setAnnouncement(`已恢复 ${restored} 条作品`)
+      message.success(`已恢复 ${restored} 条作品`)
+    } else if (restored > 0) {
+      setAnnouncement(`已恢复 ${restored} 条，其余撤销记录已满或已过期`)
+      message.warning(`已恢复 ${restored} 条，其余撤销记录已满或已过期`)
+    } else {
+      setAnnouncement('撤销窗口已结束，作品无法恢复')
+      message.warning('撤销窗口已结束，作品无法恢复')
+    }
   }
 
   const removeSelected = async (targets: LibraryItem[]) => {
@@ -466,6 +494,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     }
     if (!deleted.length) {
       message.error('删除失败，请重试')
+      setAnnouncement('删除失败，请重试')
       return
     }
     if (!isCurrentWorkstationHistoryOwner(ownerId)) return
@@ -473,7 +502,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     setSelecting(false)
     setSelectedIds(new Set())
     focusAfterDeleteRef.current = 0
-    setAnnouncement(`已删除 ${deleted.length} 条作品`)
+    setAnnouncement(`已删除 ${deleted.length} 条作品，可撤销`)
     message.open({
       key: BATCH_DELETE_KEY,
       type: 'success',
@@ -481,14 +510,22 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       content: (
         <span>
           已删除 {deleted.length} 条作品
-          <Button className="assets-undo-link" type="text" size="small" onClick={() => void undoBatchDelete(deleted)}>
+          <Button
+            className="assets-undo-link"
+            type="text"
+            size="small"
+            aria-label={`撤销删除 ${deleted.length} 条作品`}
+            onClick={() => void undoBatchDelete(deleted)}
+          >
             撤销
           </Button>
         </span>
       ),
     })
     if (deleted.length < targets.length) {
-      message.warning(`${targets.length - deleted.length} 条删除失败，请重试`)
+      const text = `${targets.length - deleted.length} 条删除失败，请重试`
+      message.warning(text)
+      setAnnouncement(text)
     }
   }
 
@@ -512,13 +549,16 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       const restored = await restoreWorkstationHistory(ownerId, id)
       if (!restored) {
         message.warning('撤销窗口已结束，作品无法恢复')
+        setAnnouncement('撤销窗口已结束，作品无法恢复')
         return
       }
       await refresh(() => isCurrentWorkstationHistoryOwner(ownerId), false)
       setAnnouncement(`已恢复「${name}」`)
       message.success('已恢复作品')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '恢复失败')
+      const text = error instanceof Error ? error.message : '恢复失败'
+      message.error(text)
+      setAnnouncement(text)
     }
   }
 
@@ -533,7 +573,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       if (!isCurrentWorkstationHistoryOwner(ownerId)) return
       applyRemoved([record.id])
       focusAfterDeleteRef.current = removedIndex
-      setAnnouncement(`已删除「${name}」，剩余 ${Math.max(0, visible.length - 1)} 项`)
+      setAnnouncement(`已删除「${name}」，剩余 ${Math.max(0, visible.length - 1)} 项，可撤销`)
       message.open({
         key: `asset-deleted-${record.id}`,
         type: 'success',
@@ -545,6 +585,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
               className="assets-undo-link"
               type="text"
               size="small"
+              aria-label={`撤销删除「${name}」`}
               onClick={() => void undoDelete(record.id, name)}
             >
               撤销
@@ -553,7 +594,9 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
         ),
       })
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '删除失败')
+      const text = error instanceof Error ? error.message : '删除失败'
+      message.error(text)
+      setAnnouncement(text)
     }
   }
 
@@ -576,7 +619,11 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     focusAfterDeleteRef.current = null
     const covers = gridRef.current?.querySelectorAll<HTMLElement>('.assets-cover')
     if (covers?.length) covers[Math.min(index, covers.length - 1)]?.focus()
-    else document.querySelector<HTMLElement>('.assets-page-header .ant-segmented-item-selected')?.focus()
+    else {
+      // 页签的 label 本身不可聚焦，落到内部 radio 上；空态时落到「去生成」。
+      const radio = document.querySelector<HTMLElement>('.assets-page-header .ant-segmented-item-selected input')
+      ;(radio ?? document.querySelector<HTMLElement>('.assets-page .ant-empty button'))?.focus()
+    }
   }, [workstationItems])
 
   /** 普通函数而不是新组件：分组后仍按 visible 顺序铺开，避免每次渲染重建组件类型。 */
@@ -653,15 +700,27 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           <Dropdown
             trigger={['click']}
             overlayClassName="assets-card-menu"
+            open={openMenuId === item.id}
+            onOpenChange={(open) => setOpenMenuId(open ? item.id : undefined)}
             menu={{
               items: [
                 {
                   key: 'download',
                   icon: <DownloadOutlined />,
-                  label: downloadingId === item.id ? '正在下载…' : '下载',
+                  label: (
+                    <span>
+                      {downloadingId === item.id ? '正在下载…' : '下载'}
+                      <span className="sr-only">「{name}」</span>
+                    </span>
+                  ),
                   disabled: downloadingId === item.id,
                 },
-                { key: 'delete', danger: true, icon: <DeleteOutlined />, label: '删除' },
+                {
+                  key: 'delete',
+                  danger: true,
+                  icon: <DeleteOutlined />,
+                  label: <>删除<span className="sr-only">「{name}」</span></>,
+                },
               ],
               onClick: ({ key, domEvent }) => {
                 domEvent.stopPropagation()
@@ -675,6 +734,8 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
               className="assets-card-more"
               icon={<MoreOutlined />}
               aria-label={`更多操作：${name}`}
+              aria-haspopup="menu"
+              aria-expanded={openMenuId === item.id}
             />
           </Dropdown>
         ) : null}
@@ -689,6 +750,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       <div className="assets-page-header">
         <div className="page-tab-row">
           <Segmented
+            aria-label="筛选作品类型"
             value={filter}
             onChange={(value) => setFilter(value as Filter)}
             options={[
@@ -760,7 +822,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
               </Button>
             ) : null}
           </div>
-          {searching && visible.length > 0
+          {searching
             ? <p className="assets-search-count" role="status">找到 {visible.length} 个作品</p>
             : null}
         </div>
@@ -768,9 +830,9 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       {filter === 'video' && videoState !== 'ready' ? <VideoAvailabilityNotice state={videoState} onRetry={() => void reloadCapabilities()} /> : null}
       {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>重新加载</Button>} /> : null}
       {loading ? (
-        <div className="assets-loading"><Spin /> 正在加载作品…</div>
+        <div className="assets-loading" role="status"><Spin /> 正在加载作品…</div>
       ) : hydrating && visible.length === 0 && filter !== 'email' ? (
-        <div className="assets-loading"><Spin /> 正在加载作品…</div>
+        <div className="assets-loading" role="status"><Spin /> 正在加载作品…</div>
       ) : visible.length === 0 ? (
         searching ? (
           <EmptyState
@@ -799,7 +861,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       )}
       {canLoadMoreEmails ? (
         <div className="assets-load-more">
-          <Button loading={loadingMoreEmails} onClick={() => void loadMoreEmails()}>
+          <Button loading={loadingMoreEmails} aria-busy={loadingMoreEmails} onClick={() => void loadMoreEmails()}>
             加载更多邮件任务
           </Button>
           <p className="assets-load-more-hint" role="status">

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as ownedVideos from '@/services/api/ownedVideos'
 import VideoPoster from './VideoPoster'
@@ -14,7 +14,14 @@ describe('视频海报', () => {
     vi.spyOn(ownedVideos, 'readOwnedVideoUrl').mockResolvedValue({ url: 'https://r2.test/poster.jpg' })
     const { container } = render(<VideoPoster posterKey="poster.jpg" ownerId="anonymous" variant="cover" />)
 
-    expect(await screen.findByRole('img', { name: '视频封面' })).toBeTruthy()
+    const poster = await waitFor(() => {
+      const img = container.querySelector<HTMLImageElement>('img:not(.cover-backdrop)')
+      expect(img?.getAttribute('src')).toBe('https://r2.test/poster.jpg')
+      return img!
+    })
+    // 封面在带 aria-label 的按钮内，海报是装饰图；结果条仍保留「视频封面」描述。
+    expect(poster.getAttribute('alt')).toBe('')
+    expect(poster.getAttribute('decoding')).toBe('async')
     expect(container.querySelector('.cover-backdrop')?.getAttribute('src')).toBe('https://r2.test/poster.jpg')
   })
 
@@ -31,7 +38,12 @@ describe('视频海报', () => {
     vi.spyOn(ownedVideos, 'readOwnedVideoUrl').mockResolvedValue({ url: 'https://r2.test/poster.jpg' })
     const { container } = render(<VideoPoster posterKey="poster.jpg" ownerId="anonymous" variant="cover" />)
 
-    fireEvent.error(await screen.findByRole('img', { name: '视频封面' }))
+    const poster = await waitFor(() => {
+      const img = container.querySelector<HTMLImageElement>('img:not(.cover-backdrop)')
+      expect(img).toBeTruthy()
+      return img!
+    })
+    fireEvent.error(poster)
     await waitFor(() => expect(container.querySelector('.cover-placeholder')).toBeTruthy())
     expect(container.querySelector('.cover-backdrop')).toBeNull()
   })
