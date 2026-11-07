@@ -1,5 +1,5 @@
-import { Children, cloneElement, isValidElement, useEffect, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type ReactElement, type ReactNode } from 'react'
-import { DownloadOutlined, RetweetOutlined } from '@ant-design/icons'
+import { Children, cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type ReactElement, type ReactNode } from 'react'
+import { CloseOutlined, DownloadOutlined, RetweetOutlined } from '@ant-design/icons'
 import { App, Button, Image, Spin, Tooltip } from 'antd'
 import { blobFromImageSource, downloadFailureMessage, filenameWithMimeExtension } from '@/features/image-workstation/download'
 import { useUserStore } from '@/store/useUserStore'
@@ -41,6 +41,42 @@ export interface PreviewGalleryProps {
   /** 覆盖默认的“下载原始大图”文案，避免调用方下载的是结果却写成原图。 */
   downloadLabel?: string
   downloadTooltip?: string
+}
+
+const PREVIEW_FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), video[controls], [tabindex="0"]'
+
+function collectPreviewFocusables(root: Element | null) {
+  if (!root) return []
+  return Array.from(new Set(root.querySelectorAll<HTMLElement>(PREVIEW_FOCUSABLE)))
+    .filter(element => !element.closest('[aria-hidden="true"]'))
+}
+
+/**
+ * rc-image 把预览拆成 Dialog 与 Operations 两个并列 Portal，rc-dialog 自带的 Tab 陷阱只覆盖 Dialog。
+ * 这里在 document 捕获阶段接管 Tab，把两个 Portal 里的真实控件串成一个循环。
+ */
+function usePreviewFocusTrap(active: boolean, instanceId: string) {
+  useEffect(() => {
+    if (!active) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey) return
+      const operations = document.querySelector(`.preview-gallery-${instanceId}.ant-image-preview-operations-wrapper`)
+      const dialog = document.querySelector(`.preview-gallery-${instanceId}.ant-image-preview-root`)
+      // sentinel 在 content 之外，限定范围可避免把 rc-dialog 的哨兵收进循环。
+      const content = dialog?.querySelector('.ant-image-preview-content') ?? null
+      const focusables = [...collectPreviewFocusables(operations), ...collectPreviewFocusables(content)]
+      if (focusables.length === 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      const index = focusables.indexOf(document.activeElement as HTMLElement)
+      const next = event.shiftKey
+        ? focusables[(index <= 0 ? focusables.length : index) - 1]
+        : focusables[index < 0 || index === focusables.length - 1 ? 0 : index + 1]
+      next.focus()
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
+  }, [active, instanceId])
 }
 
 function PreviewDownloadButton({ label, tooltip, split, onClick }: { label: string; tooltip: string; split: boolean; onClick: () => void }) {
@@ -136,9 +172,12 @@ function PreviewImage({ image, onRetry }: { image: ReactElement<RcPreviewImagePr
 
 export default function PreviewGallery({ items, open, current, onClose, onChange, onDownload, downloadLabel, downloadTooltip }: PreviewGalleryProps) {
   const { message } = App.useApp()
+  // 关闭后的 Portal 会以 display:none 留在 DOM，用实例级 class 避免串到别的预览。
+  const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const [comparing, setComparing] = useState(false)
   const item = items[current]
   const isVideo = item?.mediaType === 'video'
+  const previewTitle = `${isVideo ? '视频预览' : '图片预览'}${item?.title ? `：${item.title}` : isVideo ? '：当前视频' : ''}`
   const { id: readId, objectKey: readKey, historyId: readHistoryId, ownerId: readOwnerId, fullSrc: readSrc, expiresAt: readExpiresAt } = item ?? {}
   const currentUserId = useUserStore(state => state.userId)
   const signatureOwnerRef = useRef<string>()
@@ -203,6 +242,8 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
     }
   }
 
+  usePreviewFocusTrap(open && !comparing, instanceId)
+
   if (items.length === 0) return null
   return <>
     {(!comparing || (requiresRead && !localSrc)) && (!isVideo || open) && <Image.PreviewGroup
@@ -210,9 +251,12 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
       preview={{
         visible: open,
         current,
+        // 通过 rc-dialog 的 title 提供 aria-labelledby，sr-only 保证不改变视觉布局。
+        title: <span className="sr-only">{previewTitle}</span>,
+        closeIcon: <CloseOutlined aria-label="关闭预览" />,
         onVisibleChange: visible => { if (!visible && (!comparing || (requiresRead && !localSrc))) { setComparing(false); onClose() } },
         onChange: change,
-        rootClassName: 'preview-gallery-overlay',
+        rootClassName: `preview-gallery-overlay preview-gallery-${instanceId}`,
         imageRender: image => isVideo && open ? <VideoPlayer key={item.id} ownerId={item.ownerId} reference={{ objectKey: item.objectKey, url: item.fullSrc, expiresAt: item.expiresAt, retentionExpiresAt: item.retentionExpiresAt }} /> : requiresRead && !localSrc ? <div className="preview-image-frame"><div className="preview-load-state">{readError ? <><span>{readError}</span><Button onClick={() => setReadAttempt(value => value + 1)}>重试读取</Button></> : <Spin />}</div></div> : <PreviewImage image={image} onRetry={requiresRead ? retryImage : undefined} />,
         toolbarRender: originalNode => withPreviewDownload(
           isVideo ? null : originalNode,

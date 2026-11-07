@@ -7,6 +7,13 @@
 .preview-gallery-overlay .ant-image-preview-operations-operation { flex: none; }
 .preview-gallery-overlay .preview-toolbar-download-split { position: relative; }
 .preview-gallery-overlay .preview-toolbar-download:focus { outline: none; }
+/* 预览遮罩恒为深色，焦点环用固定白色，不能跟随主题 token（浅色主题下会变成深色）。 */
+.preview-gallery-overlay .ant-image-preview-close:focus-visible,
+.preview-gallery-overlay .preview-toolbar-download:focus-visible,
+.preview-gallery-overlay .ant-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
 .preview-gallery-overlay .preview-toolbar-download:focus-visible > .anticon { color: rgba(255, 255, 255, .85); }
 /* 分隔线放在放大按钮与下载按钮的既有间距正中，不额外撑开工具条 */
 .preview-gallery-overlay .preview-toolbar-divider {

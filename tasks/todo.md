@@ -1209,3 +1209,33 @@
   - 选择操作条在 DOM 末尾，键盘用户进入选择模式后要穿过全部卡片才能到「全选/删除/取消」。
   - 卡片 `article` 无名称、网格无 list 语义；侧边栏主导航不在 `<nav>` 地标内。
   - AntD `allowClear` 的清除按钮不可聚焦且无名称，Escape 可替代。
+
+# 共享大图预览 · 修复焦点陷阱（2026-11-07）
+
+目标：rc-image 把预览拆成 Dialog 与 Operations 两个并列 Portal，rc-dialog 的 Tab 陷阱只覆盖 Dialog，关闭/下载/对比在陷阱外；对话框也没有名称。补上跨 Portal 的 Tab 循环与可访问名称，不重写预览组件。
+
+## 计划
+
+- [x] 实例级 `rootClassName`（`useId` 清洗后拼接），隔离同时挂载的多个预览与关闭后残留的隐藏 Portal
+- [x] preview 配置补 `title`（sr-only）给对话框命名，补 `closeIcon` 中文可访问名「关闭预览」
+- [x] `usePreviewFocusTrap`：document capture 只拦截 Tab，跨两个 Portal 收集可聚焦元素并循环；ESC/方向键放行
+- [x] 保留 rc-dialog 的 sentinelStart 初始焦点，避免污染 `focusTriggerAfterClose`
+- [x] `preview.css` 给关闭/下载/弹层内按钮补 `#fff` 2px focus-visible 描边
+
+## 验收
+
+- [x] Tab / Shift+Tab 在关闭 → 下载 → 内容区按钮之间循环，不会跑到背后页面
+- [x] `getByRole('dialog', { name: '图片预览：重绘' })`、关闭按钮图标名「关闭预览」可命中
+- [x] ArrowRight / Escape 未被 `preventDefault`，切图与关闭行为不变
+- [x] Escape 关闭后焦点回到触发封面（实测 `BUTTON.assets-cover`，2px `rgb(237,237,236)` 焦点环）
+- [x] 关闭/下载/弹层内按钮焦点环均为 2px `rgb(255,255,255)`；0 新增 console error
+
+## 复查
+
+- 测试：`npx vitest run src/components/PreviewGallery.test.tsx` 17 个用例通过；全量 339 文件 / 2207 用例通过（新增 4 个焦点用例）；`tsc --noEmit`、`npm run lint`、`npm run build` 通过。
+- 浏览器（Playwright，伪会话 + IndexedDB 种子）：对话框 `aria-labelledby` → 「图片预览：重绘」；初始焦点为 `role=dialog` 内的 sentinel（读屏可播报名称）；5 次 Tab 顺序 close → download → 重试 → close → download，全部在 `.preview-gallery-overlay` 内；Shift+Tab 反向一致；Escape 后焦点回到封面。
+- 截图：`/tmp/assets-critique/preview-trap/01-preview-tab-dark.png`、`02-after-close-dark.png`。
+- 已知限制（受 rc-image 结构限制）：
+  - 视频原生控件在 shadow DOM 内，被当作单一 tab stop，内部控件无法单独 Tab。
+  - Operations 工具栏与 `role=dialog` 是两个兄弟 Portal，`aria-modal` 的语义并不完美；初始焦点仍是 Dialog 内的 sentinel，第一次 Tab 才落到可见的关闭按钮。
+  - 对比模式会卸载 PreviewGroup，改由 `CompareViewer` 的 antd Modal 管理焦点，本陷阱在对比期间停用。

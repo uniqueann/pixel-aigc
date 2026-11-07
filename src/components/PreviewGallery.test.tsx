@@ -279,4 +279,52 @@ describe('PreviewGallery', () => {
     expect(stage.dispatchEvent(event)).toBe(false)
     expect(event.defaultPrevented).toBe(true)
   })
+
+  it('预览对话框与关闭按钮有可访问名称', async () => {
+    mockOverlayStyle()
+    const titled = [{ ...items[0], title: '耳机主图' }, items[1]]
+    render(<App><PreviewGallery items={titled} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
+    expect(await screen.findByRole('dialog', { name: '图片预览：耳机主图' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '关闭预览' })).toBeTruthy()
+  })
+
+  it('Tab 在关闭、下载、对比之间循环，Shift+Tab 反向', async () => {
+    mockOverlayStyle()
+    render(<App><PreviewGallery items={items} open current={0} onClose={vi.fn()} onChange={vi.fn()} /></App>)
+    const close = document.querySelector('.ant-image-preview-close') as HTMLElement
+    const download = await screen.findByRole('button', { name: '下载原始大图' })
+    const compare = await screen.findByRole('button', { name: '对比原图与结果' })
+
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(document.activeElement).toBe(close)
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(document.activeElement).toBe(download)
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(document.activeElement).toBe(compare)
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(document.activeElement).toBe(close)
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(compare)
+  })
+
+  it('方向键与 Escape 不被焦点陷阱拦截', async () => {
+    mockOverlayStyle()
+    const onClose = vi.fn()
+    const onChange = vi.fn()
+    render(<App><PreviewGallery items={items} open current={0} onClose={onClose} onChange={onChange} /></App>)
+    await screen.findByRole('button', { name: '下载原始大图' })
+    expect(fireEvent.keyDown(document, { key: 'ArrowRight', keyCode: 39, which: 39 })).toBe(true)
+    expect(onChange).toHaveBeenCalledWith(1)
+    expect(fireEvent.keyDown(document, { key: 'Escape', keyCode: 27, which: 27 })).toBe(true)
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('关闭预览后不再接管 Tab', async () => {
+    mockOverlayStyle()
+    const props = { items, current: 0, onClose: vi.fn(), onChange: vi.fn() }
+    const { rerender } = render(<App><PreviewGallery {...props} open /></App>)
+    await screen.findByRole('button', { name: '下载原始大图' })
+    rerender(<App><PreviewGallery {...props} open={false} /></App>)
+    expect(fireEvent.keyDown(document, { key: 'Tab' })).toBe(true)
+  })
 })
