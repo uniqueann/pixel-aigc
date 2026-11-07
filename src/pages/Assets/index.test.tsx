@@ -306,6 +306,91 @@ describe('我的资产缩略图预览入口', () => {
     expect(groupLabels()[1]).toContain('10月2日')
   })
 
+  it('进入选择模式后点击封面只切换选中，不打开预览', async () => {
+    renderAssets()
+    await waitForCover()
+    fireEvent.click(screen.getByRole('button', { name: /^选\s*择$/ }))
+    const cover = screen.getByRole('button', { name: '选择将耳机放在咖啡桌中央，保持细节' })
+    expect(cover.getAttribute('aria-pressed')).toBe('false')
+    expect(document.querySelector('.assets-selection-bar')?.getAttribute('role')).toBe('group')
+
+    fireEvent.click(cover)
+    expect(openAt).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: '取消选择将耳机放在咖啡桌中央，保持细节' }).getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelector('.assets-card.is-selected')).toBeTruthy()
+    expect(document.querySelector('.assets-selection-count')?.textContent).toBe('已选 1 项')
+
+    fireEvent.click(screen.getByRole('button', { name: '取消选择将耳机放在咖啡桌中央，保持细节' }))
+    expect(document.querySelector('.assets-selection-count')?.textContent).toBe('已选 0 项')
+  })
+
+  it('全选后批量删除，撤销可恢复全部作品', async () => {
+    const second = { ...historyItem, id: 'hist-2', prompt: '第二张作品', createdAt: '2026-10-01T09:00:00.000Z' }
+    vi.mocked(listHistoryPreviews).mockResolvedValue([historyItem, second])
+    renderAssets()
+    await waitForCover()
+    fireEvent.click(screen.getByRole('button', { name: /^选\s*择$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^全\s*选$/ }))
+    expect(document.querySelector('.assets-selection-count')?.textContent).toBe('已选 2 项')
+    expect(screen.getByRole('button', { name: '取消全选' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /^删\s*除$/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('删除选中的 2 条作品？', { selector: '.ant-modal-confirm-title' })).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }))
+    await waitFor(() => expect(deleteWorkstationHistory).toHaveBeenCalledTimes(2))
+    expect(deleteWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-1')
+    expect(deleteWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-2')
+    await waitFor(() => expect(document.querySelectorAll('.assets-card')).toHaveLength(0))
+    expect(document.querySelector('.assets-selection-bar')).toBeNull()
+    expect(document.querySelector('.sr-only')?.textContent).toContain('已删除 2 条作品')
+
+    fireEvent.click(await screen.findByRole('button', { name: '撤销' }))
+    await waitFor(() => expect(restoreWorkstationHistory).toHaveBeenCalledTimes(2))
+    expect(restoreWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-1')
+    expect(restoreWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-2')
+    await waitFor(() => expect(document.querySelector('.sr-only')?.textContent).toContain('已恢复 2 条作品'))
+  })
+
+  it('退出选择模式后恢复预览入口并清空选中', async () => {
+    renderAssets()
+    await waitForCover()
+    fireEvent.click(screen.getByRole('button', { name: /^选\s*择$/ }))
+    fireEvent.click(screen.getByRole('button', { name: '选择将耳机放在咖啡桌中央，保持细节' }))
+    fireEvent.click(screen.getByRole('button', { name: /^取\s*消$/ }))
+
+    await waitFor(() => expect(document.querySelector('.assets-selection-bar')).toBeNull())
+    const cover = screen.getByRole('button', { name: coverName })
+    expect(cover.getAttribute('aria-pressed')).toBeNull()
+    fireEvent.click(cover)
+    expect(openAt).toHaveBeenCalledWith('hist-1')
+
+    fireEvent.click(screen.getByRole('button', { name: /^选\s*择$/ }))
+    expect(document.querySelector('.assets-selection-count')?.textContent).toBe('已选 0 项')
+  })
+
+  it('选择模式下邮件任务不可批量选择', async () => {
+    cloud.authEnabled = true
+    useUserStore.getState().setUser(OWNER, 'free')
+    taskApi.listTasks.mockImplementation(({ capability }: { capability?: Capability }) => Promise.resolve(
+      capability === Capability.EmailAssist
+        ? { items: [{ id: 'mail-1', operation: 'reply', preview: '关于下周的排期', status: 'succeeded', createdAt: '2026-10-03T09:00:00.000Z' }], total: 1 }
+        : { items: [], total: 0 },
+    ))
+    vi.mocked(listHistoryPreviews).mockResolvedValue([historyItem])
+    renderAssets()
+    const mailCover = await waitFor(() => screen.getByRole('button', { name: '查看邮件任务：关于下周的排期' }))
+    fireEvent.click(screen.getByRole('button', { name: /^选\s*择$/ }))
+
+    const cover = screen.getByRole('button', { name: '查看邮件任务：关于下周的排期' }) as HTMLButtonElement
+    expect(cover.disabled).toBe(true)
+    expect(cover.classList.contains('assets-cover-unselectable')).toBe(true)
+    fireEvent.click(cover)
+    expect(screen.getByTestId('location').textContent).toBe('/')
+    expect(mailCover).toBeTruthy()
+    expect(screen.getByRole('button', { name: '选择将耳机放在咖啡桌中央，保持细节' })).toBeTruthy()
+  })
+
   it('删除前必须确认，取消不会删除作品', async () => {
     renderAssets()
     await waitForCover()
