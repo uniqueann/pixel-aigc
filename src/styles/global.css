@@ -4151,12 +4151,63 @@ body.sidebar-resizing * {
 .project-save-status.saved .project-save-status-icon { color: var(--color-accent); }
 .project-save-status.error { color: #ff7875; }
 .project-recovery-screen { max-width: 720px; margin: 15vh auto; padding: 24px; display: grid; gap: 24px; }
-.auth-screen { justify-items: center; }
+/* 认证页铺满视口并垂直居中；内容放得下时不再产生无意义滚动。 */
+.auth-screen {
+  width: min(420px, 100%);
+  max-width: 420px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 24px;
+  align-content: center;
+  justify-items: center;
+  gap: 16px;
+}
 .auth-screen > form,
 .auth-screen > .ant-alert,
 .auth-screen > .ant-space { width: 100%; }
 .auth-screen h2 { margin: 0; }
+/* 认证页对比度：主按钮用深色字，浅色主题链接改用更深的强调文字色。 */
+.auth-screen .ant-btn-primary,
+.auth-screen .ant-btn-primary:not(:disabled):hover { color: var(--color-on-accent); }
+.auth-screen a { color: var(--color-accent-text); }
+.auth-screen a:hover { color: var(--color-accent-text); text-decoration: underline; text-underline-offset: 3px; }
+/* 占位符是当前唯一字段标识，必须达到 4.5:1，不能沿用 antd 的 25% 透明度。 */
+.auth-screen .ant-input::placeholder { color: var(--color-text-secondary); opacity: 1; }
+/* 字段级错误紧贴对应输入框，便于和上方表单级错误区分。 */
+.auth-screen .auth-field-error { margin: -6px 0 0; color: var(--color-danger-text); font-size: 12px; line-height: 1.5; }
+/* 密码可见性按钮：保持原图标尺寸，用伪元素把命中区扩到 44px。 */
+.auth-screen .auth-password-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+}
+.auth-screen .auth-password-toggle:hover { color: var(--color-text-primary); }
+.auth-screen .auth-password-toggle::after { content: ''; position: absolute; inset: -11px; }
+/* 认证页键盘焦点：链接与按钮统一使用高对比焦点环，覆盖 antd reset 的 outline: none。 */
+.auth-screen a:focus-visible,
+.auth-screen .auth-password-toggle:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; border-radius: 2px; }
+/* 按钮保留 antd 自身圆角，只加焦点环，避免聚焦时按钮形状跳变。 */
+.auth-screen .ant-btn:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
 .auth-wordmark { width: 176px; line-height: 0; }
+/* 触屏上把输入框、按钮与链接的命中区补到 44px。 */
+@media (max-width: 480px) {
+  .auth-screen .ant-input,
+  .auth-screen .ant-input-affix-wrapper,
+  .auth-screen .ant-btn { min-height: 44px; }
+  /* 内层 input 不再撑高，避免密码框比邮箱框多出一圈 padding。 */
+  .auth-screen .ant-input-affix-wrapper .ant-input { min-height: 22px; }
+  .auth-screen a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+}
 .post-login-loading {
   display: grid;
   min-height: 100vh;

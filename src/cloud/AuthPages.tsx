@@ -1,12 +1,74 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { Alert, Button, Input, Space } from 'antd'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Alert, Button, Input, Space, type InputRef } from 'antd'
+import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons'
 import { authEnabled, cloudConfigurationError, supabase } from './client'
 import { callbackHasLink, exchangeCodeOnce, verifyEmailLink } from './authCallback'
 import { safeNext } from './authPaths'
+import { authErrorFields, authErrorMessage, type AuthField } from './authErrors'
 import { PixelWordmark } from '@/components/brand/PixelLogo'
 
 const callbackUrl = () => `${window.location.origin}/auth/callback`
 const validPassword = (value: string) => value.length >= 8 && value.length <= 128
+type FieldErrors = Partial<Record<AuthField, string>>
+
+// antd 的 Input.Password 把图标包成不可聚焦的 span；这里用普通 Input + 真正的按钮，
+// 让键盘与读屏都能操作密码可见性，同时保持切换后焦点不丢失。
+function PasswordField({ id, label, placeholder, autoComplete, minLength, invalid, describedBy, value, onChange }: {
+  id: string
+  label: string
+  placeholder: string
+  autoComplete: string
+  minLength?: number
+  invalid?: boolean
+  describedBy?: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const [visible, setVisible] = useState(false)
+  const inputRef = useRef<InputRef>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  return <Input
+    ref={inputRef}
+    id={id}
+    status={invalid ? 'error' : undefined}
+    type={visible ? 'text' : 'password'}
+    required
+    minLength={minLength}
+    maxLength={128}
+    aria-label={label}
+    aria-invalid={invalid || undefined}
+    aria-describedby={describedBy}
+    autoComplete={autoComplete}
+    placeholder={placeholder}
+    value={value}
+    onChange={event => onChange(event.target.value)}
+    suffix={<button
+      ref={toggleRef}
+      type="button"
+      className="auth-password-toggle"
+      aria-label={visible ? '隐藏密码' : '显示密码'}
+      aria-pressed={visible}
+      onMouseDown={event => event.preventDefault()}
+      onClick={event => {
+        // 阻止冒泡到 affix 外层，否则 antd 会把焦点抢回输入框。
+        event.stopPropagation()
+        setVisible(current => !current)
+        // 键盘触发时把焦点留在按钮上，读屏才能听到切换后的状态；鼠标点击则回到输入框继续输入。
+        if (event.detail === 0) requestAnimationFrame(() => toggleRef.current?.focus())
+        else inputRef.current?.focus()
+      }}
+    >{visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}</button>}
+  />
+}
+
+// 认证页共用的法务入口，避免停用页与配置错误页各写一份。
+function LegalLinks() {
+  return <Space wrap>
+    <a href="/about" target="_blank" rel="noopener noreferrer">产品介绍</a>
+    <a href="/privacy" target="_blank" rel="noopener noreferrer">隐私政策</a>
+    <a href="https://contentup.cc/terms" target="_blank" rel="noopener noreferrer">服务条款</a>
+  </Space>
+}
 
 export default function AuthPages() {
   const path = window.location.pathname
@@ -17,7 +79,56 @@ export default function AuthPages() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState(cloudConfigurationError ?? (path === '/auth/callback' ? params.get('error_description') ?? params.get('error') ?? (callbackHasLink(params) ? '' : '登录链接无效或已过期，请重新申请') : ''))
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  const [errorFields, setErrorFields] = useState<AuthField[]>([])
   const next = safeNext(params.get('next'))
+
+  const fieldId = (field: AuthField) => `auth-${field}`
+  const fieldErrorId = (field: AuthField) => `auth-${field}-error`
+  const isInvalid = (field: AuthField) => Boolean(fieldErrors[field]) || errorFields.includes(field)
+  const describedBy = (field: AuthField) => {
+    const ids: string[] = []
+    if (fieldErrors[field]) ids.push(fieldErrorId(field))
+    if (errorFields.includes(field)) ids.push('auth-form-error')
+    return ids.length ? ids.join(' ') : undefined
+  }
+  const focusField = (field: AuthField) => requestAnimationFrame(() => document.getElementById(fieldId(field))?.focus())
+  const clearFieldError = (field: AuthField) => {
+    setFieldErrors(current => current[field] ? { ...current, [field]: undefined } : current)
+    if (errorFields.includes(field)) {
+      setErrorFields([])
+      setError('')
+    }
+  }
+  const validate = (): FieldErrors => {
+    const errors: FieldErrors = {}
+    const trimmedEmail = email.trim()
+    if (path !== '/reset-password') {
+      if (!trimmedEmail) errors.email = '请输入邮箱'
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) errors.email = '请输入有效的邮箱地址'
+    }
+    if (['/login','/register','/reset-password'].includes(path)) {
+      if (!password) errors.password = '请输入密码'
+      else if (path !== '/login' && !validPassword(password)) errors.password = '密码须为 8–128 位字符'
+    }
+    if (['/register','/reset-password'].includes(path) && password !== confirm) errors.confirm = '两次输入的密码不一致'
+    return errors
+  }
+  const applyAuthError = (err: unknown, fallback: string) => {
+    const message = authErrorMessage(err, fallback)
+    const fields = authErrorFields(err)
+    if (fields.length === 1) {
+      setFieldErrors({ [fields[0]]: message })
+      setErrorFields([])
+      setError('')
+      focusField(fields[0])
+      return
+    }
+    setFieldErrors({})
+    setErrorFields(fields)
+    setError(message)
+    if (fields.length) focusField(fields[0])
+  }
 
   useEffect(() => {
     const client = supabase
@@ -33,7 +144,7 @@ export default function AuthPages() {
           sessionStorage.setItem('pixel-aigc-recovery', response.data.user?.id ?? '')
           window.location.replace('/reset-password')
         } else window.location.replace(safeNext(sessionStorage.getItem('pixel-aigc-next')))
-      }).catch(err => setError(err instanceof Error ? err.message : '登录链接无效，请重试'))
+      }).catch(err => setError(authErrorMessage(err, '登录链接无效，请重试')))
       return
     }
     if (!callbackParams.has('token_hash')) return
@@ -51,22 +162,39 @@ export default function AuthPages() {
     })
   }, [path])
 
-  const run = async (action: () => Promise<void>) => {
+  const run = async (action: () => Promise<void>, fallback = '请求失败，请重试') => {
     setBusy(true); setError(''); setNotice('')
-    try { await action() } catch (err) { setError(err instanceof Error ? err.message : '请求失败，请重试') }
+    try { await action() } catch (err) { applyAuthError(err, fallback) }
     finally { setBusy(false) }
   }
+  const submitFallback = path === '/login' ? '登录失败，请稍后重试。'
+    : path === '/register' ? '注册失败，请稍后重试。'
+    : path === '/verify-email' ? '验证邮件发送失败，请稍后重试。'
+    : path === '/forgot-password' ? '重置邮件发送失败，请稍后重试。'
+    : path === '/reset-password' ? '密码更新失败，请稍后重试。'
+    : '请求失败，请重试'
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const client = supabase
     if (!client) return
+    const errors = validate()
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors)
+      setErrorFields([])
+      setError('')
+      setNotice('')
+      const first = (['email','password','confirm'] as AuthField[]).find(field => errors[field])
+      if (first) focusField(first)
+      return
+    }
+    setFieldErrors({})
+    setErrorFields([])
     void run(async () => {
       if (path === '/login') {
         const { error: resultError } = await client.auth.signInWithPassword({ email: email.trim(), password })
         if (resultError) throw resultError
         window.location.replace(next)
       } else if (path === '/register') {
-        if (!validPassword(password) || password !== confirm) throw new Error('密码须为 8–128 位，且两次输入一致')
         sessionStorage.setItem('pixel-aigc-next', next)
         const { error: resultError } = await client.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: callbackUrl() } })
         if (resultError) throw resultError
@@ -80,7 +208,6 @@ export default function AuthPages() {
           ? '验证邮件已发送，请查收邮件完成验证。'
           : '重置密码链接已发送至您的邮箱，请查收。')
       } else if (path === '/reset-password') {
-        if (!validPassword(password) || password !== confirm) throw new Error('密码须为 8–128 位，且两次输入一致')
         const { data } = await client.auth.getUser()
         if (!data.user || sessionStorage.getItem('pixel-aigc-recovery') !== data.user.id) throw new Error('恢复会话已失效，请重新申请密码重置邮件')
         const { error: resultError } = await client.auth.updateUser({ password })
@@ -88,41 +215,87 @@ export default function AuthPages() {
         sessionStorage.removeItem('pixel-aigc-recovery')
         window.location.replace('/')
       }
-    })
+    }, submitFallback)
   }
 
-  if (!authEnabled || cloudConfigurationError) return <div className="project-recovery-screen"><Alert type="error" message={cloudConfigurationError ?? '账号系统尚未启用'} /></div>
-  if (path === '/account-disabled') return <div className="project-recovery-screen"><h2>账号已停用</h2>
+  if (!authEnabled || cloudConfigurationError) return <div className="project-recovery-screen auth-screen">
+    <PixelWordmark className="auth-wordmark" />
+    <h2>账号系统不可用</h2>
+    <Alert type="error" showIcon message={cloudConfigurationError ?? '当前环境未启用账号系统。'} />
+    <LegalLinks />
+  </div>
+  if (path === '/account-disabled') return <div className="project-recovery-screen auth-screen">
+    <PixelWordmark className="auth-wordmark" />
+    <h2>账号已停用</h2>
     <p>当前账号暂时无法使用 Pixel AIGC，请联系管理员。</p>
-    <Button onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>退出并切换账号</Button></div>
+    <Button type="primary" block onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>退出并切换账号</Button>
+    <LegalLinks />
+  </div>
   const labels: Record<string,string> = { '/login': '登录', '/register': '注册', '/verify-email': '验证邮箱', '/forgot-password': '找回密码', '/reset-password': '设置新密码', '/auth/callback': '正在完成验证' }
-  return <div className="project-recovery-screen auth-screen" style={{ maxWidth: 420, margin: '10vh auto', gap: 16 }}>
+  return <div className="project-recovery-screen auth-screen">
     <PixelWordmark className="auth-wordmark" />
     <h2>{labels[path] ?? '账号'}</h2>
     {path === '/verify-email' && <p>注册邮件已发送，如需重发请输入邮箱。</p>}
     {path === '/reset-password' && <p>设置新密码后，请使用新密码重新登录。</p>}
-    {error && <Alert type="error" showIcon message={error} />}
+    {error && <Alert id="auth-form-error" type="error" showIcon message={error} />}
     {notice && <Alert type="info" showIcon message={notice} />}
-    {path !== '/auth/callback' && <form onSubmit={submit} style={{ display: 'grid', gap: 12, width: '100%' }}>
-      {path !== '/reset-password' && <Input type="email" autoComplete="email" aria-label="邮箱" required placeholder="邮箱" value={email} onChange={event => setEmail(event.target.value)} />}
-      {['/login','/register','/reset-password'].includes(path) && <Input.Password required minLength={path === '/login' ? undefined : 8} maxLength={128} aria-label={path === '/reset-password' ? '新密码' : '密码'} autoComplete={path === '/login' ? 'current-password' : 'new-password'} placeholder={path === '/reset-password' ? '新密码' : '密码'} value={password} onChange={event => setPassword(event.target.value)} />}
-      {['/register','/reset-password'].includes(path) && <Input.Password required minLength={8} maxLength={128} aria-label="确认密码" autoComplete="new-password" placeholder="确认密码" value={confirm} onChange={event => setConfirm(event.target.value)} />}
+    {path !== '/auth/callback' && <form noValidate onSubmit={submit} style={{ display: 'grid', gap: 12, width: '100%' }}>
+      {path !== '/reset-password' && <>
+        <Input
+          id="auth-email"
+          status={isInvalid('email') ? 'error' : undefined}
+          type="email"
+          autoComplete="email"
+          aria-label="邮箱"
+          aria-invalid={isInvalid('email') || undefined}
+          aria-describedby={describedBy('email')}
+          required
+          placeholder="邮箱"
+          value={email}
+          onChange={event => { setEmail(event.target.value); clearFieldError('email') }}
+        />
+        {fieldErrors.email && <p id="auth-email-error" className="auth-field-error">{fieldErrors.email}</p>}
+      </>}
+      {['/login','/register','/reset-password'].includes(path) && <>
+        <PasswordField
+          id="auth-password"
+          label={path === '/reset-password' ? '新密码' : '密码'}
+          placeholder={path === '/reset-password' ? '新密码' : '密码'}
+          autoComplete={path === '/login' ? 'current-password' : 'new-password'}
+          minLength={path === '/login' ? undefined : 8}
+          invalid={isInvalid('password')}
+          describedBy={describedBy('password')}
+          value={password}
+          onChange={value => { setPassword(value); clearFieldError('password') }}
+        />
+        {fieldErrors.password && <p id="auth-password-error" className="auth-field-error">{fieldErrors.password}</p>}
+      </>}
+      {['/register','/reset-password'].includes(path) && <>
+        <PasswordField
+          id="auth-confirm"
+          label="确认密码"
+          placeholder="确认密码"
+          autoComplete="new-password"
+          minLength={8}
+          invalid={isInvalid('confirm')}
+          describedBy={describedBy('confirm')}
+          value={confirm}
+          onChange={value => { setConfirm(value); clearFieldError('confirm') }}
+        />
+        {fieldErrors.confirm && <p id="auth-confirm-error" className="auth-field-error">{fieldErrors.confirm}</p>}
+      </>}
       <Button htmlType="submit" type="primary" loading={busy}>{path === '/verify-email' ? '重发验证邮件' : path === '/forgot-password' ? '发送重置邮件' : labels[path]}</Button>
     </form>}
     {path === '/login' && <Button onClick={() => { void run(async () => {
       sessionStorage.setItem('pixel-aigc-next', next)
       const { error: resultError } = await supabase!.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callbackUrl(), queryParams: { prompt: 'select_account' } } })
       if (resultError) throw resultError
-    }) }} loading={busy}>使用 Google 登录</Button>}
+    }, 'Google 登录发起失败，请稍后重试。') }} loading={busy}>使用 Google 登录</Button>}
     <Space wrap>
       {path !== '/login' && <a href="/login">返回登录</a>}
       {path === '/login' && <><a href={`/register?next=${encodeURIComponent(next)}`}>注册账号</a><a href="/forgot-password">忘记密码</a></>}
       {path === '/auth/callback' || path === '/reset-password' ? <a href="/forgot-password">重新申请重置邮件</a> : null}
     </Space>
-    <Space wrap>
-      <a href="/about" target="_blank" rel="noopener noreferrer">产品介绍</a>
-      <a href="/privacy" target="_blank" rel="noopener noreferrer">隐私政策</a>
-      <a href="https://contentup.cc/terms" target="_blank" rel="noopener noreferrer">服务条款</a>
-    </Space>
+    <LegalLinks />
   </div>
 }

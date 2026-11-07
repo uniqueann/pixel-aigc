@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { authErrorMessage } from './authErrors'
 
 // 只接受邮件链接会用到的 type。SDK 的 EmailOtpType 还放行任意字符串，不能直接交给 verifyOtp。
 export const emailLinkTypes = ['email', 'signup', 'recovery', 'magiclink', 'invite', 'email_change'] as const
@@ -52,7 +53,7 @@ export function verifyEmailLink(client: EmailLinkVerifier, params: URLSearchPara
       })
       .catch((err: unknown) => ({
         kind: 'error' as const,
-        message: err instanceof Error ? err.message : '登录链接无效，请重试',
+        message: authErrorMessage(err, '登录链接无效，请重试'),
       }))
   }
   return emailLinkVerification

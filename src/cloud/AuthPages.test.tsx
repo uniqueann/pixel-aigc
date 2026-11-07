@@ -57,6 +57,8 @@ describe('账号页邮箱链接', () => {
     auth.exchangeCodeForSession.mockReset()
     auth.resend.mockReset()
     auth.resetPasswordForEmail.mockReset()
+    auth.signInWithPassword.mockReset()
+    auth.signOut.mockReset()
   })
 
   afterEach(() => {
@@ -187,5 +189,80 @@ describe('账号页邮箱链接', () => {
     expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('user@example.com', {
       redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
     })
+  })
+
+  it('登录失败展示中文错误文案，不暴露 Supabase 英文原文', async () => {
+    auth.signInWithPassword.mockResolvedValue({
+      error: Object.assign(new Error('Invalid login credentials'), { code: 'invalid_credentials' }),
+    })
+    visit('/login')
+    render(<AuthPages />)
+    const emailInput = screen.getByLabelText('邮箱')
+    const passwordInput = screen.getByLabelText('密码')
+    fireEvent.change(emailInput, { target: { value: 'user@example.com' } })
+    fireEvent.change(passwordInput, { target: { value: 'wrongpass' } })
+    fireEvent.click(screen.getByRole('button', { name: /^登\s*录$/ }))
+    expect(await screen.findByText('邮箱或密码不正确，请检查后重试，或使用“忘记密码”。')).toBeTruthy()
+    expect(document.body.textContent).not.toContain('Invalid login credentials')
+    expect(emailInput.getAttribute('aria-invalid')).toBe('true')
+    expect(passwordInput.getAttribute('aria-invalid')).toBe('true')
+    expect(emailInput.getAttribute('aria-describedby')).toContain('auth-form-error')
+    expect(passwordInput.getAttribute('aria-describedby')).toContain('auth-form-error')
+    await waitFor(() => expect(document.activeElement).toBe(emailInput))
+  })
+
+  it('邮箱格式错误显示在字段下方并聚焦该字段', async () => {
+    visit('/login')
+    render(<AuthPages />)
+    const emailInput = screen.getByLabelText('邮箱')
+    fireEvent.change(emailInput, { target: { value: 'abc' } })
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'wrongpass' } })
+    fireEvent.click(screen.getByRole('button', { name: /^登\s*录$/ }))
+    expect(await screen.findByText('请输入有效的邮箱地址')).toBeTruthy()
+    expect(emailInput.getAttribute('aria-invalid')).toBe('true')
+    expect(emailInput.getAttribute('aria-describedby')).toBe('auth-email-error')
+    expect(auth.signInWithPassword).not.toHaveBeenCalled()
+    await waitFor(() => expect(document.activeElement).toBe(emailInput))
+  })
+
+  it('两次密码不一致显示在确认密码下方并聚焦该字段', async () => {
+    visit('/register')
+    render(<AuthPages />)
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'password1' } })
+    const confirmInput = screen.getByLabelText('确认密码')
+    fireEvent.change(confirmInput, { target: { value: 'password2' } })
+    fireEvent.click(screen.getByRole('button', { name: /^注\s*册$/ }))
+    expect(await screen.findByText('两次输入的密码不一致')).toBeTruthy()
+    expect(confirmInput.getAttribute('aria-invalid')).toBe('true')
+    expect(confirmInput.getAttribute('aria-describedby')).toBe('auth-confirm-error')
+    expect(auth.signUp).not.toHaveBeenCalled()
+    await waitFor(() => expect(document.activeElement).toBe(confirmInput))
+  })
+
+  it('账号停用页复用认证页模板', async () => {
+    auth.signOut.mockResolvedValue({ error: null })
+    visit('/account-disabled')
+    render(<AuthPages />)
+    expect(screen.getByRole('img', { name: 'Pixel AIGC' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '账号已停用' })).toBeTruthy()
+    expect(screen.getByText('当前账号暂时无法使用 Pixel AIGC，请联系管理员。')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '产品介绍' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '隐私政策' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '退出并切换账号' }))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/login'))
+    expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' })
+  })
+
+  it('密码可见性按钮可切换且不会提交表单', () => {
+    visit('/login')
+    render(<AuthPages />)
+    const password = screen.getByLabelText('密码') as HTMLInputElement
+    expect(password.type).toBe('password')
+    fireEvent.click(screen.getByRole('button', { name: '显示密码' }))
+    expect(password.type).toBe('text')
+    fireEvent.click(screen.getByRole('button', { name: '隐藏密码' }))
+    expect(password.type).toBe('password')
+    expect(auth.signInWithPassword).not.toHaveBeenCalled()
   })
 })
