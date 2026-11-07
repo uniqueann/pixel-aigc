@@ -48,7 +48,5 @@ export function entryReady(entry: QuickStartEntry, capabilities: Partial<Record<
   return entry.capability ? capabilities[entry.capability] : true
 }
 
-export function dashboardTime(value: string) {
-  const date = new Date(value)
-  return Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '时间未知'
-}
+/** 保留旧导出名，时间实现已抽到共享工具，避免资产页反向依赖 dashboard。 */
+export { formatShortDateTime as dashboardTime } from '@/utils/datetime'

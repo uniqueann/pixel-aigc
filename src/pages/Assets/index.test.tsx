@@ -8,6 +8,9 @@ import { Capability } from '@/types'
 
 const flags = vi.hoisted(() => ({ textToVideo: false as boolean | undefined, imageToVideo: false as boolean | undefined, error: null as Error | null, refetch: vi.fn() }))
 vi.mock('@/hooks/useCapabilities', () => ({ useCapabilities: () => ({ capabilities: flags, error: flags.error, refetch: flags.refetch }) }))
+const cloud = vi.hoisted(() => ({ authEnabled: false }))
+const taskApi = vi.hoisted(() => ({ listTasks: vi.fn() }))
+const OWNER = '11111111-1111-4111-8111-111111111111'
 const openAt = vi.fn()
 const historyItem = {
   id: 'hist-1',
@@ -22,11 +25,14 @@ const historyItem = {
   thumbnail: new Blob(['thumb'], { type: 'image/jpeg' }),
 }
 
-vi.mock('@/cloud/client', () => ({ authEnabled: false }))
+vi.mock('@/cloud/client', () => cloud)
 vi.mock('@/features/assets/hydrateImageJobs', () => ({
   hydrateWorkstationHistoryFromImageJobs: () => Promise.resolve({ failed: 0 }),
 }))
-vi.mock('@/services/api/task', () => ({ listTasks: () => Promise.resolve({ items: [] }) }))
+vi.mock('@/features/assets/hydrateVideoJobs', () => ({
+  hydrateVideoJobs: () => Promise.resolve(),
+}))
+vi.mock('@/services/api/task', () => taskApi)
 vi.mock('@/components/PreviewGallery', () => ({ default: () => null }))
 vi.mock('@/components/VideoPoster', () => ({ default: () => <span>视频封面</span> }))
 vi.mock('@/services/api/ownedVideos', () => ({ downloadOwnedVideo: vi.fn().mockResolvedValue(undefined) }))
@@ -42,6 +48,7 @@ vi.mock('@/features/assets/workstationHistory', () => ({
 
 import Assets from './index'
 import { usePreferencesStore } from '@/features/preferences/store'
+import { useUserStore } from '@/store/useUserStore'
 import { deleteWorkstationHistory, listHistoryPreviews, restoreWorkstationHistory } from '@/features/assets/workstationHistory'
 import { downloadOwnedVideo } from '@/services/api/ownedVideos'
 
@@ -55,29 +62,25 @@ function renderAssets() {
   )
 }
 
-async function waitForCover() {
-  return waitFor(() => screen.getByRole('button', { name: '查看融合大图' }))
-}
+const coverName = '查看将耳机放在咖啡桌中央，保持细节大图'
 
-/** 按按钮文字定位，避免 jsdom 把图标 aria-label 算进可访问名称。 */
-function buttonByText(name: string) {
-  const button = screen.getByText(name).closest('button')
-  if (!button) throw new Error(`未找到「${name}」按钮`)
-  return button
+async function waitForCover() {
+  return waitFor(() => screen.getByRole('button', { name: coverName }))
 }
 
 function expectThumbnailKeepsPreviewAccess(cover: HTMLElement) {
   expect(cover.classList.contains('assets-cover')).toBe(true)
-  expect(cover.getAttribute('aria-label')).toBe('查看融合大图')
+  expect(cover.getAttribute('aria-label')).toMatch(/^查看.+大图$/)
   expect(cover.querySelector('.assets-preview-hint')).toBeNull()
   expect(cover.querySelector('.anticon-zoom-in')).toBeNull()
-  expect(buttonByText('查看大图')).toBeTruthy()
 }
 
 describe('我的资产缩略图预览入口', () => {
   beforeEach(() => {
     openAt.mockReset()
     flags.textToVideo = false; flags.imageToVideo = false; flags.error = null; flags.refetch.mockReset()
+    cloud.authEnabled = false
+    taskApi.listTasks.mockReset().mockResolvedValue({ items: [], total: 0 })
     vi.mocked(listHistoryPreviews).mockReset().mockResolvedValue([historyItem])
     vi.mocked(deleteWorkstationHistory).mockReset()
     vi.mocked(restoreWorkstationHistory).mockReset().mockResolvedValue(true)
@@ -90,6 +93,8 @@ describe('我的资产缩略图预览入口', () => {
 
   afterEach(() => {
     cleanup()
+    cloud.authEnabled = false
+    useUserStore.getState().setAccount(null)
     vi.unstubAllGlobals()
   })
 
@@ -105,7 +110,7 @@ describe('我的资产缩略图预览入口', () => {
     expect(openAt).toHaveBeenCalledWith('hist-1')
   })
 
-  it('列表视图同样不叠加放大镜，并保留查看大图按钮', async () => {
+  it('列表视图同样不叠加放大镜，点击封面即可预览', async () => {
     renderAssets()
     await waitForCover()
     fireEvent.click(screen.getByRole('button', { name: '列表视图' }))
@@ -113,7 +118,7 @@ describe('我的资产缩略图预览入口', () => {
     expectThumbnailKeepsPreviewAccess(cover)
     expect(document.querySelector('.assets-list')).toBeTruthy()
 
-    fireEvent.click(buttonByText('查看大图'))
+    fireEvent.click(cover)
     expect(openAt).toHaveBeenCalledWith('hist-1')
   })
 
@@ -125,8 +130,8 @@ describe('我的资产缩略图预览入口', () => {
     await waitForCover()
     fireEvent.click(screen.getByText('图片'))
     expect(screen.queryByText('图片工作站')).toBeNull()
-    const cover = screen.getByRole('button', { name: '查看文生图大图' })
-    expect(screen.getByRole('button', { name: '查看融合大图' })).toBeTruthy()
+    const cover = screen.getByRole('button', { name: '查看夜晚的城市大图' })
+    expect(screen.getByRole('button', { name: coverName })).toBeTruthy()
     fireEvent.click(cover)
     expect(openAt).toHaveBeenCalledWith('text-image-1')
   })
@@ -157,12 +162,16 @@ describe('我的资产缩略图预览入口', () => {
     const video = { url: '', objectKey: 'videos/history.mp4', ordinal: 0, width: 1280, height: 720, mimeType: 'video/mp4' as const, durationSeconds: 5, sizeBytes: 1024, hasAudio: false, retentionExpiresAt: '2099-11-01T00:00:00Z' }
     vi.mocked(listHistoryPreviews).mockResolvedValue([{ ...historyItem, id: 'video-1', toolSlug: 'text-to-video', capability: Capability.TextToVideo, mediaType: 'video', video }])
     renderAssets()
-    await waitFor(() => screen.getByRole('button', { name: '播放Seedance 视频' }))
+    const play = '播放将耳机放在咖啡桌中央，保持细节'
+    await waitFor(() => screen.getByRole('button', { name: play }))
     fireEvent.click(screen.getByText('视频'))
     expect(screen.getByText('视频生成即将上线。')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '播放Seedance 视频' }))
+    expect(screen.getByText('5 秒')).toBeTruthy()
+    expect(document.querySelector('.assets-card-expiry')?.textContent).toContain('到期')
+    fireEvent.click(screen.getByRole('button', { name: play }))
     expect(openAt).toHaveBeenCalledWith('video-1')
-    fireEvent.click(buttonByText('下载'))
+    fireEvent.click(screen.getByRole('button', { name: /更多操作/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /下\s*载/ }))
     await waitFor(() => expect(downloadOwnedVideo).toHaveBeenCalledWith(video, 'Seedance_5.0秒.mp4', 'anonymous'))
   })
 
@@ -175,6 +184,30 @@ describe('我的资产缩略图预览入口', () => {
     expect(screen.queryByText('视频生成即将上线。')).toBeNull()
     expect(screen.getByRole('button', { name: '打开画布' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '去生成' })).toBeNull()
+  })
+
+  it('卡片用提示词作标题，工具名与时间降为次级信息', async () => {
+    renderAssets()
+    await waitForCover()
+    expect(screen.getByText('将耳机放在咖啡桌中央，保持细节')).toBeTruthy()
+    const meta = document.querySelector('.assets-card-meta')?.textContent ?? ''
+    expect(meta).toContain('融合')
+    expect(meta).not.toContain('已完成')
+  })
+
+  it('邮件任务与图片作品使用同一套卡片结构', async () => {
+    cloud.authEnabled = true
+    useUserStore.getState().setUser(OWNER, 'free')
+    taskApi.listTasks.mockImplementation(({ capability }: { capability?: Capability }) => Promise.resolve(
+      capability === Capability.EmailAssist
+        ? { items: [{ id: 'mail-1', operation: 'reply', preview: '关于下周的排期', status: 'succeeded', createdAt: '2026-10-03T09:00:00.000Z' }], total: 1 }
+        : { items: [], total: 0 },
+    ))
+    vi.mocked(listHistoryPreviews).mockResolvedValue([])
+    renderAssets()
+    const cover = await waitFor(() => screen.getByRole('button', { name: '查看邮件任务：关于下周的排期' }))
+    expect(cover.classList.contains('assets-cover-email')).toBe(true)
+    expect(screen.getByText(/邮件助手 · 回复/)).toBeTruthy()
   })
 
   it('删除前必须确认，取消不会删除作品', async () => {

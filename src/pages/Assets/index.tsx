@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, UnorderedListOutlined, ZoomInOutlined } from '@ant-design/icons'
-import { App, Alert, Button, Card, Dropdown, Segmented, Space, Spin, Tooltip } from 'antd'
+import { AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, UnorderedListOutlined } from '@ant-design/icons'
+import { App, Alert, Button, Dropdown, Segmented, Space, Spin, Tooltip } from 'antd'
 import EmptyState from '@/components/EmptyState'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import VideoPoster from '@/components/VideoPoster'
@@ -35,6 +35,7 @@ import { usePreferencesStore } from '@/features/preferences/store'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { capabilityAvailability } from '@/components/capabilityAvailability'
 import VideoAvailabilityNotice from '@/features/free-canvas/generation/VideoAvailabilityNotice'
+import { formatShortDateTime } from '@/utils/datetime'
 
 type Filter = 'all' | 'workstation' | 'video' | 'email'
 type ViewMode = 'grid' | 'list'
@@ -56,16 +57,11 @@ interface LibraryItem {
   email?: TaskSummary
 }
 
-function formatTime(value: string) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN')
-}
-
-/** 用提示词首句指代作品，避免多条同名工具记录无法区分。 */
+/** 用提示词首句指代作品，避免多条同名工具记录无法区分；邮件任务退回预览首句。 */
 function assetDisplayName(item: LibraryItem) {
-  const prompt = item.record?.prompt?.trim()
-  if (!prompt) return item.title
-  return prompt.length > 20 ? `${prompt.slice(0, 20)}…` : prompt
+  const source = item.record?.prompt?.trim() || item.email?.preview?.trim()
+  if (!source) return item.title
+  return source.length > 20 ? `${source.slice(0, 20)}…` : source
 }
 
 export default function Assets() {
@@ -201,7 +197,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       id: record.id,
       kind: record.mediaType === 'video' ? 'video' as const : 'workstation' as const,
       title: record.mediaType === 'video' ? record.modelProfileId ? `${modelDisplayName(record.modelProfileId)} 视频` : 'Seedance 视频' : workstationToolLabel(record.toolSlug),
-      subtitle: record.video ? `${record.video.durationSeconds.toFixed(1)} 秒 · ${record.width}×${record.height} · ${formatTime(record.video.retentionExpiresAt)} 到期`
+      subtitle: record.video ? `${record.video.durationSeconds.toFixed(1)} 秒 · ${record.width}×${record.height} · ${formatShortDateTime(record.video.retentionExpiresAt)} 到期`
         : `${record.width}×${record.height}${record.prompt ? ` · ${record.prompt}` : ''}`,
       status: 'succeeded',
       createdAt: record.createdAt,
@@ -386,59 +382,87 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       ) : (
         <div ref={gridRef} className={viewMode === 'grid' ? 'assets-grid' : 'assets-list'}>
           {visible.map((item) => {
-            const preview = item.record ? (
-              <button className="assets-cover" type="button" aria-label={item.kind === 'video' ? `播放${item.title}` : `查看${item.title}大图`} title={item.kind === 'video' ? '播放视频' : '查看大图'} onClick={() => openAt(item.id)}>
-                {item.record?.video ? <VideoPoster posterKey={item.record.video.posterKey} retentionExpiresAt={item.record.video.retentionExpiresAt} ownerId={ownerId} /> : item.previewUrl ? <img src={item.previewUrl} alt={item.title} /> : <span>查看原图</span>}
-              </button>
-            ) : null
+            const name = assetDisplayName(item)
+            const isVideo = item.kind === 'video'
             return (
-              <Card
-                key={item.id}
-                className={`assets-card${viewMode === 'list' ? ' assets-card-list' : ''}`}
-                cover={viewMode === 'grid' ? preview : undefined}
-              >
-                {viewMode === 'list' ? preview ?? <div className="assets-email-cover" aria-hidden="true"><MailOutlined /></div> : null}
+              <article key={item.id} className={`assets-card${viewMode === 'list' ? ' assets-card-list' : ''}`}>
+                {item.record ? (
+                  <button
+                    className="assets-cover"
+                    type="button"
+                    aria-label={isVideo ? `播放${name}` : `查看${name}大图`}
+                    title={isVideo ? '播放视频' : '查看大图'}
+                    onClick={() => openAt(item.id)}
+                  >
+                    {item.record.video ? (
+                      <>
+                        <VideoPoster posterKey={item.record.video.posterKey} retentionExpiresAt={item.record.video.retentionExpiresAt} ownerId={ownerId} />
+                        <span className="assets-video-duration">{item.record.video.durationSeconds} 秒</span>
+                      </>
+                    ) : item.previewUrl ? (
+                      <>
+                        <span
+                          className="assets-cover-backdrop"
+                          aria-hidden="true"
+                          style={{ backgroundImage: `url("${item.previewUrl}")` }}
+                        />
+                        <img className="assets-cover-image" src={item.previewUrl} alt="" loading="lazy" decoding="async" />
+                      </>
+                    ) : (
+                      <span className="assets-cover-empty">查看原图</span>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    className="assets-cover assets-cover-email"
+                    type="button"
+                    aria-label={`查看邮件任务：${name}`}
+                    title="查看邮件任务"
+                    onClick={() => navigate('/email')}
+                  >
+                    <MailOutlined />
+                  </button>
+                )}
                 <div className="assets-card-details">
-                  <div className="assets-card-title">{item.title}</div>
-                  <div className="assets-card-meta">{formatTime(item.createdAt)} · {taskStatusLabel(item.status)}</div>
-                  <div className="assets-card-subtitle" title={item.subtitle}>{item.subtitle}</div>
+                  <div className="assets-card-title" title={item.prompt || name}>{name}</div>
+                  <div className="assets-card-meta" title={item.subtitle}>
+                    {item.title} · <time dateTime={item.createdAt}>{formatShortDateTime(item.createdAt)}</time>
+                    {item.status === 'succeeded' ? '' : ` · ${taskStatusLabel(item.status)}`}
+                  </div>
+                  {item.record?.video ? (
+                    <div className="assets-card-expiry">{formatShortDateTime(item.record.video.retentionExpiresAt)} 到期</div>
+                  ) : null}
                 </div>
-                <Space className="assets-card-actions" wrap>
-                  {item.record ? <Button size="small" icon={<ZoomInOutlined />} onClick={() => openAt(item.id)}>{item.record.video ? '播放视频' : '查看大图'}</Button> : null}
-                  {item.record ? (
+                {item.record ? (
+                  <Dropdown
+                    trigger={['click']}
+                    overlayClassName="assets-card-menu"
+                    menu={{
+                      items: [
+                        {
+                          key: 'download',
+                          icon: <DownloadOutlined />,
+                          label: downloadingId === item.id ? '正在下载…' : '下载',
+                          disabled: downloadingId === item.id,
+                        },
+                        { key: 'delete', danger: true, icon: <DeleteOutlined />, label: '删除' },
+                      ],
+                      onClick: ({ key, domEvent }) => {
+                        domEvent.stopPropagation()
+                        if (key === 'download') void downloadRecord(item.record!)
+                        if (key === 'delete') confirmDelete(item)
+                      },
+                    }}
+                  >
                     <Button
                       size="small"
-                      icon={<DownloadOutlined />}
-                      loading={downloadingId === item.id}
-                      onClick={() => void downloadRecord(item.record!)}
-                    >
-                      下载
-                    </Button>
-                  ) : (
-                    <Button size="small" onClick={() => navigate('/email')}>查看邮件</Button>
-                  )}
-                  {item.record ? (
-                    <Dropdown
-                      trigger={['click']}
-                      overlayClassName="assets-card-menu"
-                      menu={{
-                        items: [{ key: 'delete', danger: true, icon: <DeleteOutlined />, label: '删除' }],
-                        onClick: ({ key, domEvent }) => {
-                          domEvent.stopPropagation()
-                          if (key === 'delete') confirmDelete(item)
-                        },
-                      }}
-                    >
-                      <Button
-                        size="small"
-                        className="assets-card-more"
-                        icon={<MoreOutlined />}
-                        aria-label={`更多操作：${assetDisplayName(item)}`}
-                      />
-                    </Dropdown>
-                  ) : null}
-                </Space>
-              </Card>
+                      className="assets-card-more"
+                      icon={<MoreOutlined />}
+                      aria-label={`更多操作：${name}`}
+                    />
+                  </Dropdown>
+                ) : null}
+              </article>
             )
           })}
         </div>

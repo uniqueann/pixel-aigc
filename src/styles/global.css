@@ -5047,22 +5047,23 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
 
 .assets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
 }
 
 .assets-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
+/* 作品墙瓦片：封面承载作品，文字只留标题与工具/时间，操作收进「更多」。 */
 .assets-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
-}
-
-.assets-card .ant-card-body {
-  padding: 16px;
 }
 
 .assets-cover {
@@ -5070,14 +5071,38 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   display: grid;
   place-items: center;
   width: 100%;
-  height: 180px;
+  aspect-ratio: 4 / 3;
   padding: 0;
-  border: 0;
-  border-radius: 8px 8px 0 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--color-surface-2);
+  background: var(--color-canvas);
   color: var(--color-text-secondary);
   cursor: zoom-in;
+}
+
+.assets-card:hover .assets-cover,
+.assets-cover:hover {
+  border-color: var(--color-accent);
+}
+
+/* 竖图 contain 后两侧留白，用同一张缩略图铺底，避免大块中性灰。 */
+.assets-cover-backdrop {
+  position: absolute;
+  inset: -16px;
+  background-position: center;
+  background-size: cover;
+  filter: blur(24px);
+  opacity: 0.4;
+  pointer-events: none;
+  transform: scale(1.12);
+}
+
+.assets-cover-image {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .assets-cover img {
@@ -5086,61 +5111,144 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   object-fit: contain;
 }
 
+.assets-cover .preview-video-poster {
+  position: relative;
+}
+
+.assets-cover-empty {
+  position: relative;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+}
+
+.assets-video-duration {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-size: 11px;
+}
+
+.assets-cover-email {
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 26px;
+}
+
 .assets-cover:focus-visible {
   outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-}
-
-.assets-card-list .ant-card-body {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-}
-
-.assets-card-list .assets-cover,
-.assets-email-cover {
-  width: 96px;
-  height: 80px;
-  border-radius: 6px;
-}
-
-.assets-email-cover {
-  display: grid;
-  place-items: center;
-  background: var(--color-surface-2);
-  color: var(--color-text-secondary);
-  font-size: 28px;
+  outline-offset: 2px;
 }
 
 .assets-card-details {
   min-width: 0;
-}
-
-.assets-card-list .assets-card-subtitle {
-  margin-bottom: 0;
+  padding: 0 2px;
 }
 
 .assets-card-title {
-  font-weight: 500;
-}
-
-.assets-card-meta,
-.assets-card-subtitle {
-  margin: 4px 0 8px;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.assets-card-subtitle {
   overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 卡片操作保持足够点按面积；删除收进「更多」，避免破坏性操作常驻抢注意力。 */
-.assets-card-actions .ant-btn { min-height: 32px; }
-.assets-card-more.ant-btn { min-width: 32px; padding-inline: 8px; }
+.assets-card-meta,
+.assets-card-expiry {
+  overflow: hidden;
+  /* 12px 小字用深一档的次级色，明暗主题都稳过 4.5:1。 */
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assets-card-meta {
+  margin-top: 2px;
+}
+
+.assets-card-expiry {
+  margin-top: 1px;
+  font-size: 11px;
+}
+
+/* 「更多」压在封面右上角，用半透明底色保证在任何作品上都可读。 */
+.assets-card-more.ant-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border-color: transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+  color: var(--color-text-primary);
+  backdrop-filter: blur(4px);
+}
+
+.assets-card-more.ant-btn:hover,
+.assets-card-more.ant-btn:focus-visible {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+/* 精确指针设备上默认收起，悬停或键盘聚焦时出现，作品墙保持干净；
+   触屏（pointer: coarse）没有 hover，按钮始终可见。 */
+@media (hover: hover) and (pointer: fine) {
+  .assets-card-more.ant-btn {
+    opacity: 0;
+    transition: opacity 140ms ease-out;
+  }
+
+  .assets-card:hover .assets-card-more.ant-btn,
+  .assets-card:focus-within .assets-card-more.ant-btn {
+    opacity: 1;
+  }
+}
+
+.assets-card-list {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+}
+
+.assets-card-list:hover {
+  background: var(--color-surface-2);
+}
+
+.assets-card-list .assets-cover {
+  width: 96px;
+  height: 72px;
+  aspect-ratio: auto;
+}
+
+.assets-card-list .assets-card-details {
+  padding: 0;
+}
+
+.assets-card-list .assets-card-title {
+  font-size: 14px;
+}
+
+.assets-card-list .assets-card-more.ant-btn {
+  position: static;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  background: transparent;
+  backdrop-filter: none;
+}
 
 /* 下拉菜单挂在 body 上，用 overlayClassName 限定作用域；
    AntD 的 CSS-in-JS 选择器更长，这里提高优先级确保危险色达到 4.5:1。 */
@@ -5180,13 +5288,12 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
 }
 
 @media (max-width: 560px) {
-  .assets-card-actions .ant-btn { min-height: 40px; }
-  .assets-card-more.ant-btn { min-width: 40px; }
-  .assets-grid { grid-template-columns: minmax(0, 1fr); }
-  .assets-card-list .ant-card-body { grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
-  .assets-card-list .assets-cover,
-  .assets-email-cover { width: 72px; height: 72px; }
-  .assets-card-list .assets-card-actions { grid-column: 1 / -1; }
+  /* 作品墙在窄屏保持两列，缩略图仍能辨认作品。 */
+  .assets-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .assets-card-more.ant-btn { top: 6px; right: 6px; width: 40px; min-width: 40px; height: 40px; }
+  .assets-card-list { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; padding: 6px; }
+  .assets-card-list .assets-cover { width: 64px; height: 48px; }
+  .assets-card-list .assets-card-more.ant-btn { width: 40px; min-width: 40px; height: 40px; }
   .app-main-content { padding: 12px; }
   .toolbox-preview-panel,
   .toolbox-settings-panel,
