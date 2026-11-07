@@ -4,6 +4,7 @@ import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons'
 import { authEnabled, cloudConfigurationError, supabase } from './client'
 import { callbackHasLink, exchangeCodeOnce, verifyEmailLink } from './authCallback'
 import { safeNext } from './authPaths'
+import { authErrorMessage } from './authErrors'
 import { PixelWordmark } from '@/components/brand/PixelLogo'
 
 const callbackUrl = () => `${window.location.origin}/auth/callback`
@@ -77,7 +78,7 @@ export default function AuthPages() {
           sessionStorage.setItem('pixel-aigc-recovery', response.data.user?.id ?? '')
           window.location.replace('/reset-password')
         } else window.location.replace(safeNext(sessionStorage.getItem('pixel-aigc-next')))
-      }).catch(err => setError(err instanceof Error ? err.message : '登录链接无效，请重试'))
+      }).catch(err => setError(authErrorMessage(err, '登录链接无效，请重试')))
       return
     }
     if (!callbackParams.has('token_hash')) return
@@ -95,11 +96,17 @@ export default function AuthPages() {
     })
   }, [path])
 
-  const run = async (action: () => Promise<void>) => {
+  const run = async (action: () => Promise<void>, fallback = '请求失败，请重试') => {
     setBusy(true); setError(''); setNotice('')
-    try { await action() } catch (err) { setError(err instanceof Error ? err.message : '请求失败，请重试') }
+    try { await action() } catch (err) { setError(authErrorMessage(err, fallback)) }
     finally { setBusy(false) }
   }
+  const submitFallback = path === '/login' ? '登录失败，请稍后重试。'
+    : path === '/register' ? '注册失败，请稍后重试。'
+    : path === '/verify-email' ? '验证邮件发送失败，请稍后重试。'
+    : path === '/forgot-password' ? '重置邮件发送失败，请稍后重试。'
+    : path === '/reset-password' ? '密码更新失败，请稍后重试。'
+    : '请求失败，请重试'
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const client = supabase
@@ -132,7 +139,7 @@ export default function AuthPages() {
         sessionStorage.removeItem('pixel-aigc-recovery')
         window.location.replace('/')
       }
-    })
+    }, submitFallback)
   }
 
   if (!authEnabled || cloudConfigurationError) return <div className="project-recovery-screen"><Alert type="error" message={cloudConfigurationError ?? '账号系统尚未启用'} /></div>
@@ -171,7 +178,7 @@ export default function AuthPages() {
       sessionStorage.setItem('pixel-aigc-next', next)
       const { error: resultError } = await supabase!.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callbackUrl(), queryParams: { prompt: 'select_account' } } })
       if (resultError) throw resultError
-    }) }} loading={busy}>使用 Google 登录</Button>}
+    }, 'Google 登录发起失败，请稍后重试。') }} loading={busy}>使用 Google 登录</Button>}
     <Space wrap>
       {path !== '/login' && <a href="/login">返回登录</a>}
       {path === '/login' && <><a href={`/register?next=${encodeURIComponent(next)}`}>注册账号</a><a href="/forgot-password">忘记密码</a></>}

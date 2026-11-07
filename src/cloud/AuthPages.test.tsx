@@ -190,6 +190,19 @@ describe('账号页邮箱链接', () => {
     })
   })
 
+  it('登录失败展示中文错误文案，不暴露 Supabase 英文原文', async () => {
+    auth.signInWithPassword.mockResolvedValue({
+      error: Object.assign(new Error('Invalid login credentials'), { code: 'invalid_credentials' }),
+    })
+    visit('/login')
+    render(<AuthPages />)
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'user@example.com' } })
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'wrongpass' } })
+    fireEvent.click(screen.getByRole('button', { name: /^登\s*录$/ }))
+    expect(await screen.findByText('邮箱或密码不正确，请检查后重试，或使用“忘记密码”。')).toBeTruthy()
+    expect(document.body.textContent).not.toContain('Invalid login credentials')
+  })
+
   it('密码可见性按钮可切换且不会提交表单', () => {
     visit('/login')
     render(<AuthPages />)
