@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { App } from 'antd'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Capability } from '@/types'
@@ -36,12 +36,13 @@ vi.mock('@/components/usePreviewGallery', () => ({
 vi.mock('@/features/assets/workstationHistory', () => ({
   HISTORY_CHANGED: 'pixel-history-changed',
   deleteWorkstationHistory: vi.fn(),
+  restoreWorkstationHistory: vi.fn(async () => true),
   listHistoryPreviews: vi.fn(async () => [historyItem]),
 }))
 
 import Assets from './index'
 import { usePreferencesStore } from '@/features/preferences/store'
-import { listHistoryPreviews } from '@/features/assets/workstationHistory'
+import { deleteWorkstationHistory, listHistoryPreviews, restoreWorkstationHistory } from '@/features/assets/workstationHistory'
 import { downloadOwnedVideo } from '@/services/api/ownedVideos'
 
 function renderAssets() {
@@ -78,6 +79,8 @@ describe('我的资产缩略图预览入口', () => {
     openAt.mockReset()
     flags.textToVideo = false; flags.imageToVideo = false; flags.error = null; flags.refetch.mockReset()
     vi.mocked(listHistoryPreviews).mockReset().mockResolvedValue([historyItem])
+    vi.mocked(deleteWorkstationHistory).mockReset()
+    vi.mocked(restoreWorkstationHistory).mockReset().mockResolvedValue(true)
     localStorage.clear()
     usePreferencesStore.getState().reset()
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
@@ -172,5 +175,35 @@ describe('我的资产缩略图预览入口', () => {
     expect(screen.queryByText('视频生成即将上线。')).toBeNull()
     expect(screen.getByRole('button', { name: '打开画布' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '去生成' })).toBeNull()
+  })
+
+  it('删除前必须确认，取消不会删除作品', async () => {
+    renderAssets()
+    await waitForCover()
+    fireEvent.click(screen.getByRole('button', { name: /更多操作/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /删\s*除/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('删除这条作品？', { selector: '.ant-modal-confirm-title' })).toBeTruthy()
+    expect(deleteWorkstationHistory).not.toHaveBeenCalled()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /取\s*消/ }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(deleteWorkstationHistory).not.toHaveBeenCalled()
+  })
+
+  it('确认后删除并播报，撤销可恢复作品', async () => {
+    renderAssets()
+    await waitForCover()
+    fireEvent.click(screen.getByRole('button', { name: /更多操作/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /删\s*除/ }))
+
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /删\s*除/ }))
+    await waitFor(() => expect(deleteWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-1'))
+    expect(document.querySelector('.sr-only')?.textContent).toContain('已删除')
+
+    fireEvent.click(await screen.findByRole('button', { name: '撤销' }))
+    await waitFor(() => expect(restoreWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-1'))
+    await waitFor(() => expect(document.querySelector('.sr-only')?.textContent).toContain('已恢复'))
   })
 })

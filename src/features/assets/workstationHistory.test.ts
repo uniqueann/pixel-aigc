@@ -14,6 +14,7 @@ import {
   listWorkstationHistory,
   recordWorkstationHistory,
   recordVideoHistory,
+  restoreWorkstationHistory,
 } from './workstationHistory'
 
 function record(id: string, createdAt: string) {
@@ -56,7 +57,7 @@ describe('工作站本地历史', () => {
     await recordWorkstationHistory(OWNER_A, { ...legacy, result: new Blob([bytes], { type: 'image/png' }) })
     expect((await listWorkstationHistory(OWNER_A))[0].mimeType).toBe('image/jpeg')
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('pixel-aigc-history-v2', 2)
+      const request = indexedDB.open('pixel-aigc-history-v2')
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })
@@ -81,6 +82,22 @@ describe('工作站本地历史', () => {
     await recordWorkstationHistory(OWNER_A, record('drop', '2026-09-27T13:00:00.000Z'))
     await deleteWorkstationHistory(OWNER_A, 'drop')
     expect((await listWorkstationHistory(OWNER_A)).map((item) => item.id)).toEqual(['keep'])
+  })
+
+  it('删除后可从快照恢复，墓碑一并清除', async () => {
+    await recordWorkstationHistory(OWNER_A, { ...record('undo', '2026-09-27T12:00:00.000Z'), objectKey: 'undo-key' })
+    await deleteWorkstationHistory(OWNER_A, 'undo')
+    expect(await listHistoryMetadata(OWNER_A)).toEqual([])
+    expect(await listHistoryDeletions(OWNER_A)).toHaveLength(1)
+
+    expect(await restoreWorkstationHistory(OWNER_A, 'undo')).toBe(true)
+    expect((await listHistoryMetadata(OWNER_A)).map((item) => item.id)).toEqual(['undo'])
+    expect(await listHistoryDeletions(OWNER_A)).toEqual([])
+    expect((await listWorkstationHistory(OWNER_A))[0].result.size).toBe('undo'.length)
+  })
+
+  it('撤销窗口结束后恢复返回 false', async () => {
+    expect(await restoreWorkstationHistory(OWNER_A, 'missing')).toBe(false)
   })
 
   it('相同任务 ID 按账号分开，删除及清空只影响当前账号', async () => {

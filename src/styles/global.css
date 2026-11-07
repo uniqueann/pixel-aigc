@@ -5138,7 +5138,50 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
   white-space: nowrap;
 }
 
+/* 卡片操作保持足够点按面积；删除收进「更多」，避免破坏性操作常驻抢注意力。 */
+.assets-card-actions .ant-btn { min-height: 32px; }
+.assets-card-more.ant-btn { min-width: 32px; padding-inline: 8px; }
+
+/* 下拉菜单挂在 body 上，用 overlayClassName 限定作用域；
+   AntD 的 CSS-in-JS 选择器更长，这里提高优先级确保危险色达到 4.5:1。 */
+.assets-card-menu.ant-dropdown .ant-dropdown-menu .ant-dropdown-menu-item-danger,
+.assets-card-menu.ant-dropdown .ant-dropdown-menu .ant-dropdown-menu-item-danger:not(.ant-dropdown-menu-item-disabled) {
+  color: var(--color-danger-text) !important;
+}
+
+.assets-card-menu.ant-dropdown .ant-dropdown-menu .ant-dropdown-menu-item-danger:hover {
+  color: var(--color-danger-text) !important;
+  background: var(--color-danger-soft);
+}
+
+/* 撤销链接用深一档的强调色，保证 14px 文本在明暗主题都达到 4.5:1。 */
+.assets-undo-link.ant-btn {
+  margin-inline-start: 4px;
+  color: var(--color-accent-text) !important;
+  text-decoration: underline;
+}
+
+/* 确认框的删除主按钮改用可读的危险色，白字在浅色主题也满足对比度。 */
+.assets-delete-confirm .ant-btn-dangerous.ant-btn-primary {
+  color: #fff;
+  background: var(--color-danger-text);
+  border-color: var(--color-danger-text);
+}
+
+.assets-delete-confirm .ant-btn-dangerous.ant-btn-primary:not(:disabled):hover {
+  color: #fff;
+  background: color-mix(in srgb, var(--color-danger-text) 84%, #000);
+  border-color: color-mix(in srgb, var(--color-danger-text) 84%, #000);
+}
+
+html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primary,
+html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primary:not(:disabled):hover {
+  color: #1b0d0b;
+}
+
 @media (max-width: 560px) {
+  .assets-card-actions .ant-btn { min-height: 40px; }
+  .assets-card-more.ant-btn { min-width: 40px; }
   .assets-grid { grid-template-columns: minmax(0, 1fr); }
   .assets-card-list .ant-card-body { grid-template-columns: 72px minmax(0, 1fr); gap: 12px; }
   .assets-card-list .assets-cover,

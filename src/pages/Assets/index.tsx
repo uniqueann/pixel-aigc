@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, UnorderedListOutlined, ZoomInOutlined } from '@ant-design/icons'
-import { App, Alert, Button, Card, Segmented, Space, Spin, Tooltip } from 'antd'
+import { AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, UnorderedListOutlined, ZoomInOutlined } from '@ant-design/icons'
+import { App, Alert, Button, Card, Dropdown, Segmented, Space, Spin, Tooltip } from 'antd'
 import EmptyState from '@/components/EmptyState'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import VideoPoster from '@/components/VideoPoster'
@@ -20,6 +20,7 @@ import { isCurrentWorkstationHistoryOwner, resolveWorkstationHistoryOwner } from
 import {
   deleteWorkstationHistory,
   listHistoryPreviews,
+  restoreWorkstationHistory,
   HISTORY_CHANGED,
   type WorkstationHistoryListItem,
 } from '@/features/assets/workstationHistory'
@@ -60,6 +61,13 @@ function formatTime(value: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN')
 }
 
+/** 用提示词首句指代作品，避免多条同名工具记录无法区分。 */
+function assetDisplayName(item: LibraryItem) {
+  const prompt = item.record?.prompt?.trim()
+  if (!prompt) return item.title
+  return prompt.length > 20 ? `${prompt.slice(0, 20)}…` : prompt
+}
+
 export default function Assets() {
   const userId = useUserStore((state) => state.userId)
   let ownerId: string
@@ -73,7 +81,7 @@ export default function Assets() {
 
 function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const navigate = useNavigate()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { capabilities, error: capabilityError, refetch: reloadCapabilities } = useCapabilities()
   const videoEnabled = capabilities.textToVideo === true || capabilities.imageToVideo === true
     ? true : capabilities.textToVideo === false && capabilities.imageToVideo === false ? false : undefined
@@ -91,6 +99,10 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const previewUrlsRef = useRef<Record<string, string>>({})
   const refreshVersionRef = useRef(0)
   const [downloadingId, setDownloadingId] = useState<string>()
+  const [announcement, setAnnouncement] = useState('')
+  const gridRef = useRef<HTMLDivElement>(null)
+  /** 删除后把焦点交给同一位置的下一张作品，避免焦点落回 body。 */
+  const focusAfterDeleteRef = useRef<number | null>(null)
 
   const changeViewMode = (mode: ViewMode) => {
     setViewMode(mode)
@@ -242,26 +254,88 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     }
   }
 
-  const removeRecord = async (id: string) => {
+  const undoDelete = async (id: string, name: string) => {
+    message.destroy(`asset-deleted-${id}`)
+    try {
+      const restored = await restoreWorkstationHistory(ownerId, id)
+      if (!restored) {
+        message.warning('撤销窗口已结束，作品无法恢复')
+        return
+      }
+      await refresh(() => isCurrentWorkstationHistoryOwner(ownerId), false)
+      setAnnouncement(`已恢复「${name}」`)
+      message.success('已恢复作品')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '恢复失败')
+    }
+  }
+
+  const removeRecord = async (item: LibraryItem) => {
+    const record = item.record
+    if (!record) return
+    const removedIndex = visible.findIndex((candidate) => candidate.id === item.id)
+    const name = assetDisplayName(item)
     try {
       if (!isCurrentWorkstationHistoryOwner(ownerId)) return
-      await deleteWorkstationHistory(ownerId, id)
-      if (isCurrentWorkstationHistoryOwner(ownerId)) {
-        setWorkstationItems((current) => current.filter((item) => item.id !== id))
-        const url = previewUrlsRef.current[id]
-        if (url) URL.revokeObjectURL(url)
-        const nextUrls = { ...previewUrlsRef.current }
-        delete nextUrls[id]
-        previewUrlsRef.current = nextUrls
-        setPreviewUrls(nextUrls)
-      }
+      await deleteWorkstationHistory(ownerId, record.id)
+      if (!isCurrentWorkstationHistoryOwner(ownerId)) return
+      setWorkstationItems((current) => current.filter((candidate) => candidate.id !== record.id))
+      const url = previewUrlsRef.current[record.id]
+      if (url) URL.revokeObjectURL(url)
+      const nextUrls = { ...previewUrlsRef.current }
+      delete nextUrls[record.id]
+      previewUrlsRef.current = nextUrls
+      setPreviewUrls(nextUrls)
+      focusAfterDeleteRef.current = removedIndex
+      setAnnouncement(`已删除「${name}」，剩余 ${Math.max(0, visible.length - 1)} 项`)
+      message.open({
+        key: `asset-deleted-${record.id}`,
+        type: 'success',
+        duration: 5,
+        content: (
+          <span>
+            已删除「{name}」
+            <Button
+              className="assets-undo-link"
+              type="text"
+              size="small"
+              onClick={() => void undoDelete(record.id, name)}
+            >
+              撤销
+            </Button>
+          </span>
+        ),
+      })
     } catch (error) {
       message.error(error instanceof Error ? error.message : '删除失败')
     }
   }
 
+  const confirmDelete = (item: LibraryItem) => {
+    const name = assetDisplayName(item)
+    modal.confirm({
+      className: 'assets-delete-confirm',
+      title: '删除这条作品？',
+      content: `「${name}」将从本机作品历史中删除，5 秒内可撤销。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => removeRecord(item),
+    })
+  }
+
+  useEffect(() => {
+    if (focusAfterDeleteRef.current === null) return
+    const index = focusAfterDeleteRef.current
+    focusAfterDeleteRef.current = null
+    const covers = gridRef.current?.querySelectorAll<HTMLElement>('.assets-cover')
+    if (covers?.length) covers[Math.min(index, covers.length - 1)]?.focus()
+    else document.querySelector<HTMLElement>('.assets-page-header .ant-segmented-item-selected')?.focus()
+  }, [workstationItems])
+
   return (
     <div className="assets-page">
+      <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
       <div className="assets-page-header">
         <div className="page-tab-row">
           <Segmented
@@ -310,7 +384,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           action={filter === 'video' && videoState !== 'ready' ? undefined : <Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : filter === 'video' ? capabilities.textToVideo === true ? '/canvas/text-to-video' : '/canvas/text-to-image' : '/image-workstation/repaint')}>{filter === 'video' && capabilities.textToVideo !== true ? '打开画布' : '去生成'}</Button>}
         />
       ) : (
-        <div className={viewMode === 'grid' ? 'assets-grid' : 'assets-list'}>
+        <div ref={gridRef} className={viewMode === 'grid' ? 'assets-grid' : 'assets-list'}>
           {visible.map((item) => {
             const preview = item.record ? (
               <button className="assets-cover" type="button" aria-label={item.kind === 'video' ? `播放${item.title}` : `查看${item.title}大图`} title={item.kind === 'video' ? '播放视频' : '查看大图'} onClick={() => openAt(item.id)}>
@@ -344,7 +418,24 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
                     <Button size="small" onClick={() => navigate('/email')}>查看邮件</Button>
                   )}
                   {item.record ? (
-                    <Button size="small" danger icon={<DeleteOutlined />} onClick={() => void removeRecord(item.id)}>删除</Button>
+                    <Dropdown
+                      trigger={['click']}
+                      overlayClassName="assets-card-menu"
+                      menu={{
+                        items: [{ key: 'delete', danger: true, icon: <DeleteOutlined />, label: '删除' }],
+                        onClick: ({ key, domEvent }) => {
+                          domEvent.stopPropagation()
+                          if (key === 'delete') confirmDelete(item)
+                        },
+                      }}
+                    >
+                      <Button
+                        size="small"
+                        className="assets-card-more"
+                        icon={<MoreOutlined />}
+                        aria-label={`更多操作：${assetDisplayName(item)}`}
+                      />
+                    </Dropdown>
                   ) : null}
                 </Space>
               </Card>

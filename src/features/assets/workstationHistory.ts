@@ -6,7 +6,12 @@ const ORIGINALS = 'workstationResults'
 const METADATA = 'metadata'
 const THUMBNAILS = 'thumbnails'
 const DELETED = 'deletedResults'
-const STORES = [ORIGINALS, METADATA, THUMBNAILS, DELETED]
+/** 删除快照只保留最近若干条，供撤销与误删恢复使用。 */
+const TRASH = 'deletedSnapshots'
+const TRASH_LIMIT = 20
+/** 撤销只在提示存续的几秒内需要，快照保留 10 分钟足够，避免长期占用存储。 */
+const TRASH_TTL_MS = 10 * 60 * 1000
+const STORES = [ORIGINALS, METADATA, THUMBNAILS, DELETED, TRASH]
 export const HISTORY_LIMIT = 50
 export const HISTORY_CHANGED = 'pixel-history-changed'
 export type WorkstationHistorySlug = 'repaint' | 'remove' | 'outpaint' | 'smart-edit' | string
@@ -34,6 +39,14 @@ export interface WorkstationHistoryRecord extends WorkstationHistoryMetadata { r
 export interface WorkstationHistoryListItem extends WorkstationHistoryMetadata { thumbnail?: Blob }
 interface StoredOriginal extends WorkstationHistoryMetadata { ownerId: string; result?: Blob; resultBytes?: ArrayBuffer }
 interface DeletedResult { ownerId: string; id: string; objectKey?: string; taskId?: string }
+interface TrashedResult {
+  ownerId: string
+  id: string
+  deletedAt: string
+  metadata?: WorkstationHistoryMetadata
+  original?: StoredOriginal
+  thumbnail?: Blob
+}
 
 function requireOwner(ownerId: string) {
   if (!ownerId.trim()) throw new Error('缺少历史记录所属账号')
@@ -51,9 +64,10 @@ export function compareHistory(left: WorkstationHistoryMetadata, right: Workstat
 export function openHistoryDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     let blocked = false
-    const request = indexedDB.open(DATABASE_NAME, 2)
-    request.onupgradeneeded = () => {
+    const request = indexedDB.open(DATABASE_NAME, 3)
+    request.onupgradeneeded = (event) => {
       const db = request.result
+      const oldVersion = (event as IDBVersionChangeEvent).oldVersion
       for (const name of STORES) {
         if (!db.objectStoreNames.contains(name)) {
           const store = db.createObjectStore(name, { keyPath: ['ownerId', 'id'] })
@@ -61,7 +75,8 @@ export function openHistoryDatabase(): Promise<IDBDatabase> {
           if (name === METADATA) store.createIndex('objectKey', ['ownerId', 'objectKey'])
         }
       }
-      // 升级只逐条复制轻量字段，旧原图保留；缩略图在事务结束后按需补齐。
+      // 从 v1 升级时逐条复制轻量字段，旧原图保留；v2→v3 只新增删除快照表，无需复制。
+      if (oldVersion >= 2) return
       const tx = request.transaction!
       const cursor = tx.objectStore(ORIGINALS).openCursor()
       cursor.onsuccess = () => {
@@ -205,7 +220,22 @@ async function makeThumbnails() {
     }
   } finally { makingThumbnail = false }
 }
+/** 过期快照在每次列表刷新时顺手清理，避免只在下次删除时才回收。 */
+async function pruneTrash(ownerId: string) {
+  await transaction([TRASH], 'readwrite', (tx, done) => {
+    const request = tx.objectStore(TRASH).index('ownerId').openCursor(ownerId)
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) { done(undefined); return }
+      const item = cursor.value as TrashedResult
+      if (Date.now() - new Date(item.deletedAt).getTime() > TRASH_TTL_MS) cursor.delete()
+      cursor.continue()
+    }
+  })
+}
+
 export async function listHistoryPreviews(ownerId: string, includeVideos = false, options: { limit?: number; readOnly?: boolean } = {}): Promise<WorkstationHistoryListItem[]> {
+  if (!options.readOnly) await pruneTrash(ownerId)
   const metadata = await listHistoryMetadata(ownerId, includeVideos, options)
   const items = options.limit === undefined ? metadata : metadata.slice(0, Math.max(0, Math.floor(options.limit)))
   if (items.length === 0) return []
@@ -315,13 +345,71 @@ export async function deleteWorkstationHistory(ownerId: string, id: string) {
     const request = tx.objectStore(METADATA).get([ownerId, id])
     request.onsuccess = () => {
       const item = request.result as WorkstationHistoryMetadata | undefined
-      tx.objectStore(DELETED).put({ ownerId, id, objectKey: item?.objectKey, taskId: item?.taskId ?? id.replace(/:(?:o)?\d+$/, '') })
-      for (const name of [ORIGINALS, METADATA, THUMBNAILS]) tx.objectStore(name).delete([ownerId, id])
-      done(undefined)
+      const original = tx.objectStore(ORIGINALS).get([ownerId, id])
+      original.onsuccess = () => {
+        const thumbnail = tx.objectStore(THUMBNAILS).get([ownerId, id])
+        thumbnail.onsuccess = () => {
+          // 删除前把原图、缩略图与元数据整体搬进快照表，撤销时无需重新解码或下载。
+          tx.objectStore(TRASH).put({
+            ownerId,
+            id,
+            deletedAt: new Date().toISOString(),
+            metadata: item,
+            original: original.result as StoredOriginal | undefined,
+            thumbnail: (thumbnail.result as { thumbnail?: Blob } | undefined)?.thumbnail,
+          } satisfies TrashedResult)
+          const snapshots = tx.objectStore(TRASH).index('ownerId').getAll(ownerId)
+          snapshots.onsuccess = () => {
+            const now = Date.now()
+            const keep = new Set((snapshots.result as TrashedResult[])
+              .filter((item) => now - new Date(item.deletedAt).getTime() <= TRASH_TTL_MS)
+              .sort((left, right) => right.deletedAt.localeCompare(left.deletedAt))
+              .slice(0, TRASH_LIMIT)
+              .map((item) => item.id))
+            for (const extra of snapshots.result as TrashedResult[]) {
+              if (!keep.has(extra.id)) tx.objectStore(TRASH).delete([ownerId, extra.id])
+            }
+          }
+          tx.objectStore(DELETED).put({ ownerId, id, objectKey: item?.objectKey, taskId: item?.taskId ?? id.replace(/:(?:o)?\d+$/, '') })
+          for (const name of [ORIGINALS, METADATA, THUMBNAILS]) tx.objectStore(name).delete([ownerId, id])
+          done(undefined)
+        }
+      }
     }
   })
   changed(ownerId)
 }
+
+/** 从删除快照恢复一条作品；快照不存在或已过期时返回 false。 */
+export async function restoreWorkstationHistory(ownerId: string, id: string) {
+  requireOwner(ownerId)
+  let restored = false
+  await transaction(STORES, 'readwrite', (tx, done) => {
+    const request = tx.objectStore(TRASH).get([ownerId, id])
+    request.onsuccess = () => {
+      const snapshot = request.result as TrashedResult | undefined
+      if (!snapshot?.metadata) { done(undefined); return }
+      tx.objectStore(METADATA).put({ ...snapshot.metadata, ownerId })
+      if (snapshot.original) tx.objectStore(ORIGINALS).put(snapshot.original)
+      if (snapshot.thumbnail) tx.objectStore(THUMBNAILS).put({ ownerId, id, thumbnail: snapshot.thumbnail })
+      // 墓碑会阻止云端任务再次写回同一条记录，恢复时必须一并清除。
+      tx.objectStore(DELETED).delete([ownerId, id])
+      tx.objectStore(TRASH).delete([ownerId, id])
+      restored = true
+      done(undefined)
+    }
+  })
+  if (restored) changed(ownerId)
+  return restored
+}
 export async function clearWorkstationHistory(ownerId: string) {
   for (const item of await listHistoryMetadata(ownerId)) await deleteWorkstationHistory(ownerId, item.id)
+  // 用户明确清空时不再保留撤销快照，避免「清空」后仍占着存储。
+  await transaction([TRASH], 'readwrite', (tx, done) => {
+    const keys = tx.objectStore(TRASH).index('ownerId').getAllKeys(ownerId)
+    keys.onsuccess = () => {
+      for (const key of keys.result) tx.objectStore(TRASH).delete(key)
+      done(undefined)
+    }
+  })
 }
