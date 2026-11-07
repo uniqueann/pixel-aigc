@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { Alert, Button, Input, Space } from 'antd'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Alert, Button, Input, Space, type InputRef } from 'antd'
+import { EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons'
 import { authEnabled, cloudConfigurationError, supabase } from './client'
 import { callbackHasLink, exchangeCodeOnce, verifyEmailLink } from './authCallback'
 import { safeNext } from './authPaths'
@@ -7,6 +8,49 @@ import { PixelWordmark } from '@/components/brand/PixelLogo'
 
 const callbackUrl = () => `${window.location.origin}/auth/callback`
 const validPassword = (value: string) => value.length >= 8 && value.length <= 128
+
+// antd 的 Input.Password 把图标包成不可聚焦的 span；这里用普通 Input + 真正的按钮，
+// 让键盘与读屏都能操作密码可见性，同时保持切换后焦点不丢失。
+function PasswordField({ label, placeholder, autoComplete, minLength, value, onChange }: {
+  label: string
+  placeholder: string
+  autoComplete: string
+  minLength?: number
+  value: string
+  onChange: (value: string) => void
+}) {
+  const [visible, setVisible] = useState(false)
+  const inputRef = useRef<InputRef>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  return <Input
+    ref={inputRef}
+    type={visible ? 'text' : 'password'}
+    required
+    minLength={minLength}
+    maxLength={128}
+    aria-label={label}
+    autoComplete={autoComplete}
+    placeholder={placeholder}
+    value={value}
+    onChange={event => onChange(event.target.value)}
+    suffix={<button
+      ref={toggleRef}
+      type="button"
+      className="auth-password-toggle"
+      aria-label={visible ? '隐藏密码' : '显示密码'}
+      aria-pressed={visible}
+      onMouseDown={event => event.preventDefault()}
+      onClick={event => {
+        // 阻止冒泡到 affix 外层，否则 antd 会把焦点抢回输入框。
+        event.stopPropagation()
+        setVisible(current => !current)
+        // 键盘触发时把焦点留在按钮上，读屏才能听到切换后的状态；鼠标点击则回到输入框继续输入。
+        if (event.detail === 0) requestAnimationFrame(() => toggleRef.current?.focus())
+        else inputRef.current?.focus()
+      }}
+    >{visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}</button>}
+  />
+}
 
 export default function AuthPages() {
   const path = window.location.pathname
@@ -105,8 +149,22 @@ export default function AuthPages() {
     {notice && <Alert type="info" showIcon message={notice} />}
     {path !== '/auth/callback' && <form onSubmit={submit} style={{ display: 'grid', gap: 12, width: '100%' }}>
       {path !== '/reset-password' && <Input type="email" autoComplete="email" aria-label="邮箱" required placeholder="邮箱" value={email} onChange={event => setEmail(event.target.value)} />}
-      {['/login','/register','/reset-password'].includes(path) && <Input.Password required minLength={path === '/login' ? undefined : 8} maxLength={128} aria-label={path === '/reset-password' ? '新密码' : '密码'} autoComplete={path === '/login' ? 'current-password' : 'new-password'} placeholder={path === '/reset-password' ? '新密码' : '密码'} value={password} onChange={event => setPassword(event.target.value)} />}
-      {['/register','/reset-password'].includes(path) && <Input.Password required minLength={8} maxLength={128} aria-label="确认密码" autoComplete="new-password" placeholder="确认密码" value={confirm} onChange={event => setConfirm(event.target.value)} />}
+      {['/login','/register','/reset-password'].includes(path) && <PasswordField
+        label={path === '/reset-password' ? '新密码' : '密码'}
+        placeholder={path === '/reset-password' ? '新密码' : '密码'}
+        autoComplete={path === '/login' ? 'current-password' : 'new-password'}
+        minLength={path === '/login' ? undefined : 8}
+        value={password}
+        onChange={setPassword}
+      />}
+      {['/register','/reset-password'].includes(path) && <PasswordField
+        label="确认密码"
+        placeholder="确认密码"
+        autoComplete="new-password"
+        minLength={8}
+        value={confirm}
+        onChange={setConfirm}
+      />}
       <Button htmlType="submit" type="primary" loading={busy}>{path === '/verify-email' ? '重发验证邮件' : path === '/forgot-password' ? '发送重置邮件' : labels[path]}</Button>
     </form>}
     {path === '/login' && <Button onClick={() => { void run(async () => {
