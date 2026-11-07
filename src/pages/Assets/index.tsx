@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, UnorderedListOutlined } from '@ant-design/icons'
-import { App, Alert, Button, Dropdown, Segmented, Space, Spin, Tooltip } from 'antd'
+import {
+  AppstoreOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, SearchOutlined, UnorderedListOutlined,
+} from '@ant-design/icons'
+import { App, Alert, Button, Dropdown, Input, Segmented, Select, Space, Spin, Tooltip, type InputRef } from 'antd'
 import EmptyState from '@/components/EmptyState'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import VideoPoster from '@/components/VideoPoster'
@@ -39,9 +41,18 @@ import { formatShortDateTime } from '@/utils/datetime'
 
 type Filter = 'all' | 'workstation' | 'video' | 'email'
 type ViewMode = 'grid' | 'list'
+type SortOrder = 'newest' | 'oldest'
 function initialViewMode(): ViewMode {
   const { workbench, recent } = usePreferencesStore.getState().preferences
   return workbench.assetsView === 'remember' ? recent.assetsView : workbench.assetsView
+}
+function initialSort(): SortOrder {
+  return usePreferencesStore.getState().preferences.recent.assetsSort ?? 'newest'
+}
+
+/** 搜索文本：整段提示词参与匹配（展示标题会被截断），统一全角与大小写。 */
+function normalizeSearchText(...parts: Array<string | undefined>) {
+  return parts.filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase('zh-CN')
 }
 
 interface LibraryItem {
@@ -51,6 +62,7 @@ interface LibraryItem {
   subtitle: string
   status: string
   createdAt: string
+  searchText: string
   previewUrl?: string
   prompt?: string
   record?: WorkstationHistoryListItem
@@ -84,6 +96,13 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const videoState = capabilityAvailability(videoEnabled, capabilityError)
   const [filter, setFilter] = useState<Filter>('all')
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode)
+  const [sort, setSort] = useState<SortOrder>(initialSort)
+  const [query, setQuery] = useState('')
+  /** 参与过滤的查询：中文输入法拼写阶段不更新，避免作品墙在拼音未上屏时闪成空。 */
+  const [submittedQuery, setSubmittedQuery] = useState('')
+  const composingRef = useRef(false)
+  const searchRef = useRef<InputRef>(null)
+  const deferredQuery = useDeferredValue(submittedQuery)
   const [loading, setLoading] = useState(true)
   const [historyError, setHistoryError] = useState<string>()
   const lifetimeAbortRef = useRef(new AbortController())
@@ -103,6 +122,22 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const changeViewMode = (mode: ViewMode) => {
     setViewMode(mode)
     usePreferencesStore.getState().update({ recent: { assetsView: mode } })
+  }
+
+  const changeSort = (value: SortOrder) => {
+    setSort(value)
+    usePreferencesStore.getState().update({ recent: { assetsSort: value } })
+  }
+
+  const changeQuery = (value: string) => {
+    setQuery(value)
+    if (!composingRef.current) setSubmittedQuery(value)
+  }
+
+  const clearSearch = () => {
+    setQuery('')
+    setSubmittedQuery('')
+    searchRef.current?.focus()
   }
 
   const refresh = useCallback(async (isActive: () => boolean, showLoading = true) => {
@@ -193,31 +228,59 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   }
 
   const items = useMemo<LibraryItem[]>(() => {
-    const workstation = workstationItems.map((record) => ({
-      id: record.id,
-      kind: record.mediaType === 'video' ? 'video' as const : 'workstation' as const,
-      title: record.mediaType === 'video' ? record.modelProfileId ? `${modelDisplayName(record.modelProfileId)} 视频` : 'Seedance 视频' : workstationToolLabel(record.toolSlug),
-      subtitle: record.video ? `${record.video.durationSeconds.toFixed(1)} 秒 · ${record.width}×${record.height} · ${formatShortDateTime(record.video.retentionExpiresAt)} 到期`
-        : `${record.width}×${record.height}${record.prompt ? ` · ${record.prompt}` : ''}`,
-      status: 'succeeded',
-      createdAt: record.createdAt,
-      previewUrl: previewUrls[record.id],
-      prompt: record.prompt,
-      record,
-    }))
-    const emails = emailItems.map((item) => ({
-      id: item.id,
-      kind: 'email' as const,
-      title: `邮件助手 · ${emailOperationLabel(item.operation)}`,
-      subtitle: item.preview || '邮件任务',
-      status: item.status,
-      createdAt: item.createdAt,
-      email: item,
-    }))
-    return [...workstation, ...emails].sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    const workstation = workstationItems.map((record) => {
+      const title = record.mediaType === 'video'
+        ? record.modelProfileId ? `${modelDisplayName(record.modelProfileId)} 视频` : 'Seedance 视频'
+        : workstationToolLabel(record.toolSlug)
+      const subtitle = record.video
+        ? `${record.video.durationSeconds.toFixed(1)} 秒 · ${record.width}×${record.height} · ${formatShortDateTime(record.video.retentionExpiresAt)} 到期`
+        : `${record.width}×${record.height}${record.prompt ? ` · ${record.prompt}` : ''}`
+      return {
+        id: record.id,
+        kind: record.mediaType === 'video' ? 'video' as const : 'workstation' as const,
+        title,
+        subtitle,
+        status: 'succeeded',
+        createdAt: record.createdAt,
+        searchText: normalizeSearchText(record.prompt, title, subtitle),
+        previewUrl: previewUrls[record.id],
+        prompt: record.prompt,
+        record,
+      }
+    })
+    const emails = emailItems.map((item) => {
+      const title = `邮件助手 · ${emailOperationLabel(item.operation)}`
+      const subtitle = item.preview || '邮件任务'
+      return {
+        id: item.id,
+        kind: 'email' as const,
+        title,
+        subtitle,
+        status: item.status,
+        createdAt: item.createdAt,
+        searchText: normalizeSearchText(item.preview, title, subtitle),
+        email: item,
+      }
+    })
+    return [...workstation, ...emails]
   }, [emailItems, previewUrls, workstationItems])
 
-  const visible = items.filter((item) => filter === 'all' || item.kind === filter)
+  const ordered = useMemo(() => {
+    const direction = sort === 'newest' ? -1 : 1
+    return [...items].sort((left, right) =>
+      direction * left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
+  }, [items, sort])
+
+  /** 空白切成多个关键词，全部命中才算匹配（「融合 耳机」也能找到）。 */
+  const searchTokens = useMemo(() => deferredQuery.trim().normalize('NFKC')
+    .toLocaleLowerCase('zh-CN').split(/\s+/).filter(Boolean), [deferredQuery])
+
+  const visible = useMemo(() => ordered.filter((item) =>
+    (filter === 'all' || item.kind === filter)
+    && searchTokens.every((token) => item.searchText.includes(token))), [filter, ordered, searchTokens])
+
+  const searching = items.length > 0 && searchTokens.length > 0
+  const trimmedQuery = deferredQuery.trim()
   const previewItems: PreviewItem[] = visible.flatMap(item => item.record ? [{
     id: item.id,
     mediaType: item.record?.mediaType,
@@ -366,6 +429,41 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           </Tooltip>
         </Space.Compact>
       </div>
+      {items.length > 0 ? (
+        <div className="assets-filter-bar">
+          <div className="assets-toolbar">
+            <Input
+              ref={searchRef}
+              className="assets-search"
+              prefix={<SearchOutlined />}
+              allowClear
+              value={query}
+              onChange={(event) => changeQuery(event.target.value)}
+              onCompositionStart={() => { composingRef.current = true }}
+              onCompositionEnd={(event) => { composingRef.current = false; setSubmittedQuery(event.currentTarget.value) }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape' || !query) return
+                event.preventDefault()
+                clearSearch()
+              }}
+              placeholder="搜索提示词、工具或邮件内容"
+              aria-label="搜索作品"
+              autoComplete="off"
+              enterKeyHint="search"
+            />
+            <Select
+              className="assets-sort"
+              aria-label="排序方式"
+              value={sort}
+              onChange={(value) => changeSort(value as SortOrder)}
+              options={[{ value: 'newest', label: '最近优先' }, { value: 'oldest', label: '最早优先' }]}
+            />
+          </div>
+          {searching && visible.length > 0
+            ? <p className="assets-search-count" role="status">找到 {visible.length} 个作品</p>
+            : null}
+        </div>
+      ) : null}
       {filter === 'video' && videoState !== 'ready' ? <VideoAvailabilityNotice state={videoState} onRetry={() => void reloadCapabilities()} /> : null}
       {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>重新加载</Button>} /> : null}
       {loading ? (
@@ -373,12 +471,19 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       ) : hydrating && visible.length === 0 && filter !== 'email' ? (
         <div className="assets-loading"><Spin /> 正在加载作品…</div>
       ) : visible.length === 0 ? (
-        <EmptyState
-          description={filter === 'email'
-            ? '暂无邮件任务'
-            : filter === 'video' ? '暂无视频作品' : '暂无作品，完成的图片和视频会显示在这里。'}
-          action={filter === 'video' && videoState !== 'ready' ? undefined : <Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : filter === 'video' ? capabilities.textToVideo === true ? '/canvas/text-to-video' : '/canvas/text-to-image' : '/image-workstation/repaint')}>{filter === 'video' && capabilities.textToVideo !== true ? '打开画布' : '去生成'}</Button>}
-        />
+        searching ? (
+          <EmptyState
+            description={`没有找到匹配「${trimmedQuery.length > 24 ? `${trimmedQuery.slice(0, 24)}…` : trimmedQuery}」的作品`}
+            action={<Button onClick={clearSearch}>清除搜索</Button>}
+          />
+        ) : (
+          <EmptyState
+            description={filter === 'email'
+              ? '暂无邮件任务'
+              : filter === 'video' ? '暂无视频作品' : '暂无作品，完成的图片和视频会显示在这里。'}
+            action={filter === 'video' && videoState !== 'ready' ? undefined : <Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : filter === 'video' ? capabilities.textToVideo === true ? '/canvas/text-to-video' : '/canvas/text-to-image' : '/image-workstation/repaint')}>{filter === 'video' && capabilities.textToVideo !== true ? '打开画布' : '去生成'}</Button>}
+          />
+        )
       ) : (
         <div ref={gridRef} className={viewMode === 'grid' ? 'assets-grid' : 'assets-list'}>
           {visible.map((item) => {

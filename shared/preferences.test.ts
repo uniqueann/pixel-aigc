@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyPreferencesPatch, defaultPreferences, preferencesPatchSchema, preferencesRequestSchema, resolveStartPage } from './preferences'
+import { applyPreferencesPatch, defaultPreferences, normalizePreferences, preferencesPatchSchema, preferencesRequestSchema, resolveStartPage } from './preferences'
 
 describe('个性化配置边界', () => {
   it('合并不同字段时保留其他默认值和工具记忆', () => {
@@ -53,5 +53,19 @@ describe('个性化配置边界', () => {
     expect(resolveStartPage(value)).toBe('/toolbox/aspect-ratio')
     value.recent.page = '/unknown'
     expect(resolveStartPage(value)).toBe('/')
+  })
+  it('旧偏好缺少排序字段时整体仍然有效，不触发默认值回退', () => {
+    const legacy = defaultPreferences()
+    delete legacy.recent.assetsSort
+    legacy.recent.page = '/assets'
+    const normalized = normalizePreferences(legacy)
+    expect(normalized.recent.page).toBe('/assets')
+    expect(normalized.recent.assetsSort).toBeUndefined()
+  })
+  it('切换展示方式不会重置已选排序', () => {
+    const base = defaultPreferences()
+    base.recent.assetsSort = 'oldest'
+    const patch = preferencesPatchSchema.parse({ recent: { assetsView: 'list' } })
+    expect(applyPreferencesPatch(base, patch).recent.assetsSort).toBe('oldest')
   })
 })

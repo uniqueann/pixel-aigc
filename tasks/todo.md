@@ -1019,3 +1019,36 @@
 - 检测器：`impeccable detect --json src/pages/Assets/index.tsx src/pages/EmailAssistant/index.tsx` 返回 `[]`。
 - 截图：`/tmp/assets-critique/email-deeplink/01-generated.png` … `03-invalid.png`。
 - 已知：深链后 URL 保留 `taskId`，用户点「新建任务」后刷新仍会回到旧任务；任务不在历史第一页时「最近 7 天」下拉可能没有该选项。
+
+# 我的资产 · 搜索与排序（2026-11-07）
+
+目标：作品一多时能按提示词/工具/邮件内容找回，并能切换最近优先与最早优先；排序写进偏好，刷新后保持。
+
+## 计划
+
+- [x] 偏好新增 `recent.assetsSort`（`shared/preferences.ts`），用 `.optional()` 而不是 `.default()`：zod 4 的 `.partial()` 会保留 default，会让切视图的补丁重置排序
+- [x] 作品墙搜索：整段提示词 / 工具名 / 邮件预览，NFKC + 大小写不敏感，空白切词后全部命中
+- [x] 中文输入法拼写阶段不过滤，`compositionend` 后一次生效；`useDeferredValue` 让输入优先
+- [x] 排序：最近优先 / 最早优先，默认与旧行为一致，并补 `id` 兜底
+- [x] 工具栏只在有作品时出现；结果计数用 `role="status"`，0 命中交给空状态
+- [x] 搜索空状态提供「清除搜索」，清除后输入框重新获得焦点；Escape 同样清空
+- [x] 占位符颜色改用 `--color-text-secondary`（AntD 默认 25% 透明度不达标）
+- [x] 补单测：整段提示词命中、无结果清除、排序切换与写回、首屏读取偏好、旧偏好兼容、切视图不重置排序
+
+## 验收
+
+- [x] 搜索「梧桐树」命中标题截断后看不见的后半段；「耳机 咖啡」AND 命中，「耳机 不存在」0 条
+- [x] 无结果空状态与「清除搜索」可用，清除后 10 条恢复且焦点回到输入框
+- [x] 「最早优先」顺序反转并写回偏好，刷新后仍保持
+- [x] 输入法拼写「mao」期间仍显示 10 条，`compositionend` 后过滤为 1 条
+- [x] 1440 与 390 均无横向滚动；390 下搜索 254px、排序 104px
+- [x] 对比度：占位符 4.76 / 5.89，计数 7.01 / 8.91，输入与排序文字 17.74 / 14.02
+- [x] 搜索态删除作品后焦点落到下一张封面，撤销链路未受影响
+
+## 复查
+
+- 测试：`npx vitest run` 337 个文件 / 2183 个用例通过；`tsc --noEmit`、`npm run lint`、`npm run build` 通过。
+- 浏览器：1440 明暗、390；`VITE_AUTH_MODE=disabled VITE_CLOUD_MODE=disabled VITE_GENERATION_MODE=mock` + `npm run dev:api`，0 console error。
+- 检测器：`impeccable detect --json src/pages/Assets/index.tsx` 返回 `[]`。
+- 截图：`/tmp/assets-critique/search-sort/01-desktop-light.png` … `08-desktop-delete-search.png`。
+- 未做：日期分组、批量选择、分页、URL 里的 `?q=`、拼音首字母搜索。
