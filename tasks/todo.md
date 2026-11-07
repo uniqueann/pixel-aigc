@@ -1146,3 +1146,29 @@
 - 截图：`/tmp/assets-critique/cover-unify/01-grid-dark.png` … `05-grid-mobile-light.png`（海报用路由拦截返回 data URL 验证）。
 - 已知：图片缩略图自身损坏仍显示破图（需要 per-card onError）；视频卡多一行「到期」导致行高差异未处理。
 - 未做：首页 RecentWorks 对齐铺底、分页、其余无障碍补全。
+
+# 我的资产 · 邮件任务分页（2026-11-07）
+
+目标：邮件任务接上服务端分页（每页 20 条），补「加载更多」与总数提示；工作站图片/视频仍是本机全量，不分页。
+
+## 计划
+
+- [x] `emailPage` / `emailTotal` / `loadingMoreEmails` 三个状态；`refresh` 记录第一页 total
+- [x] `loadMoreEmails`：page+1、按 id 去重追加、失败 toast；用 `refreshVersionRef` 丢弃过期响应
+- [x] 网格/空态之后、吸底选择条之前渲染 `.assets-load-more`（按钮 + `已加载 N / 共 M 个邮件任务`）
+- [x] 仅在「全部 / 邮件助手」筛选、非选择模式、还有未加载邮件时显示
+- [x] 样式：居中 220px 按钮 + 12px 次级说明，沿用 `--color-text-secondary-strong`
+
+## 验收
+
+- [x] 首屏 20 封邮件 + 入口；文案「已加载 20 / 共 25 个邮件任务」，按钮 220×32
+- [x] 点击后 25 张卡，入口消失，无重复卡片，无横向滚动
+- [x] 浅色说明文字 `rgb(71, 85, 105)`；390 宽按钮居中（85–305），无横向滚动
+- [x] `impeccable detect --json src/pages/Assets/index.tsx` 返回 `[]`
+
+## 复查
+
+- 测试：`npx vitest run` 339 个文件 / 2199 个用例通过（新增 3 个分页用例）；`tsc --noEmit`、`npm run lint`、`npm run build` 通过。
+- 截图：`/tmp/assets-critique/pagination/01-footer-dark.png` … `04-footer-mobile-light.png`（用伪会话 + 路由拦截 `/api/tasks` 返回分页数据验证）。
+- 已知：mock 网关忽略 `page` 且返回全量，本地 mock 模式看不到入口；`HISTORY_CHANGED` 的静默刷新仍只更新本机作品，不刷新邮件列表；重复 key 警告来自伪账号下的外壳，`/email` 同样出现，与本改动无关。
+- 未做：工作站作品分页（本机全量、无服务端列表接口）、搜索未加载邮件的自动翻页、其余无障碍补全。

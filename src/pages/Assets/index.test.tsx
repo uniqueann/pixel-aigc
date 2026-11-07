@@ -80,6 +80,11 @@ function cardTitles() {
   return Array.from(document.querySelectorAll('.assets-card-title')).map(node => node.textContent)
 }
 
+/** 构造邮件任务摘要，用于验证服务端分页追加。 */
+function mail(id: string, createdAt: string) {
+  return { id, operation: 'reply', preview: `邮件 ${id}`, status: 'succeeded' as const, createdAt, updatedAt: createdAt }
+}
+
 function expectThumbnailKeepsPreviewAccess(cover: HTMLElement) {
   expect(cover.classList.contains('assets-cover')).toBe(true)
   expect(cover.getAttribute('aria-label')).toMatch(/^查看.+大图$/)
@@ -285,6 +290,66 @@ describe('我的资产缩略图预览入口', () => {
 
     fireEvent.click(cover)
     expect(screen.getByTestId('location').textContent).toBe('/email?mode=single&taskId=mail-1')
+  })
+
+  it('邮件任务只显示第一页，加载更多后追加去重并隐藏入口', async () => {
+    cloud.authEnabled = true
+    useUserStore.getState().setUser(OWNER, 'free')
+    vi.mocked(listHistoryPreviews).mockResolvedValue([])
+    const first = mail('mail-1', '2026-10-03T09:00:00.000Z')
+    const second = mail('mail-2', '2026-10-02T09:00:00.000Z')
+    taskApi.listTasks.mockImplementation(({ page }: { page?: number }) => Promise.resolve(
+      // 第二页故意带回第一页的 mail-1，验证按 id 去重。
+      page === 2 ? { items: [first, second], total: 2 } : { items: [first], total: 2 },
+    ))
+    renderAssets()
+
+    await screen.findByRole('button', { name: '查看邮件任务：邮件 mail-1' })
+    expect(document.querySelectorAll('.assets-card')).toHaveLength(1)
+    expect(screen.getByText('已加载 1 / 共 2 个邮件任务')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '加载更多邮件任务' }))
+    await waitFor(() => expect(document.querySelectorAll('.assets-card')).toHaveLength(2))
+    expect(taskApi.listTasks).toHaveBeenCalledWith({ capability: Capability.EmailAssist, page: 2 })
+    expect(screen.queryByRole('button', { name: '加载更多邮件任务' })).toBeNull()
+  })
+
+  it('加载更多失败时保留入口且不追加卡片', async () => {
+    cloud.authEnabled = true
+    useUserStore.getState().setUser(OWNER, 'free')
+    vi.mocked(listHistoryPreviews).mockResolvedValue([])
+    taskApi.listTasks.mockImplementation(({ page }: { page?: number }) => page === 2
+      ? Promise.reject(new Error('网络错误'))
+      : Promise.resolve({ items: [mail('mail-1', '2026-10-03T09:00:00.000Z')], total: 2 }))
+    renderAssets()
+
+    await screen.findByRole('button', { name: '查看邮件任务：邮件 mail-1' })
+    fireEvent.click(screen.getByRole('button', { name: '加载更多邮件任务' }))
+    await waitFor(() => expect(document.querySelector('.ant-btn-loading')).toBeNull())
+    expect(screen.getByRole('button', { name: '加载更多邮件任务' })).toBeTruthy()
+    expect(document.querySelectorAll('.assets-card')).toHaveLength(1)
+  })
+
+  it('邮件分页入口只在包含邮件的筛选下出现，选择模式中隐藏', async () => {
+    cloud.authEnabled = true
+    useUserStore.getState().setUser(OWNER, 'free')
+    taskApi.listTasks.mockImplementation(() => Promise.resolve(
+      { items: [mail('mail-1', '2026-10-03T09:00:00.000Z')], total: 2 },
+    ))
+    renderAssets()
+
+    await waitForCover()
+    await screen.findByRole('button', { name: '查看邮件任务：邮件 mail-1' })
+    expect(screen.getByRole('button', { name: '加载更多邮件任务' })).toBeTruthy()
+
+    fireEvent.click(screen.getByText('图片'))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '加载更多邮件任务' })).toBeNull())
+
+    fireEvent.click(screen.getByText('全部'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '加载更多邮件任务' })).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /^选\s*择$/ }))
+    expect(screen.queryByRole('button', { name: '加载更多邮件任务' })).toBeNull()
   })
 
   it('没有缩略图的作品用统一封面占位', async () => {
