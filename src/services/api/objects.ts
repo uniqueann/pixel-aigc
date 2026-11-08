@@ -1,4 +1,5 @@
 import { authEnabled, supabase } from '@/cloud/client'
+import { responseErrorText } from './apiErrorText'
 
 export async function fetchOwnedObject(objectKey: string, filename?: string, signal?: AbortSignal) {
   const token = authEnabled
@@ -15,10 +16,10 @@ export async function fetchOwnedObject(objectKey: string, filename?: string, sig
     ...(signal ? { signal } : {}),
   })
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { error?: string } | null
+    const payload: unknown = await response.json().catch(() => null)
     throw new OwnedObjectError(
       response.status,
-      payload?.error || (response.status === 404 ? '结果对象不存在' : '读取结果失败，请重试读取'),
+      responseErrorText(payload) || (response.status === 404 ? '结果对象不存在' : '读取结果失败，请重试读取'),
     )
   }
   return response.blob()
@@ -40,8 +41,8 @@ export async function signedOwnedObject(objectKey: string, signal?: AbortSignal,
     ...(signal ? { signal } : {}),
   })
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { error?: string } | null
-    throw new OwnedObjectError(response.status, payload?.error || '读取图片地址失败')
+    const payload: unknown = await response.json().catch(() => null)
+    throw new OwnedObjectError(response.status, responseErrorText(payload) || '读取图片地址失败')
   }
   const signed = await response.json() as { url?: string; expiresAt?: number }
   if (!signed.url) throw new Error('未取得图片地址')

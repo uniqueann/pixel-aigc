@@ -21,7 +21,16 @@ describe('收费请求恢复与账号保护',()=>{
   })
   it('402保留错误码并打开统一充值入口',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({error:'积分不足',code:'INSUFFICIENT_CREDITS'}),{status:402})))
-    await expect(postBilledSyncImage('erase',{},quote)).rejects.toMatchObject({status:402,code:'INSUFFICIENT_CREDITS'})
+    await expect(postBilledSyncImage('erase',{},quote)).rejects.toMatchObject({status:402,code:'INSUFFICIENT_CREDITS',message:'积分不足'})
+    expect(mocks.recharge).toHaveBeenCalledTimes(1)
+  })
+  it('对象错误只展示嵌套句子，402 仍打开充值入口',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error:{ message:'积分不足', code:'INSUFFICIENT_CREDITS', token:'secret-token' },
+    }),{status:402})))
+    await expect(postBilledSyncImage('erase',{},quote)).rejects.toMatchObject({
+      status:402, message:'积分不足', code:'INSUFFICIENT_CREDITS',
+    })
     expect(mocks.recharge).toHaveBeenCalledTimes(1)
   })
   it('账号切换后拒绝发送旧操作，也不把旧结果交给新账号',async()=>{

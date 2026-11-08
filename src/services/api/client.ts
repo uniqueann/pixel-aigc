@@ -1,6 +1,7 @@
 import { authEnabled, supabase } from '@/cloud/client'
 import axios from 'axios'
 import { useUserStore } from '@/store/useUserStore'
+import { apiErrorCode, responseErrorText } from './apiErrorText'
 
 export class ApiError extends Error {
   constructor(
@@ -65,14 +66,14 @@ apiClient.interceptors.response.use(
     if (err.response?.status === 401) {
       if (authEnabled) window.location.href = '/login'
     }
-    const serverMessage = err.response?.data?.error
     if (err.response?.status === 402 && typeof window !== 'undefined')
       window.dispatchEvent(new Event('aigc:recharge'))
+    const data = err.response?.data
     return Promise.reject(
       new ApiError(
-        serverMessage || err.message || '请求失败，请重试',
+        responseErrorText(data) || err.message || '请求失败，请重试',
         err.response?.status,
-        err.response?.data?.code,
+        apiErrorCode(data),
       ),
     )
   },

@@ -1,4 +1,5 @@
 import { CloudError } from '@/cloud/client'
+import { apiErrorCode, responseErrorText } from './apiErrorText'
 import { useUserStore } from '@/store/useUserStore'
 import { imageAuthHeader } from './image-transfer'
 import { openCreditRecharge, recoverSyncResult, refreshBillingBalance } from './billing'
@@ -36,9 +37,9 @@ export async function postBilledSyncImage(path: string,body: Record<string,unkno
       checkOwner()
       if(recovered?.state==='settled' && recovered.result) {submittedReceipt(receipt,quote.requestId);return new Response(JSON.stringify(recovered.result),{headers:{'Content-Type':'application/json'}})}
     }
-    const payload=await response.json().catch(()=>null) as {error?:string;code?:string}|null
+    const payload: unknown = await response.json().catch(() => null)
     if (response.status === 402) openCreditRecharge()
-    throw new CloudError(response.status,payload?.error ?? '图片操作失败',payload?.code)
+    throw new CloudError(response.status, responseErrorText(payload) ?? '图片操作失败', apiErrorCode(payload))
   }
   submittedReceipt(receipt,quote.requestId)
   return response

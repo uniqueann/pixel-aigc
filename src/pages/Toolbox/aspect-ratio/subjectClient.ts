@@ -1,3 +1,4 @@
+import { responseErrorText } from '@/services/api/apiErrorText'
 import { imageAuthHeader, fileToBase64 } from '@/services/api/image-transfer'
 import { checkDetectionSignal, detectionDeadline, measureClientDetection } from '@/services/api/detectionTiming'
 import type { DetectionClientTiming } from '@shared/detection'
@@ -76,7 +77,7 @@ export async function detectImageSubject(image: Pick<BatchImage, 'file' | 'width
     if (payload?.requestId) metric.requestId = payload.requestId
     checkDetectionSignal(deadline.signal)
     if (!response.ok) {
-      throw new Error(payload?.error || `${SUBJECT_DETECTION_LABEL}失败`)
+      throw new Error(responseErrorText(payload) || `${SUBJECT_DETECTION_LABEL}失败`)
     }
     if (!payload || !validBox(payload.box)) throw new Error(`${SUBJECT_DETECTION_LABEL}返回了无效结果`)
     metric.outcome = 'success'
