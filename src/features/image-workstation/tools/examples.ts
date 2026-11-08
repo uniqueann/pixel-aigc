@@ -9,12 +9,8 @@ export interface ToolExample {
   after: ToolExampleFrame
 }
 
-/** 未上传时给裂变、融合看的示意商品图，不是用户作品。智能编辑改用画布内的 SVG 教学示意。 */
+/** 未上传时给融合看的示意商品图，不是用户作品。智能编辑与裂变改用画布内的 SVG 教学示意。 */
 export const TOOL_EXAMPLES: Partial<Record<string, ToolExample>> = {
-  variation: {
-    before: [{ src: '/examples/variation-before.webp', alt: '裂变前的白底马克杯', caption: '原图' }],
-    after: { src: '/examples/variation-after.webp', alt: '裂变后的马克杯变体', caption: '变体' },
-  },
   fusion: {
     before: [
       { src: '/examples/fusion-product.webp', alt: '待融合的滴管瓶商品图', caption: '商品' },

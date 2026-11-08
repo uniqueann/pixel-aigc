@@ -41,6 +41,7 @@ import { outputPreview } from './utils/outputPreview'
 import RelightDirectionOverlay from './components/RelightDirectionOverlay'
 import RelightExample from './components/RelightExample'
 import SmartEditExample from './components/SmartEditExample'
+import VariationExample from './components/VariationExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
 import { workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
@@ -191,8 +192,8 @@ export default function ImageWorkstation() {
     if (notifiedResultRef.current === key) return
     notifiedResultRef.current = key
     if (controller.resultReadError) {
-      // 重新打光把结论收敛到页脚与重试主操作，不再叠加 toast。
-      if (!relightTool) {
+      // 重新打光与裂变把结论收敛到页脚与重试主操作，不再叠加 toast。
+      if (!relightTool && !variationTool) {
         notification.warning({
           message: '任务已完成，但结果暂时无法读取',
           description: '可免费重试读取，不会重复扣费。',
@@ -209,7 +210,7 @@ export default function ImageWorkstation() {
           : `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
       })
     }
-  }, [activeTool.slug, controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, relightTool])
+  }, [activeTool.slug, controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, relightTool, variationTool])
   // 重试读取期间由 readingResults 保持按钮反馈；重试仍失败时给出「仍无法读取」的结论。
   const handleRetryRead = async () => {
     setRetryReadFailedAgain(false)
@@ -222,7 +223,7 @@ export default function ImageWorkstation() {
     : undefined
   const previewMeta = controller.readingResults
     ? '正在读取结果'
-    : controller.resultReadError
+    : controller.resultReadError && !variationTool
       ? '结果暂时无法读取'
       : controller.active || controller.submitting
         ? '正在生成'
@@ -252,7 +253,7 @@ export default function ImageWorkstation() {
     previewPanelRef,
     settingsPanelRef,
     activeToolSlug: activeTool.slug,
-    enabled: activeTool.slug !== 'repaint',
+    enabled: activeTool.slug !== 'repaint' && activeTool.slug !== 'variation',
   })
 
   const inpaintMode = inpaintTool ? (activeTool.slug === 'repaint' ? 'repaint' : 'remove') : undefined
@@ -710,7 +711,7 @@ export default function ImageWorkstation() {
               interactionMode={activeTool.interactionMode}
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
               processingLabel={!controller.resultReadError && (controller.active || controller.submitting) ? '正在生成，结果会显示在下方' : undefined}
-              errorLabel={controller.resultReadError && !relightTool ? '结果暂时无法读取，可重试' : undefined}
+              errorLabel={controller.resultReadError && !relightTool && !variationTool ? '结果暂时无法读取，可重试' : undefined}
               overlay={showRelightOverlay ? (
                 <RelightDirectionOverlay
                   direction={relightOptions.direction}
@@ -724,7 +725,9 @@ export default function ImageWorkstation() {
                   ? <RelightExample />
                   : smartEditTool && !previewHasImage
                     ? <SmartEditExample />
-                    : undefined
+                    : variationTool && !previewHasImage
+                      ? <VariationExample />
+                      : undefined
               }
               overlayToggle={relightTool && previewHasImage ? {
                 label: '方向示意',
@@ -762,12 +765,12 @@ export default function ImageWorkstation() {
                 if (id) openAt(id)
               }}
               compareAvailable={controller.outputAssets.length > 0}
-              footnote={previewFootnote}
+              footnote={variationTool && (controller.readingResults || controller.resultReadError) ? null : previewFootnote}
             />
             <ImageAssetStrip
               assets={controller.outputAssets}
               selectedAssetId={controller.inputAsset?.id}
-              variant={inpaintMode ? 'inpaint-result' : 'next-input'}
+              variant={inpaintMode ? 'inpaint-result' : variationTool ? 'variation-result' : 'next-input'}
               downloadingAssetId={downloadingAssetId}
               onSelect={(assetId) => {
                 void (async () => {
@@ -851,7 +854,7 @@ export default function ImageWorkstation() {
             protocolError={controller.protocolError}
             readingResults={controller.readingResults}
             resultReadError={controller.resultReadError}
-            suppressResultReadError={relightTool}
+            suppressResultReadError={relightTool || variationTool}
             historyError={controller.historyError}
             historySaved={controller.historySaved}
             onRetryRead={() => void controller.retryRead()}

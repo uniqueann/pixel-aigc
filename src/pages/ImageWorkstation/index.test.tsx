@@ -86,14 +86,14 @@ describe('图片工作站配置提示', () => {
     expect(container.querySelector('.image-workstation-footer')?.contains(buttonByText(/生成(?: \d+ 张)? ·/))).toBe(true)
   })
 
-  it('示例位于左栏独立卡片，折叠不重建右侧配置和图片区域', () => {
+  it('示例位于上传区上方，折叠不重建右侧配置和图片区域', () => {
     mocks.tool = 'variation'
     const { container } = render(<App><ImageWorkstation /></App>)
     const example = screen.getByText('示例').closest('details')!
     const settings = screen.getByRole('complementary', { name: '裂变' })
     const preview = screen.getByRole('region', { name: '图片与预览' })
-    expect(example.parentElement).toBe(container.querySelector('.image-workstation-canvas-column'))
-    expect(preview.contains(example)).toBe(false)
+    expect(preview.contains(example)).toBe(true)
+    expect(container.querySelector('.workstation-empty-extra .variation-example')).toBe(example)
     expect(example.open).toBe(true)
     example.open = false
     fireEvent(example, new Event('toggle'))
@@ -143,7 +143,7 @@ describe('图片工作站配置提示', () => {
     mocks.status.error = new Error('网络错误')
     const { container } = render(<App><ImageWorkstation /></App>)
     expect(screen.getByRole('alert', { hidden: true }).textContent).toContain('功能配置加载失败，请重试')
-    expect(screen.getByText('补充要求（可选）')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /添加补充要求/ })).toBeTruthy()
     expect(container.textContent).not.toContain('即将上线')
     fireEvent.click(buttonByText(/^重\s*试$/))
     expect(mocks.status.refetch).toHaveBeenCalledOnce()
@@ -156,7 +156,7 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByText('裂变 · 即将上线')).toBeTruthy()
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByText('示例')).toBeTruthy()
-    expect(screen.getByAltText('裂变前的白底马克杯')).toBeTruthy()
+    expect(screen.getByRole('img', { name: '原图示意：白底商品图' })).toBeTruthy()
     expect(screen.getByText('该功能即将上线，敬请期待。')).toBeTruthy()
     expect(screen.queryByText('补充要求（可选）')).toBeNull()
   })
@@ -167,7 +167,7 @@ describe('图片工作站配置提示', () => {
     const view = render(<App><ImageWorkstation /></App>)
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByRole('heading', { name: '裂变' })).toBeTruthy()
-    expect(screen.getByAltText('裂变后的马克杯变体')).toBeTruthy()
+    expect(screen.getByRole('img', { name: '变体示意：保留商品，背景换成户外木桌' })).toBeTruthy()
     view.unmount()
 
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
@@ -305,6 +305,23 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
     expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
     expect(screen.getByRole('button', { name: '重试读取' }).getAttribute('title')).toBe('任务已完成，但结果读取失败。可免费重试，不会重复扣费。')
+  })
+
+  it('裂变结果读取失败时只在页脚保留结论，画布不再叠加警告', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts.variation = 2
+    usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
+    expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
+    expect(screen.queryByText('结果暂时无法读取', { selector: '.workstation-preview-meta' })).toBeNull()
+    expect(screen.getByRole('button', { name: '重试读取' })).toBeTruthy()
   })
 
   it('重试读取期间按钮与页脚持续给出反馈', () => {

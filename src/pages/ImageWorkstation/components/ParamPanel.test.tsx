@@ -102,7 +102,7 @@ describe('智能编辑参数面板', () => {
     expect(onChange).toHaveBeenCalledWith('换成纯白电商背景，保留商品细节和阴影')
   })
 
-  it('裂变把补充要求标成可选，并按余量限制字数', () => {
+  it('裂变先说明保留/改变/输出，补充要求默认收起并按余量限制字数', () => {
     render(
       <ParamPanel
         title="裂变"
@@ -126,10 +126,18 @@ describe('智能编辑参数面板', () => {
         onPresetPlatformChange={() => undefined}
       />,
     )
-    expect(screen.getByText('补充要求（可选）')).toBeTruthy()
     expect(screen.getByRole('heading', { name: '裂变' })).toBeTruthy()
+    expect(screen.getByText('商品主体与可识别性')).toBeTruthy()
+    expect(screen.getByText('场景或构图')).toBeTruthy()
+    expect(screen.getByText('一次生成 2 张变体')).toBeTruthy()
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
+    const noteToggle = screen.getByRole('button', { name: /添加补充要求/ })
+    expect(noteToggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByPlaceholderText('例如：户外露营场景，俯拍')).toBeNull()
+    fireEvent.click(noteToggle)
+    expect(noteToggle.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByPlaceholderText('例如：户外露营场景，俯拍')).toHaveProperty('maxLength', VARIATION_USER_PROMPT_MAX)
+    expect(screen.queryByText(`0 / ${VARIATION_USER_PROMPT_MAX}`)).toBeNull()
     expect(screen.queryByText('生成尺寸')).toBeNull()
     expect(screen.getByText(/预计输出 3:2/)).toBeTruthy()
   })

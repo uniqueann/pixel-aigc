@@ -25,17 +25,16 @@ describe('图片工作站工具开关', () => {
     expect(isWorkstationToolReady(getWorkstationTool('fusion'), (capability) => capability === Capability.Fusion)).toBe(true)
   })
 
-  it('裂变和融合带上传前示例图', () => {
-    for (const slug of ['variation', 'fusion'] as const) {
-      const example = toolExample(slug)
-      expect(example?.before.length).toBeGreaterThan(0)
-      for (const frame of [...example!.before, example!.after]) {
-        const bytes = readFileSync(`public${frame.src}`).byteLength
-        expect(bytes).toBeGreaterThan(500)
-        expect(bytes).toBeLessThan(80_000)
-        expect(frame.src.endsWith('.webp')).toBe(true)
-      }
+  it('融合带上传前示例图，裂变与智能编辑改用画布内 SVG 示意', () => {
+    const example = toolExample('fusion')
+    expect(example?.before.length).toBeGreaterThan(0)
+    for (const frame of [...example!.before, example!.after]) {
+      const bytes = readFileSync(`public${frame.src}`).byteLength
+      expect(bytes).toBeGreaterThan(500)
+      expect(bytes).toBeLessThan(80_000)
+      expect(frame.src.endsWith('.webp')).toBe(true)
     }
+    expect(toolExample('variation')).toBeUndefined()
     expect(toolExample('smart-edit')).toBeUndefined()
     expect(toolExample('remove')).toBeUndefined()
   })
