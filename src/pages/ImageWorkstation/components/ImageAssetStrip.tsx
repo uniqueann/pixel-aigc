@@ -5,8 +5,8 @@ import type { AssetId, ImageAsset } from '@/editor/types'
 interface ImageAssetStripProps {
   assets: ImageAsset[]
   selectedAssetId?: AssetId
-  /** next-input：选中结果作为下一轮输入；inpaint-result：本次结果；variation-result：本次变体。 */
-  variant?: 'next-input' | 'inpaint-result' | 'variation-result'
+  /** next-input：选中结果作为下一轮输入；inpaint-result：本次结果。裂变结果改用网格组件。 */
+  variant?: 'next-input' | 'inpaint-result'
   downloadingAssetId?: AssetId
   onSelect: (assetId: AssetId) => void
   onDownload?: (asset: ImageAsset, index: number) => void
@@ -26,22 +26,17 @@ export default function ImageAssetStrip({
   if (assets.length === 0) return null
   const selectedIndex = assets.findIndex(asset => asset.id === selectedAssetId)
   const inpaintResult = variant === 'inpaint-result'
-  const variationResult = variant === 'variation-result'
   const hint = selectedIndex >= 0
     ? inpaintResult
       ? `第 ${selectedIndex + 1} 张已作为当前原图，可继续编辑`
-      : variationResult
-        ? `第 ${selectedIndex + 1} 张已选中，可继续编辑或下载`
-        : `第 ${selectedIndex + 1} 张将作为下一轮输入`
+      : `第 ${selectedIndex + 1} 张将作为下一轮输入`
     : inpaintResult
       ? '点击缩略图可基于该结果继续编辑，或直接下载'
-      : variationResult
-        ? '点击缩略图放大对比；选中一张可继续编辑'
-        : '选中一张作为下一轮输入'
-  const badge = inpaintResult ? '当前原图' : variationResult ? '继续编辑' : '下一轮输入'
-  const resultLabel = inpaintResult ? '结果' : variationResult ? '本次变体' : '候选结果'
-  const stripLabel = inpaintResult ? '本次结果' : variationResult ? '本次变体' : '候选结果'
-  const selectedSuffix = inpaintResult ? '，当前作为原图' : variationResult ? '，可继续编辑' : '，当前作为下一轮输入'
+      : '选中一张作为下一轮输入'
+  const badge = inpaintResult ? '当前原图' : '下一轮输入'
+  const resultLabel = inpaintResult ? '结果' : '候选结果'
+  const stripLabel = inpaintResult ? '本次结果' : '候选结果'
+  const selectedSuffix = inpaintResult ? '，当前作为原图' : '，当前作为下一轮输入'
 
   return (
     <div className="workstation-result-strip" aria-label={stripLabel}>

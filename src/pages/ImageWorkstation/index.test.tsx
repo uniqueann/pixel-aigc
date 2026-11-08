@@ -7,6 +7,7 @@ import { IMAGE_MODEL_PROFILES, defaultImageModel, publicImageModel } from '@shar
 import { defaultPreferences } from '@shared/preferences'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { useUserStore } from '@/store/useUserStore'
+import { downloadBlob } from '@/pages/Toolbox/shared/zip'
 
 const mocks = vi.hoisted(() => ({
   tool: 'variation',
@@ -15,7 +16,7 @@ const mocks = vi.hoisted(() => ({
     error: null as Error | null,
     refetch: vi.fn(),
   },
-  controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined, resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn() },
+  controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined, resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn(), generate: vi.fn(), selectOutput: vi.fn() },
   controllerArgs: undefined as { modelProfileId?: string; keepInputOnSuccess?: boolean } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
@@ -38,6 +39,14 @@ vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ m
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false }))
 vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
 vi.mock('@/features/image-workstation/hooks/useFusionImageSelection', () => ({ useFusionImageSelection: () => mocks.fusion }))
+vi.mock('@/features/image-workstation/download', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/image-workstation/download')>()
+  return { ...actual, blobFromImageSource: vi.fn(async () => new Blob(['variant'], { type: 'image/png' })) }
+})
+vi.mock('@/pages/Toolbox/shared/zip', () => ({
+  createResultZip: vi.fn(async () => new Blob(['zip'], { type: 'application/zip' })),
+  downloadBlob: vi.fn(),
+}))
 
 import ImageWorkstation from './index'
 
@@ -63,6 +72,10 @@ describe('图片工作站配置提示', () => {
     mocks.controller.readingResults = false
     mocks.controller.retryRead.mockReset()
     mocks.controller.retryRead.mockResolvedValue(true)
+    mocks.controller.generate.mockReset()
+    mocks.controller.generate.mockResolvedValue({ status: 'succeeded' })
+    mocks.controller.selectOutput.mockReset()
+    vi.mocked(downloadBlob).mockReset()
     mocks.fusion.product = undefined
     mocks.fusion.reference = undefined
     usePreferencesStore.setState({ preferences: defaultPreferences(), memoryEpoch: 0 })
@@ -322,6 +335,50 @@ describe('图片工作站配置提示', () => {
     expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
     expect(screen.queryByText('结果暂时无法读取', { selector: '.workstation-preview-meta' })).toBeNull()
     expect(screen.getByRole('button', { name: '重试读取' })).toBeTruthy()
+  })
+
+  it('裂变结果以网格并排展示，并提供下载全部', () => {
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [
+      { id: 'variant-1', type: 'image', name: '变体 1.png', width: 1024, height: 1024, url: 'blob:variant-1', mimeType: 'image/png' },
+      { id: 'variant-2', type: 'image', name: '变体 2.png', width: 1024, height: 1024, url: 'blob:variant-2', mimeType: 'image/png' },
+    ]
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByRole('region', { name: '本次变体' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '下载全部' })).toBeTruthy()
+    expect(screen.getAllByText('1024×1024')).toHaveLength(2)
+    expect(screen.queryByText('候选结果')).toBeNull()
+  })
+
+  it('下载全部把多张变体打包成一个 ZIP', async () => {
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [
+      { id: 'variant-1', type: 'image', name: '变体 1.png', width: 1024, height: 1024, url: 'blob:variant-1', mimeType: 'image/png' },
+      { id: 'variant-2', type: 'image', name: '变体 2.png', width: 1024, height: 1024, url: 'blob:variant-2', mimeType: 'image/png' },
+    ]
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.click(screen.getByRole('button', { name: '下载全部' }))
+    await vi.waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalledTimes(1))
+    const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0]
+    expect(blob).toBeInstanceOf(Blob)
+    expect(filename).toBe('裂变_2张变体.zip')
+  })
+
+  it('⌘/Ctrl + Enter 在可提交时触发生成', async () => {
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByRole('button', { name: /生成 2 张/ }).getAttribute('aria-keyshortcuts')).toBe('Meta+Enter Control+Enter')
+    fireEvent.keyDown(window, { key: 'Enter', metaKey: true })
+    await vi.waitFor(() => expect(mocks.controller.generate).toHaveBeenCalledTimes(1))
   })
 
   it('重试读取期间按钮与页脚持续给出反馈', () => {

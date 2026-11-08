@@ -11,7 +11,7 @@ import { usePreviewGallery } from '@/components/usePreviewGallery'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
 import { createImageAsset } from '@/editor/services/assetService'
 import { useEditorStore } from '@/editor/store'
-import type { ImageAsset } from '@/editor/types'
+import type { AssetId, ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
 import { useFusionImageSelection } from '@/features/image-workstation/hooks/useFusionImageSelection'
 import { isPreparationCancelled } from '@/features/image-workstation/fusionInputs'
@@ -31,9 +31,11 @@ import { canonicalizeImageModelProfileId, defaultImageModel } from '@shared/imag
 import { normalizeRetouchDirections } from '@shared/retouch'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
-import { downloadFailureMessage, downloadImageAsset, filenameForWorkstationResult } from '@/features/image-workstation/download'
+import { downloadFailureMessage, downloadImageAsset, filenameForWorkstationResult, blobFromImageSource } from '@/features/image-workstation/download'
+import { createResultZip, downloadBlob } from '@/pages/Toolbox/shared/zip'
 import CanvasArea, { type CanvasHandle } from './components/CanvasArea'
 import ImageAssetStrip from './components/ImageAssetStrip'
+import VariationResultGrid from './components/VariationResultGrid'
 import FusionInputStatus from './components/FusionInputStatus'
 import ParamPanel from './components/ParamPanel'
 import InpaintGuide from './components/InpaintGuide'
@@ -80,6 +82,26 @@ import WorkstationBridge, { type WorkstationSuiteBinding } from '@/features/ecom
 import type { SuiteActor } from '@shared/ecommerce-suite'
 import type { SuiteBridgeDetail } from '@shared/ecommerce-suite-runtime'
 
+const VARIATION_PROMPT_DRAFT_KEY = 'pixel-aigc:variation-prompt-draft'
+
+/** 只记住本次标签页里的裂变补充要求，关闭标签页即失效，避免把提示词写进长期偏好。 */
+function readVariationPromptDraft() {
+  try {
+    return window.sessionStorage.getItem(VARIATION_PROMPT_DRAFT_KEY)?.trim() ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function writeVariationPromptDraft(value: string) {
+  try {
+    if (value.trim()) window.sessionStorage.setItem(VARIATION_PROMPT_DRAFT_KEY, value.trim())
+    else window.sessionStorage.removeItem(VARIATION_PROMPT_DRAFT_KEY)
+  } catch {
+    // 隐私模式或存储被禁用时静默降级，不影响生成。
+  }
+}
+
 export default function ImageWorkstation() {
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
@@ -121,6 +143,8 @@ export default function ImageWorkstation() {
   const { capabilities: { erase: eraseReady, repaint: repaintReady, imageEdit: imageEditReady, variation: variationReady }, error: capabilityError, refetch: refetchCapabilities } = useCapabilities()
   const [hasMaskPaint, setHasMaskPaint] = useState(false)
   const [downloadingAssetId, setDownloadingAssetId] = useState<string>()
+  const [downloadingAll, setDownloadingAll] = useState(false)
+  const [lastVariationPrompt, setLastVariationPrompt] = useState(readVariationPromptDraft)
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
   const currentActor=currentTaskActor()
@@ -143,6 +167,16 @@ export default function ImageWorkstation() {
   const configurationReady = activeTool.slug === 'repaint' ? repaintReady : activeTool.slug === 'remove' ? eraseReady : toolState
   const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode) && toolState !== false
   const variationTool = activeTool.capability === Capability.Variation
+  // 裂变补充要求只在本次会话里记住；停止输入 400ms 后落盘，避免每次按键都写存储。
+  useEffect(() => {
+    if (!variationTool || !variationPrompt.trim()) return
+    const timer = window.setTimeout(() => {
+      const value = variationPrompt.trim()
+      setLastVariationPrompt(value)
+      writeVariationPromptDraft(value)
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [variationPrompt, variationTool])
   const retouchTool = activeTool.slug === 'retouch'
   const fusionTool = activeTool.slug === 'fusion'
   const relightTool = activeTool.slug === 'relight'
@@ -501,6 +535,45 @@ export default function ImageWorkstation() {
     }
   }
 
+  // 裂变结果一次打包下载，避免浏览器拦截连续多次的独立下载。
+  const handleDownloadAll = async () => {
+    const assets = controller.outputAssets
+    if (assets.length === 0 || downloadingAll) return
+    setDownloadingAll(true)
+    try {
+      const files = await Promise.all(assets.map(async (asset, index) => {
+        const blob = await blobFromImageSource(asset.url, asset.objectKey ?? asset.storage?.objectKey)
+        return {
+          name: filenameForWorkstationResult({
+            toolLabel: activeTool.label,
+            width: asset.width,
+            height: asset.height,
+            mimeType: blob.type || asset.mimeType,
+            index: assets.length > 1 ? index + 1 : undefined,
+          }),
+          blob,
+        }
+      }))
+      if (files.length === 1) {
+        downloadBlob(files[0].blob, files[0].name)
+        return
+      }
+      const zip = await createResultZip(files)
+      downloadBlob(zip, `${activeTool.label}_${files.length}张变体.zip`)
+    } catch (error) {
+      message.error({ content: downloadFailureMessage(error), duration: 4 })
+    } finally {
+      setDownloadingAll(false)
+    }
+  }
+
+  const handleSelectResult = async (assetId: AssetId) => {
+    if (inpaintMode && hasMaskPaint
+      && !await confirmRecovery('切换到该结果将清空当前蒙版，是否继续？')) return
+    controller.selectOutput(assetId)
+    setCompareMode('effect')
+  }
+
   const handleRetry = async () => {
     if (controller.activeTask?.status !== 'succeeded' && creditQuoteBlocked(retryQuote)) {
       message.warning('原任务报价暂不可用，请修改参数后重新生成')
@@ -555,6 +628,21 @@ export default function ImageWorkstation() {
   const bridgeBlock = bridgeId && (!suiteBinding || (controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey) !== suiteBinding.inputObjectKey)
     ? '请恢复本会话输入后再提交，已有结果可以显式回填' : undefined
   const blockReason = bridgeBlock ?? generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
+  // 提交函数每次渲染都会重建；ref 只保存最新版本，键盘监听不必随渲染重挂。
+  const generateRef = useRef(handleGenerate)
+  useEffect(() => { generateRef.current = handleGenerate })
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      if (edgeRefine || blockReason || controller.submitting || controller.inputPreparation) return
+      // 弹窗或大图预览打开时不穿透提交。
+      if (document.querySelector('.ant-modal-root, .ant-image-preview-root')) return
+      event.preventDefault()
+      void generateRef.current()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [blockReason, controller.inputPreparation, controller.submitting, edgeRefine])
   const showRetryRead = Boolean(controller.resultReadError) || controller.readingResults
   const example = toolExample(activeTool.slug)
   const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
@@ -767,22 +855,28 @@ export default function ImageWorkstation() {
               compareAvailable={controller.outputAssets.length > 0}
               footnote={variationTool && (controller.readingResults || controller.resultReadError) ? null : previewFootnote}
             />
-            <ImageAssetStrip
-              assets={controller.outputAssets}
-              selectedAssetId={controller.inputAsset?.id}
-              variant={inpaintMode ? 'inpaint-result' : variationTool ? 'variation-result' : 'next-input'}
-              downloadingAssetId={downloadingAssetId}
-              onSelect={(assetId) => {
-                void (async () => {
-                  if (inpaintMode && hasMaskPaint
-                    && !await confirmRecovery('切换到该结果将清空当前蒙版，是否继续？')) return
-                  controller.selectOutput(assetId)
-                  setCompareMode('effect')
-                })()
-              }}
-              onDownload={(asset, index) => void handleDownload(asset, index)}
-              onPreview={openAt}
-            />
+            {variationTool ? (
+              <VariationResultGrid
+                assets={controller.outputAssets}
+                selectedAssetId={controller.inputAsset?.id}
+                downloadingAssetId={downloadingAssetId}
+                downloadingAll={downloadingAll}
+                onSelect={(assetId) => void handleSelectResult(assetId)}
+                onDownload={(asset, index) => void handleDownload(asset, index)}
+                onPreview={openAt}
+                onDownloadAll={() => void handleDownloadAll()}
+              />
+            ) : (
+              <ImageAssetStrip
+                assets={controller.outputAssets}
+                selectedAssetId={controller.inputAsset?.id}
+                variant={inpaintMode ? 'inpaint-result' : 'next-input'}
+                downloadingAssetId={downloadingAssetId}
+                onSelect={(assetId) => void handleSelectResult(assetId)}
+                onDownload={(asset, index) => void handleDownload(asset, index)}
+                onPreview={openAt}
+              />
+            )}
           </section>
           {!relightTool && showExample && example ? <ToolExampleStrip example={example} /> : null}
         </div>
@@ -840,6 +934,8 @@ export default function ImageWorkstation() {
               promptMinHeight={promptMinHeight}
               hasMaskPaint={hasMaskPaint}
               inpaintCreditLabel={inpaintCreditLabel}
+              variationLastPrompt={lastVariationPrompt}
+              onRestoreVariationPrompt={setVariationPrompt}
             />
           ) : null}
           {fusionTool ? <FusionInputStatus state={controller.inputPreparation} retryQuote={inputRetryQuote} onRetry={() => void handleRetryInputs()} onCancel={controller.cancelInputPreparation} onModify={controller.modifyParameters} /> : null}
@@ -877,6 +973,9 @@ export default function ImageWorkstation() {
               <span id="workstation-block-reason" className="image-workstation-block-reason" role="status">
                 {visibleBlockReason}
               </span>
+            ) : null}
+            {!edgeRefine ? (
+              <span className="image-workstation-shortcut-hint" aria-hidden="true">⌘/Ctrl + Enter 生成</span>
             ) : null}
             {!edgeRefine && (
               <div className="image-workstation-footer-hints">
@@ -921,6 +1020,7 @@ export default function ImageWorkstation() {
                       loading={controller.submitting}
                       quote={generateQuote}
                       aria-describedby={visibleBlockReason ? 'workstation-block-reason' : undefined}
+                      aria-keyshortcuts="Meta+Enter Control+Enter"
                       disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                       onClick={handleGenerate}
                     >

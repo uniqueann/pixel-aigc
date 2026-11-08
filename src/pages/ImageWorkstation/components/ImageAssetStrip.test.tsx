@@ -74,36 +74,6 @@ describe('智能编辑候选结果条', () => {
     expect(screen.getByRole('button', { name: '放大结果 2' })).toBeTruthy()
   })
 
-  it('裂变把结果条写成本次变体，选中项表示可继续编辑', () => {
-    render(
-      <ImageAssetStrip
-        assets={assets}
-        selectedAssetId="asset-2"
-        variant="variation-result"
-        onSelect={() => undefined}
-        onPreview={() => undefined}
-      />,
-    )
-    expect(screen.getByText('本次变体')).toBeTruthy()
-    expect(screen.getByText('第 2 张已选中，可继续编辑或下载')).toBeTruthy()
-    expect(screen.getByText('继续编辑')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '选择本次变体 2，可继续编辑' }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('button', { name: '放大本次变体 1' })).toBeTruthy()
-  })
-
-  it('裂变未选中结果时提示先放大对比', () => {
-    render(
-      <ImageAssetStrip
-        assets={assets}
-        variant="variation-result"
-        onSelect={() => undefined}
-        onPreview={() => undefined}
-      />,
-    )
-    expect(screen.getByText('点击缩略图放大对比；选中一张可继续编辑')).toBeTruthy()
-    expect(screen.queryByText('下一轮输入')).toBeNull()
-  })
-
   it('涂抹类工具未选中结果时提示可继续编辑或直接下载', () => {
     render(
       <ImageAssetStrip

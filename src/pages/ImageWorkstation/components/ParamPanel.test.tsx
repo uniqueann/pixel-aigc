@@ -142,6 +142,73 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByText(/预计输出 3:2/)).toBeTruthy()
   })
 
+  it('裂变提供四个方向模板，点击后追加并展开补充要求', () => {
+    const onChange = vi.fn()
+    render(
+      <ParamPanel
+        title="裂变"
+        capability={Capability.Variation}
+        smartEditPrompt=""
+        onSmartEditPromptChange={onChange}
+        count={2}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1200, height: 800 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('快速填写')).toBeTruthy()
+    expect(screen.getByRole('group', { name: '裂变方向模板' })).toBeTruthy()
+    for (const label of ['户外场景', '室内场景', '俯拍构图', '极简留白']) {
+      expect(screen.getByRole('button', { name: label })).toBeTruthy()
+    }
+    fireEvent.click(screen.getByRole('button', { name: '户外场景' }))
+    expect(onChange).toHaveBeenCalledWith('换成户外自然场景，保留商品主体和细节')
+    expect(screen.getByRole('button', { name: /补充要求/ }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('裂变可恢复本次会话上次的补充要求，并展开输入框', () => {
+    const onRestore = vi.fn()
+    render(
+      <ParamPanel
+        title="裂变"
+        capability={Capability.Variation}
+        smartEditPrompt=""
+        onSmartEditPromptChange={() => undefined}
+        variationLastPrompt="上次的户外要求"
+        onRestoreVariationPrompt={onRestore}
+        count={2}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1200, height: 800 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '恢复上次要求' }))
+    expect(onRestore).toHaveBeenCalledWith('上次的户外要求')
+    expect(screen.getByRole('button', { name: /补充要求/ }).getAttribute('aria-expanded')).toBe('true')
+  })
+
   it('精修展示四个方向，补充说明单独计数', () => {
     render(
       <ParamPanel

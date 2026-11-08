@@ -58,6 +58,9 @@ interface Props {
   hasMaskPaint?: boolean
   /** 涂抹类工具：已格式化的积分文案，报价未就绪时不传。 */
   inpaintCreditLabel?: string
+  /** 裂变：本次会话里上次使用的补充要求，用于一键恢复。 */
+  variationLastPrompt?: string
+  onRestoreVariationPrompt?: (prompt: string) => void
 }
 
 const labelStyle = { display: 'block', marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
@@ -72,6 +75,14 @@ const SMART_EDIT_PROMPT_TEMPLATES = [
   { label: '户外场景', prompt: '换成户外自然场景，保持商品颜色和材质' },
   { label: '只调光线', prompt: '只调整光线和氛围，不改变商品结构和颜色' },
   { label: '清理杂物', prompt: '去除背景杂物，保持商品主体完整' },
+] as const
+
+/** 裂变的快速方向只围绕「换场景 / 换构图」，与页面承诺保持一致。 */
+const VARIATION_PROMPT_TEMPLATES = [
+  { label: '户外场景', prompt: '换成户外自然场景，保留商品主体和细节' },
+  { label: '室内场景', prompt: '换成明亮室内场景，保留商品主体和细节' },
+  { label: '俯拍构图', prompt: '改为俯拍构图，商品居中并留出空间' },
+  { label: '极简留白', prompt: '改为极简留白构图，突出商品主体' },
 ] as const
 
 /** 裂变的核心承诺：保留什么、改变什么、一次出几张。 */
@@ -128,6 +139,8 @@ export default function ParamPanel({
   promptMinHeight,
   hasMaskPaint = false,
   inpaintCreditLabel,
+  variationLastPrompt,
+  onRestoreVariationPrompt,
 }: Props) {
   const repaintPromptId = useId()
   const repaintHintId = useId()
@@ -200,8 +213,46 @@ export default function ParamPanel({
         ) : null}
       </div>
     )
+    const variationQuickFill = variation ? (
+      <div className="workstation-variation-quickfill">
+        <div style={{ ...labelStyle, marginBottom: 0 }}>快速填写</div>
+        <div className="workstation-prompt-templates workstation-variation-templates" role="group" aria-label="裂变方向模板">
+          {VARIATION_PROMPT_TEMPLATES.map(template => (
+            <Button
+              key={template.label}
+              size="small"
+              disabled={disabled}
+              onClick={() => {
+                const current = smartEditPrompt.trim()
+                const next = current ? `${current}；${template.prompt}` : template.prompt
+                onSmartEditPromptChange(next.slice(0, promptMaxLength))
+                setVariationNoteOpen(true)
+              }}
+            >
+              {template.label}
+            </Button>
+          ))}
+        </div>
+        {variationLastPrompt && onRestoreVariationPrompt && variationLastPrompt !== smartEditPrompt ? (
+          <button
+            type="button"
+            className="workstation-variation-restore"
+            disabled={disabled}
+            title={variationLastPrompt}
+            onClick={() => {
+              if (!variationLastPrompt) return
+              onRestoreVariationPrompt(variationLastPrompt)
+              setVariationNoteOpen(true)
+            }}
+          >
+            恢复上次要求
+          </button>
+        ) : null}
+      </div>
+    ) : null
     const promptBlock = variation ? (
       <div>
+        {variationQuickFill}
         <button
           type="button"
           className="workstation-note-toggle"
