@@ -40,6 +40,7 @@ import InpaintGuide from './components/InpaintGuide'
 import { outputPreview } from './utils/outputPreview'
 import RelightDirectionOverlay from './components/RelightDirectionOverlay'
 import RelightExample from './components/RelightExample'
+import SmartEditExample from './components/SmartEditExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
 import { workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
@@ -144,6 +145,7 @@ export default function ImageWorkstation() {
   const retouchTool = activeTool.slug === 'retouch'
   const fusionTool = activeTool.slug === 'fusion'
   const relightTool = activeTool.slug === 'relight'
+  const smartEditTool = activeTool.slug === 'smart-edit'
   const activePrompt = relightTool
     ? relightNote
     : fusionTool
@@ -717,7 +719,13 @@ export default function ImageWorkstation() {
                   onDirectionChange={direction => updateParameters({ relight: { ...relightOptions, direction } })}
                 />
               ) : undefined}
-              emptyExtra={relightTool && !previewHasImage ? <RelightExample /> : undefined}
+              emptyExtra={
+                relightTool && !previewHasImage
+                  ? <RelightExample />
+                  : smartEditTool && !previewHasImage
+                    ? <SmartEditExample />
+                    : undefined
+              }
               overlayToggle={relightTool && previewHasImage ? {
                 label: '方向示意',
                 pressed: relightOverlayEnabled,

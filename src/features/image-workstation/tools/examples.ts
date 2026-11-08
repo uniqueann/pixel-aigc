@@ -9,12 +9,8 @@ export interface ToolExample {
   after: ToolExampleFrame
 }
 
-/** 未上传时给裂变、融合、智能编辑看的示意商品图，不是用户作品。 */
+/** 未上传时给裂变、融合看的示意商品图，不是用户作品。智能编辑改用画布内的 SVG 教学示意。 */
 export const TOOL_EXAMPLES: Partial<Record<string, ToolExample>> = {
-  'smart-edit': {
-    before: [{ src: '/examples/variation-before.webp', alt: '换色前的白底马克杯', caption: '原图' }],
-    after: { src: '/examples/variation-after.webp', alt: '换成鼠尾草绿的马克杯', caption: '换色后' },
-  },
   variation: {
     before: [{ src: '/examples/variation-before.webp', alt: '裂变前的白底马克杯', caption: '原图' }],
     after: { src: '/examples/variation-after.webp', alt: '裂变后的马克杯变体', caption: '变体' },

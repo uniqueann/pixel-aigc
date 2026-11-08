@@ -2856,22 +2856,22 @@ body.sidebar-resizing * {
   font-size: 16px;
 }
 
-/* 重新打光的空状态示意：用同一商品的光向图代替照片，避免伪造生成结果。 */
-.relight-example {
+/* 空状态教学示意：重新打光与智能编辑共用同一套卡片与图注语法，用示意图代替伪造的生成结果。 */
+.concept-example {
   padding-bottom: 10px;
   border-bottom: 1px solid var(--color-border);
 }
 
-.relight-example summary {
+.concept-example summary {
   color: var(--color-text-secondary-strong);
   font-size: 13px;
 }
 
-.relight-example figcaption {
+.concept-example figcaption {
   color: var(--color-text-secondary-strong);
 }
 
-.relight-example .tool-example-row {
+.concept-example .tool-example-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
@@ -2879,12 +2879,12 @@ body.sidebar-resizing * {
   overflow: visible;
 }
 
-.relight-example figure {
+.concept-example figure {
   width: 100%;
   align-items: center;
 }
 
-.relight-example-art {
+.concept-example-art {
   display: grid;
   width: 112px;
   height: 112px;
@@ -2894,21 +2894,15 @@ body.sidebar-resizing * {
   background: var(--color-surface);
 }
 
-.relight-example .relight-example-note {
-  margin-top: 8px;
-  color: var(--color-text-secondary-strong);
-  font-size: 11px;
-}
-
-.relight-example-art svg {
+.concept-example-art svg {
   width: 100%;
   height: 100%;
 }
 
-.relight-example-note {
-  margin: 10px 0 0;
-  color: var(--color-text-secondary);
-  font-size: 12px;
+.concept-example-note {
+  margin: 8px 0 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -5704,8 +5698,8 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
     padding-block: 4px;
     line-height: 1.3;
   }
-  .relight-example-art { width: 88px; height: 88px; }
-  .relight-example .tool-example-row { gap: 6px; }
+  .concept-example-art { width: 88px; height: 88px; }
+  .concept-example .tool-example-row { gap: 6px; }
   .relight-compass { --relight-cell: 64px; gap: 8px; }
   .relight-compass-pad,
   .relight-compass-grid { gap: 6px; }

@@ -1239,3 +1239,30 @@
   - 视频原生控件在 shadow DOM 内，被当作单一 tab stop，内部控件无法单独 Tab。
   - Operations 工具栏与 `role=dialog` 是两个兄弟 Portal，`aria-modal` 的语义并不完美；初始焦点仍是 Dialog 内的 sentinel，第一次 Tab 才落到可见的关闭按钮。
   - 对比模式会卸载 PreviewGroup，改由 `CompareViewer` 的 antd Modal 管理焦点，本陷阱在对比期间停用。
+
+# 智能编辑示例改为示意式教学（2026-11-08）
+
+目标：把智能编辑复用的裂变换色照片换成与重新打光同构的 SVG 教学示意，讲清提示词能改什么，并放进上传区空状态。
+
+## 计划
+
+- [x] 抽出共用 `ProductSilhouette`（支持 fill / stroke），重新打光与智能编辑共用同一商品形状
+- [x] 新建 `SmartEditExample`：换背景 / 换颜色 / 加元素三张 SVG，沿用虚线框 + 主色高亮语法
+- [x] 示例放进画布空状态 `emptyExtra`，与重新打光一致；上传后自动隐藏
+- [x] 从 `TOOL_EXAMPLES` 移除 `smart-edit`，裂变 / 融合的照片示例保持不变
+- [x] `.relight-example*` 样式泛化为 `.concept-example*`，同步移动端 88px 卡片规则
+- [x] 帮助文档智能编辑一句话补上「换背景」
+
+## 验收
+
+- [x] 未上传时显示三张示意卡与图注；上传后不再出现「示例」
+- [x] 明暗主题、1440 / 1024 / 768 / 390 宽度下三列不溢出，移动端卡片缩到 88px
+- [x] 重新打光示例渲染无回归
+- [x] 44 个相关用例通过；全量 341 文件 / 2218 用例、`tsc --noEmit`、`npm run lint` 通过
+- [x] `impeccable detect` 对新增与改动组件返回 `[]`（全量仍只剩既有的任务恢复条 `border-left` 命中）
+
+## 复查
+
+- 截图核对：`/tmp/shot-workstation/smart-edit-final-crop.png`（亮色）、`smart-edit-dark-crop.png`（暗色）、`smart-edit-mobile.png`（390）、`smart-edit-1024.png`、`smart-edit-768.png`。
+- 示例不再复用 `/examples/variation-*.webp`，避免智能编辑与裂变展示同一组换色照片。
+- 图注写明「虚线框与高亮 = 描述里要改的部分」，避免把示意图误读成生成结果。
