@@ -5,7 +5,7 @@ import type { AssetId, ImageAsset } from '@/editor/types'
 interface ImageAssetStripProps {
   assets: ImageAsset[]
   selectedAssetId?: AssetId
-  /** next-input：选中结果作为下一轮输入；inpaint-result：本次结果，选中则基于它继续编辑。 */
+  /** next-input：选中结果作为下一轮输入；inpaint-result：本次结果。裂变结果改用网格组件。 */
   variant?: 'next-input' | 'inpaint-result'
   downloadingAssetId?: AssetId
   onSelect: (assetId: AssetId) => void
@@ -34,11 +34,14 @@ export default function ImageAssetStrip({
       ? '点击缩略图可基于该结果继续编辑，或直接下载'
       : '选中一张作为下一轮输入'
   const badge = inpaintResult ? '当前原图' : '下一轮输入'
+  const resultLabel = inpaintResult ? '结果' : '候选结果'
+  const stripLabel = inpaintResult ? '本次结果' : '候选结果'
+  const selectedSuffix = inpaintResult ? '，当前作为原图' : '，当前作为下一轮输入'
 
   return (
-    <div className="workstation-result-strip" aria-label={inpaintResult ? '本次结果' : '候选结果'}>
+    <div className="workstation-result-strip" aria-label={stripLabel}>
       <div className="workstation-result-strip-head">
-        <span className="workstation-result-strip-title">{inpaintResult ? '本次结果' : '候选结果'}</span>
+        <span className="workstation-result-strip-title">{stripLabel}</span>
         <span className="workstation-result-strip-hint">{hint}</span>
       </div>
       <div className="workstation-result-list" role="list">
@@ -53,11 +56,11 @@ export default function ImageAssetStrip({
               <button
                 type="button"
                 className="workstation-result-thumb"
-                aria-label={`选择${inpaintResult ? '结果' : '候选结果'} ${index + 1}${selected ? (inpaintResult ? '，当前作为原图' : '，当前作为下一轮输入') : ''}`}
+                aria-label={`选择${resultLabel} ${index + 1}${selected ? selectedSuffix : ''}`}
                 aria-pressed={selected}
                 onClick={() => onSelect(asset.id)}
               >
-                <img src={asset.url} alt={`${inpaintResult ? '结果' : '候选结果'} ${index + 1}`} />
+                <img src={asset.url} alt={`${resultLabel} ${index + 1}`} />
                 <span className="workstation-result-index" aria-hidden="true">{index + 1}</span>
                 {selected ? <span className="workstation-result-badge">{badge}</span> : null}
               </button>
@@ -67,7 +70,7 @@ export default function ImageAssetStrip({
                   size="small"
                   type="text"
                   icon={<ZoomInOutlined />}
-                  aria-label={`放大${inpaintResult ? '结果' : '候选结果'} ${index + 1}`}
+                  aria-label={`放大${resultLabel} ${index + 1}`}
                   onClick={() => onPreview(asset.id)}
                 />
                 {onDownload ? (
@@ -76,7 +79,7 @@ export default function ImageAssetStrip({
                     size="small"
                     type="text"
                     icon={<DownloadOutlined />}
-                    aria-label={`下载${inpaintResult ? '结果' : '候选结果'} ${index + 1}`}
+                    aria-label={`下载${resultLabel} ${index + 1}`}
                     loading={downloadingAssetId === asset.id}
                     onClick={(event) => {
                       event.stopPropagation()

@@ -7,6 +7,7 @@ import { IMAGE_MODEL_PROFILES, defaultImageModel, publicImageModel } from '@shar
 import { defaultPreferences } from '@shared/preferences'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { useUserStore } from '@/store/useUserStore'
+import { downloadBlob } from '@/pages/Toolbox/shared/zip'
 
 const mocks = vi.hoisted(() => ({
   tool: 'variation',
@@ -15,7 +16,7 @@ const mocks = vi.hoisted(() => ({
     error: null as Error | null,
     refetch: vi.fn(),
   },
-  controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined, resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn() },
+  controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined, resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn(), generate: vi.fn(), selectOutput: vi.fn() },
   controllerArgs: undefined as { modelProfileId?: string; keepInputOnSuccess?: boolean } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
@@ -38,6 +39,14 @@ vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ m
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false }))
 vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
 vi.mock('@/features/image-workstation/hooks/useFusionImageSelection', () => ({ useFusionImageSelection: () => mocks.fusion }))
+vi.mock('@/features/image-workstation/download', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/image-workstation/download')>()
+  return { ...actual, blobFromImageSource: vi.fn(async () => new Blob(['variant'], { type: 'image/png' })) }
+})
+vi.mock('@/pages/Toolbox/shared/zip', () => ({
+  createResultZip: vi.fn(async () => new Blob(['zip'], { type: 'application/zip' })),
+  downloadBlob: vi.fn(),
+}))
 
 import ImageWorkstation from './index'
 
@@ -63,6 +72,10 @@ describe('图片工作站配置提示', () => {
     mocks.controller.readingResults = false
     mocks.controller.retryRead.mockReset()
     mocks.controller.retryRead.mockResolvedValue(true)
+    mocks.controller.generate.mockReset()
+    mocks.controller.generate.mockResolvedValue({ status: 'succeeded' })
+    mocks.controller.selectOutput.mockReset()
+    vi.mocked(downloadBlob).mockReset()
     mocks.fusion.product = undefined
     mocks.fusion.reference = undefined
     usePreferencesStore.setState({ preferences: defaultPreferences(), memoryEpoch: 0 })
@@ -86,14 +99,14 @@ describe('图片工作站配置提示', () => {
     expect(container.querySelector('.image-workstation-footer')?.contains(buttonByText(/生成(?: \d+ 张)? ·/))).toBe(true)
   })
 
-  it('示例位于左栏独立卡片，折叠不重建右侧配置和图片区域', () => {
+  it('示例位于上传区上方，折叠不重建右侧配置和图片区域', () => {
     mocks.tool = 'variation'
     const { container } = render(<App><ImageWorkstation /></App>)
     const example = screen.getByText('示例').closest('details')!
     const settings = screen.getByRole('complementary', { name: '裂变' })
     const preview = screen.getByRole('region', { name: '图片与预览' })
-    expect(example.parentElement).toBe(container.querySelector('.image-workstation-canvas-column'))
-    expect(preview.contains(example)).toBe(false)
+    expect(preview.contains(example)).toBe(true)
+    expect(container.querySelector('.workstation-empty-extra .variation-example')).toBe(example)
     expect(example.open).toBe(true)
     example.open = false
     fireEvent(example, new Event('toggle'))
@@ -143,7 +156,7 @@ describe('图片工作站配置提示', () => {
     mocks.status.error = new Error('网络错误')
     const { container } = render(<App><ImageWorkstation /></App>)
     expect(screen.getByRole('alert', { hidden: true }).textContent).toContain('功能配置加载失败，请重试')
-    expect(screen.getByText('补充要求（可选）')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /添加补充要求/ })).toBeTruthy()
     expect(container.textContent).not.toContain('即将上线')
     fireEvent.click(buttonByText(/^重\s*试$/))
     expect(mocks.status.refetch).toHaveBeenCalledOnce()
@@ -156,7 +169,7 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByText('裂变 · 即将上线')).toBeTruthy()
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByText('示例')).toBeTruthy()
-    expect(screen.getByAltText('裂变前的白底马克杯')).toBeTruthy()
+    expect(screen.getByRole('img', { name: '原图示意：白底商品图' })).toBeTruthy()
     expect(screen.getByText('该功能即将上线，敬请期待。')).toBeTruthy()
     expect(screen.queryByText('补充要求（可选）')).toBeNull()
   })
@@ -167,7 +180,7 @@ describe('图片工作站配置提示', () => {
     const view = render(<App><ImageWorkstation /></App>)
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
     expect(screen.getByRole('heading', { name: '裂变' })).toBeTruthy()
-    expect(screen.getByAltText('裂变后的马克杯变体')).toBeTruthy()
+    expect(screen.getByRole('img', { name: '变体示意：保留商品，背景换成户外木桌' })).toBeTruthy()
     view.unmount()
 
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
@@ -305,6 +318,67 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
     expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
     expect(screen.getByRole('button', { name: '重试读取' }).getAttribute('title')).toBe('任务已完成，但结果读取失败。可免费重试，不会重复扣费。')
+  })
+
+  it('裂变结果读取失败时只在页脚保留结论，画布不再叠加警告', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '1k'
+    preferences.image.counts.variation = 2
+    usePreferencesStore.setState({ preferences, memoryEpoch: 2 })
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
+    expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
+    expect(screen.queryByText('结果暂时无法读取', { selector: '.workstation-preview-meta' })).toBeNull()
+    expect(screen.getByRole('button', { name: '重试读取' })).toBeTruthy()
+  })
+
+  it('裂变结果以网格并排展示，并提供下载全部', () => {
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [
+      { id: 'variant-1', type: 'image', name: '变体 1.png', width: 1024, height: 1024, url: 'blob:variant-1', mimeType: 'image/png' },
+      { id: 'variant-2', type: 'image', name: '变体 2.png', width: 1024, height: 1024, url: 'blob:variant-2', mimeType: 'image/png' },
+    ]
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByRole('region', { name: '本次变体' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '下载全部' })).toBeTruthy()
+    expect(screen.getAllByText('1024×1024')).toHaveLength(2)
+    expect(screen.queryByText('候选结果')).toBeNull()
+  })
+
+  it('下载全部把多张变体打包成一个 ZIP', async () => {
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [
+      { id: 'variant-1', type: 'image', name: '变体 1.png', width: 1024, height: 1024, url: 'blob:variant-1', mimeType: 'image/png' },
+      { id: 'variant-2', type: 'image', name: '变体 2.png', width: 1024, height: 1024, url: 'blob:variant-2', mimeType: 'image/png' },
+    ]
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.click(screen.getByRole('button', { name: '下载全部' }))
+    await vi.waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalledTimes(1))
+    const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0]
+    expect(blob).toBeInstanceOf(Blob)
+    expect(filename).toBe('裂变_2张变体.zip')
+  })
+
+  it('⌘/Ctrl + Enter 在可提交时触发生成', async () => {
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByRole('button', { name: /生成 2 张/ }).getAttribute('aria-keyshortcuts')).toBe('Meta+Enter Control+Enter')
+    fireEvent.keyDown(window, { key: 'Enter', metaKey: true })
+    await vi.waitFor(() => expect(mocks.controller.generate).toHaveBeenCalledTimes(1))
   })
 
   it('重试读取期间按钮与页脚持续给出反馈', () => {

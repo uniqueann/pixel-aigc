@@ -2395,7 +2395,8 @@ body.sidebar-resizing * {
 }
 
 /* 可选备注默认收起，避免挤压数量与分辨率。 */
-.relight-note-toggle {
+.relight-note-toggle,
+.workstation-note-toggle {
   display: flex;
   width: 100%;
   min-height: 36px;
@@ -2412,21 +2413,25 @@ body.sidebar-resizing * {
   cursor: pointer;
 }
 
-.relight-note-toggle:hover:not(:disabled) {
+.relight-note-toggle:hover:not(:disabled),
+.workstation-note-toggle:hover:not(:disabled) {
   color: var(--color-text-primary);
 }
 
-.relight-note-toggle:disabled {
+.relight-note-toggle:disabled,
+.workstation-note-toggle:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.relight-note-toggle:focus-visible {
+.relight-note-toggle:focus-visible,
+.workstation-note-toggle:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
-.relight-note-toggle + .ant-input-textarea {
+.relight-note-toggle + .ant-input-textarea,
+.workstation-note-toggle + .ant-input-textarea {
   margin-top: 8px;
 }
 
@@ -2906,6 +2911,51 @@ body.sidebar-resizing * {
   line-height: 1.5;
 }
 
+/* 裂变示例是「一张原图 → 多张变体」，需要箭头，不能沿用三列网格。 */
+.variation-example .tool-example-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  overflow-x: auto;
+}
+
+.variation-example figure {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+/* 裂变的「保留 / 改变 / 输出」契约，放在标题下，先于参数出现。 */
+.workstation-variation-contract {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-2);
+}
+
+.workstation-variation-contract > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.workstation-variation-contract dt {
+  flex: 0 0 auto;
+  color: var(--color-accent-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workstation-variation-contract dd {
+  margin: 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .param-panel-intro {
   display: flex;
   flex-direction: column;
@@ -3298,6 +3348,22 @@ body.sidebar-resizing * {
 
 .image-workstation-footer .credit-quote-notice { margin: 0; }
 
+/* 快捷键提示只在宽屏出现；窄屏由按钮的 aria-keyshortcuts 承载。 */
+.image-workstation-shortcut-hint {
+  display: none;
+  flex-shrink: 0;
+  color: var(--color-text-secondary-strong);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+@media (min-width: 1200px) {
+  .image-workstation-shortcut-hint {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 .image-workstation-footer-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3512,6 +3578,204 @@ body.sidebar-resizing * {
 .workstation-result-actions .ant-btn:hover {
   border-color: var(--color-accent);
   color: var(--color-text-primary) !important;
+}
+
+/* 裂变结果网格：先并排看差异，再决定放大、下载或继续编辑。 */
+.workstation-variation-results-head {
+  align-items: center;
+}
+
+.workstation-variation-results-count {
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+}
+
+.workstation-variation-results-download {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.workstation-variation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workstation-variation-grid[data-count='1'] {
+  grid-template-columns: minmax(0, 320px);
+}
+
+.workstation-variation-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 12px;
+  background: var(--color-surface-2);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.workstation-variation-card.is-selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.workstation-variation-card-media {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: var(--color-surface-2);
+  cursor: zoom-in;
+}
+
+.workstation-variation-card-media:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.workstation-variation-card-media img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+}
+
+.workstation-variation-card-index {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 62%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.workstation-variation-card-selected {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.workstation-variation-card-zoom {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.workstation-variation-card-media:hover .workstation-variation-card-zoom,
+.workstation-variation-card-media:focus-visible .workstation-variation-card-zoom {
+  opacity: 1;
+}
+
+.workstation-variation-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.workstation-variation-card-size {
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.workstation-variation-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workstation-variation-card-actions .ant-btn {
+  font-size: 12px;
+}
+
+.workstation-variation-card-actions .ant-btn-text {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
+  color: var(--color-text-secondary-strong);
+}
+
+.workstation-variation-card-actions .ant-btn-text:hover {
+  color: var(--color-text-primary);
+}
+
+/* 裂变的四个方向模板是可选加速器，不替代自由输入。 */
+.workstation-variation-quickfill {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.workstation-variation-quickfill .workstation-prompt-templates {
+  margin-top: 0;
+}
+
+.workstation-variation-templates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workstation-variation-restore {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary-strong);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.workstation-variation-restore:hover:not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.workstation-variation-restore:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.workstation-variation-restore:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .field-label {
@@ -5705,7 +5969,8 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .relight-compass-grid { gap: 6px; }
   .relight-compass-hint { text-align: left; }
   .relight-presets button { height: 44px; }
-  .relight-note-toggle { min-height: 44px; }
+  .relight-note-toggle,
+  .workstation-note-toggle { min-height: 44px; }
   .workstation-overlay-toggle { height: 44px; }
   .workstation-preview-compact-toggle {
     width: 44px;
@@ -5718,6 +5983,16 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .workstation-result-thumb { height: 72px; }
   .workstation-result-actions .ant-btn { width: 44px; height: 44px; min-width: 44px; }
   .workstation-result-badge { font-size: 9px; }
+  .workstation-variation-grid { gap: 8px; }
+  .workstation-variation-results-download { min-height: 44px; }
+  .workstation-variation-card-meta { flex-wrap: wrap; gap: 4px; }
+  .workstation-variation-card-size { flex: 1 1 100%; }
+  .workstation-variation-card-actions { width: 100%; justify-content: space-between; }
+  .workstation-variation-card-actions .ant-btn:first-child { flex: 1 1 auto; }
+  .workstation-variation-card-actions .ant-btn { min-height: 44px; }
+  .workstation-variation-card-actions .ant-btn-text { width: 44px; min-width: 44px; }
+  .workstation-variation-card-zoom { width: 30px; height: 30px; opacity: 0.85; }
+  .workstation-variation-restore { display: inline-flex; min-height: 44px; align-items: center; }
   .workstation-prompt-templates .ant-btn { min-height: 40px; }
   .image-workstation-footer-actions .ant-btn { min-height: 44px; }
   .workstation-canvas-replace .ant-btn { min-height: 44px; }

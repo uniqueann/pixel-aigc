@@ -102,7 +102,7 @@ describe('智能编辑参数面板', () => {
     expect(onChange).toHaveBeenCalledWith('换成纯白电商背景，保留商品细节和阴影')
   })
 
-  it('裂变把补充要求标成可选，并按余量限制字数', () => {
+  it('裂变先说明保留/改变/输出，补充要求默认收起并按余量限制字数', () => {
     render(
       <ParamPanel
         title="裂变"
@@ -126,12 +126,87 @@ describe('智能编辑参数面板', () => {
         onPresetPlatformChange={() => undefined}
       />,
     )
-    expect(screen.getByText('补充要求（可选）')).toBeTruthy()
     expect(screen.getByRole('heading', { name: '裂变' })).toBeTruthy()
+    expect(screen.getByText('商品主体与可识别性')).toBeTruthy()
+    expect(screen.getByText('场景或构图')).toBeTruthy()
+    expect(screen.getByText('一次生成 2 张变体')).toBeTruthy()
     expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
+    const noteToggle = screen.getByRole('button', { name: /添加补充要求/ })
+    expect(noteToggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByPlaceholderText('例如：户外露营场景，俯拍')).toBeNull()
+    fireEvent.click(noteToggle)
+    expect(noteToggle.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByPlaceholderText('例如：户外露营场景，俯拍')).toHaveProperty('maxLength', VARIATION_USER_PROMPT_MAX)
+    expect(screen.queryByText(`0 / ${VARIATION_USER_PROMPT_MAX}`)).toBeNull()
     expect(screen.queryByText('生成尺寸')).toBeNull()
     expect(screen.getByText(/预计输出 3:2/)).toBeTruthy()
+  })
+
+  it('裂变提供四个方向模板，点击后追加并展开补充要求', () => {
+    const onChange = vi.fn()
+    render(
+      <ParamPanel
+        title="裂变"
+        capability={Capability.Variation}
+        smartEditPrompt=""
+        onSmartEditPromptChange={onChange}
+        count={2}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1200, height: 800 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('快速填写')).toBeTruthy()
+    expect(screen.getByRole('group', { name: '裂变方向模板' })).toBeTruthy()
+    for (const label of ['户外场景', '室内场景', '俯拍构图', '极简留白']) {
+      expect(screen.getByRole('button', { name: label })).toBeTruthy()
+    }
+    fireEvent.click(screen.getByRole('button', { name: '户外场景' }))
+    expect(onChange).toHaveBeenCalledWith('换成户外自然场景，保留商品主体和细节')
+    expect(screen.getByRole('button', { name: /补充要求/ }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('裂变可恢复本次会话上次的补充要求，并展开输入框', () => {
+    const onRestore = vi.fn()
+    render(
+      <ParamPanel
+        title="裂变"
+        capability={Capability.Variation}
+        smartEditPrompt=""
+        onSmartEditPromptChange={() => undefined}
+        variationLastPrompt="上次的户外要求"
+        onRestoreVariationPrompt={onRestore}
+        count={2}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1200, height: 800 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '恢复上次要求' }))
+    expect(onRestore).toHaveBeenCalledWith('上次的户外要求')
+    expect(screen.getByRole('button', { name: /补充要求/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
   it('精修展示四个方向，补充说明单独计数', () => {

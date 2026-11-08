@@ -58,6 +58,9 @@ interface Props {
   hasMaskPaint?: boolean
   /** 涂抹类工具：已格式化的积分文案，报价未就绪时不传。 */
   inpaintCreditLabel?: string
+  /** 裂变：本次会话里上次使用的补充要求，用于一键恢复。 */
+  variationLastPrompt?: string
+  onRestoreVariationPrompt?: (prompt: string) => void
 }
 
 const labelStyle = { display: 'block', marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
@@ -73,6 +76,34 @@ const SMART_EDIT_PROMPT_TEMPLATES = [
   { label: '只调光线', prompt: '只调整光线和氛围，不改变商品结构和颜色' },
   { label: '清理杂物', prompt: '去除背景杂物，保持商品主体完整' },
 ] as const
+
+/** 裂变的快速方向只围绕「换场景 / 换构图」，与页面承诺保持一致。 */
+const VARIATION_PROMPT_TEMPLATES = [
+  { label: '户外场景', prompt: '换成户外自然场景，保留商品主体和细节' },
+  { label: '室内场景', prompt: '换成明亮室内场景，保留商品主体和细节' },
+  { label: '俯拍构图', prompt: '改为俯拍构图，商品居中并留出空间' },
+  { label: '极简留白', prompt: '改为极简留白构图，突出商品主体' },
+] as const
+
+/** 裂变的核心承诺：保留什么、改变什么、一次出几张。 */
+function VariationContract({ count }: { count: number }) {
+  return (
+    <dl className="workstation-variation-contract">
+      <div>
+        <dt>保留</dt>
+        <dd>商品主体与可识别性</dd>
+      </div>
+      <div>
+        <dt>改变</dt>
+        <dd>场景或构图</dd>
+      </div>
+      <div>
+        <dt>输出</dt>
+        <dd>一次生成 {count} 张变体</dd>
+      </div>
+    </dl>
+  )
+}
 
 /** 右侧参数面板：按能力和子工具模式渲染对应表单 */
 export default function ParamPanel({
@@ -108,12 +139,16 @@ export default function ParamPanel({
   promptMinHeight,
   hasMaskPaint = false,
   inpaintCreditLabel,
+  variationLastPrompt,
+  onRestoreVariationPrompt,
 }: Props) {
   const repaintPromptId = useId()
   const repaintHintId = useId()
   const erasePromptId = useId()
   // null 表示跟随内容：有备注时默认展开，用户手动收起后保持收起。
   const [relightNoteOpen, setRelightNoteOpen] = useState<boolean | null>(null)
+  // 裂变的补充要求是可选项，默认收起；已有内容时自动展开。
+  const [variationNoteOpen, setVariationNoteOpen] = useState<boolean | null>(null)
   const intro = title ? (
     <header className="param-panel-intro">
       <h2>{title}</h2>
@@ -137,7 +172,7 @@ export default function ParamPanel({
     const fusion = capability === Capability.Fusion
     const model = matchImageModel(models, modelProfileId) ?? models[0]
     const promptRequired = !variation && !retouch && !fusion
-    const promptLabel = retouch || fusion ? '补充说明（可选）' : variation ? '补充要求（可选）' : '编辑要求'
+    const promptLabel = retouch || fusion ? '补充说明（可选）' : '编辑要求'
     const promptMaxLength = fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
@@ -145,9 +180,149 @@ export default function ParamPanel({
     const constraintSize = sourceSize ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution).size : ''
     const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
       || model.ui.resolutionRatioConstraints['4k'].includes(constraintSize)
+    // 裂变的补充要求是可选项：默认收起，已有内容时自动展开，接近上限才显示字数。
+    const variationNoteExpanded = variationNoteOpen ?? Boolean(smartEditPrompt)
+    const variationNoteNearLimit = smartEditPrompt.length >= Math.floor(promptMaxLength * 0.85)
+
+    const countBlock = (
+      <div>
+        {countHeading}
+        <GenerationCountPicker value={count} max={maxCount} disabled={disabled} onChange={onCountChange} />
+      </div>
+    )
+    const resolutionBlock = (
+      <div>
+        <div style={labelStyle}>渲染分辨率</div>
+        <Select
+          aria-label="渲染分辨率"
+          style={{ width: '100%' }}
+          value={resolution}
+          disabled={disabled}
+          onChange={onResolutionChange}
+          options={resolutions.map(value => ({
+            value,
+            label: value.toUpperCase(),
+            disabled: value === '4k' && !fourKAllowed,
+          }))}
+        />
+        {mapped ? (
+          <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
+            预计输出 {mapped.size} · {mapped.resolution.toUpperCase()}
+            {!fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
+          </p>
+        ) : null}
+      </div>
+    )
+    const variationQuickFill = variation ? (
+      <div className="workstation-variation-quickfill">
+        <div style={{ ...labelStyle, marginBottom: 0 }}>快速填写</div>
+        <div className="workstation-prompt-templates workstation-variation-templates" role="group" aria-label="裂变方向模板">
+          {VARIATION_PROMPT_TEMPLATES.map(template => (
+            <Button
+              key={template.label}
+              size="small"
+              disabled={disabled}
+              onClick={() => {
+                const current = smartEditPrompt.trim()
+                const next = current ? `${current}；${template.prompt}` : template.prompt
+                onSmartEditPromptChange(next.slice(0, promptMaxLength))
+                setVariationNoteOpen(true)
+              }}
+            >
+              {template.label}
+            </Button>
+          ))}
+        </div>
+        {variationLastPrompt && onRestoreVariationPrompt && variationLastPrompt !== smartEditPrompt ? (
+          <button
+            type="button"
+            className="workstation-variation-restore"
+            disabled={disabled}
+            title={variationLastPrompt}
+            onClick={() => {
+              if (!variationLastPrompt) return
+              onRestoreVariationPrompt(variationLastPrompt)
+              setVariationNoteOpen(true)
+            }}
+          >
+            恢复上次要求
+          </button>
+        ) : null}
+      </div>
+    ) : null
+    const promptBlock = variation ? (
+      <div>
+        {variationQuickFill}
+        <button
+          type="button"
+          className="workstation-note-toggle"
+          aria-expanded={variationNoteExpanded}
+          aria-controls="variation-note"
+          disabled={disabled}
+          onClick={() => setVariationNoteOpen(!variationNoteExpanded)}
+        >
+          <span>{variationNoteExpanded ? '补充要求（可选）' : '添加补充要求（可选）'}</span>
+          <DownOutlined rotate={variationNoteExpanded ? 180 : 0} aria-hidden="true" />
+        </button>
+        {variationNoteExpanded ? (
+          <Input.TextArea
+            id="variation-note"
+            value={smartEditPrompt}
+            disabled={disabled}
+            onChange={(event) => onSmartEditPromptChange(event.target.value)}
+            placeholder="例如：户外露营场景，俯拍"
+            autoSize={{ minRows: 2, maxRows: 3 }}
+            maxLength={promptMaxLength}
+            aria-label="补充要求"
+            showCount={variationNoteNearLimit ? {
+              formatter: ({ count: current, maxLength }) => `${current} / ${maxLength ?? promptMaxLength}`,
+            } : false}
+          />
+        ) : null}
+      </div>
+    ) : (
+      <div>
+        <div style={labelStyle} id="workstation-prompt-label">
+          {promptLabel}
+          {promptRequired ? <span className="param-required" aria-hidden="true">*</span> : null}
+        </div>
+        <Input.TextArea
+          value={smartEditPrompt}
+          disabled={disabled}
+          onChange={(event) => onSmartEditPromptChange(event.target.value)}
+          placeholder={fusion ? '例如：把商品放在桌面中央' : retouch ? '例如：保留吊牌文字' : '例如：换成纯白电商背景，保留商品细节'}
+          autoSize={retouch ? { minRows: 3, maxRows: 6 } : { minRows: 4, maxRows: 8 }}
+          styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
+          style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
+          maxLength={promptMaxLength}
+          aria-labelledby="workstation-prompt-label"
+          aria-required={promptRequired || undefined}
+          showCount
+        />
+        {promptRequired ? (
+          <div className="workstation-prompt-templates" role="group" aria-label="提示词模板">
+            {SMART_EDIT_PROMPT_TEMPLATES.map(template => (
+              <Button
+                key={template.label}
+                size="small"
+                disabled={disabled}
+                onClick={() => {
+                  const current = smartEditPrompt.trim()
+                  const next = current ? `${current}；${template.prompt}` : template.prompt
+                  onSmartEditPromptChange(next.slice(0, promptMaxLength))
+                }}
+              >
+                {template.label}
+              </Button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    )
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {intro}
+        {variation ? <VariationContract count={count} /> : null}
         {models.length > 1 ? (
           <div>
             <div style={labelStyle}>模型</div>
@@ -173,68 +348,11 @@ export default function ParamPanel({
             />
           </div>
         ) : null}
-        <div>
-          <div style={labelStyle} id="workstation-prompt-label">
-            {promptLabel}
-            {promptRequired ? <span className="param-required" aria-hidden="true">*</span> : null}
-          </div>
-          <Input.TextArea
-            value={smartEditPrompt}
-            disabled={disabled}
-            onChange={(event) => onSmartEditPromptChange(event.target.value)}
-            placeholder={fusion ? '例如：把商品放在桌面中央' : retouch ? '例如：保留吊牌文字' : variation ? '例如：户外露营场景，俯拍' : '例如：换成纯白电商背景，保留商品细节'}
-            autoSize={retouch ? { minRows: 3, maxRows: 6 } : { minRows: 4, maxRows: 8 }}
-            styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
-            style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
-            maxLength={promptMaxLength}
-            aria-labelledby="workstation-prompt-label"
-            aria-required={promptRequired || undefined}
-            showCount
-          />
-          {promptRequired ? (
-            <div className="workstation-prompt-templates" role="group" aria-label="提示词模板">
-              {SMART_EDIT_PROMPT_TEMPLATES.map(template => (
-                <Button
-                  key={template.label}
-                  size="small"
-                  disabled={disabled}
-                  onClick={() => {
-                    const current = smartEditPrompt.trim()
-                    const next = current ? `${current}；${template.prompt}` : template.prompt
-                    onSmartEditPromptChange(next.slice(0, promptMaxLength))
-                  }}
-                >
-                  {template.label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        <div>
-          {countHeading}
-          <GenerationCountPicker value={count} max={maxCount} disabled={disabled} onChange={onCountChange} />
-        </div>
-        <div>
-          <div style={labelStyle}>渲染分辨率</div>
-          <Select
-            aria-label="渲染分辨率"
-            style={{ width: '100%' }}
-            value={resolution}
-            disabled={disabled}
-            onChange={onResolutionChange}
-            options={resolutions.map(value => ({
-              value,
-              label: value.toUpperCase(),
-              disabled: value === '4k' && !fourKAllowed,
-            }))}
-          />
-          {mapped ? (
-            <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
-              预计输出 {mapped.size} · {mapped.resolution.toUpperCase()}
-              {!fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
-            </p>
-          ) : null}
-        </div>
+        {variation ? countBlock : null}
+        {variation ? resolutionBlock : null}
+        {promptBlock}
+        {!variation ? countBlock : null}
+        {!variation ? resolutionBlock : null}
       </Space>
     )
   }
