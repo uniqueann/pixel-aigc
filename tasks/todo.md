@@ -1266,3 +1266,34 @@
 - 截图核对：`/tmp/shot-workstation/smart-edit-final-crop.png`（亮色）、`smart-edit-dark-crop.png`（暗色）、`smart-edit-mobile.png`（390）、`smart-edit-1024.png`、`smart-edit-768.png`。
 - 示例不再复用 `/examples/variation-*.webp`，避免智能编辑与裂变展示同一组换色照片。
 - 图注写明「虚线框与高亮 = 描述里要改的部分」，避免把示意图误读成生成结果。
+
+# 电商套图项目列表页优化（impeccable）
+
+目标：在不改路由、接口与创建/复制/回收/恢复/导入行为的前提下，让 `/ecommerce` 项目列表更容易扫描状态、找到主操作。
+
+## 计划
+
+- [x] 头部合并为一句流程文案，移除大块流程 Alert；回收站模式使用独立标题与说明
+- [x] 卡片增加平台/品类标签、两行标题、槽位进度条、主体图状态与短时间格式
+- [x] 卡片操作改为「打开项目（无主体图时为上传主体图）」主按钮 + 更多菜单，复制与移入回收站收进菜单
+- [x] 补齐骨架加载、教学式空态、首次加载失败重试、分页数量与禁用态
+- [x] 回收站卡片显示保留至时间，恢复按钮在过期时禁用
+- [x] 请求版本号防止翻页/切换模式时旧响应覆盖新页面
+- [x] 无障碍：h1/h2、列表语义、进度条 aria 值、按钮上下文名称、状态播报
+- [x] 列表页最大宽度 1440px，工作台保持 1800px；移动端单列与 40px 触控高度
+
+## 验收
+
+- [x] 新增 `SuiteList.test.tsx` 4 个用例；全量 342 个测试文件 / 2222 个用例通过
+- [x] `tsc --noEmit`、`npm run lint` 与 `npm run build` 通过
+- [x] `impeccable detect` 对 `index.tsx` 与 `style.css` 返回 `[]`
+- [x] 1440 / 1920 / 1024 / 768 / 375 / 320 无横向溢出，暗色与亮色截图核对
+- [x] 空态、回收站、首次加载失败、加载骨架、更多菜单（可用/禁用）均正常
+- [x] 键盘顺序可达回收站、导入、新建、标题链接、主按钮与更多菜单，焦点环可见
+- [x] 关键文字对比度：明暗主题下标题说明、卡片元信息、标签、警告与主按钮文字均 ≥ 4.5:1
+
+## 复查
+
+- 截图：`/tmp/pw-harness/suite-desktop-dark.png`、`suite-desktop-light.png`、`suite-tablet.png`、`suite-mobile.png`、`suite-recycle.png`、`suite-empty.png`、`suite-error.png`、`suite-loading.png`、`suite-menu.png`、`suite-menu-disabled.png`。
+- 页面控制台只有既有的任务中心重复 key 警告，与本次改动无关；错误态截图为预期 500。
+- 保留全局积分提示与套图工作台样式不动；本次只改列表页专用类名与逻辑。
