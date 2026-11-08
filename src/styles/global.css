@@ -5897,6 +5897,9 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .workstation-panel { padding: 12px; }
   /* 参考工具箱：有图时预览卡吸顶并压缩画布，滚动调参仍能看到效果。 */
   .image-workstation-canvas-column { display: contents; }
+  /* 吸顶卡切换紧凑态会改变自身高度，滚动锚定会据此反向修正 scrollTop，
+     使贴顶判定反复翻转、卡内画面跟着跳动。工作站内关闭滚动锚定。 */
+  .app-main-content:has(.image-workstation-page) { overflow-anchor: none; }
   .image-workstation-preview-panel.has-image {
     position: sticky;
     top: 0;
