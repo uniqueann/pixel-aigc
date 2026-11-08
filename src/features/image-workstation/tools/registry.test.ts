@@ -36,6 +36,7 @@ describe('图片工作站工具开关', () => {
         expect(frame.src.endsWith('.webp')).toBe(true)
       }
     }
+    expect(toolExample('smart-edit')).toBeUndefined()
     expect(toolExample('remove')).toBeUndefined()
   })
 

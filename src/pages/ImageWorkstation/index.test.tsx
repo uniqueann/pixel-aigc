@@ -184,6 +184,21 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByAltText('滴管瓶放入木桌场景后的效果')).toBeTruthy()
   })
 
+  it('智能编辑未上传时在上传区展示示意教学，上传后隐藏', () => {
+    mocks.tool = 'smart-edit'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('示例')).toBeTruthy()
+    expect(container.querySelector('.workstation-empty-extra .smart-edit-example')).toBeTruthy()
+    for (const label of ['换背景', '换颜色', '加元素']) expect(screen.getByText(label)).toBeTruthy()
+    expect(screen.getByRole('img', { name: '换背景示意：保留商品，把背景换成新场景' })).toBeTruthy()
+    cleanup()
+
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.queryByText('示例')).toBeNull()
+  })
+
   it('未上传时按所选张数和分辨率显示报价，按钮保持禁用', () => {
     const preferences = defaultPreferences()
     preferences.image.resolution = '1k'
