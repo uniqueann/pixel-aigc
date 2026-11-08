@@ -36,4 +36,24 @@ describe('首页云请求账号与取消检查', () => {
     await expect(client.cloudRequest('/projects', 'GET', undefined, { expectedUserId: '甲', signal: controller.signal })).rejects.toThrow('取消读取')
     expect(mocks.fetch.mock.calls[0][1].signal.aborted).toBe(true)
   })
+
+  it('对象错误只保留嵌套句子和字符串错误码', async () => {
+    mocks.fetch.mockResolvedValue(Response.json({
+      error: { message: '登录已失效，请重新登录', code: 'SESSION_EXPIRED', token: 'secret-token' },
+    }, { status: 401 }))
+    await expect(client.cloudRequest('/projects', 'GET', undefined, { expectedUserId: '甲' })).rejects.toMatchObject({
+      status: 401,
+      message: '登录已失效，请重新登录',
+      code: 'SESSION_EXPIRED',
+    })
+  })
+
+  it('空的 413 仍使用接口异常回退，而不是对象文本', async () => {
+    mocks.fetch.mockResolvedValue(new Response('', { status: 413 }))
+    await expect(client.cloudRequest('/projects', 'GET', undefined, { expectedUserId: '甲' })).rejects.toMatchObject({
+      status: 413,
+      message: '服务接口异常（HTTP 413）',
+      code: 'SERVICE_UNAVAILABLE',
+    })
+  })
 })

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { apiErrorCode, responseErrorText } from '@/services/api/apiErrorText'
 export const cloudEnabled = import.meta.env.VITE_CLOUD_MODE === 'enabled'
 export const authEnabled = import.meta.env.VITE_AUTH_MODE === undefined ? cloudEnabled : import.meta.env.VITE_AUTH_MODE === 'enabled'
 const supabaseUrl = import.meta.env.VITE_AIGC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL
@@ -35,7 +36,7 @@ export async function cloudRequest<T>(path: string, method = 'GET', body?: unkno
   options?.signal?.throwIfAborted()
   if (!response.ok) {
     if (response.status === 402 && typeof window !== 'undefined') window.dispatchEvent(new Event('aigc:recharge'))
-    throw new CloudError(response.status, result.error ?? '请求失败', result.code)
+    throw new CloudError(response.status, responseErrorText(result) ?? '请求失败', apiErrorCode(result))
   }
   return result as T
 }

@@ -8,6 +8,8 @@ import { defaultPreferences } from '@shared/preferences'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { useUserStore } from '@/store/useUserStore'
 import { downloadBlob } from '@/pages/Toolbox/shared/zip'
+import { apiClient } from '@/services/api/client'
+import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 
 const mocks = vi.hoisted(() => ({
   tool: 'variation',
@@ -379,6 +381,48 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByRole('button', { name: /生成 2 张/ }).getAttribute('aria-keyshortcuts')).toBe('Meta+Enter Control+Enter')
     fireEvent.keyDown(window, { key: 'Enter', metaKey: true })
     await vi.waitFor(() => expect(mocks.controller.generate).toHaveBeenCalledTimes(1))
+  })
+
+  it('裂变提交失败 toast 展示接口句子，而不是对象', async () => {
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    const failure = await apiClient.post('/tasks', {}, {
+      adapter: (config: InternalAxiosRequestConfig) => Promise.reject(new AxiosError(
+        'Request failed with status code 400',
+        AxiosError.ERR_BAD_REQUEST,
+        config,
+        undefined,
+        { data: { error: { message: '原图对象无效', token: 'secret-token' }, code: 'INVALID_SOURCE' }, status: 400, statusText: 'Bad Request', headers: {}, config },
+      )),
+    }).catch(error => error)
+    mocks.controller.generate.mockRejectedValue(failure)
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.keyDown(window, { key: 'Enter', metaKey: true })
+    expect(await screen.findByText('任务提交失败：原图对象无效')).toBeTruthy()
+    expect(screen.queryByText(/object Object|secret-token/)).toBeNull()
+  })
+
+  it('裂变提交遇到空的 413 时 toast 保留状态句', async () => {
+    mocks.tool = 'variation'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
+    const failure = await apiClient.post('/tasks', {}, {
+      adapter: (config: InternalAxiosRequestConfig) => Promise.reject(new AxiosError(
+        'Request failed with status code 413',
+        AxiosError.ERR_BAD_REQUEST,
+        config,
+        undefined,
+        { data: '', status: 413, statusText: 'Payload Too Large', headers: {}, config },
+      )),
+    }).catch(error => error)
+    mocks.controller.generate.mockRejectedValue(failure)
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.keyDown(window, { key: 'Enter', metaKey: true })
+    expect(await screen.findByText('任务提交失败：Request failed with status code 413')).toBeTruthy()
+    expect(screen.queryByText(/object Object/)).toBeNull()
   })
 
   it('重试读取期间按钮与页脚持续给出反馈', () => {

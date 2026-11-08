@@ -4,6 +4,7 @@ import type { NormBox, NormPoint, SegmentSession } from '@shared/smart-select'
 import { fitMattingWorkingSize, SMART_SELECT_MISS_CODE, SMART_SELECT_MISS_MESSAGE } from '@shared/smart-select'
 import type { DetectionClientTiming } from '@shared/detection'
 import { measureClientDetection } from './detectionTiming'
+import { apiErrorCode, apiErrorText, responseErrorText } from './apiErrorText'
 import { SMART_SELECT_LABEL } from './smartSelectLabels'
 
 export const SMART_SELECT_TIMEOUT_MS = 60_000
@@ -176,7 +177,7 @@ function readSmartSelectMiss(payload: SmartSelectResponse | null): SmartSelectMi
   if (!payload || (payload.miss !== true && payload.code !== SMART_SELECT_MISS_CODE)) return null
   return {
     miss: true,
-    message: payload.message?.trim() || payload.error?.trim() || SMART_SELECT_MISS_MESSAGE,
+    message: apiErrorText(payload.message) || responseErrorText(payload) || SMART_SELECT_MISS_MESSAGE,
     session: payload.session ?? null,
   }
 }
@@ -215,8 +216,8 @@ async function postSmartSelect(body: Record<string, unknown>, report: (metric: R
     }
     if (!response.ok || !payload?.maskBase64 || !payload.width || !payload.height || !payload.bbox) {
       throw new SmartSelectRequestError(
-        payload?.error || (response.status === 504 ? SMART_SELECT_TIMEOUT_MESSAGE : SMART_SELECT_RETRY_MESSAGE),
-        payload?.code,
+        responseErrorText(payload) || (response.status === 504 ? SMART_SELECT_TIMEOUT_MESSAGE : SMART_SELECT_RETRY_MESSAGE),
+        apiErrorCode(payload),
         payload?.session,
       )
     }

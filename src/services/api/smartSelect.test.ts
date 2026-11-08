@@ -91,6 +91,18 @@ describe('智能选区错误与缓存', () => {
     expect(JSON.stringify(debug.mock.calls)).not.toMatch(/私有会话内容|https:|maskBase64|Authorization/)
   })
 
+  it('对象错误只显示嵌套句子', async () => {
+    storeSmartSelectSession('https://img/object-error.jpg', { provider: 'tencent-goods', payload: 's' })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: { message: '选区服务暂不可用', code: 'UPSTREAM', token: 'secret-token' },
+    }), { status: 503 })))
+    await expect(requestSmartSelect({
+      imageUrl: 'https://img/object-error.jpg',
+      naturalSize: { width: 32, height: 32 },
+      point: { x: 0.2, y: 0.2 },
+    })).rejects.toMatchObject({ message: '选区服务暂不可用', code: 'UPSTREAM' })
+  })
+
   it('200 miss 显示提示并保留原蒙版与会话', async () => {
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
     const session = { provider: 'tencent-goods', payload: '{"v":1}' }
