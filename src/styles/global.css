@@ -4160,22 +4160,42 @@ body.sidebar-resizing * {
   margin: 0 auto;
   padding: 24px;
   align-content: center;
-  justify-items: center;
+  justify-items: start;
   gap: 16px;
 }
-.auth-screen > form,
+.auth-screen > .auth-form,
 .auth-screen > .ant-alert,
 .auth-screen > .ant-space { width: 100%; }
-.auth-screen h2 { margin: 0; }
+.auth-screen h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; line-height: 1.4; }
 /* 认证页对比度：主按钮用深色字，浅色主题链接改用更深的强调文字色。 */
 .auth-screen .ant-btn-primary,
 .auth-screen .ant-btn-primary:not(:disabled):hover { color: var(--color-on-accent); }
-.auth-screen a { color: var(--color-accent-text); }
+/* 次级按钮在浅色主题下与背景区分不足，改用略深的表面色。 */
+.auth-screen .ant-btn-default { background: var(--color-surface-2); border-color: var(--color-border-strong); }
+.auth-screen a { position: relative; color: var(--color-accent-text); }
+/* 链接视觉保持紧凑，用伪元素把桌面命中区补到 24px。 */
+.auth-screen a::after { content: ''; position: absolute; inset: -4px; }
 .auth-screen a:hover { color: var(--color-accent-text); text-decoration: underline; text-underline-offset: 3px; }
-/* 占位符是当前唯一字段标识，必须达到 4.5:1，不能沿用 antd 的 25% 透明度。 */
+/* 法务链接降一级，避免和操作链接抢注意力；小字号在亮色底上需要更强的次要色。 */
+.auth-screen .auth-legal a { color: var(--color-text-secondary-strong); font-size: 13px; }
+.auth-screen .auth-legal a:hover { color: var(--color-accent-text); }
+/* 占位符仍需达到 4.5:1，不能沿用 antd 的 25% 透明度。 */
 .auth-screen .ant-input::placeholder { color: var(--color-text-secondary); opacity: 1; }
-/* 字段级错误紧贴对应输入框，便于和上方表单级错误区分。 */
-.auth-screen .auth-field-error { margin: -6px 0 0; color: var(--color-danger-text); font-size: 12px; line-height: 1.5; }
+/* 字段由可见标签、输入框和行内错误组成，组内 6px、组间 12px。 */
+.auth-screen .auth-form { display: grid; gap: 12px; }
+.auth-screen .auth-field { display: grid; gap: 6px; }
+.auth-screen .auth-field-label { color: var(--color-text-secondary-strong); font-size: 13px; font-weight: 500; line-height: 1.4; }
+.auth-screen .auth-field-error { margin: 0; color: var(--color-danger-text); font-size: 12px; line-height: 1.5; }
+/* 桌面输入框与按钮统一 40px，移动端再补到 44px。 */
+.auth-screen .ant-input,
+.auth-screen .ant-input-affix-wrapper,
+.auth-screen .ant-btn { min-height: 40px; }
+/* 内层 input 不再撑高，避免密码框比邮箱框多出一圈 padding。 */
+.auth-screen .ant-input-affix-wrapper .ant-input { min-height: 22px; }
+/* 邮箱登录与 Google 登录之间的分隔线。 */
+.auth-divider { display: flex; align-items: center; gap: 12px; width: 100%; color: var(--color-text-secondary-strong); font-size: 12px; }
+.auth-divider::before,
+.auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
 /* 密码可见性按钮：保持原图标尺寸，用伪元素把命中区扩到 44px。 */
 .auth-screen .auth-password-toggle {
   position: relative;
@@ -4204,8 +4224,6 @@ body.sidebar-resizing * {
   .auth-screen .ant-input,
   .auth-screen .ant-input-affix-wrapper,
   .auth-screen .ant-btn { min-height: 44px; }
-  /* 内层 input 不再撑高，避免密码框比邮箱框多出一圈 padding。 */
-  .auth-screen .ant-input-affix-wrapper .ant-input { min-height: 22px; }
   .auth-screen a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
 }
 .post-login-loading {
