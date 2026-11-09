@@ -63,6 +63,7 @@ vi.mock('@/pages/Toolbox/shared/zip', () => ({
 }))
 
 import ImageWorkstation from './index'
+import { OUTPAINT_IDLE_REASONS } from './utils/generateGate'
 
 /** 按按钮文字定位，避免 jsdom 为可访问名称计算整页样式。 */
 function buttonByText(name: RegExp) {
@@ -649,7 +650,21 @@ describe('图片工作站配置提示', () => {
     expect(screen.queryByText('默认模型')).toBeNull()
     expect(screen.queryByText('生成数量')).toBeNull()
     expect(screen.queryByText('生成尺寸')).toBeNull()
-    expect(screen.getByText('输出模式')).toBeTruthy()
+    expect(screen.getByText('输出目标')).toBeTruthy()
+    expect(screen.getByText('上传后拖拽绿色边框向外扩展，商品主体保持不变')).toBeTruthy()
+  })
+
+  it('扩图零扩展时禁用生成，选择平台尺寸后恢复', () => {
+    mocks.tool = 'outpaint'
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 480, height: 480, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    const generate = () => buttonByText(/^生成/)
+    expect(generate().disabled).toBe(true)
+    expect(screen.getByText(OUTPAINT_IDLE_REASONS.free)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('radio', { name: '平台尺寸' }))
+    expect(generate().disabled).toBe(false)
+    expect(screen.queryByText(OUTPAINT_IDLE_REASONS.free)).toBeNull()
   })
 
   it('重新打光单独选择模型，报价和提交跟着当前下拉', () => {

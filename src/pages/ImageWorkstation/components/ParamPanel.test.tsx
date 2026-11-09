@@ -28,7 +28,7 @@ const panelProps = {
   repaintPrompt: '',
   onRepaintPromptChange: () => undefined,
   outpaintMode: 'free' as const,
-  onOutpaintModeChange: () => undefined,
+  onOutpaintTargetModeChange: () => undefined,
   presetPlatform: 'amazon',
   onPresetPlatformChange: () => undefined,
 }
@@ -57,7 +57,7 @@ describe('智能编辑参数面板', () => {
         repaintPrompt=""
         onRepaintPromptChange={() => undefined}
         outpaintMode="free"
-        onOutpaintModeChange={() => undefined}
+        onOutpaintTargetModeChange={() => undefined}
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
       />,
@@ -89,7 +89,7 @@ describe('智能编辑参数面板', () => {
         repaintPrompt=""
         onRepaintPromptChange={() => undefined}
         outpaintMode="free"
-        onOutpaintModeChange={() => undefined}
+        onOutpaintTargetModeChange={() => undefined}
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
       />,
@@ -121,7 +121,7 @@ describe('智能编辑参数面板', () => {
         repaintPrompt=""
         onRepaintPromptChange={() => undefined}
         outpaintMode="free"
-        onOutpaintModeChange={() => undefined}
+        onOutpaintTargetModeChange={() => undefined}
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
       />,
@@ -162,7 +162,7 @@ describe('智能编辑参数面板', () => {
         repaintPrompt=""
         onRepaintPromptChange={() => undefined}
         outpaintMode="free"
-        onOutpaintModeChange={() => undefined}
+        onOutpaintTargetModeChange={() => undefined}
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
       />,
@@ -199,7 +199,7 @@ describe('智能编辑参数面板', () => {
         repaintPrompt=""
         onRepaintPromptChange={() => undefined}
         outpaintMode="free"
-        onOutpaintModeChange={() => undefined}
+        onOutpaintTargetModeChange={() => undefined}
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
       />,
@@ -227,7 +227,7 @@ describe('智能编辑参数面板', () => {
         repaintPrompt=""
         onRepaintPromptChange={() => undefined}
         outpaintMode="free"
-        onOutpaintModeChange={() => undefined}
+        onOutpaintTargetModeChange={() => undefined}
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
         retouchDirections={['blemish']}
@@ -260,7 +260,7 @@ describe('智能编辑参数面板', () => {
         repaintPrompt=""
         onRepaintPromptChange={() => undefined}
         outpaintMode="free"
-        onOutpaintModeChange={() => undefined}
+        onOutpaintTargetModeChange={() => undefined}
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
       />,
@@ -296,7 +296,7 @@ describe('智能编辑参数面板', () => {
         repaintPrompt=""
         onRepaintPromptChange={() => undefined}
         outpaintMode="free"
-        onOutpaintModeChange={() => undefined}
+        onOutpaintTargetModeChange={() => undefined}
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
       />,
@@ -381,7 +381,7 @@ describe('智能编辑参数面板', () => {
       repaintPrompt: '',
       onRepaintPromptChange: () => undefined,
       outpaintMode: 'free' as const,
-      onOutpaintModeChange: () => undefined,
+      onOutpaintTargetModeChange: () => undefined,
       presetPlatform: 'x',
       onPresetPlatformChange: () => undefined,
     }
@@ -425,8 +425,134 @@ describe('智能编辑参数面板', () => {
     expect(screen.queryByText('默认模型')).toBeNull()
     expect(screen.queryByText('生成数量')).toBeNull()
     expect(screen.queryByText('生成尺寸')).toBeNull()
-    expect(screen.getByText('输出模式')).toBeTruthy()
-    expect(screen.getByText('扩图方式')).toBeTruthy()
+    expect(screen.getByText('输出目标')).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: '输出目标' })).toBeTruthy()
+    expect(screen.getByText('自由扩展')).toBeTruthy()
+    expect(screen.getByText('平台比例')).toBeTruthy()
+    expect(screen.getByText('平台尺寸')).toBeTruthy()
+  })
+
+  it('扩图自由模式显示目标尺寸输入，预设模式隐藏', () => {
+    const { rerender } = render(
+      <ParamPanel
+        capability={Capability.Outpaint}
+        {...panelProps}
+        sourceSize={{ width: 480, height: 320 }}
+        outpaintTargetSize={{ width: 480, height: 320 }}
+      />,
+    )
+    expect(screen.getByLabelText('目标宽度')).toBeTruthy()
+    expect(screen.getByLabelText('目标高度')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '缩小目标尺寸' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '放大目标尺寸' })).toBeTruthy()
+    expect(screen.getByText(/单边最多扩到 2 倍/)).toBeTruthy()
+
+    rerender(
+      <ParamPanel
+        capability={Capability.Outpaint}
+        {...panelProps}
+        outpaintMode="preset"
+        sourceSize={{ width: 480, height: 320 }}
+        outpaintTargetSize={{ width: 480, height: 480 }}
+      />,
+    )
+    expect(screen.queryByLabelText('目标宽度')).toBeNull()
+    expect(screen.getByRole('combobox', { name: '目标平台' })).toBeTruthy()
+    expect(screen.getByText(/仅使用比例/)).toBeTruthy()
+  })
+
+  it('扩图预计尺寸用 polite 播报', () => {
+    render(
+      <ParamPanel
+        capability={Capability.Outpaint}
+        {...panelProps}
+        sourceSize={{ width: 480, height: 320 }}
+        outpaintTargetSize={{ width: 480, height: 320 }}
+      />,
+    )
+    const sizeText = screen.getByText(/预计输出 480 × 320 像素/)
+    expect(sizeText.closest('[aria-live="polite"]')).toBeTruthy()
+  })
+
+  it('输出目标三选一同时表达扩图方式与平台输出', () => {
+    const onTargetModeChange = vi.fn()
+    const panel = (overrides: { outpaintMode?: 'free' | 'preset'; outpaintOutputMode?: 'original' | 'platform' }) => (
+      <ParamPanel
+        capability={Capability.Outpaint}
+        {...panelProps}
+        sourceSize={{ width: 480, height: 320 }}
+        outpaintTargetSize={{ width: 480, height: 320 }}
+        onOutpaintTargetModeChange={onTargetModeChange}
+        {...overrides}
+      />
+    )
+    const { rerender } = render(panel({}))
+    fireEvent.click(screen.getByRole('radio', { name: '平台比例' }))
+    expect(onTargetModeChange).toHaveBeenLastCalledWith('platform-ratio')
+
+    rerender(panel({ outpaintMode: 'preset', outpaintOutputMode: 'original' }))
+    fireEvent.click(screen.getByRole('radio', { name: '平台尺寸' }))
+    expect(onTargetModeChange).toHaveBeenLastCalledWith('platform-size')
+
+    rerender(panel({ outpaintMode: 'preset', outpaintOutputMode: 'platform' }))
+    fireEvent.click(screen.getByRole('radio', { name: '自由扩展' }))
+    expect(onTargetModeChange).toHaveBeenLastCalledWith('free')
+
+    rerender(
+      <ParamPanel
+        capability={Capability.Outpaint}
+        {...panelProps}
+        outpaintMode="preset"
+        outpaintOutputMode="platform"
+        sourceSize={{ width: 480, height: 320 }}
+        outpaintTargetSize={{ width: 1600, height: 1600 }}
+      />,
+    )
+    expect(screen.getByText(/1600×1600/)).toBeTruthy()
+  })
+
+  it('扩图目标尺寸输入后回填画布', () => {
+    const onOutpaintTargetSizeChange = vi.fn()
+    render(
+      <ParamPanel
+        capability={Capability.Outpaint}
+        {...panelProps}
+        sourceSize={{ width: 480, height: 320 }}
+        outpaintTargetSize={{ width: 480, height: 320 }}
+        onOutpaintTargetSizeChange={onOutpaintTargetSizeChange}
+      />,
+    )
+    const width = screen.getByLabelText('目标宽度')
+    const height = screen.getByLabelText('目标高度')
+    fireEvent.change(width, { target: { value: '700' } })
+    fireEvent.change(height, { target: { value: '500' } })
+    fireEvent.blur(width)
+    expect(onOutpaintTargetSizeChange).toHaveBeenCalledWith({ width: 700, height: 500 })
+  })
+
+  it('扩图目标尺寸可用加减按钮步进，并在上下限禁用', () => {
+    const onOutpaintTargetSizeChange = vi.fn()
+    const panel = (target: { width: number; height: number }) => (
+      <ParamPanel
+        capability={Capability.Outpaint}
+        {...panelProps}
+        sourceSize={{ width: 480, height: 320 }}
+        outpaintTargetSize={target}
+        onOutpaintTargetSizeChange={onOutpaintTargetSizeChange}
+      />
+    )
+    const { rerender } = render(panel({ width: 480, height: 320 }))
+    // 已经等于原图，不能再缩小。
+    expect(screen.getByRole('button', { name: '缩小目标尺寸' })).toHaveProperty('disabled', true)
+    fireEvent.click(screen.getByRole('button', { name: '放大目标尺寸' }))
+    expect(onOutpaintTargetSizeChange).toHaveBeenLastCalledWith({ width: 528, height: 352 })
+
+    // 到达单边 2 倍后放大禁用，缩小仍可用。
+    rerender(panel({ width: 960, height: 640 }))
+    expect(screen.getByRole('button', { name: '放大目标尺寸' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: '缩小目标尺寸' })).toHaveProperty('disabled', false)
+    fireEvent.click(screen.getByRole('button', { name: '缩小目标尺寸' }))
+    expect(onOutpaintTargetSizeChange).toHaveBeenLastCalledWith({ width: 864, height: 576 })
   })
 
   it('记住的张数和默认不同时提示上次使用，恢复后清掉该张数', () => {

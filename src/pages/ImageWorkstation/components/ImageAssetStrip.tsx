@@ -5,8 +5,13 @@ import type { AssetId, ImageAsset } from '@/editor/types'
 interface ImageAssetStripProps {
   assets: ImageAsset[]
   selectedAssetId?: AssetId
-  /** next-input：选中结果作为下一轮输入；inpaint-result：本次结果作为原图；result：本次结果在主舞台预览。裂变结果改用网格组件。 */
-  variant?: 'next-input' | 'inpaint-result' | 'result'
+  /**
+   * next-input：选中结果作为下一轮输入；
+   * inpaint-result：本次结果作为原图；
+   * outpaint-result：本次结果已在扩图画布中显示，可继续扩图；
+   * result：本次结果在主舞台预览。裂变结果改用网格组件。
+   */
+  variant?: 'next-input' | 'inpaint-result' | 'outpaint-result' | 'result'
   /** grid：多结果并排对比，卡片放大；默认横向候选条。 */
   layout?: 'strip' | 'grid'
   downloadingAssetId?: AssetId
@@ -33,23 +38,34 @@ export default function ImageAssetStrip({
   if (assets.length === 0) return null
   const selectedIndex = assets.findIndex(asset => asset.id === selectedAssetId)
   const inpaintResult = variant === 'inpaint-result'
+  const outpaintResult = variant === 'outpaint-result'
   const plainResult = variant === 'result'
   const grid = layout === 'grid'
   const hint = selectedIndex >= 0
     ? inpaintResult
       ? `第 ${selectedIndex + 1} 张已作为当前原图，可继续编辑`
-      : plainResult
-        ? `第 ${selectedIndex + 1} 张已在预览区显示`
-        : `第 ${selectedIndex + 1} 张将作为下一轮输入`
+      : outpaintResult
+        ? `第 ${selectedIndex + 1} 张已在画布显示，可继续扩图`
+        : plainResult
+          ? `第 ${selectedIndex + 1} 张已在预览区显示`
+          : `第 ${selectedIndex + 1} 张将作为下一轮输入`
     : inpaintResult
       ? '点击缩略图可基于该结果继续编辑，或直接下载'
+      : outpaintResult
+        ? '点击缩略图切换画布中的结果，或直接下载'
+        : plainResult
+          ? grid ? '并排查看多张结果，点击图片在预览区查看' : '点击缩略图在预览区查看，或直接下载'
+          : '选中一张作为下一轮输入'
+  const badge = inpaintResult ? '当前原图' : outpaintResult ? '画布中' : plainResult ? '预览中' : '下一轮输入'
+  const resultLabel = inpaintResult || outpaintResult || plainResult ? '结果' : '候选结果'
+  const stripLabel = inpaintResult || outpaintResult || plainResult ? '本次结果' : '候选结果'
+  const selectedSuffix = inpaintResult
+    ? '，当前作为原图'
+    : outpaintResult
+      ? '，已在画布显示'
       : plainResult
-        ? grid ? '并排查看多张结果，点击图片在预览区查看' : '点击缩略图在预览区查看，或直接下载'
-        : '选中一张作为下一轮输入'
-  const badge = inpaintResult ? '当前原图' : plainResult ? '预览中' : '下一轮输入'
-  const resultLabel = inpaintResult || plainResult ? '结果' : '候选结果'
-  const stripLabel = inpaintResult || plainResult ? '本次结果' : '候选结果'
-  const selectedSuffix = inpaintResult ? '，当前作为原图' : plainResult ? '，已在预览区显示' : '，当前作为下一轮输入'
+        ? '，已在预览区显示'
+        : '，当前作为下一轮输入'
 
   return (
     <div className="workstation-result-strip" aria-label={stripLabel}>

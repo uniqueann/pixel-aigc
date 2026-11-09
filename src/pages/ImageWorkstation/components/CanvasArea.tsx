@@ -8,6 +8,7 @@ import BrushToolbar, { type PaintTool } from './canvas/BrushToolbar'
 import type { MaskPaintCanvasHandle } from './canvas/MaskPaintCanvas'
 import type { OutpaintCanvasHandle } from './canvas/OutpaintCanvas'
 import type { OutpaintOutputMode } from '@shared/outpaint'
+import { outpaintLimitReason } from '../utils/outpaintGeometry'
 
 const MaskPaintCanvas = lazyWithRetry(() => import('./canvas/MaskPaintCanvas'))
 const OutpaintCanvas = lazyWithRetry(() => import('./canvas/OutpaintCanvas'))
@@ -24,6 +25,10 @@ interface Props {
   originalImageUrl?: string
   imageNaturalSize: { width: number; height: number }
   presetTargetSize?: { width: number; height: number }
+  /** 扩图：当前目标尺寸，用于画布读屏描述。 */
+  outpaintTargetSize?: { width: number; height: number }
+  /** 扩图：当前目标等于原图且没有缩放，提交会得到原图副本。 */
+  outpaintIdle?: boolean
   outpaintOutputMode?: OutpaintOutputMode
   onOutpaintTargetSizeChange?: (size: { width: number; height: number }) => void
   compareMode: 'original' | 'effect'
@@ -177,6 +182,8 @@ export default function CanvasArea({
   originalImageUrl,
   imageNaturalSize,
   presetTargetSize,
+  outpaintTargetSize,
+  outpaintIdle = false,
   outpaintOutputMode,
   onOutpaintTargetSizeChange,
   compareMode,
@@ -210,6 +217,7 @@ export default function CanvasArea({
   footnote,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
+  const outpaintHandleRef = useRef<OutpaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
   const [paintTool, setPaintTool] = useState<PaintTool>('brush')
   const [smartSelectEnabled, setSmartSelectEnabled] = useState(false)
@@ -226,6 +234,7 @@ export default function CanvasArea({
 
   const setOutpaintHandle = useCallback(
     (handle: OutpaintCanvasHandle | null) => {
+      outpaintHandleRef.current = handle
       onReady(handle)
     },
     [onReady],
@@ -346,7 +355,7 @@ export default function CanvasArea({
 
   if (!imageUrl) {
     return (
-      <div className={`${canvasShellClass} is-empty${emptyExtra ? ' has-empty-extra' : ''}`}>
+      <div className={`${canvasShellClass} is-empty${emptyExtra ? ' has-empty-extra' : ''}${interactionMode === 'drag-resize' ? ' is-outpaint' : ''}`}>
         {emptyExtra ? <div className="workstation-empty-extra">{emptyExtra}</div> : null}
         <Upload.Dragger
           className="workstation-upload"
@@ -451,13 +460,50 @@ export default function CanvasArea({
   }
 
   if (interactionMode === 'drag-resize') {
+    const comparingOriginal = compareAvailable && compareMode === 'original' && Boolean(originalImageUrl)
+    const limit = !presetTargetSize && !comparingOriginal && outpaintTargetSize
+      ? outpaintLimitReason(imageNaturalSize.width, imageNaturalSize.height, outpaintTargetSize)
+      : undefined
     return (
-      <div className={canvasShellClass}>
+      <div className={`${canvasShellClass} is-outpaint`}>
         <div className="workstation-canvas-controls">
           <div className="workstation-canvas-hint">
-            {presetTargetSize ? '已按平台预设自动居中' : '拖拽绿色边框的控制点调整扩图范围'}
+            {comparingOriginal
+              ? '正在查看扩图前原图'
+              : presetTargetSize
+                ? '已按平台预设自动居中，边框不可拖拽'
+                : outpaintIdle
+                  ? compareAvailable
+                    ? '已生成结果 · 拖拽边框或输入更大尺寸继续扩图'
+                    : '尚未扩图 · 拖拽边框或输入更大的目标尺寸'
+                  : '拖拽绿色边框的控制点调整扩图范围'}
+            {limit ? (
+              <span className="workstation-canvas-limit">
+                {limit === 'size' ? '已达单边 2 倍上限' : '已达总像素上限'}
+              </span>
+            ) : null}
           </div>
-          <div className="workstation-canvas-replace">{replaceButton}</div>
+          {compareAvailable ? (
+            <Segmented
+              size="small"
+              aria-label="对比原图与结果"
+              value={compareMode}
+              options={[{ label: '原图', value: 'original' }, { label: '结果', value: 'effect' }]}
+              onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
+            />
+          ) : null}
+          <div className="workstation-canvas-replace">
+            {presetTargetSize || comparingOriginal ? null : (
+              <Button
+                size="small"
+                title="恢复到原图尺寸"
+                onClick={() => outpaintHandleRef.current?.reset()}
+              >
+                重置
+              </Button>
+            )}
+            {replaceButton}
+          </div>
         </div>
         <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载扩图画布…</div>}>
           <OutpaintCanvas
@@ -466,9 +512,15 @@ export default function CanvasArea({
             imageNaturalSize={imageNaturalSize}
             presetTargetSize={presetTargetSize}
             outputMode={outpaintOutputMode}
+            targetSize={outpaintTargetSize}
+            comparing={comparingOriginal}
+            compareImageUrl={originalImageUrl}
             onTargetSizeChange={onOutpaintTargetSizeChange}
           />
         </Suspense>
+        {comparingOriginal ? (
+          <div className="workstation-canvas-footnote">正在查看扩图前原图；切回「结果」可继续扩图。</div>
+        ) : null}
       </div>
     )
   }
