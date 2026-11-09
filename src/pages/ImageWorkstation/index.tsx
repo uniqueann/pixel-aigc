@@ -18,6 +18,7 @@ import { isPreparationCancelled } from '@/features/image-workstation/fusionInput
 import { toolExample } from '@/features/image-workstation/tools/examples'
 import {
   COMING_SOON_SUBMIT_MESSAGE,
+  FUSION_INPUTS_REQUIRED_REASON,
   WORKSTATION_TOOLS,
   getWorkstationTool,
   isWorkstationToolReady,
@@ -45,7 +46,7 @@ import RelightExample from './components/RelightExample'
 import SmartEditExample from './components/SmartEditExample'
 import VariationExample from './components/VariationExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
-import { workstationGenerateBlockReason } from './utils/generateGate'
+import { TASK_RUNNING_REASON, workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
 import { freeOutpaintGeometry, presetOutpaintGeometry } from './utils/outpaintGeometry'
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
@@ -255,6 +256,10 @@ export default function ImageWorkstation() {
   const relightOutput = relightTool
     ? outputPreview(activeModel, controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined, effectiveParameters.resolution)
     : undefined
+  // 融合是双图输入，输入图以商品图为准；缺失时按槽位给出下一步，而不是笼统的「等待上传」。
+  const fusionInputHint = !fusionTool ? undefined : !fusionProduct ? '请上传商品图' : !fusionReference ? '请上传场景图' : undefined
+  const previewSource = fusionTool ? fusionProduct : controller.inputAsset
+  const sourceMeta = fusionInputHint ?? (previewSource ? `${previewSource.width}×${previewSource.height}` : '等待上传')
   const previewMeta = controller.readingResults
     ? '正在读取结果'
     : controller.resultReadError && !variationTool
@@ -263,9 +268,7 @@ export default function ImageWorkstation() {
         ? '正在生成'
         : controller.outputAssets.length > 0
           ? `已生成 ${controller.outputAssets.length} 张`
-          : controller.inputAsset
-            ? `${controller.inputAsset.width}×${controller.inputAsset.height}`
-            : '等待上传'
+          : sourceMeta
   // 无结果时脚注给出下一步；读取中/读取失败时隐藏，避免描述不存在的「效果」。
   const previewFootnote = relightTool
     ? controller.readingResults || controller.resultReadError
@@ -287,7 +290,7 @@ export default function ImageWorkstation() {
     previewPanelRef,
     settingsPanelRef,
     activeToolSlug: activeTool.slug,
-    enabled: activeTool.slug !== 'repaint' && activeTool.slug !== 'variation',
+    enabled: activeTool.slug !== 'repaint' && activeTool.slug !== 'variation' && activeTool.slug !== 'fusion',
   })
 
   const inpaintMode = inpaintTool ? (activeTool.slug === 'repaint' ? 'repaint' : 'remove') : undefined
@@ -303,7 +306,8 @@ export default function ImageWorkstation() {
       if (controller.outputAssets.length === 0) return undefined
       return `已生成 ${controller.outputAssets.length} 个图片结果`
     }
-    if (task.status === 'failed' || task.status === 'cancelled') return taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
+    if (task.status === 'cancelled') return '可调整参数后重新生成'
+    if (task.status === 'failed') return taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
     return '正在处理中，请稍候...'
   }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
   const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
@@ -330,7 +334,19 @@ export default function ImageWorkstation() {
       title: sourceAsset.name || '原图',
     }
     : undefined
-  const previewItems = sourcePreviewItem ? [sourcePreviewItem, ...resultPreviewItems] : resultPreviewItems
+  /** 融合输入图也进画廊，点击槽位可直接放大并和结果来回切换。 */
+  const fusionInputPreviewItems: PreviewItem[] = fusionTool
+    ? [fusionProduct, fusionReference].flatMap((asset, index) => asset ? [{
+      id: asset.id,
+      thumbSrc: asset.url,
+      fullSrc: asset.url,
+      objectKey: asset.objectKey ?? asset.storage?.objectKey,
+      title: asset.name || (index === 0 ? '商品图' : '场景图'),
+      meta: { tool: activeTool.label, resolution: `${asset.width}×${asset.height}` },
+    }] : [])
+    : []
+  const previewItems = [...fusionInputPreviewItems, ...(sourcePreviewItem ? [sourcePreviewItem] : []), ...resultPreviewItems]
+    .filter((item, index, all) => all.findIndex(entry => entry.id === item.id) === index)
   const { openAt, galleryProps } = usePreviewGallery(previewItems)
   const maskRequired = Boolean(inpaintMode) && !edgeRefine
   const referenceCount = fusionTool
@@ -373,7 +389,7 @@ export default function ImageWorkstation() {
       message.success(slot === 'product' ? '商品图已载入' : '场景图已载入')
     } catch (error) {
       if (isPreparationCancelled(error)) return
-      message.error(error instanceof Error ? error.message : '图片上传失败')
+      // 失败文案已由槽位内联展示，不再重复弹全局 toast。
     }
   }
 
@@ -517,6 +533,22 @@ export default function ImageWorkstation() {
     }
   }
 
+  /** 取消进行中的生成；失败时保留任务并提示，不影响已有结果。 */
+  const handleCancelGeneration = async () => {
+    try {
+      await controller.cancel()
+      message.success('已取消生成')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '取消生成失败，请稍后重试')
+    }
+  }
+
+  /** 把上次场景放回场景槽位；读取失败时提示重新上传，不阻塞当前操作。 */
+  const handleReuseLastScene = async () => {
+    const asset = await fusionSelection.reuseLastScene()
+    if (!asset) message.warning('上次场景已不可用，请重新上传')
+  }
+
   const handleDownload = async (asset = selectedResult, index = 0) => {
     if (!asset) return
     setDownloadingAssetId(asset.id)
@@ -559,7 +591,7 @@ export default function ImageWorkstation() {
         return
       }
       const zip = await createResultZip(files)
-      downloadBlob(zip, `${activeTool.label}_${files.length}张变体.zip`)
+      downloadBlob(zip, `${activeTool.label}_${files.length}${variationTool ? '张变体' : '张结果'}.zip`)
     } catch (error) {
       message.error({ content: downloadFailureMessage(error), duration: 4 })
     } finally {
@@ -650,7 +682,7 @@ export default function ImageWorkstation() {
   const inputDescription = recoveringActive&&!controller.inputAsset&&!fusionProduct&&!fusionReference
     ? '正在同步任务，请稍候...'
     : fusionTool
-    ? `${fusionProduct ? `商品 ${fusionProduct.width}×${fusionProduct.height}` : '请上传商品图'} · ${fusionReference ? `场景 ${fusionReference.width}×${fusionReference.height}` : '请上传场景图'}`
+    ? `${fusionProduct ? `商品 ${fusionProduct.width}×${fusionProduct.height}` : '请上传商品图'} · ${fusionReference ? `场景图 ${fusionReference.width}×${fusionReference.height}` : '请上传场景图'}`
     : !showSourcePreview
       ? '当前工具即将上线，不会使用上一工具的图片'
       : controller.inputAsset
@@ -670,8 +702,11 @@ export default function ImageWorkstation() {
   const inpaintCreditLabel = inpaintMode && generateQuote.status !== 'loading' && generateQuote.status !== 'unavailable'
     ? creditQuoteLabel(generateQuote)
     : undefined
-  // 禁用原因不能只藏在 hover tooltip 里；与页脚已有信息重复时不重复展示。
-  const visibleBlockReason = blockReason && blockReason !== footerInfo && !creditBlocked && configurationReady !== undefined && toolReady
+  // 禁用原因不能只藏在 hover tooltip 里；页脚已说明缺图或正在生成时不再重复。
+  const duplicateFusionInputReason = fusionTool && blockReason === FUSION_INPUTS_REQUIRED_REASON
+  const busy = controller.active || controller.submitting || controller.readingResults
+  const duplicateBusyReason = busy && blockReason === TASK_RUNNING_REASON
+  const visibleBlockReason = blockReason && !duplicateFusionInputReason && !duplicateBusyReason && blockReason !== footerInfo && !creditBlocked && configurationReady !== undefined && toolReady
     ? blockReason
     : undefined
   const inpaintHasPreservedInput = Boolean(inpaintMode)
@@ -758,7 +793,7 @@ export default function ImageWorkstation() {
       />
       <div className="image-workstation-main">
         <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
-          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${inpaintTool ? ' is-inpaint' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
+          <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${inpaintTool ? ' is-inpaint' : ''}${fusionTool ? ' is-fusion' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
             <div className="workstation-panel-heading-row">
               <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
               <span className={`workstation-preview-meta${controller.resultReadError && !controller.readingResults ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
@@ -798,7 +833,7 @@ export default function ImageWorkstation() {
             <CanvasArea
               interactionMode={activeTool.interactionMode}
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
-              processingLabel={!controller.resultReadError && (controller.active || controller.submitting) ? '正在生成，结果会显示在下方' : undefined}
+              processingLabel={!controller.resultReadError && (controller.active || controller.submitting) ? fusionTool ? '正在生成，完成后在这里查看结果' : '正在生成，结果会显示在下方' : undefined}
               errorLabel={controller.resultReadError && !relightTool && !variationTool ? '结果暂时无法读取，可重试' : undefined}
               overlay={showRelightOverlay ? (
                 <RelightDirectionOverlay
@@ -835,12 +870,18 @@ export default function ImageWorkstation() {
               compareMode={compareMode}
               uploading={uploading}
               fusionUploading={fusionSelection.loading}
+              fusionErrors={fusionTool ? fusionSelection.errors : undefined}
               uploadDisabled={controller.formLocked || Boolean(edgeRefine)}
               paintDisabled={controller.formLocked || uploading || fusionLoading}
               refineMode={Boolean(edgeRefine)}
               onCompareModeChange={setCompareMode}
               onImageUpload={fusionTool ? (file) => { void handleFusionUpload('product', file) } : handleImageUpload}
               onReferenceImageUpload={(file) => { void handleFusionUpload('reference', file) }}
+              onSwapImages={fusionTool ? fusionSelection.swap : undefined}
+              onRemoveImage={fusionTool ? role => fusionSelection.clear(role) : undefined}
+              lastScene={fusionTool ? fusionSelection.lastScene : undefined}
+              onReuseLastScene={fusionTool ? handleReuseLastScene : undefined}
+              reusingLastScene={fusionSelection.reusingLastScene}
               onReady={handleCanvasReady}
               onMaskChange={setHasMaskPaint}
               uploadHint={activeTool.slug === 'remove'
@@ -852,6 +893,10 @@ export default function ImageWorkstation() {
                 const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
                 if (id) openAt(id)
               }}
+              onPreviewImage={fusionTool ? role => {
+                const asset = role === 'product' ? fusionProduct : fusionReference
+                if (asset) openAt(asset.id)
+              } : undefined}
               compareAvailable={controller.outputAssets.length > 0}
               footnote={variationTool && (controller.readingResults || controller.resultReadError) ? null : previewFootnote}
             />
@@ -870,11 +915,14 @@ export default function ImageWorkstation() {
               <ImageAssetStrip
                 assets={controller.outputAssets}
                 selectedAssetId={controller.inputAsset?.id}
-                variant={inpaintMode ? 'inpaint-result' : 'next-input'}
+                variant={fusionTool ? 'result' : inpaintMode ? 'inpaint-result' : 'next-input'}
+                layout={fusionTool && controller.outputAssets.length > 1 ? 'grid' : undefined}
                 downloadingAssetId={downloadingAssetId}
+                downloadingAll={downloadingAll}
                 onSelect={(assetId) => void handleSelectResult(assetId)}
                 onDownload={(asset, index) => void handleDownload(asset, index)}
                 onPreview={openAt}
+                onDownloadAll={fusionTool && controller.outputAssets.length > 1 ? () => void handleDownloadAll() : undefined}
               />
             )}
           </section>
@@ -882,7 +930,10 @@ export default function ImageWorkstation() {
         </div>
         <aside ref={settingsPanelRef} className="workstation-panel image-workstation-settings" aria-labelledby="workstation-settings-heading">
           <div className="workstation-panel-heading-row">
-            <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>
+            <div className="image-workstation-settings-heading">
+              <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>
+              {fusionTool ? <p className="image-workstation-settings-subtitle">保留商品，把背景换成第二张图的场景。</p> : null}
+            </div>
             {relightOutput ? (
               <span className="workstation-settings-output">预计输出 {relightOutput.size} · {relightOutput.resolution.toUpperCase()}</span>
             ) : null}
@@ -914,7 +965,7 @@ export default function ImageWorkstation() {
               models={activeModels}
               modelProfileId={activeModelId}
               onModelProfileIdChange={relightTool ? setRelightModelId : variationTool ? setVariationModelId : setModelProfileId}
-              sourceSize={controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined}
+              sourceSize={previewSource ? { width: previewSource.width, height: previewSource.height } : undefined}
               disabled={controller.formLocked}
               erasePrompt={erasePrompt}
               onErasePromptChange={setErasePrompt}
@@ -1013,6 +1064,11 @@ export default function ImageWorkstation() {
                     {controller.readingResults ? '正在读取' : '重试读取'}
                   </Button>
                 ) : null}
+                {controller.active ? (
+                  <Button danger loading={controller.cancelling} onClick={() => void handleCancelGeneration()}>
+                    取消生成
+                  </Button>
+                ) : null}
                 <Tooltip title={showRetryRead ? '重新生成会再次计费，建议先重试读取' : blockReason}>
                   <span>
                     <CreditActionButton data-task-generate
@@ -1038,6 +1094,8 @@ export default function ImageWorkstation() {
       <PreviewGallery {...galleryProps} downloadLabel="下载图片" downloadTooltip="下载图片" onDownload={item => {
         const index = controller.outputAssets.findIndex(asset => asset.id === item.id)
         if (index >= 0) return handleDownload(controller.outputAssets[index], index)
+        const input = [fusionProduct, fusionReference].find(asset => asset?.id === item.id)
+        if (input) return downloadImageAsset(input, input.name || '图片')
       }} />
     </div>
   )

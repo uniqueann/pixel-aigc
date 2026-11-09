@@ -12,6 +12,8 @@ import { buildVariationRequest } from './requestBuilders/variation'
 
 export const COMING_SOON_LABEL = '即将上线'
 export const COMING_SOON_SUBMIT_MESSAGE = '该功能即将上线，敬请期待'
+/** 融合缺图时的唯一原因；页脚已按槽位给出下一步时不再重复展示。 */
+export const FUSION_INPUTS_REQUIRED_REASON = '请先上传商品图和场景图'
 
 /** 扩图、消除和重绘走独立接口，不依赖 /tasks。其余工具是否可提交只看 liveCapabilityReady。 */
 export function isWorkstationToolReady(
@@ -76,7 +78,7 @@ export const WORKSTATION_TOOLS: WorkstationToolDefinition[] = [
     interactionMode: 'multi-source',
     validate: (context) => context.sourceAsset.url && context.referenceAsset?.url
       ? { valid: true }
-      : { valid: false, message: '请先上传商品图和场景图' },
+      : { valid: false, message: FUSION_INPUTS_REQUIRED_REASON },
     buildRequest: buildFusionRequest,
   },
   {

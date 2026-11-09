@@ -17,7 +17,7 @@ import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { validateOutpaintOutputSize } from '@shared/outpaint'
 import { requestRepaint } from '@/services/api/repaint'
 import { cloudEnabled } from '@/cloud/client'
-import { liveCapabilityReady } from '@/services/api/task'
+import { cancelTask, liveCapabilityReady } from '@/services/api/task'
 import { uploadDataUrl } from '@/services/api/upload'
 import { imageObjectKey, taskInputKey } from '@/services/api/imageInput'
 import { GenerationService } from '@/editor/services/generationService'
@@ -143,6 +143,7 @@ export function useImageWorkstationController({
   const [activeTaskId, setActiveTaskId] = useState<string>()
   const [task, setTask] = useState<GenerationTask<unknown>>()
   const [submitting, setSubmitting] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [submissionError, setSubmissionError] = useState<string>()
   const [protocolError, setProtocolError] = useState<string>()
   const submissionsRef = useRef(new Map<string, SubmissionContext>())
@@ -187,6 +188,7 @@ export function useImageWorkstationController({
     submissionGateRef.current = undefined
     updateInputPreparation(undefined)
     setSubmitting(false)
+    setCancelling(false)
     return epochRef.current
   }, [updateInputPreparation])
   useEffect(() => {
@@ -657,6 +659,20 @@ export function useImageWorkstationController({
     return submitRequest(context.request, sourceAsset, context.options.parentGenerationId, context.referenceAsset)
   }, [capabilityReady, completeErase, completeOutpaint, completeRepaint, submitRequest, task, retryRead])
 
+  /** 取消进行中的任务；状态由轮询收敛，不在此处伪造完成态。 */
+  const cancel = useCallback(async () => {
+    const taskId = activeTaskId
+    if (!taskId) throw new Error('当前任务尚不可取消')
+    setCancelling(true)
+    try {
+      await cancelTask(taskId)
+    } finally {
+      setCancelling(false)
+    }
+    // 主动刷新一次让状态栏尽快显示已取消；失败时交给下一次轮询。
+    await Promise.resolve(taskQuery.refetch()).catch(() => {})
+  }, [activeTaskId, taskQuery])
+
   const modifyParameters = useCallback(() => {
     beginOperation()
     setTask(undefined)
@@ -688,6 +704,7 @@ export function useImageWorkstationController({
     outputAssets,
     activeTask: task,
     submitting,
+    cancelling,
     active: !!status && ACTIVE_STATUSES.has(status),
     formLocked: submitting || readingResults || (!!status && ACTIVE_STATUSES.has(status)),
     readingResults,
@@ -707,6 +724,7 @@ export function useImageWorkstationController({
     polling: taskQuery.isFetching,
     generate,
     retry,
+    cancel,
     modifyParameters,
     refetch: taskQuery.refetch,
     selectOutput,

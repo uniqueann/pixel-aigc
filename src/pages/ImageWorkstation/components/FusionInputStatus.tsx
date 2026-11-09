@@ -16,7 +16,7 @@ export default function FusionInputStatus({ state, onRetry, onCancel, onModify, 
 }) {
   if (!state || state.phase === 'submitted') return null
   return <div className={`generation-task-status is-${state.phase}`} aria-live="polite">
-    <strong>{state.phase === 'submitting' ? '正在提交融合任务' : state.phase === 'cancelled' ? '输入准备已取消' : '融合图片准备'}</strong>
+    <strong>{state.phase === 'submitting' ? '正在提交融合任务' : state.phase === 'cancelled' ? '输入准备已取消' : '正在准备商品图与场景图'}</strong>
     {(['product', 'reference'] as const).map(role => {
       const status = state[role]
       const busy = !['ready', 'failed', 'cancelled'].includes(status.stage)

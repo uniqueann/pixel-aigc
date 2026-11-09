@@ -1,7 +1,9 @@
 import { referenceImageLimitMessage } from '@shared/image-models'
 import { INSUFFICIENT_CREDITS_REASON } from '@/features/credits/imageCredits'
-import { COMING_SOON_SUBMIT_MESSAGE } from '@/features/image-workstation/tools/registry'
+import { COMING_SOON_SUBMIT_MESSAGE, FUSION_INPUTS_REQUIRED_REASON } from '@/features/image-workstation/tools/registry'
 import { emptyMaskMessage } from './maskExport'
+
+export const TASK_RUNNING_REASON = '请等待当前任务完成'
 
 export function workstationGenerateBlockReason(input: {
   toolReady: boolean
@@ -27,14 +29,14 @@ export function workstationGenerateBlockReason(input: {
   if (input.configurationPending) return '正在加载功能配置，请稍候'
   if (input.configurationError) return '功能配置加载失败，请重试'
   if (!input.toolReady) return COMING_SOON_SUBMIT_MESSAGE
-  if (input.fusionBlocked) return '请先上传商品图和场景图'
+  if (input.fusionBlocked) return FUSION_INPUTS_REQUIRED_REASON
   if (!input.hasInput) return '请先上传需要处理的图片'
   if (
     typeof input.maxRefImages === 'number'
     && typeof input.referenceCount === 'number'
     && input.referenceCount > input.maxRefImages
   ) return referenceImageLimitMessage(input.maxRefImages)
-  if (input.formLocked) return '请等待当前任务完成'
+  if (input.formLocked) return TASK_RUNNING_REASON
   if (input.retouchBlocked) return '请先选择精修方向'
   if (input.repaintBlocked) return '重绘尚未配置'
   if (input.removeBlocked) return '消除服务暂不可用，请稍后重试或联系客服。'

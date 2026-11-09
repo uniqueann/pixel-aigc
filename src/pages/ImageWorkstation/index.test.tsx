@@ -10,6 +10,7 @@ import { useUserStore } from '@/store/useUserStore'
 import { downloadBlob } from '@/pages/Toolbox/shared/zip'
 import { apiClient } from '@/services/api/client'
 import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import { downloadImageAsset } from '@/features/image-workstation/download'
 
 const mocks = vi.hoisted(() => ({
   tool: 'variation',
@@ -18,7 +19,12 @@ const mocks = vi.hoisted(() => ({
     error: null as Error | null,
     refetch: vi.fn(),
   },
-  controller: { outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(), inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined, resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn(), generate: vi.fn(), selectOutput: vi.fn() },
+  controller: {
+    outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(),
+    inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined,
+    resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn(), generate: vi.fn(), selectOutput: vi.fn(),
+    active: false, cancelling: false, cancel: vi.fn(), activeTask: undefined as unknown,
+  },
   controllerArgs: undefined as { modelProfileId?: string; keepInputOnSuccess?: boolean } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
@@ -26,7 +32,13 @@ const mocks = vi.hoisted(() => ({
     product: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined,
     reference: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined,
     loading: { product: false, reference: false },
+    errors: {} as { product?: string; reference?: string },
     load: vi.fn(),
+    swap: vi.fn(),
+    clear: vi.fn(),
+    lastScene: undefined as { name: string; width: number; height: number; savedAt: string } | undefined,
+    reusingLastScene: false,
+    reuseLastScene: vi.fn(),
   },
 }))
 vi.mock('react-router-dom', async importOriginal => ({ ...await importOriginal<typeof import('react-router-dom')>(), useParams: () => ({ tool: mocks.tool }), useNavigate: () => vi.fn() }))
@@ -43,7 +55,7 @@ vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
 vi.mock('@/features/image-workstation/hooks/useFusionImageSelection', () => ({ useFusionImageSelection: () => mocks.fusion }))
 vi.mock('@/features/image-workstation/download', async importOriginal => {
   const actual = await importOriginal<typeof import('@/features/image-workstation/download')>()
-  return { ...actual, blobFromImageSource: vi.fn(async () => new Blob(['variant'], { type: 'image/png' })) }
+  return { ...actual, blobFromImageSource: vi.fn(async () => new Blob(['variant'], { type: 'image/png' })), downloadImageAsset: vi.fn(async () => {}) }
 })
 vi.mock('@/pages/Toolbox/shared/zip', () => ({
   createResultZip: vi.fn(async () => new Blob(['zip'], { type: 'application/zip' })),
@@ -77,9 +89,20 @@ describe('图片工作站配置提示', () => {
     mocks.controller.generate.mockReset()
     mocks.controller.generate.mockResolvedValue({ status: 'succeeded' })
     mocks.controller.selectOutput.mockReset()
+    mocks.controller.active = false
+    mocks.controller.cancelling = false
+    mocks.controller.activeTask = undefined
+    mocks.controller.cancel.mockReset()
+    mocks.controller.cancel.mockResolvedValue(undefined)
     vi.mocked(downloadBlob).mockReset()
+    vi.mocked(downloadImageAsset).mockClear()
     mocks.fusion.product = undefined
     mocks.fusion.reference = undefined
+    mocks.fusion.lastScene = undefined
+    mocks.fusion.errors = {}
+    mocks.fusion.reusingLastScene = false
+    mocks.fusion.reuseLastScene.mockReset()
+    mocks.fusion.reuseLastScene.mockResolvedValue({ id: 'last-scene' })
     usePreferencesStore.setState({ preferences: defaultPreferences(), memoryEpoch: 0 })
   })
 
@@ -125,7 +148,134 @@ describe('图片工作站配置提示', () => {
     render(<App><ImageWorkstation /></App>)
     expect(screen.queryByText('示例')).toBeNull()
     if (mocks.fusion.product) expect(screen.getByAltText('商品')).toBeTruthy()
-    if (mocks.fusion.reference) expect(screen.getByAltText('场景或参考')).toBeTruthy()
+    if (mocks.fusion.reference) expect(screen.getByAltText('场景图')).toBeTruthy()
+  })
+
+  it('点击融合槽位图片在大图中查看并下载输入图', async () => {
+    mocks.tool = 'fusion'
+    mocks.fusion.product = { id: 'product', name: '商品.png', width: 1200, height: 800, url: 'data:image/png;base64,product' }
+    mocks.fusion.reference = { id: 'reference', name: '客厅.png', width: 1200, height: 800, url: 'data:image/png;base64,reference' }
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.click(screen.getByRole('button', { name: '查看商品大图' }))
+    expect(await screen.findByText('图片预览：商品.png')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '下载图片' }))
+    await act(async () => {})
+    expect(downloadImageAsset).toHaveBeenCalledWith(expect.objectContaining({ id: 'product' }), '商品.png')
+  })
+
+  it('融合单张载入失败在对应槽位内联提示', () => {
+    mocks.tool = 'fusion'
+    mocks.fusion.product = { id: 'product', name: '商品.png', width: 1200, height: 800, url: 'blob:product' }
+    mocks.fusion.errors = { reference: '仅支持 PNG、JPEG 和 WebP 图片' }
+    render(<App><ImageWorkstation /></App>)
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toBe('仅支持 PNG、JPEG 和 WebP 图片')
+    expect(alert.closest('.workstation-fusion-slot')?.textContent).toContain('场景图')
+  })
+
+  it('融合空场景槽位可一键使用上次场景', async () => {
+    mocks.tool = 'fusion'
+    mocks.fusion.product = { id: 'product', name: '商品.png', width: 1200, height: 800, url: 'blob:product' }
+    mocks.fusion.lastScene = { name: '客厅.png', width: 1200, height: 800, savedAt: '2026-11-09T00:00:00.000Z' }
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.click(screen.getByRole('button', { name: '使用上次场景 1200×800' }))
+    await act(async () => {})
+    expect(mocks.fusion.reuseLastScene).toHaveBeenCalledOnce()
+  })
+
+  it('生成中提供取消入口，取消后提示已取消', async () => {
+    mocks.tool = 'smart-edit'
+    mocks.controller.active = true
+    mocks.controller.activeTask = {
+      id: 'task-1', capability: 'image_edit', status: 'processing', params: {},
+      creditsCost: 2, createdAt: '2026-11-09T00:00:00.000Z', updatedAt: '2026-11-09T00:00:00.000Z',
+    }
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.click(screen.getByRole('button', { name: '取消生成' }))
+    await act(async () => {})
+    expect(mocks.controller.cancel).toHaveBeenCalledOnce()
+  })
+
+  it('没有进行中的任务时不显示取消入口', () => {
+    mocks.tool = 'smart-edit'
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.queryByRole('button', { name: '取消生成' })).toBeNull()
+  })
+
+  it('融合多结果改用网格并排对比，单张保持结果条', () => {
+    mocks.tool = 'fusion'
+    const results = [1, 2].map(index => ({
+      id: `result-${index}`, type: 'image', name: `结果 ${index}`, url: `blob:result-${index}`,
+      width: 1200, height: 800, mimeType: 'image/png', createdAt: new Date().toISOString(), source: 'generation',
+    }))
+    mocks.controller.outputAssets = [results[0]]
+    const view = render(<App><ImageWorkstation /></App>)
+    expect(view.container.querySelector('.workstation-result-list.is-grid')).toBeNull()
+    mocks.controller.outputAssets = results
+    view.rerender(<App><ImageWorkstation /></App>)
+    expect(view.container.querySelector('.workstation-result-list.is-grid')).toBeTruthy()
+    expect(screen.getByText('2 张')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '下载全部' })).toBeTruthy()
+  })
+
+  it('融合预览面板带 is-fusion 标记，移动端不沿用单图吸顶压缩', () => {
+    mocks.tool = 'fusion'
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(container.querySelector('.image-workstation-preview-panel.is-fusion')).toBeTruthy()
+  })
+
+  it('融合右栏给出商品换场景定位与固定契约', () => {
+    mocks.tool = 'fusion'
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('保留商品，把背景换成第二张图的场景。')).toBeTruthy()
+    expect(screen.getByText('商品形状、颜色、表面纹理、印刷文字和 Logo')).toBeTruthy()
+    expect(screen.getByText('只提供背景与氛围，不会把场景物体画进商品')).toBeTruthy()
+  })
+
+  it('融合缺图时页脚按槽位提示，不再重复整句原因', () => {
+    mocks.tool = 'fusion'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('请上传商品图 · 请上传场景图')).toBeTruthy()
+    expect(screen.queryByText('请先上传商品图和场景图')).toBeNull()
+  })
+
+  it.each([
+    ['none', '请上传商品图'],
+    ['product', '请上传场景图'],
+    ['reference', '请上传商品图'],
+  ])('融合预览状态按缺失的槽位提示（%s）', (input, expected) => {
+    mocks.tool = 'fusion'
+    const product = { id: 'product', name: '商品.png', width: 1200, height: 800, url: 'blob:product' }
+    const reference = { id: 'reference', name: '场景.png', width: 640, height: 480, url: 'blob:reference' }
+    if (input === 'product') mocks.fusion.product = product
+    if (input === 'reference') mocks.fusion.reference = reference
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(container.querySelector('.workstation-preview-meta')?.textContent).toBe(expected)
+  })
+
+  it('融合双图齐备后按商品图显示尺寸并估算输出，不再显示等待上传', () => {
+    mocks.tool = 'fusion'
+    mocks.fusion.product = { id: 'product', name: '商品.png', width: 1200, height: 800, url: 'blob:product' }
+    mocks.fusion.reference = { id: 'reference', name: '场景.png', width: 640, height: 480, url: 'blob:reference' }
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(container.querySelector('.workstation-preview-meta')?.textContent).toBe('1200×800')
+    expect(screen.queryByText('等待上传')).toBeNull()
+    expect(screen.getByText(/预计输出/)).toBeTruthy()
+  })
+
+  it('融合结果回到主舞台，结果条使用本次结果语义', () => {
+    mocks.tool = 'fusion'
+    mocks.fusion.product = { id: 'product', name: '商品.png', width: 1200, height: 800, url: 'blob:product' }
+    mocks.fusion.reference = { id: 'reference', name: '场景.png', width: 640, height: 480, url: 'blob:reference' }
+    const result = { id: 'fusion-result', type: 'image', name: '融合结果.png', width: 1200, height: 800, url: 'blob:result' }
+    mocks.controller.outputAssets = [result]
+    mocks.controller.inputAsset = result
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByAltText('融合结果').getAttribute('src')).toBe('blob:result')
+    expect(screen.getByText('本次结果')).toBeTruthy()
+    expect(screen.queryByText('下一轮输入')).toBeNull()
+    expect(screen.getByText('第 1 张已在预览区显示')).toBeTruthy()
   })
 
   it('未上线的单图工具不展示上一工具的图片', () => {
@@ -195,8 +345,8 @@ describe('图片工作站配置提示', () => {
     render(<App><ImageWorkstation /></App>)
     expect(screen.queryByText('把多张图合成一个场景。')).toBeNull()
     expect(screen.getByRole('heading', { name: '融合' })).toBeTruthy()
-    expect(screen.getByAltText('待融合的木桌场景')).toBeTruthy()
-    expect(screen.getByAltText('滴管瓶放入木桌场景后的效果')).toBeTruthy()
+    expect(screen.getByAltText('提供新背景的木桌场景图')).toBeTruthy()
+    expect(screen.getByAltText('滴管瓶放入木桌场景后的合成结果')).toBeTruthy()
   })
 
   it('智能编辑未上传时在上传区展示示意教学，上传后隐藏', () => {
