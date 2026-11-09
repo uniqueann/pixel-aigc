@@ -13,10 +13,10 @@ export interface ToolExample {
 export const TOOL_EXAMPLES: Partial<Record<string, ToolExample>> = {
   fusion: {
     before: [
-      { src: '/examples/fusion-product.webp', alt: '待融合的滴管瓶商品图', caption: '商品' },
-      { src: '/examples/fusion-scene.webp', alt: '待融合的木桌场景', caption: '场景' },
+      { src: '/examples/fusion-product.webp', alt: '待放入场景的滴管瓶商品图', caption: '商品' },
+      { src: '/examples/fusion-scene.webp', alt: '提供新背景的木桌场景图', caption: '场景' },
     ],
-    after: { src: '/examples/fusion-after.webp', alt: '滴管瓶放入木桌场景后的效果', caption: '合成' },
+    after: { src: '/examples/fusion-after.webp', alt: '滴管瓶放入木桌场景后的合成结果', caption: '合成' },
   },
 }
 

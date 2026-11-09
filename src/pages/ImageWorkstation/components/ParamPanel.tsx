@@ -105,6 +105,26 @@ function VariationContract({ count }: { count: number }) {
   )
 }
 
+/** 把固定提示词里的约束摊到界面上，避免用户写出与商品保真冲突的说明。 */
+function FusionContract() {
+  return (
+    <dl className="workstation-fusion-contract">
+      <div>
+        <dt>保留</dt>
+        <dd>商品形状、颜色、表面纹理、印刷文字和 Logo</dd>
+      </div>
+      <div>
+        <dt>场景</dt>
+        <dd>只提供背景与氛围，不会把场景物体画进商品</dd>
+      </div>
+      <div>
+        <dt>不添加</dt>
+        <dd>不改商品本身，不加文字和水印</dd>
+      </div>
+    </dl>
+  )
+}
+
 /** 右侧参数面板：按能力和子工具模式渲染对应表单 */
 export default function ParamPanel({
   title,
@@ -147,8 +167,9 @@ export default function ParamPanel({
   const erasePromptId = useId()
   // null 表示跟随内容：有备注时默认展开，用户手动收起后保持收起。
   const [relightNoteOpen, setRelightNoteOpen] = useState<boolean | null>(null)
-  // 裂变的补充要求是可选项，默认收起；已有内容时自动展开。
+  // 裂变与融合的补充说明都是可选项，默认收起；已有内容时自动展开。
   const [variationNoteOpen, setVariationNoteOpen] = useState<boolean | null>(null)
+  const [fusionNoteOpen, setFusionNoteOpen] = useState<boolean | null>(null)
   const intro = title ? (
     <header className="param-panel-intro">
       <h2>{title}</h2>
@@ -172,7 +193,7 @@ export default function ParamPanel({
     const fusion = capability === Capability.Fusion
     const model = matchImageModel(models, modelProfileId) ?? models[0]
     const promptRequired = !variation && !retouch && !fusion
-    const promptLabel = retouch || fusion ? '补充说明（可选）' : '编辑要求'
+    const promptLabel = retouch ? '补充说明（可选）' : '编辑要求'
     const promptMaxLength = fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
@@ -180,9 +201,11 @@ export default function ParamPanel({
     const constraintSize = sourceSize ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution).size : ''
     const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
       || model.ui.resolutionRatioConstraints['4k'].includes(constraintSize)
-    // 裂变的补充要求是可选项：默认收起，已有内容时自动展开，接近上限才显示字数。
+    // 裂变与融合的补充说明是可选项：默认收起，已有内容时自动展开，接近上限才显示字数。
     const variationNoteExpanded = variationNoteOpen ?? Boolean(smartEditPrompt)
     const variationNoteNearLimit = smartEditPrompt.length >= Math.floor(promptMaxLength * 0.85)
+    const fusionNoteExpanded = fusionNoteOpen ?? Boolean(smartEditPrompt)
+    const fusionNoteNearLimit = smartEditPrompt.length >= Math.floor(promptMaxLength * 0.85)
 
     const countBlock = (
       <div>
@@ -280,6 +303,35 @@ export default function ParamPanel({
           />
         ) : null}
       </div>
+    ) : fusion ? (
+      <div>
+        <button
+          type="button"
+          className="workstation-note-toggle"
+          aria-expanded={fusionNoteExpanded}
+          aria-controls="fusion-note"
+          disabled={disabled}
+          onClick={() => setFusionNoteOpen(!fusionNoteExpanded)}
+        >
+          <span>{fusionNoteExpanded ? '补充说明（可选）' : '添加补充说明（可选）'}</span>
+          <DownOutlined rotate={fusionNoteExpanded ? 180 : 0} aria-hidden="true" />
+        </button>
+        {fusionNoteExpanded ? (
+          <Input.TextArea
+            id="fusion-note"
+            value={smartEditPrompt}
+            disabled={disabled}
+            onChange={(event) => onSmartEditPromptChange(event.target.value)}
+            placeholder="例如：放在木质餐桌上，午后自然光"
+            autoSize={{ minRows: 2, maxRows: 4 }}
+            maxLength={promptMaxLength}
+            aria-label="补充说明"
+            showCount={fusionNoteNearLimit ? {
+              formatter: ({ count: current, maxLength }) => `${current} / ${maxLength ?? promptMaxLength}`,
+            } : false}
+          />
+        ) : null}
+      </div>
     ) : (
       <div>
         <div style={labelStyle} id="workstation-prompt-label">
@@ -290,7 +342,7 @@ export default function ParamPanel({
           value={smartEditPrompt}
           disabled={disabled}
           onChange={(event) => onSmartEditPromptChange(event.target.value)}
-          placeholder={fusion ? '例如：把商品放在桌面中央' : retouch ? '例如：保留吊牌文字' : '例如：换成纯白电商背景，保留商品细节'}
+          placeholder={retouch ? '例如：保留吊牌文字' : '例如：换成纯白电商背景，保留商品细节'}
           autoSize={retouch ? { minRows: 3, maxRows: 6 } : { minRows: 4, maxRows: 8 }}
           styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
           style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
@@ -323,6 +375,7 @@ export default function ParamPanel({
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {intro}
         {variation ? <VariationContract count={count} /> : null}
+        {fusion ? <FusionContract /> : null}
         {models.length > 1 ? (
           <div>
             <div style={labelStyle}>模型</div>

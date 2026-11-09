@@ -1921,6 +1921,20 @@ body.sidebar-resizing * {
   overflow-wrap: anywhere;
 }
 
+.image-workstation-settings-heading {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.image-workstation-settings-subtitle {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .workstation-preview-meta {
   color: var(--color-text-secondary-strong);
   font-size: 12px;
@@ -2129,6 +2143,39 @@ body.sidebar-resizing * {
   color: var(--color-text-secondary);
 }
 
+.workstation-fusion-slot-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 单张载入失败就地提示，避免用户只能从全局 toast 猜测是哪张图。 */
+.workstation-fusion-slot-error {
+  max-width: 100%;
+  color: var(--color-danger-text);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.workstation-fusion-last-scene.ant-btn {
+  height: 24px;
+  padding: 0 4px;
+  font-size: 12px;
+}
+
+.workstation-fusion-last-scene-meta {
+  margin-left: 6px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.workstation-fusion-swap {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
 .workstation-fusion-slot .workstation-upload {
   display: flex;
   flex-direction: column;
@@ -2146,6 +2193,34 @@ body.sidebar-resizing * {
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+/* 槽位图片可点击放大；尺寸约束与纯图片展示保持一致。 */
+.workstation-fusion-slot-image {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: calc(100% - 48px);
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  cursor: zoom-in;
+}
+
+.workstation-fusion-slot-image:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.workstation-fusion-slot-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .workstation-fusion-slot img {
@@ -2925,8 +3000,9 @@ body.sidebar-resizing * {
   flex: 0 0 auto;
 }
 
-/* 裂变的「保留 / 改变 / 输出」契约，放在标题下，先于参数出现。 */
-.workstation-variation-contract {
+/* 裂变与融合的固定契约，放在标题下，先于参数出现。 */
+.workstation-variation-contract,
+.workstation-fusion-contract {
   display: grid;
   gap: 6px;
   margin: 0;
@@ -2936,20 +3012,23 @@ body.sidebar-resizing * {
   background: var(--color-surface-2);
 }
 
-.workstation-variation-contract > div {
+.workstation-variation-contract > div,
+.workstation-fusion-contract > div {
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
 
-.workstation-variation-contract dt {
+.workstation-variation-contract dt,
+.workstation-fusion-contract dt {
   flex: 0 0 auto;
   color: var(--color-accent-text);
   font-size: 12px;
   font-weight: 600;
 }
 
-.workstation-variation-contract dd {
+.workstation-variation-contract dd,
+.workstation-fusion-contract dd {
   margin: 0;
   color: var(--color-text-secondary-strong);
   font-size: 12px;
@@ -3578,6 +3657,44 @@ body.sidebar-resizing * {
 .workstation-result-actions .ant-btn:hover {
   border-color: var(--color-accent);
   color: var(--color-text-primary) !important;
+}
+
+/* 多结果并排对比：横向小条改为两列卡片，保留选中、放大与下载。 */
+.workstation-result-strip-head.is-grid {
+  align-items: center;
+}
+
+.workstation-result-count {
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+}
+
+.workstation-result-download-all {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.workstation-result-list.is-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  overflow: visible;
+}
+
+.workstation-result-list.is-grid .workstation-result-item {
+  width: auto;
+  flex: initial;
+  gap: 6px;
+}
+
+.workstation-result-list.is-grid .workstation-result-thumb {
+  height: auto;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+}
+
+.workstation-result-list.is-grid .workstation-result-item img {
+  object-fit: contain;
 }
 
 /* 裂变结果网格：先并排看差异，再决定放大、下载或继续编辑。 */
@@ -5950,6 +6067,21 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .image-workstation-preview-panel.is-stuck .workstation-inpaint-guide { display: none; }
   .image-workstation-preview-panel.is-stuck .workstation-preview-compact-row { display: flex; }
   .image-workstation-preview-panel.is-stuck .workstation-preview-compact-summary { display: block; }
+  /* 融合是双图输入，单图吸顶的 210px 紧凑画布会把第二个槽位裁掉；
+     移动端改为普通文档流，让两个槽位完整可见、可替换。 */
+  .image-workstation-preview-panel.is-fusion.has-image {
+    position: static;
+    box-shadow: none;
+  }
+  .image-workstation-preview-panel.is-fusion.has-image .workstation-canvas-shell {
+    height: auto;
+    min-height: 0;
+    padding: 10px 12px;
+  }
+  /* 双图纵向排列时压低图片高度，避免第二个槽位的「替换 / 移除」被吸底操作栏盖住。 */
+  .image-workstation-preview-panel.is-fusion.has-image .workstation-fusion-slot img {
+    max-height: 180px;
+  }
   .app-main-content:has(.image-workstation-preview-panel.is-relight.has-image) {
     scroll-padding-top: 190px;
   }
@@ -5986,6 +6118,8 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .workstation-result-thumb { height: 72px; }
   .workstation-result-actions .ant-btn { width: 44px; height: 44px; min-width: 44px; }
   .workstation-result-badge { font-size: 9px; }
+  .workstation-result-list.is-grid { gap: 8px; }
+  .workstation-result-download-all { min-height: 44px; }
   .workstation-variation-grid { gap: 8px; }
   .workstation-variation-results-download { min-height: 44px; }
   .workstation-variation-card-meta { flex-wrap: wrap; gap: 4px; }

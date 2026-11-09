@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, Segmented, Spin, Upload, message } from 'antd'
-import { BulbOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons'
+import { BulbOutlined, HistoryOutlined, InboxOutlined, SwapOutlined, UploadOutlined } from '@ant-design/icons'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import type { InteractionMode } from '../tools'
@@ -29,6 +29,10 @@ interface Props {
   compareMode: 'original' | 'effect'
   uploading?: boolean
   fusionUploading?: { product: boolean; reference: boolean }
+  /** 融合：单张图片载入失败时的槽位内联提示。 */
+  fusionErrors?: { product?: string; reference?: string }
+  /** 融合：点击槽位图片打开大图。 */
+  onPreviewImage?: (role: 'product' | 'reference') => void
   uploadDisabled?: boolean
   /** 生成中锁定涂抹，但仍允许上传按钮沿用 uploadDisabled 的独立判断。 */
   paintDisabled?: boolean
@@ -36,6 +40,14 @@ interface Props {
   onCompareModeChange: (mode: 'original' | 'effect') => void
   onImageUpload: (file: File) => void
   onReferenceImageUpload?: (file: File) => void
+  /** 融合：两张图都就绪时交换商品与场景角色。 */
+  onSwapImages?: () => void
+  /** 融合：移除单个槽位。 */
+  onRemoveImage?: (role: 'product' | 'reference') => void
+  /** 融合：最近一次用过的场景图，空场景槽位可一键复用。 */
+  lastScene?: { name: string; width: number; height: number }
+  onReuseLastScene?: () => void
+  reusingLastScene?: boolean
   onReady: (handle: CanvasHandle | null) => void
   onMaskChange?: (hasPaint: boolean) => void
   onPreview?: (view: 'original' | 'effect') => void
@@ -67,42 +79,90 @@ function FusionSlot({
   imageUrl,
   uploading,
   disabled,
+  error,
+  onPreviewImage,
   onUpload,
+  onRemove,
+  lastScene,
+  onReuseLastScene,
+  reusingLastScene,
 }: {
   label: string
   hint: string
   imageUrl?: string
   uploading: boolean
   disabled: boolean
+  error?: string
+  onPreviewImage?: () => void
   onUpload: (file: File) => void
+  onRemove?: () => void
+  lastScene?: { name: string; width: number; height: number }
+  onReuseLastScene?: () => void
+  reusingLastScene?: boolean
 }) {
   const beforeUpload = (file: File) => {
     onUpload(file)
     return Upload.LIST_IGNORE
   }
   return (
-    <div className="workstation-fusion-slot">
+    <div className="workstation-fusion-slot" aria-busy={uploading || undefined}>
       <div className="workstation-fusion-slot-label">{label}</div>
       {imageUrl ? (
         <>
-          <img src={imageUrl} alt={label} />
-          <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} disabled={uploading || disabled} beforeUpload={beforeUpload}>
-            <Button size="small" icon={<UploadOutlined />} disabled={disabled} loading={uploading}>替换</Button>
-          </Upload>
+          {onPreviewImage ? (
+            <button
+              type="button"
+              className="workstation-fusion-slot-image"
+              title={`查看${label}大图`}
+              aria-label={`查看${label}大图`}
+              onClick={onPreviewImage}
+            >
+              <img src={imageUrl} alt={label} />
+            </button>
+          ) : <img src={imageUrl} alt={label} />}
+          <div className="workstation-fusion-slot-actions">
+            <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} disabled={uploading || disabled} beforeUpload={beforeUpload}>
+              <Button size="small" icon={<UploadOutlined />} disabled={disabled} loading={uploading} aria-label={`替换${label}`}>替换</Button>
+            </Upload>
+            {onRemove ? (
+              <Button size="small" type="text" danger disabled={disabled || uploading} aria-label={`移除${label}`} onClick={onRemove}>移除</Button>
+            ) : null}
+          </div>
         </>
       ) : (
-        <Upload.Dragger
-          className="workstation-upload"
-          accept="image/png,image/jpeg,image/webp"
-          showUploadList={false}
-          disabled={uploading || disabled}
-          beforeUpload={beforeUpload}
-        >
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">上传{label}</p>
-          <p className="ant-upload-hint">{hint}。支持 PNG、JPEG、WebP，单张不超过 20 MB</p>
-        </Upload.Dragger>
+        <>
+          <Upload.Dragger
+            className="workstation-upload"
+            accept="image/png,image/jpeg,image/webp"
+            showUploadList={false}
+            disabled={uploading || disabled}
+            beforeUpload={beforeUpload}
+          >
+            <div className="ant-upload-drag-icon">{uploading ? <Spin /> : <InboxOutlined />}</div>
+            <p className="ant-upload-text">{uploading ? `正在载入${label}…` : `上传${label}`}</p>
+            {uploading ? null : <p className="ant-upload-hint">{hint}。支持 PNG、JPEG、WebP，单张不超过 20 MB</p>}
+          </Upload.Dragger>
+          {!uploading && lastScene && onReuseLastScene ? (
+            <Button
+              className="workstation-fusion-last-scene"
+              size="small"
+              type="link"
+              icon={<HistoryOutlined />}
+              loading={reusingLastScene}
+              disabled={disabled}
+              title={`使用上次场景：${lastScene.name}`}
+              aria-label={`使用上次场景 ${lastScene.width}×${lastScene.height}`}
+              onClick={onReuseLastScene}
+            >
+              使用上次场景
+              <span className="workstation-fusion-last-scene-meta">{lastScene.width}×{lastScene.height}</span>
+            </Button>
+          ) : null}
+        </>
       )}
+      {error ? (
+        <div className="workstation-fusion-slot-error" role="alert">{error}</div>
+      ) : null}
     </div>
   )
 }
@@ -122,12 +182,19 @@ export default function CanvasArea({
   compareMode,
   uploading = false,
   fusionUploading,
+  fusionErrors,
+  onPreviewImage,
   uploadDisabled = false,
   paintDisabled = false,
   refineMode = false,
   onCompareModeChange,
   onImageUpload,
   onReferenceImageUpload,
+  onSwapImages,
+  onRemoveImage,
+  lastScene,
+  onReuseLastScene,
+  reusingLastScene,
   onReady,
   onMaskChange,
   onPreview,
@@ -186,26 +253,93 @@ export default function CanvasArea({
   }
 
   if (interactionMode === 'multi-source') {
+    // 有结果时主舞台默认展示效果，输入槽位收进「输入」视图，避免结果只出现在下方缩略条。
+    const viewingResult = compareAvailable && compareMode === 'effect' && Boolean(resultImageUrl)
     return (
-      <div className={`${canvasShellClass}${!imageUrl && !referenceImageUrl ? ' is-empty' : ''}`}>
-        <div className="workstation-fusion-sources">
-          <FusionSlot
-            label="商品"
-            hint="要保留的商品图"
-            imageUrl={imageUrl}
-            uploading={fusionUploading?.product ?? uploading}
-            disabled={uploadDisabled}
-            onUpload={onImageUpload}
-          />
-          <FusionSlot
-            label="场景或参考"
-            hint="提供背景或参考的图"
-            imageUrl={referenceImageUrl}
-            uploading={fusionUploading?.reference ?? uploading}
-            disabled={uploadDisabled}
-            onUpload={onReferenceImageUpload ?? onImageUpload}
-          />
-        </div>
+      <div className={`${canvasShellClass}${!imageUrl && !referenceImageUrl && !viewingResult ? ' is-empty' : ''}`}>
+        {compareAvailable ? (
+          <div className="workstation-canvas-controls">
+            <div className="workstation-canvas-toolbar">
+              <Segmented
+                aria-label="切换融合输入与效果"
+                value={compareMode}
+                options={[{ label: '输入', value: 'original' }, { label: '效果', value: 'effect' }]}
+                onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
+              />
+            </div>
+          </div>
+        ) : null}
+        {viewingResult ? (
+          <div className="workstation-preview-stage">
+            <img
+              src={resultImageUrl}
+              alt="融合结果"
+              className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
+              tabIndex={onPreview ? 0 : undefined}
+              role={onPreview ? 'button' : undefined}
+              aria-label={onPreview ? '打开融合结果大图' : undefined}
+              onClick={onPreview ? () => onPreview('effect') : undefined}
+              onKeyDown={onPreview ? event => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                onPreview('effect')
+              } : undefined}
+            />
+          </div>
+        ) : (
+          <div className="workstation-fusion-sources">
+            <FusionSlot
+              label="商品"
+              hint="要保留的商品图，商品本身不会改变"
+              imageUrl={imageUrl}
+              uploading={fusionUploading?.product ?? uploading}
+              disabled={uploadDisabled}
+              error={fusionErrors?.product}
+              onPreviewImage={onPreviewImage ? () => onPreviewImage('product') : undefined}
+              onUpload={onImageUpload}
+              onRemove={onRemoveImage ? () => onRemoveImage('product') : undefined}
+            />
+            {imageUrl && referenceImageUrl && onSwapImages ? (
+              <Button
+                className="workstation-fusion-swap"
+                size="small"
+                type="text"
+                icon={<SwapOutlined />}
+                aria-label="交换商品图与场景图"
+                title="交换商品图与场景图"
+                disabled={uploadDisabled || Boolean(fusionUploading?.product) || Boolean(fusionUploading?.reference)}
+                onClick={onSwapImages}
+              />
+            ) : null}
+            <FusionSlot
+              label="场景图"
+              hint="提供新背景的场景图，只作背景"
+              imageUrl={referenceImageUrl}
+              uploading={fusionUploading?.reference ?? uploading}
+              disabled={uploadDisabled}
+              error={fusionErrors?.reference}
+              onPreviewImage={onPreviewImage ? () => onPreviewImage('reference') : undefined}
+              onUpload={onReferenceImageUpload ?? onImageUpload}
+              onRemove={onRemoveImage ? () => onRemoveImage('reference') : undefined}
+              lastScene={lastScene}
+              onReuseLastScene={onReuseLastScene}
+              reusingLastScene={reusingLastScene}
+            />
+          </div>
+        )}
+        {errorLabel ? (
+          <div className="workstation-canvas-state is-warning" role="alert">
+            <span>{errorLabel}</span>
+          </div>
+        ) : processingLabel ? (
+          <div className="workstation-canvas-state is-processing" role="status">
+            <Spin size="small" />
+            <span>{processingLabel}</span>
+          </div>
+        ) : null}
+        {viewingResult && footnote !== null ? (
+          <div className="workstation-canvas-footnote">正在查看融合结果；切回「输入」可替换商品图或场景图。</div>
+        ) : null}
       </div>
     )
   }

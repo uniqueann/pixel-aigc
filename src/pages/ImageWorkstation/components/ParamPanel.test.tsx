@@ -265,8 +265,15 @@ describe('智能编辑参数面板', () => {
         onPresetPlatformChange={() => undefined}
       />,
     )
-    expect(screen.getByText('补充说明（可选）')).toBeTruthy()
-    expect(screen.getByPlaceholderText('例如：把商品放在桌面中央')).toHaveProperty('maxLength', FUSION_NOTE_MAX)
+    const toggle = screen.getByRole('button', { name: '添加补充说明（可选）' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByPlaceholderText('例如：放在木质餐桌上，午后自然光')).toBeNull()
+    fireEvent.click(toggle)
+    expect(screen.getByRole('button', { name: '补充说明（可选）' }).getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByPlaceholderText('例如：放在木质餐桌上，午后自然光')).toHaveProperty('maxLength', FUSION_NOTE_MAX)
+    expect(screen.getByText('商品形状、颜色、表面纹理、印刷文字和 Logo')).toBeTruthy()
+    expect(screen.getByText('只提供背景与氛围，不会把场景物体画进商品')).toBeTruthy()
+    expect(screen.getByText('不改商品本身，不加文字和水印')).toBeTruthy()
     expect(screen.queryByText('精修方向')).toBeNull()
     expect(screen.queryByText('生成尺寸')).toBeNull()
   })

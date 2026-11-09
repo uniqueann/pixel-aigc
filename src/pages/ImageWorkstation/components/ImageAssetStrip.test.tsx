@@ -86,4 +86,69 @@ describe('智能编辑候选结果条', () => {
     expect(screen.getByText('点击缩略图可基于该结果继续编辑，或直接下载')).toBeTruthy()
     expect(screen.queryByText('下一轮输入')).toBeNull()
   })
+
+  it('融合结果条只描述预览，不承诺作为下一轮输入', () => {
+    render(
+      <ImageAssetStrip
+        assets={assets}
+        selectedAssetId="asset-2"
+        variant="result"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+      />,
+    )
+    expect(screen.getByText('本次结果')).toBeTruthy()
+    expect(screen.getByText('第 2 张已在预览区显示')).toBeTruthy()
+    expect(screen.getByText('预览中')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '选择结果 2，已在预览区显示' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByText('下一轮输入')).toBeNull()
+  })
+
+  it('融合结果条未选中时提示可在预览区查看', () => {
+    render(
+      <ImageAssetStrip
+        assets={assets}
+        variant="result"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+      />,
+    )
+    expect(screen.getByText('点击缩略图在预览区查看，或直接下载')).toBeTruthy()
+  })
+
+  it('融合多结果改用两列网格并排对比', () => {
+    const onDownloadAll = vi.fn()
+    const { container } = render(
+      <ImageAssetStrip
+        assets={assets}
+        selectedAssetId="asset-2"
+        variant="result"
+        layout="grid"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+        onDownload={() => undefined}
+        onDownloadAll={onDownloadAll}
+      />,
+    )
+    expect(container.querySelector('.workstation-result-list.is-grid')).toBeTruthy()
+    expect(screen.getByText('2 张')).toBeTruthy()
+    expect(screen.getByText('第 2 张已在预览区显示')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '下载全部' }))
+    expect(onDownloadAll).toHaveBeenCalledOnce()
+  })
+
+  it('单张结果不显示下载全部', () => {
+    render(
+      <ImageAssetStrip
+        assets={[assets[0]]}
+        variant="result"
+        layout="grid"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+        onDownloadAll={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('并排查看多张结果，点击图片在预览区查看')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '下载全部' })).toBeNull()
+  })
 })

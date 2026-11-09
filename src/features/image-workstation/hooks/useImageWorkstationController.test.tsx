@@ -17,6 +17,7 @@ import type { TaskInputUploadOptions } from '@/services/api/upload'
 
 const mocks = vi.hoisted(() => ({
   createTask: vi.fn(),
+  cancelTask: vi.fn(),
   liveCapabilityReady: vi.fn(() => true),
   uploadDataUrl: vi.fn(async (url: string) => url),
   uploadTaskInput: vi.fn<(blob: Blob, mimeType?: string, signal?: AbortSignal, options?: TaskInputUploadOptions) => Promise<string>>(async () => 'temporary/task-inputs/user/source-1'),
@@ -30,6 +31,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/features/assets/workstationHistory', async importOriginal => ({ ...(await importOriginal<typeof import('@/features/assets/workstationHistory')>()), recordWorkstationHistory: mocks.historySave }))
 vi.mock('@/services/api/task', () => ({
   createTask: mocks.createTask,
+  cancelTask: mocks.cancelTask,
   liveCapabilityReady: mocks.liveCapabilityReady,
 }))
 vi.mock('@/services/api/upload', () => ({
@@ -143,6 +145,8 @@ describe('useImageWorkstationController 集成流程', () => {
     useUserStore.getState().setUser('11111111-1111-4111-8111-111111111111', 'free')
     mocks.historySave.mockReset().mockResolvedValue(undefined)
     mocks.createTask.mockReset()
+    mocks.cancelTask.mockReset()
+    mocks.cancelTask.mockResolvedValue(undefined)
     mocks.liveCapabilityReady.mockReset()
     mocks.liveCapabilityReady.mockReturnValue(true)
     mocks.uploadDataUrl.mockReset()
@@ -280,6 +284,32 @@ describe('useImageWorkstationController 集成流程', () => {
     await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白色背景" onController={captureController} />))
     expect(currentController.outputAssets).toEqual([])
     expect(useEditorStore.getState().project?.assets['asset:task-before-account-switch:0']).toBeUndefined()
+  })
+
+  it('生成中可取消任务，取消后恢复可操作状态', async () => {
+    const processing: GenerationTask = {
+      id: 'task-cancel',
+      capability: Capability.ImageEdit,
+      status: 'processing',
+      params: { prompt: '白色背景', count: 1, resolution: '1k' },
+      creditsCost: 2,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    }
+    mocks.createTask.mockResolvedValue(processing)
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白色背景" onController={captureController} />))
+    await act(async () => { await currentController.generate(null) })
+    expect(currentController.active).toBe(true)
+    expect(currentController.cancelling).toBe(false)
+
+    await act(async () => { await currentController.cancel() })
+    expect(mocks.cancelTask).toHaveBeenCalledWith('task-cancel')
+    expect(currentController.cancelling).toBe(false)
+
+    mocks.polling.data = { ...processing, status: 'cancelled', updatedAt: '2026-09-07T00:01:00.000Z' }
+    await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白色背景" onController={captureController} />))
+    expect(currentController.activeTask?.status).toBe('cancelled')
+    expect(currentController.active).toBe(false)
   })
 
   it('智能编辑无需画布句柄，并把全部结果暴露为可选候选', async () => {
