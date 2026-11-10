@@ -20,6 +20,14 @@ describe('工具默认参数与记忆', () => {
     remembered.image.counts.variation = 4
     expect(countUsesLastUsed(remembered, 'variation')).toBe(false)
   })
+  it('精修首次进入默认推荐组合，已有记忆时沿用记忆', () => {
+    const p = defaultPreferences()
+    expect(initialWorkstationParameters(p, 'retouch').retouchDirections).toEqual(['blemish', 'brighten'])
+    p.image.lastUsed.retouch = { retouchDirections: ['sharpen'] }
+    expect(initialWorkstationParameters(p, 'retouch').retouchDirections).toEqual(['sharpen'])
+    p.image.lastUsed.retouch = { retouchDirections: [] }
+    expect(initialWorkstationParameters(p, 'retouch').retouchDirections).toEqual([])
+  })
   it('模型和比例限制调整本次有效值', () => {
     const ui = { ...defaultImageModel('image_edit')!.ui, maxCount: 2 }
     expect(effectiveImageParameters(4, '4k', { width: 1024, height: 1024 }, ui)).toEqual({ count: 2, resolution: '2k' })

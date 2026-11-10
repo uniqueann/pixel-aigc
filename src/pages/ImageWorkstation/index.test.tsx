@@ -142,6 +142,16 @@ describe('图片工作站配置提示', () => {
     expect(container.querySelector('.is-sticky')).toBeNull()
   })
 
+  it('精修空状态展示承诺副标题与教学示例', () => {
+    mocks.tool = 'retouch'
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('轻微修图，保留颜色、文字和构图。')).toBeTruthy()
+    const example = screen.getByText('示例').closest('details')!
+    expect(container.querySelector('.workstation-empty-extra .retouch-example')).toBe(example)
+    expect(screen.getByText('文字与颜色不变')).toBeTruthy()
+    expect(screen.getAllByText('已选：去瑕疵、提亮').length).toBeGreaterThan(0)
+  })
+
   it.each(['product', 'reference', 'both'])('融合上传 %s 后隐藏示例，图片仍在对应槽位', (input) => {
     mocks.tool = 'fusion'
     const asset = { id: 'fusion-input', name: '商品.png', width: 800, height: 800, url: 'blob:fusion' }

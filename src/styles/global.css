@@ -3061,9 +3061,10 @@ body.sidebar-resizing * {
   flex: 0 0 auto;
 }
 
-/* 裂变与融合的固定契约，放在标题下，先于参数出现。 */
+/* 裂变、融合与精修的固定契约，放在标题下，先于参数出现。 */
 .workstation-variation-contract,
-.workstation-fusion-contract {
+.workstation-fusion-contract,
+.workstation-retouch-contract {
   display: grid;
   gap: 6px;
   margin: 0;
@@ -3074,14 +3075,16 @@ body.sidebar-resizing * {
 }
 
 .workstation-variation-contract > div,
-.workstation-fusion-contract > div {
+.workstation-fusion-contract > div,
+.workstation-retouch-contract > div {
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
 
 .workstation-variation-contract dt,
-.workstation-fusion-contract dt {
+.workstation-fusion-contract dt,
+.workstation-retouch-contract dt {
   flex: 0 0 auto;
   color: var(--color-accent-text);
   font-size: 12px;
@@ -3089,11 +3092,113 @@ body.sidebar-resizing * {
 }
 
 .workstation-variation-contract dd,
-.workstation-fusion-contract dd {
+.workstation-fusion-contract dd,
+.workstation-retouch-contract dd {
   margin: 0;
   color: var(--color-text-secondary-strong);
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* 一键精修是方向选择的第一层入口；四个复选框留给需要精细控制的用户。 */
+.retouch-preset {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.retouch-preset:hover:not(:disabled) { border-color: var(--color-accent-text); }
+.retouch-preset.is-active {
+  border-color: var(--color-accent-text);
+  background: var(--color-accent-soft);
+}
+.retouch-preset:disabled { cursor: not-allowed; opacity: .6; }
+.retouch-preset:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
+
+.retouch-preset-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.retouch-preset-name { font-size: 13px; font-weight: 600; }
+
+.retouch-preset-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.retouch-preset.is-active .retouch-preset-badge { background: var(--color-surface); }
+.retouch-preset-desc { color: var(--color-text-secondary); font-size: 12px; }
+
+.retouch-direction-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.retouch-direction-selected { min-width: 0; }
+
+.retouch-direction-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.retouch-direction-actions button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.retouch-direction-actions button:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.retouch-direction-actions button:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.retouch-direction-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.35;
+}
+
+.retouch-direction-name { color: var(--color-text); font-size: 14px; }
+.retouch-direction-hint { color: var(--color-text-secondary); font-size: 11px; }
+
+/* AntD 默认的复选框焦点环在白底上只有 1.9:1，统一到项目的高对比焦点色。 */
+.image-workstation-settings .ant-checkbox .ant-checkbox-input:focus-visible + .ant-checkbox-inner {
+  outline-color: var(--color-focus-ring);
 }
 
 .param-panel-intro {
@@ -6107,6 +6212,14 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   }
   /* 设置面板建立独立层叠上下文，避免 AntD 选中项（z-index: 1）盖住吸顶卡。 */
   .image-workstation-settings { z-index: 0; }
+  /* 精修方向行在移动端补到 44px 触控高度，说明文字仍保持 11px。 */
+  .image-workstation-settings .retouch-direction-group .ant-checkbox-wrapper {
+    min-height: 44px;
+    align-items: flex-start;
+    padding: 6px 0;
+  }
+  .image-workstation-settings .retouch-preset { min-height: 44px; }
+  .image-workstation-settings .retouch-direction-actions button { min-height: 44px; }
   .image-workstation-preview-panel.has-image .workstation-canvas-shell {
     height: 210px;
     min-height: 0;

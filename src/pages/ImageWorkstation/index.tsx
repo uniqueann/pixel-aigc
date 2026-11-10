@@ -29,7 +29,7 @@ import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
 import { liveCapabilityReady } from '@/services/api/task'
 import { canonicalizeImageModelProfileId, defaultImageModel } from '@shared/image-models'
-import { normalizeRetouchDirections } from '@shared/retouch'
+import { normalizeRetouchDirections, retouchDirectionLabel } from '@shared/retouch'
 import { paddingAround, planBailianOutpaint, validateOutpaintOutputSize } from '@shared/outpaint'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
@@ -46,6 +46,7 @@ import RelightDirectionOverlay from './components/RelightDirectionOverlay'
 import RelightExample from './components/RelightExample'
 import SmartEditExample from './components/SmartEditExample'
 import VariationExample from './components/VariationExample'
+import RetouchExample from './components/RetouchExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
 import { TASK_RUNNING_REASON, workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
@@ -182,6 +183,7 @@ export default function ImageWorkstation() {
     return () => window.clearTimeout(timer)
   }, [variationPrompt, variationTool])
   const retouchTool = activeTool.slug === 'retouch'
+  const retouchDirectionSummary = normalizeRetouchDirections(retouchDirections).map(retouchDirectionLabel).join('、')
   const fusionTool = activeTool.slug === 'fusion'
   const relightTool = activeTool.slug === 'relight'
   const smartEditTool = activeTool.slug === 'smart-edit'
@@ -288,7 +290,7 @@ export default function ImageWorkstation() {
   const settingsPanelRef = useRef<HTMLElement>(null)
   // 涂抹类工具（消除/重绘）在移动端用紧凑吸顶态：滚到设置区时隐藏步骤条并压低画布，避免遮住表单。
   const inpaintTool = activeTool.slug === 'repaint' || activeTool.slug === 'remove'
-  const previewStuck = useStuckPreview(previewPanelRef, (relightTool || inpaintTool) && previewHasImage)
+  const previewStuck = useStuckPreview(previewPanelRef, (relightTool || inpaintTool || retouchTool) && previewHasImage)
   const promptMinHeight = useWorkstationPromptHeight({
     previewPanelRef,
     settingsPanelRef,
@@ -867,6 +869,13 @@ export default function ImageWorkstation() {
                 ) : null}
               </div>
             ) : null}
+            {retouchTool ? (
+              <div className="workstation-preview-compact-row">
+                <p className="workstation-preview-compact-summary">
+                  已选：{retouchDirectionSummary || '未选择方向'}
+                </p>
+              </div>
+            ) : null}
             <CanvasArea
               interactionMode={activeTool.interactionMode}
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
@@ -887,7 +896,9 @@ export default function ImageWorkstation() {
                     ? <SmartEditExample />
                     : variationTool && !previewHasImage
                       ? <VariationExample />
-                      : undefined
+                      : retouchTool && !previewHasImage
+                        ? <RetouchExample />
+                        : undefined
               }
               overlayToggle={relightTool && previewHasImage ? {
                 label: '方向示意',
@@ -974,6 +985,7 @@ export default function ImageWorkstation() {
             <div className="image-workstation-settings-heading">
               <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>
               {fusionTool ? <p className="image-workstation-settings-subtitle">保留商品，把背景换成第二张图的场景。</p> : null}
+              {retouchTool ? <p className="image-workstation-settings-subtitle">轻微修图，保留颜色、文字和构图。</p> : null}
             </div>
             {relightOutput ? (
               <span className="workstation-settings-output">预计输出 {relightOutput.size} · {relightOutput.resolution.toUpperCase()}</span>
