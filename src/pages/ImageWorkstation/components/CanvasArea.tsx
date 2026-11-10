@@ -355,7 +355,10 @@ export default function CanvasArea({
 
   if (!imageUrl) {
     return (
-      <div className={`${canvasShellClass} is-empty${emptyExtra ? ' has-empty-extra' : ''}${interactionMode === 'drag-resize' ? ' is-outpaint' : ''}`}>
+      <div
+        className={`${canvasShellClass} is-empty${emptyExtra ? ' has-empty-extra' : ''}${interactionMode === 'drag-resize' ? ' is-outpaint' : ''}`}
+        aria-busy={uploading || undefined}
+      >
         {emptyExtra ? <div className="workstation-empty-extra">{emptyExtra}</div> : null}
         <Upload.Dragger
           className="workstation-upload"
@@ -364,10 +367,10 @@ export default function CanvasArea({
           disabled={uploading || uploadDisabled}
           beforeUpload={interceptUpload}
         >
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">上传需要处理的商品图片</p>
-          {uploadHint ? <p className="ant-upload-hint">{uploadHint}</p> : null}
-          <p className="ant-upload-hint">支持 PNG、JPEG、WebP，单张不超过 20 MB</p>
+          <div className="ant-upload-drag-icon">{uploading ? <Spin /> : <InboxOutlined />}</div>
+          <p className="ant-upload-text">{uploading ? '正在载入图片…' : '上传需要处理的商品图片'}</p>
+          {uploading ? null : uploadHint ? <p className="ant-upload-hint">{uploadHint}</p> : null}
+          {uploading ? null : <p className="ant-upload-hint">支持 PNG、JPEG、WebP，单张不超过 20 MB</p>}
         </Upload.Dragger>
       </div>
     )
@@ -538,6 +541,7 @@ export default function CanvasArea({
         <div className="workstation-canvas-toolbar">
           {compareAvailable ? (
             <Segmented
+              aria-label="对比原图与效果"
               value={compareMode}
               options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
               onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
@@ -563,7 +567,7 @@ export default function CanvasArea({
       </div>
       <div className="workstation-preview-stage">
         <img
-          src={viewingOriginal ? originalImageUrl ?? imageUrl : imageUrl}
+          src={viewingOriginal ? originalImageUrl ?? imageUrl : resultImageUrl ?? imageUrl}
           alt={viewingOriginal ? '原始图片' : '当前编辑效果'}
           className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
           tabIndex={onPreview ? 0 : undefined}

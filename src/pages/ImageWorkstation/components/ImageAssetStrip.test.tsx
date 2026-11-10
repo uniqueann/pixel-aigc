@@ -168,4 +168,35 @@ describe('智能编辑候选结果条', () => {
     expect(screen.getByText('并排查看多张结果，点击图片在预览区查看')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '下载全部' })).toBeNull()
   })
+
+  it('结果条提供分组名称，并可对选中结果继续编辑', () => {
+    const onContinue = vi.fn()
+    const view = render(
+      <ImageAssetStrip
+        assets={assets}
+        selectedAssetId="asset-2"
+        variant="result"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+        onContinue={onContinue}
+        continueLabel="继续精修此结果"
+      />,
+    )
+    expect(screen.getByRole('group', { name: '本次结果' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '继续精修此结果' }))
+    expect(onContinue).toHaveBeenCalledWith(assets[1])
+    view.rerender(
+      <ImageAssetStrip
+        assets={assets}
+        selectedAssetId="asset-2"
+        variant="result"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+        onContinue={onContinue}
+        continueLabel="继续精修此结果"
+        continueDisabled
+      />,
+    )
+    expect((screen.getByRole('button', { name: '继续精修此结果' }) as HTMLButtonElement).disabled).toBe(true)
+  })
 })

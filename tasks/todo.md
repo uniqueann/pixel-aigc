@@ -2005,3 +2005,38 @@
 - 默认推荐组合只影响没有记忆值的用户；已有方向记忆保持原样。
 - 本轮只把「输出尺寸」讲清楚，没有直接改成保持原尺寸；模型最小尺寸与计费规则确认后再加「保持原尺寸」选项。
 - 截图：`/tmp/pixel-retouch-review/after/desktop-empty.png`、`desktop-uploaded.png`、`mobile-scroll420.png`。
+
+# 工作站「精修」第二轮：结果态与可访问性
+
+目标：把精修结果从「下一轮输入」改成「比较 + 导出」，并补齐方向组、焦点环、4K、上传中与重试提示的可访问性。
+
+## 计划
+
+- [x] 精修成功后保留原图输入；CanvasArea params-only 效果视图改用 `resultImageUrl`
+- [x] 新增本地预览选中态：点缩略图只切换预览，不替换输入
+- [x] 精修结果条改用「本次结果」语义；多结果两列网格 + 下载全部
+- [x] 新增「继续精修此结果」次操作，带确认，确认后才设为新输入
+- [x] 精修结果态「下载结果」为主操作；生成降为「再生成一版」
+- [x] 读取中/失败且已有部分结果时避免两个 primary
+- [x] 精修方向 fieldset/legend + 必选读屏文案 + 摘要 aria-live
+- [x] 4K 禁用补 aria-disabled 与精修可见说明
+- [x] 页脚按钮统一高对比焦点环；上传空状态补 Spin/aria-busy
+- [x] 读取失败计费提醒改内联，生成按钮 aria-describedby 关联
+
+## 验收
+
+- [x] 精修结果可对比、可下载、可继续精修；点缩略图不改输入
+- [x] 2/4 张结果网格与 ZIP 下载正确
+- [x] 方向组、4K、焦点环、上传中、重试提示的测试与手动检查通过
+- [x] 全量测试、前端与 server tsc、ESLint、git diff --check 通过
+
+## 复查
+
+- 精修保留原图后，`selectedResult` 需要本地 `retouchPreviewId` 才能做到「点缩略图只换预览」；其他工具仍沿用「输入即结果」的匹配逻辑，避免改变涂抹/融合/裂变语义。
+- CanvasArea 的效果视图改为 `resultImageUrl ?? imageUrl`。其他 params-only 工具成功后输入就是第一张结果，两者同源；只有精修会真正用到这个分支。
+- 「继续精修此结果」放在结果条头部而不是页脚：页脚在 390px 下已有「下载结果 + 再生成一版 + 生成」三个按钮，再加一个会挤压；结果条头部天然承载「这张结果」的上下文。
+- 方向组没有使用 `aria-required`：它不适用于 fieldset/group；必选由 legend 的读屏「（必选）」、摘要 `aria-live` 和生成按钮禁用原因共同表达。
+- 4K 的 `aria-disabled` 依赖 rc-select 的 `pickAttrs` 透传；可见说明统一成「· 当前比例不支持 4K」，精修与非精修共用。
+- 读取失败时把计费提醒从 Tooltip 移到页脚内联，避免窄屏第二行 Tooltip 覆盖第一行「重试读取」，同时让键盘用户通过 `aria-describedby` 读到原因。
+- mock 返回 SVG，`normalizeImageBlob` 只接受 PNG/JPEG/WebP，精修结果在 mock 下必然读取失败；结果条/对比/下载全部由页面与组件测试覆盖，未用 mock 手工复现。
+- 截图：`/tmp/retouch-round2-desktop.png`、`/tmp/retouch-round2-mobile.png`、`/tmp/retouch-round2-mobile-panel.png`。

@@ -3123,7 +3123,7 @@ body.sidebar-resizing * {
   background: var(--color-accent-soft);
 }
 .retouch-preset:disabled { cursor: not-allowed; opacity: .6; }
-.retouch-preset:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
+.retouch-preset:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
 
 .retouch-preset-main {
   display: flex;
@@ -3144,6 +3144,16 @@ body.sidebar-resizing * {
 
 .retouch-preset.is-active .retouch-preset-badge { background: var(--color-surface); }
 .retouch-preset-desc { color: var(--color-text-secondary); font-size: 12px; }
+
+/* fieldset 只提供分组语义，视觉仍沿用原来的标题与间距。 */
+.retouch-direction-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.retouch-direction-legend { padding: 0; }
 
 .retouch-direction-summary {
   display: flex;
@@ -3639,6 +3649,12 @@ body.sidebar-resizing * {
   color: var(--color-accent-text);
 }
 
+/* 页脚所有按钮统一高对比焦点环，覆盖 AntD 默认的低对比描边。 */
+.image-workstation-footer-actions .ant-btn:not(:disabled):focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
 /* 主按钮与笔刷滑块的焦点环统一用高对比前景色。 */
 .image-workstation-footer-actions .credit-action-button.ant-btn-primary:not(:disabled):focus-visible,
 .workstation-canvas-toolbar .ant-slider .ant-slider-handle:focus-visible {
@@ -3726,6 +3742,17 @@ body.sidebar-resizing * {
 .workstation-result-strip-hint {
   color: var(--color-text-secondary-strong);
 }
+
+.workstation-result-strip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.workstation-result-continue,
+.workstation-result-download-all { flex-shrink: 0; }
 
 .workstation-result-list {
   display: flex;
@@ -3838,11 +3865,6 @@ body.sidebar-resizing * {
 .workstation-result-count {
   color: var(--color-text-secondary-strong);
   font-size: 12px;
-}
-
-.workstation-result-download-all {
-  margin-left: auto;
-  flex-shrink: 0;
 }
 
 .workstation-result-list.is-grid {
@@ -6314,6 +6336,7 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .workstation-result-actions .ant-btn { width: 44px; height: 44px; min-width: 44px; }
   .workstation-result-badge { font-size: 9px; }
   .workstation-result-list.is-grid { gap: 8px; }
+  .workstation-result-continue,
   .workstation-result-download-all { min-height: 44px; }
   .workstation-variation-grid { gap: 8px; }
   .workstation-variation-results-download { min-height: 44px; }

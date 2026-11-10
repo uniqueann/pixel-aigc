@@ -1,4 +1,4 @@
-import { DownloadOutlined, ZoomInOutlined } from '@ant-design/icons'
+import { DownloadOutlined, EditOutlined, ZoomInOutlined } from '@ant-design/icons'
 import { Button } from 'antd'
 import type { AssetId, ImageAsset } from '@/editor/types'
 
@@ -20,6 +20,10 @@ interface ImageAssetStripProps {
   onDownload?: (asset: ImageAsset, index: number) => void
   onPreview: (assetId: AssetId) => void
   onDownloadAll?: () => void
+  /** 在选中结果上继续编辑；仅精修传入，且选中结果不是当前输入时才显示。 */
+  onContinue?: (asset: ImageAsset) => void
+  continueLabel?: string
+  continueDisabled?: boolean
 }
 
 /** 生成结果候选条；选中项的含义由 variant 决定。 */
@@ -34,6 +38,9 @@ export default function ImageAssetStrip({
   onDownload,
   onPreview,
   onDownloadAll,
+  onContinue,
+  continueLabel = '继续编辑',
+  continueDisabled = false,
 }: ImageAssetStripProps) {
   if (assets.length === 0) return null
   const selectedIndex = assets.findIndex(asset => asset.id === selectedAssetId)
@@ -68,21 +75,36 @@ export default function ImageAssetStrip({
         : '，当前作为下一轮输入'
 
   return (
-    <div className="workstation-result-strip" aria-label={stripLabel}>
+    <div className="workstation-result-strip" role="group" aria-label={stripLabel}>
       <div className={`workstation-result-strip-head${grid ? ' is-grid' : ''}`}>
         <span className="workstation-result-strip-title">{stripLabel}</span>
         {grid ? <span className="workstation-result-count">{assets.length} 张</span> : null}
         <span className="workstation-result-strip-hint">{hint}</span>
-        {grid && assets.length > 1 && onDownloadAll ? (
-          <Button
-            className="workstation-result-download-all"
-            size="small"
-            icon={<DownloadOutlined aria-hidden="true" />}
-            loading={downloadingAll}
-            onClick={onDownloadAll}
-          >
-            下载全部
-          </Button>
+        {(onContinue && selectedIndex >= 0) || (grid && assets.length > 1 && onDownloadAll) ? (
+          <span className="workstation-result-strip-actions">
+            {onContinue && selectedIndex >= 0 ? (
+              <Button
+                className="workstation-result-continue"
+                size="small"
+                icon={<EditOutlined aria-hidden="true" />}
+                disabled={continueDisabled}
+                onClick={() => onContinue(assets[selectedIndex])}
+              >
+                {continueLabel}
+              </Button>
+            ) : null}
+            {grid && assets.length > 1 && onDownloadAll ? (
+              <Button
+                className="workstation-result-download-all"
+                size="small"
+                icon={<DownloadOutlined aria-hidden="true" />}
+                loading={downloadingAll}
+                onClick={onDownloadAll}
+              >
+                下载全部
+              </Button>
+            ) : null}
+          </span>
         ) : null}
       </div>
       <div className={`workstation-result-list${grid ? ' is-grid' : ''}`} role="list">

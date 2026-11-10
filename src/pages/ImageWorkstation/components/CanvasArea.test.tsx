@@ -45,6 +45,38 @@ describe('工作站恢复任务的预览占位',()=>{
     expect(screen.getByAltText('原始图片').getAttribute('src')).toBe('blob:current')
     expect(screen.getByText('调整右侧参数后生成，结果会显示在这里')).toBeTruthy()
   })
+  it('保留原图输入时，效果视图显示选中的结果',()=>{
+    const view=render(
+      <CanvasArea
+        {...props}
+        interactionMode="params-only"
+        imageUrl="blob:original"
+        originalImageUrl="blob:original"
+        resultImageUrl="blob:result"
+        compareAvailable
+        compareMode="effect"
+      />,
+    )
+    expect(screen.getByAltText('当前编辑效果').getAttribute('src')).toBe('blob:result')
+    view.rerender(
+      <CanvasArea
+        {...props}
+        interactionMode="params-only"
+        imageUrl="blob:original"
+        originalImageUrl="blob:original"
+        resultImageUrl="blob:result"
+        compareAvailable
+        compareMode="original"
+      />,
+    )
+    expect(screen.getByAltText('原始图片').getAttribute('src')).toBe('blob:original')
+  })
+  it('上传空状态显示加载反馈而不是继续提示上传',()=>{
+    render(<CanvasArea {...props} interactionMode="params-only" uploading/>)
+    expect(screen.getByText('正在载入图片…')).toBeTruthy()
+    expect(document.querySelector('.is-empty[aria-busy="true"] .ant-spin')).toBeTruthy()
+    expect(screen.queryByText('上传需要处理的商品图片')).toBeNull()
+  })
   it('脚注传 null 时完全隐藏',()=>{
     render(<CanvasArea {...props} imageUrl="blob:current" footnote={null}/>)
     expect(document.querySelector('.workstation-canvas-footnote')).toBeNull()
