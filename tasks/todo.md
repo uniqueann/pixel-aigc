@@ -2040,3 +2040,32 @@
 - 读取失败时把计费提醒从 Tooltip 移到页脚内联，避免窄屏第二行 Tooltip 覆盖第一行「重试读取」，同时让键盘用户通过 `aria-describedby` 读到原因。
 - mock 返回 SVG，`normalizeImageBlob` 只接受 PNG/JPEG/WebP，精修结果在 mock 下必然读取失败；结果条/对比/下载全部由页面与组件测试覆盖，未用 mock 手工复现。
 - 截图：`/tmp/retouch-round2-desktop.png`、`/tmp/retouch-round2-mobile.png`、`/tmp/retouch-round2-mobile-panel.png`。
+
+# 工作站结果读取失败：错误态收敛
+
+目标：把结果读取失败从 7 个 UI 元素 / 5 个展示面收敛为「一个结论 + 一个主操作」，修复右卡重试绕过页面 handler 的问题，并让部分读取失败能说明已就绪张数。
+
+## 计划
+
+- [x] 页脚成为唯一结论：原因、已就绪/失败张数、计费提醒合并为一句
+- [x] 删除错误 Toast、预览 meta 错误文本、画布错误浮层、页脚独立计费提醒、重试按钮重复 title
+- [x] `GenerationTaskStatus` 改用 `resultUnavailable` 只抑制完成态，删除警告卡与第二个「重试读取」
+- [x] 控制器新增 `resultReadFailureCount`，读取开始/重试/换任务时重置
+- [x] 「仍无法读取」改为按任务 id 派生，避免换图后首次失败沿用旧结论
+- [x] 读取失败结论允许完整换行，不再被页脚省略
+
+## 验收
+
+- [x] 错误态全文恰好 1 条结论、1 个「重试读取」、0 个错误 Toast、0 个画布警告、0 个右卡警告
+- [x] 重试再次失败显示「仍无法读取」，部分读取显示「已就绪 N 张，M 张读取失败」
+- [x] 1440×900 与 390×844 实测：结论完整换行、无横向溢出
+- [x] 全量 349 文件 / 2354 用例通过；前端、server、node `tsc`、ESLint、`git diff --check` 通过
+
+## 复查
+
+- 结论放在页脚而不是预览区：页脚是唯一主操作（重试）的上下文，避免错误文本和按钮分离。
+- 右卡不再渲染结果读取警告，但仍通过 `resultUnavailable` 抑制绿色「生成完成」，避免任务状态与实际结果矛盾。
+- 读取中不再额外增加页脚文本，由预览 meta、右卡读取态和按钮 loading 共同反馈，减少重复。
+- `resultReadFailureCount` 与 `resultReadError` 同步更新；成功张数直接用 `outputAssets.length`，不新增第二个状态。
+- 「仍无法读取」用任务 id 派生，换图或新任务自动失效，不需要在 effect 里同步 setState。
+- 截图：`/tmp/error-state-failed.png`、`/tmp/error-state-mobile.png`、`/tmp/error-state-retry-failed.png`。

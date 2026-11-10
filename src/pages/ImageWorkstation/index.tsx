@@ -134,7 +134,7 @@ export default function ImageWorkstation() {
   const [fusionNote, setFusionNote] = useState('')
   const [relightNote, setRelightNote] = useState('')
   const [relightOverlayEnabled, setRelightOverlayEnabled] = useState(true)
-  const [retryReadFailedAgain, setRetryReadFailedAgain] = useState(false)
+  const [retryReadFailedTaskId, setRetryReadFailedTaskId] = useState<string>()
   const imageConfiguration = useImageModels('image_edit')
   const variationConfiguration = useImageModels('variation')
   const imageModels = imageConfiguration.models
@@ -233,17 +233,8 @@ export default function ImageWorkstation() {
     const key = `${task.id}:${controller.resultReadError ? 'error' : 'success'}`
     if (notifiedResultRef.current === key) return
     notifiedResultRef.current = key
-    if (controller.resultReadError) {
-      // 重新打光与裂变把结论收敛到页脚与重试主操作，不再叠加 toast。
-      if (!relightTool && !variationTool) {
-        notification.warning({
-          message: '任务已完成，但结果暂时无法读取',
-          description: '可免费重试读取，不会重复扣费。',
-          duration: 6,
-        })
-      }
-      return
-    }
+    // 读取失败的唯一结论在页脚；这里只标记已通知，避免再叠加 toast。
+    if (controller.resultReadError) return
     if (controller.outputAssets.length > 0) {
       notification.success({
         message: '任务已完成',
@@ -254,13 +245,16 @@ export default function ImageWorkstation() {
             : `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
       })
     }
-  }, [activeTool.slug, controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, relightTool, variationTool])
+  }, [activeTool.slug, controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification])
   // 重试读取期间由 readingResults 保持按钮反馈；重试仍失败时给出「仍无法读取」的结论。
   const handleRetryRead = async () => {
-    setRetryReadFailedAgain(false)
+    setRetryReadFailedTaskId(undefined)
     const succeeded = await controller.retryRead()
-    if (!succeeded) setRetryReadFailedAgain(true)
+    if (!succeeded) setRetryReadFailedTaskId(controller.activeTask?.id ?? 'unknown')
   }
+  // 只有「同一个任务重试后仍失败」才显示「仍无法读取」；换图或新任务会因任务 id 变化自动失效。
+  const retryReadFailedAgain = Boolean(controller.resultReadError)
+    && retryReadFailedTaskId === (controller.activeTask?.id ?? 'unknown')
   const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
   const relightOutput = relightTool
     ? outputPreview(activeModel, controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined, effectiveParameters.resolution)
@@ -271,13 +265,11 @@ export default function ImageWorkstation() {
   const sourceMeta = fusionInputHint ?? (previewSource ? `${previewSource.width}×${previewSource.height}` : '等待上传')
   const previewMeta = controller.readingResults
     ? '正在读取结果'
-    : controller.resultReadError && !variationTool
-      ? '结果暂时无法读取'
-      : controller.active || controller.submitting
-        ? '正在生成'
-        : controller.outputAssets.length > 0
-          ? `已生成 ${controller.outputAssets.length} 张`
-          : sourceMeta
+    : controller.active || controller.submitting
+      ? '正在生成'
+      : controller.outputAssets.length > 0
+        ? `已生成 ${controller.outputAssets.length} 张`
+        : sourceMeta
   // 无结果时脚注给出下一步；读取中/读取失败时隐藏，避免描述不存在的「效果」。
   const previewFootnote = relightTool
     ? controller.readingResults || controller.resultReadError
@@ -520,7 +512,7 @@ export default function ImageWorkstation() {
       return
     }
     // 新一轮生成重新判断读取结果，不沿用上一轮的「仍无法读取」结论。
-    setRetryReadFailedAgain(false)
+    setRetryReadFailedTaskId(undefined)
     try {
       const submitted = await controller.generate(canvasHandleRef.current)
       // 同步工具在 await 返回时已经完成，完成态由页面统一提示，避免「已提交」与「已完成」双 toast。
@@ -762,17 +754,24 @@ export default function ImageWorkstation() {
       : controller.inputAsset
         ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
         : '请先上传需要处理的图片'
-  const footerInfo = controller.readingResults
-    ? '正在读取结果 · 请稍候'
-    : controller.resultReadError
-      ? retryReadFailedAgain
-        ? '仍无法读取 · 可免费重试或重新生成'
-        : '结果暂时无法读取 · 可免费重试'
-      : controller.active || controller.submitting
-        ? '正在生成 · 请稍候'
-        : controller.outputAssets.length > 0
-          ? `已生成 ${controller.outputAssets.length} 张 · ${inputDescription}`
-          : inputDescription
+  // 读取失败的唯一结论：原因、可用张数、计费提醒都收在这一句里。
+  const readFailureReason = controller.resultReadError ?? '结果读取失败'
+  const readSuccessCount = controller.outputAssets.length
+  const readFailureCount = controller.resultReadFailureCount
+  const readFailureSummary = readFailureCount > 0 && readSuccessCount > 0
+    ? retryReadFailedAgain
+      ? `已就绪 ${readSuccessCount} 张，仍无法读取 ${readFailureCount} 张：${readFailureReason} · 可免费重试，或重新生成（会再次计费）`
+      : `已就绪 ${readSuccessCount} 张，${readFailureCount} 张读取失败：${readFailureReason} · 重试读取免费；重新生成会再次计费`
+    : retryReadFailedAgain
+      ? `仍无法读取：${readFailureReason} · 可免费重试，或重新生成（会再次计费）`
+      : `结果暂时无法读取：${readFailureReason} · 重试读取免费；重新生成会再次计费`
+  const footerInfo = controller.resultReadError
+    ? readFailureSummary
+    : controller.active || controller.submitting
+      ? '正在生成 · 请稍候'
+      : controller.outputAssets.length > 0
+        ? `已生成 ${controller.outputAssets.length} 张 · ${inputDescription}`
+        : inputDescription
   const inpaintCreditLabel = inpaintMode && generateQuote.status !== 'loading' && generateQuote.status !== 'unavailable'
     ? creditQuoteLabel(generateQuote)
     : undefined
@@ -870,7 +869,7 @@ export default function ImageWorkstation() {
           <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${inpaintTool ? ' is-inpaint' : ''}${fusionTool ? ' is-fusion' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
             <div className="workstation-panel-heading-row">
               <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
-              <span className={`workstation-preview-meta${controller.resultReadError && !controller.readingResults ? ' is-warning' : ''}`} aria-live="polite">{previewMeta}</span>
+              <span className="workstation-preview-meta" aria-live="polite">{previewMeta}</span>
             </div>
             {inpaintMode && controller.inputAsset && !edgeRefine ? (
               <InpaintGuide
@@ -915,7 +914,6 @@ export default function ImageWorkstation() {
               interactionMode={activeTool.interactionMode}
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
               processingLabel={!controller.resultReadError && (controller.active || controller.submitting) ? fusionTool ? '正在生成，完成后在这里查看结果' : '正在生成，结果会显示在下方' : undefined}
-              errorLabel={controller.resultReadError && !relightTool && !variationTool ? '结果暂时无法读取，可重试' : undefined}
               overlay={showRelightOverlay ? (
                 <RelightDirectionOverlay
                   direction={relightOptions.direction}
@@ -1087,11 +1085,9 @@ export default function ImageWorkstation() {
             submissionError={controller.submissionError}
             protocolError={controller.protocolError}
             readingResults={controller.readingResults}
-            resultReadError={controller.resultReadError}
-            suppressResultReadError={relightTool || variationTool}
+            resultUnavailable={Boolean(controller.resultReadError)}
             historyError={controller.historyError}
             historySaved={controller.historySaved}
-            onRetryRead={() => void controller.retryRead()}
             onRetrySave={() => void controller.retrySave()}
             pollError={controller.pollError}
             onRetry={() => void handleRetry()}
@@ -1106,15 +1102,18 @@ export default function ImageWorkstation() {
         {!edgeRefine && configurationReady === true && <CreditQuoteNotice quote={generateQuote} onRetry={() => void activeConfiguration.refetch()} />}
         <div className="image-workstation-footer-row">
           <div className="image-workstation-footer-info">
-            <span className="image-workstation-input-description" title={footerInfo}>{footerInfo}</span>
+            <span
+              id={controller.resultReadError ? 'workstation-result-status' : undefined}
+              className={`image-workstation-input-description${controller.resultReadError ? ' is-result-error' : ''}`}
+              role={controller.resultReadError ? 'status' : undefined}
+              aria-live={controller.resultReadError ? 'polite' : undefined}
+              title={footerInfo}
+            >
+              {footerInfo}
+            </span>
             {visibleBlockReason ? (
               <span id="workstation-block-reason" className="image-workstation-block-reason" role="status">
                 {visibleBlockReason}
-              </span>
-            ) : null}
-            {showRetryRead ? (
-              <span id="workstation-retry-advice" className="image-workstation-block-reason" role="status">
-                重新生成会再次计费，建议先重试读取
               </span>
             ) : null}
             {!edgeRefine ? (
@@ -1150,7 +1149,6 @@ export default function ImageWorkstation() {
                   <Button
                     type="primary"
                     loading={controller.readingResults}
-                    title="任务已完成，但结果读取失败。可免费重试，不会重复扣费。"
                     onClick={() => void handleRetryRead()}
                   >
                     {controller.readingResults ? '正在读取' : '重试读取'}
@@ -1167,7 +1165,7 @@ export default function ImageWorkstation() {
                       type={showRetryRead || downloadIsPrimary ? 'default' : 'primary'}
                       loading={controller.submitting}
                       quote={generateQuote}
-                      aria-describedby={showRetryRead ? 'workstation-retry-advice' : visibleBlockReason ? 'workstation-block-reason' : undefined}
+                      aria-describedby={controller.resultReadError ? 'workstation-result-status' : visibleBlockReason ? 'workstation-block-reason' : undefined}
                       aria-keyshortcuts="Meta+Enter Control+Enter"
                       disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                       onClick={handleGenerate}

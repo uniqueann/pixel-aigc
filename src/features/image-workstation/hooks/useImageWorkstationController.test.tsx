@@ -860,9 +860,11 @@ describe('useImageWorkstationController 集成流程', () => {
     await act(async () => { await expect(currentController.generate(canvasHandle)).rejects.toThrow('下载中断') })
     expect(currentController.activeTask?.status).toBe('succeeded')
     expect(currentController.resultReadError).toBe('下载中断')
+    expect(currentController.resultReadFailureCount).toBe(1)
     await act(async () => { await currentController.retryRead() })
     await vi.waitFor(async () => { await act(async () => {}); expect(currentController.historyError).toContain('存储空间不足') })
     expect(currentController.outputAssets).toHaveLength(1)
+    expect(currentController.resultReadFailureCount).toBe(0)
     expect(mocks.requestRepaint).toHaveBeenCalledTimes(1)
     expect(mocks.createTask).not.toHaveBeenCalled()
     const savedBlob = mocks.historySave.mock.calls[0][1].result
@@ -891,10 +893,12 @@ describe('useImageWorkstationController 集成流程', () => {
     mocks.polling.data = completed
     await act(async () => root.render(<ControllerHarness tool="smart-edit" prompt="白背景" count={4} onController={captureController} />))
     await vi.waitFor(async () => { await act(async () => {}); expect(currentController.readingResults).toBe(false); expect(currentController.outputAssets).toHaveLength(3) })
+    expect(currentController.resultReadFailureCount).toBe(1)
     const firstIds = currentController.outputAssets.map(asset => asset.id)
     failed = false
     await act(async () => { await currentController.retryRead() })
     expect(currentController.outputAssets).toHaveLength(4)
+    expect(currentController.resultReadFailureCount).toBe(0)
     expect(currentController.outputAssets.map(asset => asset.id)).toEqual(expect.arrayContaining(firstIds))
     expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith('https:'))).toHaveLength(0)
     expect(fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/objects'))).toHaveLength(5)

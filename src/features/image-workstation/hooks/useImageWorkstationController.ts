@@ -158,6 +158,8 @@ export function useImageWorkstationController({
   const readAbortRef = useRef(new AbortController())
   const [readingResults, setReadingResults] = useState(false)
   const [resultReadError, setResultReadError] = useState<string>()
+  // 与 resultReadError 同时更新：页面据此区分「全部失败」和「部分结果已就绪」。
+  const [resultReadFailureCount, setResultReadFailureCount] = useState(0)
   const [historyError, setHistoryError] = useState<string>()
   const [historySaved, setHistorySaved] = useState(false)
   const failedSavesRef = useRef(new Map<string, { ownerId: string; record: WorkstationHistoryRecord; epoch: number }>())
@@ -181,7 +183,7 @@ export function useImageWorkstationController({
     syncRecoveryRef.current = undefined
     setTask(undefined); setActiveTaskId(undefined)
     failedSavesRef.current.clear()
-    setResultReadError(undefined); setHistoryError(undefined); setHistorySaved(false); setReadingResults(false)
+    setResultReadError(undefined); setResultReadFailureCount(0); setHistoryError(undefined); setHistorySaved(false); setReadingResults(false)
     setSubmissionError(undefined); setProtocolError(undefined)
     inputRetryRef.current = undefined
     setInputRetryRequest(undefined)
@@ -291,7 +293,7 @@ export function useImageWorkstationController({
     const finalized = finalizeWorkstationResults(completedTask, adapted.assets.filter((asset): asset is ImageAsset => asset.type === 'image'))
     if (finalized.error) { setProtocolError(finalized.error); return }
     readingVersionsRef.current.add(version)
-    setReadingResults(true); setResultReadError(undefined)
+    setReadingResults(true); setResultReadError(undefined); setResultReadFailureCount(0)
     const successful: ImageAsset[] = []
     let failures = 0
     const signal = readAbortRef.current.signal
@@ -329,6 +331,7 @@ export function useImageWorkstationController({
       readingVersionsRef.current.delete(version)
       if (current()) {
         readFailureRef.current = failures > 0
+        setResultReadFailureCount(failures)
         setReadingResults(false)
       }
     }
@@ -395,7 +398,7 @@ export function useImageWorkstationController({
     } catch (error) {
       if (current()) {
         const message = error instanceof Error ? error.message : '处理失败'
-        if (descriptor) setResultReadError(message)
+        if (descriptor) { setResultReadFailureCount(1); setResultReadError(message) }
         else setSubmissionError(message)
       }
       throw error
@@ -424,7 +427,7 @@ export function useImageWorkstationController({
 
   const retryRead = useCallback(async () => {
     const epoch = epochRef.current
-    setResultReadError(undefined); setReadingResults(true)
+    setResultReadError(undefined); setResultReadFailureCount(0); setReadingResults(true)
     readFailureRef.current = false
     const recovery = syncRecoveryRef.current
     let failed = false
@@ -437,6 +440,7 @@ export function useImageWorkstationController({
     } catch (error) {
       if (epoch === epochRef.current) {
         failed = true
+        setResultReadFailureCount(1)
         setResultReadError(error instanceof Error ? error.message : '读取失败，请重试读取')
       }
     } finally { if (epoch === epochRef.current) setReadingResults(false) }
@@ -709,6 +713,7 @@ export function useImageWorkstationController({
     formLocked: submitting || readingResults || (!!status && ACTIVE_STATUSES.has(status)),
     readingResults,
     resultReadError,
+    resultReadFailureCount,
     historyError,
     historySaved,
     retryRead,

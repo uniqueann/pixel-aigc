@@ -22,9 +22,11 @@ const mocks = vi.hoisted(() => ({
   controller: {
     outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(),
     inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined,
-    resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn(), generate: vi.fn(), selectOutput: vi.fn(),
+    resultReadError: undefined as string | undefined, resultReadFailureCount: 0,
+    readingResults: false, retryRead: vi.fn(), generate: vi.fn(), selectOutput: vi.fn(),
     active: false, submitting: false, cancelling: false, cancel: vi.fn(), activeTask: undefined as unknown,
   },
+  taskStatusProps: undefined as Record<string, unknown> | undefined,
   controllerArgs: undefined as { modelProfileId?: string; keepInputOnSuccess?: boolean } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
@@ -51,7 +53,12 @@ vi.mock('@/features/image-workstation/hooks/useImageWorkstationController', () =
 }))
 vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ models: mocks.models, loading: mocks.modelsLoading, refetch: vi.fn() }) }))
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false }))
-vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
+vi.mock('@/components/GenerationTaskStatus', () => ({
+  default: (props: Record<string, unknown>) => {
+    mocks.taskStatusProps = props
+    return null
+  },
+}))
 vi.mock('@/features/image-workstation/hooks/useFusionImageSelection', () => ({ useFusionImageSelection: () => mocks.fusion }))
 // 涂抹/扩图画布依赖 Fabric 与真实 canvas；页面测试只验证流程，不挂载画布实现。
 vi.mock('./components/canvas/MaskPaintCanvas', async () => {
@@ -99,8 +106,10 @@ describe('图片工作站配置提示', () => {
     mocks.controller.outputAssets = []
     mocks.controller.formLocked = false
     mocks.controller.resultReadError = undefined
+    mocks.controller.resultReadFailureCount = 0
     mocks.controller.readingResults = false
     mocks.controller.retryRead.mockReset()
+    mocks.taskStatusProps = undefined
     mocks.controller.retryRead.mockResolvedValue(true)
     mocks.controller.generate.mockReset()
     mocks.controller.generate.mockResolvedValue({ status: 'succeeded' })
@@ -479,7 +488,7 @@ describe('图片工作站配置提示', () => {
     const retryRead = screen.getByRole('button', { name: '重试读取' })
     expect(retryRead.className).toContain('ant-btn-primary')
     expect(buttonByText(/生成 1 张 · 4 积分/).className).toContain('ant-btn-default')
-    expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
+    expect(screen.getByText('结果暂时无法读取：仅支持 PNG、JPEG 和 WebP 图片 · 重试读取免费；重新生成会再次计费')).toBeTruthy()
     fireEvent.click(retryRead)
     expect(mocks.controller.retryRead).toHaveBeenCalledTimes(1)
   })
@@ -494,9 +503,9 @@ describe('图片工作站配置提示', () => {
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
     mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
     render(<App><ImageWorkstation /></App>)
-    expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
+    expect(screen.getByText('结果暂时无法读取：仅支持 PNG、JPEG 和 WebP 图片 · 重试读取免费；重新生成会再次计费')).toBeTruthy()
     expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
-    expect(screen.getByRole('button', { name: '重试读取' }).getAttribute('title')).toBe('任务已完成，但结果读取失败。可免费重试，不会重复扣费。')
+    expect(screen.getByRole('button', { name: '重试读取' }).getAttribute('title')).toBeNull()
   })
 
   it('裂变结果读取失败时只在页脚保留结论，画布不再叠加警告', () => {
@@ -510,7 +519,7 @@ describe('图片工作站配置提示', () => {
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1000, height: 1000, url: 'blob:uploaded' }
     mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
     render(<App><ImageWorkstation /></App>)
-    expect(screen.getByText('结果暂时无法读取 · 可免费重试')).toBeTruthy()
+    expect(screen.getByText('结果暂时无法读取：仅支持 PNG、JPEG 和 WebP 图片 · 重试读取免费；重新生成会再次计费')).toBeTruthy()
     expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
     expect(screen.queryByText('结果暂时无法读取', { selector: '.workstation-preview-meta' })).toBeNull()
     expect(screen.getByRole('button', { name: '重试读取' })).toBeTruthy()
@@ -619,7 +628,7 @@ describe('图片工作站配置提示', () => {
     mocks.controller.readingResults = true
     mocks.controller.resultReadError = undefined
     view.rerender(<App><ImageWorkstation /></App>)
-    expect(screen.getByText('正在读取结果 · 请稍候')).toBeTruthy()
+    expect(screen.queryByText('正在读取结果 · 请稍候')).toBeNull()
     expect(screen.getByText('正在读取结果', { selector: '.workstation-preview-meta' })).toBeTruthy()
     const readingButton = screen.getByRole('button', { name: /正在读取/ })
     expect(readingButton.className).toContain('ant-btn-loading')
@@ -645,12 +654,12 @@ describe('图片工作站配置提示', () => {
     mocks.controller.readingResults = true
     mocks.controller.resultReadError = undefined
     view.rerender(<App><ImageWorkstation /></App>)
-    expect(screen.getByText('正在读取结果 · 请稍候')).toBeTruthy()
+    expect(screen.getByText('正在读取结果', { selector: '.workstation-preview-meta' })).toBeTruthy()
 
     mocks.controller.readingResults = false
     mocks.controller.resultReadError = '仅支持 PNG、JPEG 和 WebP 图片'
     view.rerender(<App><ImageWorkstation /></App>)
-    expect(screen.getByText('仍无法读取 · 可免费重试或重新生成')).toBeTruthy()
+    expect(screen.getByText('仍无法读取：仅支持 PNG、JPEG 和 WebP 图片 · 可免费重试，或重新生成（会再次计费）')).toBeTruthy()
   })
 
   it('确认重绘未配置后才显示不能用的提示', () => {
@@ -908,11 +917,35 @@ describe('图片工作站配置提示', () => {
     mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
     mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
     mocks.controller.resultReadError = '结果读取失败'
+    mocks.controller.resultReadFailureCount = 1
     render(<App><ImageWorkstation /></App>)
-    expect(screen.getByText('重新生成会再次计费，建议先重试读取')).toBeTruthy()
-    expect(buttonByText(/再生成一版/).getAttribute('aria-describedby')).toBe('workstation-retry-advice')
+    expect(screen.getByText('已就绪 1 张，1 张读取失败：结果读取失败 · 重试读取免费；重新生成会再次计费')).toBeTruthy()
+    expect(buttonByText(/再生成一版/).getAttribute('aria-describedby')).toBe('workstation-result-status')
     expect(buttonByText(/下载结果/).className).not.toContain('ant-btn-primary')
     expect(screen.getByRole('button', { name: '重试读取' }).className).toContain('ant-btn-primary')
+  })
+
+  it('读取失败只保留一个结论和一个重试入口，不再叠加 toast 或画布错误', async () => {
+    mocks.tool = 'retouch'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.resultReadError = '下载中断'
+    mocks.controller.resultReadFailureCount = 1
+    mocks.controller.activeTask = {
+      id: 'task-1', capability: 'image_edit', status: 'succeeded',
+      params: { count: 1, resolution: '1k' }, creditsCost: 1,
+      createdAt: '2026-11-10T00:00:00Z', updatedAt: '2026-11-10T00:01:00Z',
+    }
+    render(<App><ImageWorkstation /></App>)
+    await act(async () => { await Promise.resolve() })
+
+    expect(screen.getAllByText(/结果暂时无法读取/)).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: '重试读取' })).toHaveLength(1)
+    expect(screen.queryByText('结果暂时无法读取，可重试')).toBeNull()
+    expect(screen.queryByText('结果暂时无法读取', { selector: '.workstation-preview-meta' })).toBeNull()
+    expect(screen.queryByText('任务已完成，但结果暂时无法读取')).toBeNull()
+    expect(mocks.taskStatusProps?.resultUnavailable).toBe(true)
+    expect(mocks.taskStatusProps?.onRetryRead).toBeUndefined()
   })
 
   it('消除和扩图在已知余额不足时显示积分不足，未知余额不拦截', () => {
