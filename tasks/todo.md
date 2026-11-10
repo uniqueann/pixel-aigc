@@ -2131,3 +2131,4 @@
 - 仅在 `params.keepSourceSize` 时传第四参，其余任务仍三参数调用，保护 `text-to-image.test.ts` 的既有断言。
 - 文案分三种：原尺寸且档位足够、原尺寸但被 4K 比例规则降到 2K（说明先生成再缩放）、原图长边超过 4K（提示会放大）；固定档位才显示原有的「当前比例不支持 4K」。
 - 截图：`/tmp/pw-retouch/keep-source-desktop.png`、`keep-source-result.png`、`keep-source-800.png`、`keep-source-3000x1688.png`、`keep-source-3000x2000.png`、`keep-source-mobile.png`。
+- PR #269 CI：`verify` pass（5m1s）；Vercel 与 Preview Comments pass。
