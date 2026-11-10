@@ -7,13 +7,47 @@ export type RetouchDirection = typeof RETOUCH_DIRECTION_IDS[number]
 export const RETOUCH_DIRECTIONS: ReadonlyArray<{
   id: RetouchDirection
   label: string
+  /** 面板里的一行说明；与 instruction 相邻维护，避免界面承诺和实际提示词漂移。 */
+  hint: string
   instruction: string
 }> = [
-  { id: 'blemish', label: '去瑕疵', instruction: '去瑕疵：只做轻微照片修图，去掉灰尘、划痕和小脏点。不改形状、颜色和材质。' },
-  { id: 'brighten', label: '提亮', instruction: '提亮：只提高曝光和亮度，减轻过暗阴影。不改色相、白平衡，也不改任何部件颜色。' },
-  { id: 'sharpen', label: '边缘锐化', instruction: '边缘锐化：只锐化原图已有边缘。不新造细节，不重描轮廓，不改形状。' },
-  { id: 'texture', label: '统一质感', instruction: '统一质感：轻微均匀表面光影和质地。不换材质，不改颜色。' },
+  { id: 'blemish', label: '去瑕疵', hint: '去掉灰尘、划痕和小脏点，不改形状', instruction: '去瑕疵：只做轻微照片修图，去掉灰尘、划痕和小脏点。不改形状、颜色和材质。' },
+  { id: 'brighten', label: '提亮', hint: '提高曝光和亮度，减轻过暗阴影', instruction: '提亮：只提高曝光和亮度，减轻过暗阴影。不改色相、白平衡，也不改任何部件颜色。' },
+  { id: 'sharpen', label: '边缘锐化', hint: '只锐化已有边缘，不新造细节', instruction: '边缘锐化：只锐化原图已有边缘。不新造细节，不重描轮廓，不改形状。' },
+  { id: 'texture', label: '统一质感', hint: '均匀表面光影和质地，不换材质', instruction: '统一质感：轻微均匀表面光影和质地。不换材质，不改颜色。' },
 ]
+
+/** 一键精修是面板的第一层入口；自定义方向仍保留在复选框里。 */
+export const RETOUCH_PRESETS: ReadonlyArray<{
+  id: string
+  label: string
+  description: string
+  directions: readonly RetouchDirection[]
+}> = [
+  {
+    id: 'standard',
+    label: '一键精修',
+    description: '去瑕疵 + 提亮',
+    directions: ['blemish', 'brighten'],
+  },
+]
+
+export const RETOUCH_TARGET_LONG_EDGE = { '1k': 1024, '2k': 2048, '4k': 4096 } as const
+
+/** 精修输出尺寸：按分辨率档位把原图缩放到对应长边，界面与实际请求共用这一份计算。 */
+export function retouchOutputSize(
+  width: number,
+  height: number,
+  resolution: keyof typeof RETOUCH_TARGET_LONG_EDGE,
+) {
+  const safeWidth = Math.max(1, width)
+  const safeHeight = Math.max(1, height)
+  const scale = RETOUCH_TARGET_LONG_EDGE[resolution] / Math.max(safeWidth, safeHeight)
+  return {
+    width: Math.round(safeWidth * scale),
+    height: Math.round(safeHeight * scale),
+  }
+}
 
 export const RETOUCH_MODEL_PROMPT_MAX = 4000
 

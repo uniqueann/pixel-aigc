@@ -209,7 +209,8 @@ describe('智能编辑参数面板', () => {
     expect(screen.getByRole('button', { name: /补充要求/ }).getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('精修展示四个方向，补充说明单独计数', () => {
+  it('精修展示承诺、一键组合和四个方向说明', () => {
+    const onDirections = vi.fn()
     render(
       <ParamPanel
         capability={Capability.Retouch}
@@ -231,15 +232,23 @@ describe('智能编辑参数面板', () => {
         presetPlatform="x"
         onPresetPlatformChange={() => undefined}
         retouchDirections={['blemish']}
+        onRetouchDirectionsChange={onDirections}
       />,
     )
     for (const label of ['去瑕疵', '提亮', '边缘锐化', '统一质感']) {
       expect(screen.getByText(label)).toBeTruthy()
     }
+    expect(screen.getByText('商品颜色、材质与整体色相')).toBeTruthy()
+    expect(screen.getByText('文字、Logo、铭牌与构图')).toBeTruthy()
+    expect(screen.getByText('去掉灰尘、划痕和小脏点，不改形状')).toBeTruthy()
+    expect(screen.getByText('已选：去瑕疵')).toBeTruthy()
     expect(screen.getByText('补充说明（可选）')).toBeTruthy()
     expect(screen.getByPlaceholderText('例如：保留吊牌文字')).toHaveProperty('maxLength', RETOUCH_NOTE_MAX)
     expect(screen.queryByText('生成尺寸')).toBeNull()
     expect(screen.queryByText('编辑要求')).toBeNull()
+    expect(screen.getByText(/输出 \d+×\d+/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /一键精修/ }))
+    expect(onDirections).toHaveBeenCalledWith(['blemish', 'brighten'])
   })
 
   it('融合只保留可选补充说明', () => {

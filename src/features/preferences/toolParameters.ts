@@ -1,5 +1,5 @@
 import { RELIGHT_DEFAULT, type RelightOptions } from '@shared/relight'
-import type { RetouchDirection } from '@shared/retouch'
+import { RETOUCH_PRESETS, type RetouchDirection } from '@shared/retouch'
 import { defaultImageModel, mapDragonCodeSize, type ImageModelUi } from '@shared/image-models'
 import { COUNT_TOOLS, type CountTool, type ImageMemoryTool, type PersonalizationPreferences } from '@shared/preferences'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, type AspectRatioSettings } from '@/pages/Toolbox/aspect-ratio/types'
@@ -36,7 +36,10 @@ export function initialWorkstationParameters(preferences: PersonalizationPrefere
   return {
     count: memory?.count ?? (counted ? preferences.image.counts[counted] : 1),
     resolution: memory?.resolution ?? preferences.image.resolution,
-    retouchDirections: tool === 'retouch' ? remembered.retouch?.retouchDirections ?? [] : [],
+    // 精修首次进入就用推荐组合，让「一键精修」成为默认路径；用户改过后继续沿用记忆。
+    retouchDirections: tool === 'retouch'
+      ? remembered.retouch?.retouchDirections ?? [...RETOUCH_PRESETS[0].directions]
+      : [],
     relight: tool === 'relight' ? remembered.relight?.relight ?? { ...RELIGHT_DEFAULT } : { ...RELIGHT_DEFAULT },
     outpaintMode: tool === 'outpaint' ? remembered.outpaint?.outpaintMode ?? 'free' : 'free',
     outpaintOutputMode: tool === 'outpaint' ? remembered.outpaint?.outpaintOutputMode ?? 'original' : 'original',

@@ -17,7 +17,7 @@ import {
 } from '@shared/relight'
 import RelightCompass from './RelightCompass'
 import { outputPreview } from '../utils/outputPreview'
-import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
+import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, RETOUCH_PRESETS, normalizeRetouchDirections, retouchDirectionLabel, retouchOutputSize, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import { MAX_SCALE, type OutpaintOutputMode } from '@shared/outpaint'
 import type { CountTool } from '@shared/preferences'
@@ -111,6 +111,26 @@ function VariationContract({ count }: { count: number }) {
       <div>
         <dt>输出</dt>
         <dd>一次生成 {count} 张变体</dd>
+      </div>
+    </dl>
+  )
+}
+
+/** 精修的核心承诺：只做轻微修图，颜色、文字和构图都不动。 */
+function RetouchContract() {
+  return (
+    <dl className="workstation-retouch-contract">
+      <div>
+        <dt>保留</dt>
+        <dd>商品颜色、材质与整体色相</dd>
+      </div>
+      <div>
+        <dt>不改</dt>
+        <dd>文字、Logo、铭牌与构图</dd>
+      </div>
+      <div>
+        <dt>只做</dt>
+        <dd>去瑕疵、提亮、边缘锐化和统一质感</dd>
       </div>
     </dl>
   )
@@ -237,6 +257,15 @@ export default function ParamPanel({
     const constraintSize = sourceSize ? mapDragonCodeSize(sourceSize.width, sourceSize.height, resolution).size : ''
     const fourKAllowed = !sourceSize || !model?.ui.resolutionRatioConstraints?.['4k']
       || model.ui.resolutionRatioConstraints['4k'].includes(constraintSize)
+    const retouchPreset = RETOUCH_PRESETS[0]
+    const selectedDirections = normalizeRetouchDirections(retouchDirections)
+    const presetActive = selectedDirections.length === retouchPreset.directions.length
+      && retouchPreset.directions.every(direction => selectedDirections.includes(direction))
+    const selectedDirectionLabel = selectedDirections.map(retouchDirectionLabel).join('、')
+    const resolutionLabel = retouch ? '输出尺寸' : '渲染分辨率'
+    const retouchOutput = retouch && sourceSize
+      ? retouchOutputSize(sourceSize.width, sourceSize.height, resolution)
+      : undefined
     // 裂变与融合的补充说明是可选项：默认收起，已有内容时自动展开，接近上限才显示字数。
     const variationNoteExpanded = variationNoteOpen ?? Boolean(smartEditPrompt)
     const variationNoteNearLimit = smartEditPrompt.length >= Math.floor(promptMaxLength * 0.85)
@@ -251,9 +280,9 @@ export default function ParamPanel({
     )
     const resolutionBlock = (
       <div>
-        <div style={labelStyle}>渲染分辨率</div>
+        <div style={labelStyle}>{resolutionLabel}</div>
         <Select
-          aria-label="渲染分辨率"
+          aria-label={resolutionLabel}
           style={{ width: '100%' }}
           value={resolution}
           disabled={disabled}
@@ -266,8 +295,15 @@ export default function ParamPanel({
         />
         {mapped ? (
           <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
-            预计输出 {mapped.size} · {mapped.resolution.toUpperCase()}
-            {!fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
+            {retouch && retouchOutput
+              ? `输出 ${retouchOutput.width}×${retouchOutput.height}（长边 ${resolution.toUpperCase()}）`
+              : `预计输出 ${mapped.size} · ${mapped.resolution.toUpperCase()}`}
+            {!retouch && !fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
+          </p>
+        ) : null}
+        {retouch && sourceSize && retouchOutput && Math.max(sourceSize.width, sourceSize.height) < 1024 ? (
+          <p className="toolbox-hint" style={{ margin: '4px 0 0', fontSize: 12 }}>
+            原图 {sourceSize.width}×{sourceSize.height}，将放大到 {retouchOutput.width}×{retouchOutput.height}；精修不会重绘，但尺寸会变化。
           </p>
         ) : null}
       </div>
@@ -427,13 +463,61 @@ export default function ParamPanel({
         ) : null}
         {retouch ? (
           <div>
-            <div style={labelStyle}>精修方向</div>
+            <RetouchContract />
+            <div style={{ ...labelStyle, marginTop: 12 }}>精修方向</div>
+            <button
+              type="button"
+              className={`retouch-preset${presetActive ? ' is-active' : ''}`}
+              aria-pressed={presetActive}
+              disabled={disabled}
+              onClick={() => onRetouchDirectionsChange?.(normalizeRetouchDirections(retouchPreset.directions))}
+            >
+              <span className="retouch-preset-main">
+                <span className="retouch-preset-name">{retouchPreset.label}</span>
+                <span className="retouch-preset-badge">推荐</span>
+              </span>
+              <span className="retouch-preset-desc">{retouchPreset.description}</span>
+            </button>
+            <div className="retouch-direction-summary">
+              <span className="retouch-direction-selected">
+                {selectedDirections.length === 0
+                  ? '请选择至少一个方向'
+                  : selectedDirections.length === RETOUCH_DIRECTIONS.length
+                    ? `已选全部 ${RETOUCH_DIRECTIONS.length} 项`
+                    : `已选：${selectedDirectionLabel}`}
+              </span>
+              <span className="retouch-direction-actions">
+                <button
+                  type="button"
+                  disabled={disabled || selectedDirections.length === RETOUCH_DIRECTIONS.length}
+                  onClick={() => onRetouchDirectionsChange?.(normalizeRetouchDirections(RETOUCH_DIRECTIONS.map(item => item.id)))}
+                >
+                  全选
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled || selectedDirections.length === 0}
+                  onClick={() => onRetouchDirectionsChange?.([])}
+                >
+                  清空
+                </button>
+              </span>
+            </div>
             <Checkbox.Group
+              className="retouch-direction-group"
               style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
               disabled={disabled}
               value={retouchDirections}
               onChange={(values) => onRetouchDirectionsChange?.(normalizeRetouchDirections(values.map(String)))}
-              options={RETOUCH_DIRECTIONS.map(item => ({ label: item.label, value: item.id }))}
+              options={RETOUCH_DIRECTIONS.map(item => ({
+                value: item.id,
+                label: (
+                  <span className="retouch-direction-option">
+                    <span className="retouch-direction-name">{item.label}</span>
+                    <span className="retouch-direction-hint">{item.hint}</span>
+                  </span>
+                ),
+              }))}
             />
           </div>
         ) : null}
