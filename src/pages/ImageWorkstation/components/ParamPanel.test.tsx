@@ -276,6 +276,90 @@ describe('智能编辑参数面板', () => {
     expect(fourK?.getAttribute('aria-disabled')).toBe('true')
   })
 
+  it('精修保持原尺寸时显示原图像素与计费档', () => {
+    render(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        resolution="1k"
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 800, height: 450 }}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+        keepSourceSize
+      />,
+    )
+    expect(screen.getByText('输出 800×450（原图尺寸）· 按 1K 计费')).toBeTruthy()
+    expect(screen.queryByText(/将放大到/)).toBeNull()
+  })
+
+  it('选择保持原尺寸会通知页面', () => {
+    const onRetouchOutputChange = vi.fn()
+    render(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 800, height: 450 }}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+        onRetouchOutputChange={onRetouchOutputChange}
+      />,
+    )
+    const resolution = screen.getAllByRole('combobox').find(item => item.getAttribute('aria-label') === '输出尺寸')
+    if (!resolution) throw new Error('未找到输出尺寸选择')
+    fireEvent.mouseDown(resolution)
+    const sourceOption = [...document.querySelectorAll('.ant-select-item-option')].find(item => item.textContent === '保持原尺寸')
+    expect(sourceOption?.getAttribute('aria-disabled')).not.toBe('true')
+    fireEvent.click(sourceOption!.querySelector('.ant-select-item-option-content')!)
+    expect(onRetouchOutputChange).toHaveBeenCalledWith('source')
+  })
+
+  it('没有原图时保持原尺寸不可选，其他工具不显示该选项', () => {
+    const { unmount } = render(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        models={[model]}
+        modelProfileId={model.id}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+        keepSourceSize
+      />,
+    )
+    const resolution = screen.getAllByRole('combobox').find(item => item.getAttribute('aria-label') === '输出尺寸')
+    if (!resolution) throw new Error('未找到输出尺寸选择')
+    fireEvent.mouseDown(resolution)
+    const sourceOption = [...document.querySelectorAll('.ant-select-item-option')].find(item => item.textContent === '保持原尺寸')
+    expect(sourceOption?.getAttribute('aria-disabled')).toBe('true')
+    unmount()
+    render(
+      <ParamPanel
+        capability={Capability.ImageEdit}
+        smartEditPrompt="换成白底"
+        onSmartEditPromptChange={() => undefined}
+        count={1}
+        onCountChange={() => undefined}
+        resolution="2k"
+        onResolutionChange={() => undefined}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 800, height: 600 }}
+        erasePrompt=""
+        onErasePromptChange={() => undefined}
+        repaintPrompt=""
+        onRepaintPromptChange={() => undefined}
+        outpaintMode="free"
+        onOutpaintTargetModeChange={() => undefined}
+        presetPlatform="x"
+        onPresetPlatformChange={() => undefined}
+      />,
+    )
+    expect(screen.queryByText('保持原尺寸')).toBeNull()
+  })
+
   it('融合只保留可选补充说明', () => {
     render(
       <ParamPanel

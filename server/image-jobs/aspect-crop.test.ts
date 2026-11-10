@@ -41,6 +41,27 @@ describe('cropToSourceAspect', () => {
     expect(threeTwo.width).toBe(Math.round(2161 * 1.5))
   })
 
+  it('保持原尺寸时缩放到精确像素', async () => {
+    const source = await sharp({ create: { width: 120, height: 80, channels: 3, background: '#00f' } }).png().toBuffer()
+    const result = await cropToSourceAspect(source, 120, 80, { width: 240, height: 160 })
+    expect(result).toMatchObject({ width: 240, height: 160, cropped: false, resized: true, mimeType: 'image/png' })
+    expect(await sharp(result.bytes).metadata()).toMatchObject({ width: 240, height: 160 })
+  })
+
+  it('先裁切再缩放到原图尺寸，格式保持不变', async () => {
+    const source = await sharp({ create: { width: 200, height: 100, channels: 3, background: '#0f0' } }).jpeg().toBuffer()
+    const result = await cropToSourceAspect(source, 100, 100, { width: 50, height: 50 })
+    expect(result).toMatchObject({ width: 50, height: 50, cropped: true, resized: true, mimeType: 'image/jpeg' })
+    expect(await sharp(result.bytes).metadata()).toMatchObject({ width: 50, height: 50, format: 'jpeg' })
+  })
+
+  it('目标尺寸与裁切结果一致时保留原字节', async () => {
+    const source = await sharp({ create: { width: 120, height: 80, channels: 3, background: '#0ff' } }).png().toBuffer()
+    const result = await cropToSourceAspect(source, 120, 80, { width: 120, height: 80 })
+    expect(result).toMatchObject({ width: 120, height: 80, cropped: false, resized: false })
+    expect(Buffer.from(result.bytes).equals(source)).toBe(true)
+  })
+
   it('损坏或无法解码的图片抛出 BAD_RESULT 错误', async () => {
     const badPng = Uint8Array.from([
       137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,

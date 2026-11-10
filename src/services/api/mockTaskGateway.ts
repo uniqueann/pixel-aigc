@@ -175,8 +175,11 @@ function createMockImage(params: TextToImageTaskParams, index: number) {
 
 function createMockEditedImage(params: ImageEditTaskParams, index: number) {
   const longEdge = params.resolution === '4k' ? 4096 : 2048
-  const width = params.size?.width ?? longEdge
-  const height = params.size?.height ?? Math.round(longEdge * 0.75)
+  // 保持原尺寸时显式用原图宽高，避免历史参数里 size 缺失导致 mock 回落到档位尺寸。
+  const sourceWidth = params.keepSourceSize ? params.sourceWidth : undefined
+  const sourceHeight = params.keepSourceSize ? params.sourceHeight : undefined
+  const width = sourceWidth ?? params.size?.width ?? longEdge
+  const height = sourceHeight ?? params.size?.height ?? Math.round(longEdge * 0.75)
   const prompt = escapeSvgText((params.prompt ?? '').trim().slice(0, 42) || '智能编辑')
   const hue = (index * 62 + 142) % 360
   const svg = `

@@ -23,6 +23,7 @@ import {
 } from '../../shared/relight.js'
 import {
   RETOUCH_DIRECTION_IDS,
+  RETOUCH_MAX_SOURCE_PIXELS,
   RETOUCH_NOTE_MAX,
   composeRetouchPrompt,
   normalizeRetouchDirections,
@@ -136,6 +137,8 @@ const imageSourceParams = {
 }
 const imageEditParams = z.object({
   ...imageSourceParams,
+  /** 精修：结果后处理缩回 sourceWidth×sourceHeight；仅 image_edit 接受。 */
+  keepSourceSize: z.boolean().optional(),
   prompt: z.string().trim().max(PROMPT_MAX_LENGTH).optional(),
   retouchDirections: z.array(z.enum(RETOUCH_DIRECTION_IDS)).max(4).optional(),
   referenceImageKey: z.string().trim().min(1).max(512).optional(),
@@ -150,6 +153,20 @@ const imageEditParams = z.object({
   const note = value.prompt?.trim() ?? ''
   const referenceKey = value.referenceImageKey?.trim() ?? ''
   const relight = value.relight
+  if (value.keepSourceSize) {
+    if (directions.length === 0) {
+      ctx.addIssue({ code: 'custom', message: '保持原尺寸仅用于精修', path: ['keepSourceSize'] })
+      return
+    }
+    if (!value.sourceWidth || !value.sourceHeight) {
+      ctx.addIssue({ code: 'custom', message: '保持原尺寸需要原图宽高', path: ['sourceWidth'] })
+      return
+    }
+    if (value.sourceWidth * value.sourceHeight > RETOUCH_MAX_SOURCE_PIXELS) {
+      ctx.addIssue({ code: 'custom', message: '原图尺寸过大，无法保持原尺寸', path: ['sourceWidth'] })
+      return
+    }
+  }
   if (relight && (directions.length > 0 || referenceKey)) {
     ctx.addIssue({ code: 'custom', message: '不能同时提交重新打光和其他编辑', path: ['relight'] })
     return
@@ -227,6 +244,7 @@ type StoredImageParams = {
   referenceImageKey?: string
   sourceWidth?: number
   sourceHeight?: number
+  keepSourceSize?: boolean
   size?: { width: number; height: number }
 }
 
@@ -1045,7 +1063,11 @@ async function persistDownloadedResult(
   if (!runtime.execution || !job.lease_token) throw new ImageLeaseLost()
   const params = job.params as StoredImageParams
   const source = sourceDimensions(params)
-  const cropped = await measureImagePhase(runtime, job, 'postprocess', () => runtime.crop(bytes, source.width, source.height), { ordinal: item.ordinal })
+  // 只有精修「保持原尺寸」才要求后处理 resize；其余任务保持原有三参数调用。
+  const exactSize = params.keepSourceSize ? { width: source.width, height: source.height } : undefined
+  const cropped = await measureImagePhase(runtime, job, 'postprocess', () => exactSize
+    ? runtime.crop(bytes, source.width, source.height, exactSize)
+    : runtime.crop(bytes, source.width, source.height), { ordinal: item.ordinal })
   const attemptId = randomUUID()
   const objectKey = `generated/${job.user_id}/${job.scope}/${job.id}/${item.ordinal}/${attemptId}.${extensionFor(cropped.mimeType || mimeType)}`
   const descriptor = { object_key: objectKey,mime_type: cropped.mimeType || mimeType,width: cropped.width,height: cropped.height,

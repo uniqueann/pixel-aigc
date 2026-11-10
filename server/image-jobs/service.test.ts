@@ -584,6 +584,73 @@ describe('精修任务', () => {
     expect(() => assertRetouchNoteLimit(body)).toThrow(retouchNoteLimitMessage())
     expect(() => createImageTaskSchema.parse(body)).toThrow()
   })
+
+  it('保持原尺寸要求精修方向、原图宽高与像素上限', () => {
+    const valid = params({ retouchDirections: ['blemish'], keepSourceSize: true })
+    expect(createImageTaskSchema.parse(valid).params).toMatchObject({ keepSourceSize: true })
+    expect(createImageTaskSchema.safeParse(params({ keepSourceSize: true })).success).toBe(false)
+    expect(createImageTaskSchema.safeParse(params({
+      retouchDirections: ['blemish'], keepSourceSize: true, sourceWidth: undefined,
+    })).success).toBe(false)
+    expect(createImageTaskSchema.safeParse(params({
+      retouchDirections: ['blemish'], keepSourceSize: true, sourceWidth: 10000, sourceHeight: 10000,
+    })).success).toBe(false)
+    expect(createImageTaskSchema.safeParse(variationParams({ keepSourceSize: true })).success).toBe(false)
+  })
+
+  it('保持原尺寸时后处理缩放到原图并回传尺寸', async () => {
+    const store = createMemoryStore(user.id)
+    const crop = vi.fn(async (bytes: Uint8Array, _width: number, _height: number, exact?: { width: number; height: number }) => ({
+      bytes: new Uint8Array(bytes),
+      width: exact?.width ?? 8,
+      height: exact?.height ?? 8,
+      mimeType: 'image/png',
+      cropped: false,
+      resized: Boolean(exact),
+    }))
+    const rt: ImageJobRuntime = {
+      ...runtime(createMockImageProvider({
+        async getStatus() { return { state: 'succeeded', resultUrls: ['https://mock.local/a.png'] } },
+      })),
+      crop,
+    }
+    const created = await createImageJobInStore(store, user, params({
+      prompt: undefined,
+      retouchDirections: ['blemish'],
+      keepSourceSize: true,
+    }), rt)
+    await store.updateItem(created.bundle.job.id, 0, { status: 'submitted', provider_task_id: 't-1' })
+    const advanced = await advanceJobInStore(store, {
+      job: { ...created.bundle.job, next_poll_at: new Date(0) },
+      items: await store.listItems(created.bundle.job.id),
+    }, rt, { alreadyLeased: true })
+    expect(crop).toHaveBeenCalledWith(expect.any(Uint8Array), 1200, 800, { width: 1200, height: 800 })
+    expect(advanced.items[0]).toMatchObject({ result_width: 1200, result_height: 800 })
+    const client = await toClientImageTask(advanced, rt)
+    expect(client.resultImages?.[0]).toMatchObject({ width: 1200, height: 800 })
+  })
+
+  it('未开启保持原尺寸时后处理仍按三参数调用', async () => {
+    const store = createMemoryStore(user.id)
+    const crop = vi.fn(async (bytes: Uint8Array) => ({
+      bytes: new Uint8Array(bytes), width: 8, height: 8, mimeType: 'image/png', cropped: false,
+    }))
+    const rt: ImageJobRuntime = {
+      ...runtime(createMockImageProvider({
+        async getStatus() { return { state: 'succeeded', resultUrls: ['https://mock.local/a.png'] } },
+      })),
+      crop,
+    }
+    const created = await createImageJobInStore(store, user, params({
+      prompt: undefined, retouchDirections: ['blemish'],
+    }), rt)
+    await store.updateItem(created.bundle.job.id, 0, { status: 'submitted', provider_task_id: 't-1' })
+    await advanceJobInStore(store, {
+      job: { ...created.bundle.job, next_poll_at: new Date(0) },
+      items: await store.listItems(created.bundle.job.id),
+    }, rt, { alreadyLeased: true })
+    expect(crop).toHaveBeenCalledWith(expect.any(Uint8Array), 1200, 800)
+  })
 })
 
 describe('融合任务', () => {

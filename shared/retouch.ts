@@ -34,14 +34,29 @@ export const RETOUCH_PRESETS: ReadonlyArray<{
 
 export const RETOUCH_TARGET_LONG_EDGE = { '1k': 1024, '2k': 2048, '4k': 4096 } as const
 
+export type RetouchResolution = keyof typeof RETOUCH_TARGET_LONG_EDGE
+
+/** 保持原尺寸时允许回写的最大像素数；与结果后处理的 sharp 输入上限一致。 */
+export const RETOUCH_MAX_SOURCE_PIXELS = 40_000_000
+
+/** 原图长边能覆盖的最小档位；超过 4096 仍用 4K，再由服务端放大回原尺寸。 */
+export function retouchResolutionForSource(width: number, height: number): RetouchResolution {
+  const longEdge = Math.max(1, Math.round(width), Math.round(height))
+  if (longEdge <= RETOUCH_TARGET_LONG_EDGE['1k']) return '1k'
+  if (longEdge <= RETOUCH_TARGET_LONG_EDGE['2k']) return '2k'
+  return '4k'
+}
+
 /** 精修输出尺寸：按分辨率档位把原图缩放到对应长边，界面与实际请求共用这一份计算。 */
 export function retouchOutputSize(
   width: number,
   height: number,
-  resolution: keyof typeof RETOUCH_TARGET_LONG_EDGE,
+  resolution: RetouchResolution,
+  keepSourceSize = false,
 ) {
-  const safeWidth = Math.max(1, width)
-  const safeHeight = Math.max(1, height)
+  const safeWidth = Math.max(1, Math.round(width))
+  const safeHeight = Math.max(1, Math.round(height))
+  if (keepSourceSize) return { width: safeWidth, height: safeHeight }
   const scale = RETOUCH_TARGET_LONG_EDGE[resolution] / Math.max(safeWidth, safeHeight)
   return {
     width: Math.round(safeWidth * scale),
@@ -100,6 +115,12 @@ export function retouchHistoryText(directions: readonly string[], note?: string)
   const extra = note?.trim()
   if (!labels.length) return extra || undefined
   return extra ? `${labels.join('、')}。${extra}` : labels.join('、')
+}
+
+/** 历史任务与恢复参数里是否勾选了「保持原尺寸」；缺省视为否。 */
+export function readKeepSourceSize(params: unknown) {
+  return Boolean(params && typeof params === 'object'
+    && (params as { keepSourceSize?: unknown }).keepSourceSize === true)
 }
 
 export function readRetouchDirections(params: unknown): RetouchDirection[] {

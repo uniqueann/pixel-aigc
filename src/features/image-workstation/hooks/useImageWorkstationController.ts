@@ -50,6 +50,8 @@ interface ControllerOptions {
   prompt?: string
   count?: number
   resolution?: '1k' | '2k' | '4k'
+  /** 精修：结果缩回原图像素；档位仍按原图长边推导。 */
+  keepSourceSize?: boolean
   modelProfileId?: string
   modelUi?: ImageModelUi
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
@@ -122,6 +124,7 @@ export function useImageWorkstationController({
   prompt,
   count,
   resolution,
+  keepSourceSize,
   modelProfileId,
   modelUi,
   retouchDirections,
@@ -565,13 +568,15 @@ export function useImageWorkstationController({
     if (!product) throw new Error('请先上传需要编辑的图片')
     registerAsset(useEditorStore.getState().project?.assets[product.id] ?? product)
     if (activeTool.slug === 'fusion' && referenceAsset) registerAsset(referenceAsset)
-    const effective = effectiveImageParameters(count ?? 1, resolution ?? '2k', product, modelUi)
+    const keepSource = activeTool.slug === 'retouch' && keepSourceSize === true
+    const effective = effectiveImageParameters(count ?? 1, resolution ?? '2k', product, modelUi, keepSource)
     const initialContext = {
       sourceAsset: product,
       referenceAsset,
       prompt,
       count: effective.count,
       resolution: effective.resolution,
+      keepSourceSize: keepSource || undefined,
       modelProfileId,
       promptMaxLength: modelUi?.promptMaxLength,
       retouchDirections,
@@ -624,7 +629,7 @@ export function useImageWorkstationController({
 
     const request = activeTool.buildRequest({ ...initialContext, ...canvasContext })
     return submitRequest({ ...request, modelProfileId }, product, product.generationId, activeTool.slug === 'fusion' ? referenceAsset : undefined)
-  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, modelProfileId, modelUi, productAsset, prompt, referenceAsset, registerAsset, relight, resolution, retouchDirections, submitRequest, useProductAsset])
+  }, [activeTool, capabilityReady, completeErase, completeOutpaint, completeRepaint, count, inputAsset, keepSourceSize, modelProfileId, modelUi, productAsset, prompt, referenceAsset, registerAsset, relight, resolution, retouchDirections, submitRequest, useProductAsset])
 
   const retry = useCallback(async () => {
     if (task?.status === 'succeeded') return retryRead()

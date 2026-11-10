@@ -1,5 +1,5 @@
 import { RELIGHT_DEFAULT, type RelightOptions } from '@shared/relight'
-import { RETOUCH_PRESETS, type RetouchDirection } from '@shared/retouch'
+import { RETOUCH_PRESETS, retouchResolutionForSource, type RetouchDirection } from '@shared/retouch'
 import { defaultImageModel, mapDragonCodeSize, type ImageModelUi } from '@shared/image-models'
 import { COUNT_TOOLS, type CountTool, type ImageMemoryTool, type PersonalizationPreferences } from '@shared/preferences'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, type AspectRatioSettings } from '@/pages/Toolbox/aspect-ratio/types'
@@ -9,6 +9,8 @@ import { DEFAULT_WATERMARK_SETTINGS, migrateWatermarkSettings, type WatermarkSet
 export interface WorkstationParameters {
   count: number
   resolution: '1k' | '2k' | '4k'
+  /** 精修：输出缩回原图像素；档位仍按原图长边自动推导后计费。 */
+  keepSourceSize: boolean
   retouchDirections: RetouchDirection[]
   relight: RelightOptions
   outpaintMode: 'free' | 'preset'
@@ -36,6 +38,7 @@ export function initialWorkstationParameters(preferences: PersonalizationPrefere
   return {
     count: memory?.count ?? (counted ? preferences.image.counts[counted] : 1),
     resolution: memory?.resolution ?? preferences.image.resolution,
+    keepSourceSize: tool === 'retouch' ? remembered.retouch?.keepSourceSize ?? false : false,
     // 精修首次进入就用推荐组合，让「一键精修」成为默认路径；用户改过后继续沿用记忆。
     retouchDirections: tool === 'retouch'
       ? remembered.retouch?.retouchDirections ?? [...RETOUCH_PRESETS[0].directions]
@@ -48,10 +51,18 @@ export function initialWorkstationParameters(preferences: PersonalizationPrefere
 }
 
 /** 只调整本次有效值，避免受限图片覆盖用户的高分辨率偏好。 */
-export function effectiveImageParameters(count: number, resolution: '1k' | '2k' | '4k', source?: { width: number; height: number }, ui?: ImageModelUi) {
+export function effectiveImageParameters(
+  count: number,
+  resolution: '1k' | '2k' | '4k',
+  source?: { width: number; height: number },
+  ui?: ImageModelUi,
+  keepSourceSize = false,
+) {
   const supported = ui ?? defaultImageModel('image_edit')!.ui
   const effectiveCount = Math.min(supported.maxCount, Math.max(1, Math.round(count)))
-  let effectiveResolution = supported.resolutions.includes(resolution) ? resolution
+  // 保持原尺寸时，先按原图长边推导最小可用档位，再走下面的模型/比例收敛。
+  const requested = keepSourceSize && source ? retouchResolutionForSource(source.width, source.height) : resolution
+  let effectiveResolution = supported.resolutions.includes(requested) ? requested
     : supported.resolutions.includes('2k') ? '2k' as const : supported.resolutions[0]
   if (source && effectiveResolution === '4k' && supported.resolutionRatioConstraints?.['4k']) {
     const mapped = mapDragonCodeSize(source.width, source.height, effectiveResolution)

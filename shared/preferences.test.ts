@@ -48,8 +48,16 @@ describe('个性化配置边界', () => {
     expect(next.image).not.toHaveProperty('forgetCounts')
     expect(applyPreferencesPatch(next, { image: { forgetCounts: ['variation'] } }).image.lastUsed.variation).toBeUndefined()
   })
-  it('上次访问只恢复有效工作台页面', () => {
-    const value = defaultPreferences(); value.workbench.startPage = 'last'; value.recent.page = '/toolbox/aspect-ratio'
+  it('精修可以记住保持原尺寸，清除张数时保留该设置', () => {
+    expect(preferencesPatchSchema.safeParse({ image: { lastUsed: { retouch: { keepSourceSize: true } } } }).success).toBe(true)
+    expect(preferencesPatchSchema.safeParse({ image: { lastUsed: { retouch: { keepSourceSize: 'yes' } } } }).success).toBe(false)
+    const stored = applyPreferencesPatch(defaultPreferences(), {
+      image: { lastUsed: { retouch: { count: 2, resolution: '2k', keepSourceSize: true } } },
+    })
+    const next = applyPreferencesPatch(stored, { image: { counts: { retouch: 1 }, forgetCounts: ['retouch'] } })
+    expect(next.image.lastUsed.retouch).toEqual({ resolution: '2k', keepSourceSize: true })
+  })
+  it('上次访问只恢复有效工作台页面', () => {    const value = defaultPreferences(); value.workbench.startPage = 'last'; value.recent.page = '/toolbox/aspect-ratio'
     expect(resolveStartPage(value)).toBe('/toolbox/aspect-ratio')
     value.recent.page = '/unknown'
     expect(resolveStartPage(value)).toBe('/')

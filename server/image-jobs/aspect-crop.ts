@@ -27,7 +27,16 @@ export async function cropToSourceAspect(
   bytes: Uint8Array,
   sourceWidth: number,
   sourceHeight: number,
-) {
+  exactSize?: { width: number; height: number },
+): Promise<{
+  bytes: Uint8Array
+  width: number
+  height: number
+  mimeType: string
+  cropped: boolean
+  /** 是否发生过 resize；测试 stub 可省略。 */
+  resized?: boolean
+}> {
   try {
     const image = sharp(bytes, { failOn: 'warning', limitInputPixels: 40_000_000 })
     const meta = await image.metadata()
@@ -35,19 +44,27 @@ export async function cropToSourceAspect(
     const targetRatio = Math.max(1, sourceWidth) / Math.max(1, sourceHeight)
     const rect = cropRect(meta.width, meta.height, targetRatio)
     const format = meta.format === 'jpeg' || meta.format === 'webp' ? meta.format : 'png'
+    const targetWidth = exactSize ? Math.max(1, Math.round(exactSize.width)) : rect.width
+    const targetHeight = exactSize ? Math.max(1, Math.round(exactSize.height)) : rect.height
+    const resized = Boolean(exactSize && (rect.width !== targetWidth || rect.height !== targetHeight))
     let output: Buffer
-    if (rect.cropped) {
-      output = await sharp(bytes, { failOn: 'warning', limitInputPixels: 40_000_000 }).extract(rect)[format]().toBuffer()
+    if (rect.cropped || resized) {
+      // 裁切保证比例，resize 用 fill 精确落到原图像素；两者共用一次解码与编码。
+      let pipeline = sharp(bytes, { failOn: 'warning', limitInputPixels: 40_000_000 })
+      if (rect.cropped) pipeline = pipeline.extract(rect)
+      if (resized) pipeline = pipeline.resize(targetWidth, targetHeight, { fit: 'fill' })
+      output = await pipeline[format]().toBuffer()
     } else {
       await sharp(bytes, { failOn: 'warning', limitInputPixels: 40_000_000 }).raw().toBuffer()
       output = Buffer.from(bytes)
     }
     return {
       bytes: new Uint8Array(output),
-      width: rect.width,
-      height: rect.height,
+      width: resized ? targetWidth : rect.width,
+      height: resized ? targetHeight : rect.height,
       mimeType: mimeFromFormat(format),
       cropped: rect.cropped,
+      resized,
     }
   } catch (error) {
     if (error instanceof HttpError) throw error

@@ -68,4 +68,15 @@ describe('工作站参数记忆', () => {
     expect(usePreferencesStore.getState().preferences.image.lastUsed['smart-edit']).toBeUndefined()
     expect(usePreferencesStore.getState().preferences.image.counts['smart-edit']).toBe(3)
   })
+
+  it('精修记住保持原尺寸，切回档位时保留档位记忆', () => {
+    const { result } = renderHook(() => useWorkstationParameters('retouch'))
+    expect(result.current.parameters.keepSourceSize).toBe(false)
+    act(() => { result.current.update({ keepSourceSize: true }) })
+    expect(result.current.parameters.keepSourceSize).toBe(true)
+    expect(usePreferencesStore.getState().preferences.image.lastUsed.retouch).toMatchObject({ keepSourceSize: true })
+    act(() => { result.current.update({ keepSourceSize: false, resolution: '4k' }) })
+    expect(result.current.parameters).toMatchObject({ keepSourceSize: false, resolution: '4k' })
+    expect(usePreferencesStore.getState().preferences.image.lastUsed.retouch).toMatchObject({ keepSourceSize: false, resolution: '4k' })
+  })
 })

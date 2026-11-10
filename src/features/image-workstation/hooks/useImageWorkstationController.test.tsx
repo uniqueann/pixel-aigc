@@ -92,6 +92,7 @@ function ControllerHarness({
   prompt,
   count,
   resolution,
+  keepSourceSize,
   modelProfileId,
   capabilityReady,
   retouchDirections,
@@ -107,6 +108,7 @@ function ControllerHarness({
   prompt?: string
   count?: number
   resolution?: '2k' | '4k'
+  keepSourceSize?: boolean
   modelProfileId?: string
   capabilityReady?: (capability: Capability) => boolean
   retouchDirections?: Array<'blemish' | 'brighten' | 'sharpen' | 'texture'>
@@ -124,6 +126,7 @@ function ControllerHarness({
     prompt,
     count,
     resolution,
+    keepSourceSize,
     modelProfileId,
     capabilityReady,
     retouchDirections,
@@ -704,6 +707,45 @@ describe('useImageWorkstationController 集成流程', () => {
     }))
     const submitted = mocks.createTask.mock.calls[mocks.createTask.mock.calls.length - 1]?.[0]
     expect(submitted?.params).not.toHaveProperty('prompt')
+  })
+
+  it('精修保持原尺寸时按原图长边推导档位并携带开关', async () => {
+    mocks.liveCapabilityReady.mockReturnValue(false)
+    const ready = (capability: Capability) => capability === Capability.Retouch || capability === Capability.ImageEdit
+    mocks.createTask.mockResolvedValue({
+      id: 'task-retouch-source-size',
+      capability: Capability.ImageEdit,
+      status: 'processing',
+      params: { count: 1, resolution: '2k', retouchDirections: ['blemish'] },
+      creditsCost: 1,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+    })
+    const source = initialAsset
+    await act(async () => root.render(
+      <ControllerHarness
+        tool="retouch"
+        count={1}
+        resolution="4k"
+        keepSourceSize
+        retouchDirections={['blemish']}
+        capabilityReady={ready}
+        source={source}
+        onController={captureController}
+      />,
+    ))
+    await act(async () => {
+      await currentController.generate(null)
+    })
+    expect(mocks.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        resolution: '1k',
+        size: { width: 640, height: 480 },
+        sourceWidth: 640,
+        sourceHeight: 480,
+        keepSourceSize: true,
+      }),
+    }))
   })
 
   it('融合缺场景图不能提交；两张齐了按商品图在前上传', async () => {
