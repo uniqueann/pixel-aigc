@@ -69,6 +69,40 @@ describe('工作站恢复任务的预览占位',()=>{
     )
     expect(screen.getByAltText('原始图片').getAttribute('src')).toBe('blob:original')
   })
+  it('精修传入 splitCompare 时用分割线对比替代原图/效果切换',()=>{
+    render(
+      <CanvasArea
+        {...props}
+        interactionMode="params-only"
+        imageUrl="blob:original"
+        imageNaturalSize={{width:1200,height:800}}
+        resultImageUrl="blob:result"
+        resultNaturalSize={{width:2048,height:1365}}
+        compareAvailable
+        splitCompare
+      />,
+    )
+    expect(screen.getByRole('slider',{name:'对比原图与结果'})).toBeTruthy()
+    expect(screen.queryByRole('radiogroup')).toBeNull()
+    expect(screen.getByText('拖动分割线对比细节；选中结果后可继续精修')).toBeTruthy()
+    expect(screen.getByAltText('当前编辑效果').getAttribute('src')).toBe('blob:result')
+  })
+  it('宽高比不兼容时回退到原图/效果切换',()=>{
+    render(
+      <CanvasArea
+        {...props}
+        interactionMode="params-only"
+        imageUrl="blob:original"
+        imageNaturalSize={{width:1200,height:800}}
+        resultImageUrl="blob:result"
+        resultNaturalSize={{width:1024,height:1024}}
+        compareAvailable
+        splitCompare
+      />,
+    )
+    expect(screen.queryByRole('slider',{name:'对比原图与结果'})).toBeNull()
+    expect(screen.getByRole('radiogroup',{name:'对比原图与效果'})).toBeTruthy()
+  })
   it('上传空状态显示加载反馈而不是继续提示上传',()=>{
     render(<CanvasArea {...props} interactionMode="params-only" uploading/>)
     expect(screen.getByText('正在载入图片…')).toBeTruthy()

@@ -5,6 +5,8 @@ import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import type { InteractionMode } from '../tools'
 import BrushToolbar, { type PaintTool } from './canvas/BrushToolbar'
+import CompareSlider from './CompareSlider'
+import { compareAspectCompatible } from '../utils/compareSlider'
 import type { MaskPaintCanvasHandle } from './canvas/MaskPaintCanvas'
 import type { OutpaintCanvasHandle } from './canvas/OutpaintCanvas'
 import type { OutpaintOutputMode } from '@shared/outpaint'
@@ -70,6 +72,10 @@ interface Props {
   overlayHint?: string
   /** 没有结果时隐藏原图/效果对比，只保留当前预览。 */
   compareAvailable?: boolean
+  /** 精修：用可拖动分割线同屏对比，替代原图/效果二选一。 */
+  splitCompare?: boolean
+  /** 精修结果的实际像素尺寸，用于 1:1 与宽高比兼容判断。 */
+  resultNaturalSize?: { width: number; height: number }
   /** 覆盖画布底部说明；传 null 隐藏说明。 */
   footnote?: string | null
 }
@@ -211,6 +217,8 @@ export default function CanvasArea({
   overlayToggle,
   overlayHint,
   compareAvailable = true,
+  splitCompare = false,
+  resultNaturalSize,
   footnote,
 }: Props) {
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
@@ -521,18 +529,27 @@ export default function CanvasArea({
     )
   }
 
+  // 精修：只有原图与结果宽高比接近时才同屏分割，否则退回原图/效果切换。
+  const splitBeforeSrc = imageUrl ?? originalImageUrl
+  const splitCompareReady = interactionMode === 'params-only'
+    && splitCompare
+    && compareAvailable
+    && Boolean(resultImageUrl && splitBeforeSrc)
+    && compareAspectCompatible(imageNaturalSize, resultNaturalSize)
   const viewingOriginal = compareMode === 'original' || !compareAvailable
-  const defaultFootnote = interactionMode === 'params-only'
-    ? compareAvailable
-      ? '选择满意的结果后，可继续进行二次编辑'
-      : '调整右侧参数后生成，结果会显示在这里'
-    : '该功能即将上线，敬请期待'
+  const defaultFootnote = splitCompareReady
+    ? '拖动分割线对比细节；选中结果后可继续精修'
+    : interactionMode === 'params-only'
+      ? compareAvailable
+        ? '选择满意的结果后，可继续进行二次编辑'
+        : '调整右侧参数后生成，结果会显示在这里'
+      : '该功能即将上线，敬请期待'
 
   return (
     <div className={canvasShellClass}>
       <div className="workstation-canvas-controls">
         <div className="workstation-canvas-toolbar">
-          {compareAvailable ? (
+          {compareAvailable && !splitCompareReady ? (
             <Segmented
               aria-label="对比原图与效果"
               value={compareMode}
@@ -559,20 +576,29 @@ export default function CanvasArea({
         <div className="workstation-canvas-replace">{replaceButton}</div>
       </div>
       <div className="workstation-preview-stage">
-        <img
-          src={viewingOriginal ? originalImageUrl ?? imageUrl : resultImageUrl ?? imageUrl}
-          alt={viewingOriginal ? '原始图片' : '当前编辑效果'}
-          className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
-          tabIndex={onPreview ? 0 : undefined}
-          role={onPreview ? 'button' : undefined}
-          aria-label={onPreview ? `打开${viewingOriginal ? '原图' : '效果'}大图` : undefined}
-          onClick={onPreview ? () => onPreview(viewingOriginal ? 'original' : 'effect') : undefined}
-          onKeyDown={onPreview ? event => {
-            if (event.key !== 'Enter' && event.key !== ' ') return
-            event.preventDefault()
-            onPreview(viewingOriginal ? 'original' : 'effect')
-          } : undefined}
-        />
+        {splitCompareReady && splitBeforeSrc && resultImageUrl ? (
+          <CompareSlider
+            beforeSrc={splitBeforeSrc}
+            afterSrc={resultImageUrl}
+            beforeSize={imageNaturalSize}
+            afterSize={resultNaturalSize}
+          />
+        ) : (
+          <img
+            src={viewingOriginal ? originalImageUrl ?? imageUrl : resultImageUrl ?? imageUrl}
+            alt={viewingOriginal ? '原始图片' : '当前编辑效果'}
+            className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
+            tabIndex={onPreview ? 0 : undefined}
+            role={onPreview ? 'button' : undefined}
+            aria-label={onPreview ? `打开${viewingOriginal ? '原图' : '效果'}大图` : undefined}
+            onClick={onPreview ? () => onPreview(viewingOriginal ? 'original' : 'effect') : undefined}
+            onKeyDown={onPreview ? event => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              onPreview(viewingOriginal ? 'original' : 'effect')
+            } : undefined}
+          />
+        )}
         {overlay}
       </div>
       {processingLabel ? (

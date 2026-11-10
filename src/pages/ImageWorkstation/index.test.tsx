@@ -864,7 +864,8 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByText('本次结果')).toBeTruthy()
     expect(buttonByText(/再生成一版/).className).not.toContain('ant-btn-primary')
     expect(buttonByText(/下载结果/).className).toContain('ant-btn-primary')
-    expect(screen.getByRole('radiogroup', { name: '对比原图与效果' })).toBeTruthy()
+    expect(screen.getByRole('slider', { name: '对比原图与结果' })).toBeTruthy()
+    expect(screen.queryByRole('radiogroup', { name: '对比原图与效果' })).toBeNull()
   })
 
   it('精修点击缩略图只切换预览，不替换输入', () => {

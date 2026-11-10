@@ -2079,6 +2079,184 @@ body.sidebar-resizing * {
 
 .workstation-preview-image.is-previewable { cursor: zoom-in; }
 
+/* 精修结果：原图与结果同屏分割对比，避免来回切换后靠记忆判断。 */
+.workstation-compare-wrap {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.workstation-compare-scroll {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 1:1 时按结果实际像素显示，滚动交给内层容器。 */
+.workstation-compare-scroll.is-actual {
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.workstation-compare {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  /* 不裁切，分割线在 0%/100% 时手柄仍能完整显示。 */
+  overflow: visible;
+  border-radius: 6px;
+  cursor: ew-resize;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.workstation-compare-scroll.is-actual .workstation-compare {
+  flex: 0 0 auto;
+  margin: 0 auto;
+  cursor: default;
+  touch-action: auto;
+}
+
+.workstation-compare-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+/* 两层必须铺满同一显示框；原图较小也要放大到与结果同尺寸，分割线才对得齐。 */
+.workstation-compare-layer img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 1:1 的两层必须严格铺满同一像素框，分割线才能逐像素对齐。 */
+.workstation-compare-scroll.is-actual .workstation-compare-layer img {
+  object-fit: fill;
+}
+
+.workstation-compare-divider {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  background: var(--color-accent);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+/* 视觉线只有 2px，用伪元素把命中区扩到 44px。 */
+.workstation-compare-divider::before {
+  content: '';
+  position: absolute;
+  inset: 0 -21px;
+}
+
+.workstation-compare-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+
+.workstation-compare-handle::before,
+.workstation-compare-handle::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.workstation-compare-handle::before { left: 11px; }
+.workstation-compare-handle::after { right: 11px; }
+
+.workstation-compare-divider:focus-visible { outline: none; }
+.workstation-compare-divider:focus-visible .workstation-compare-handle {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 3px;
+}
+
+.workstation-compare-label {
+  position: absolute;
+  z-index: 2;
+  bottom: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 62%);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.workstation-compare-label.is-before { left: 10px; }
+.workstation-compare-label.is-after { right: 10px; }
+
+.workstation-compare-zoom {
+  position: absolute;
+  z-index: 4;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  min-width: 44px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workstation-compare-zoom[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.workstation-compare-zoom:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.workstation-compare-zoom:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
 /* 移动端吸顶时替代标题行的一行参数摘要；桌面和未吸顶时不占位。 */
 .workstation-preview-compact-row {
   display: none;
@@ -6335,6 +6513,7 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .relight-note-toggle,
   .workstation-note-toggle { min-height: 44px; }
   .workstation-overlay-toggle { height: 44px; }
+  .workstation-compare-zoom { height: 44px; }
   .workstation-preview-compact-toggle {
     width: 44px;
     height: 44px;
