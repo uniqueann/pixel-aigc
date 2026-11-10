@@ -60,8 +60,6 @@ interface Props {
   activityLabel?: string
   /** 已有输入图时在画布上显示生成状态，不替换图片。 */
   processingLabel?: string
-  /** 结果读取失败时在画布上显示失败状态。 */
-  errorLabel?: string
   /** 叠加在画布上的方向示意等交互层。 */
   overlay?: ReactNode
   /** 空状态上传框上方的教学示意，避免把示例推到首屏之外。 */
@@ -208,7 +206,6 @@ export default function CanvasArea({
   uploadHint,
   activityLabel,
   processingLabel,
-  errorLabel,
   overlay,
   emptyExtra,
   overlayToggle,
@@ -336,11 +333,7 @@ export default function CanvasArea({
             />
           </div>
         )}
-        {errorLabel ? (
-          <div className="workstation-canvas-state is-warning" role="alert">
-            <span>{errorLabel}</span>
-          </div>
-        ) : processingLabel ? (
+        {processingLabel ? (
           <div className="workstation-canvas-state is-processing" role="status">
             <Spin size="small" />
             <span>{processingLabel}</span>
@@ -582,17 +575,13 @@ export default function CanvasArea({
         />
         {overlay}
       </div>
-      {errorLabel ? (
-        <div className="workstation-canvas-state is-warning" role="alert">
-          <span>{errorLabel}</span>
-        </div>
-      ) : processingLabel ? (
+      {processingLabel ? (
         <div className="workstation-canvas-state is-processing" role="status">
           <Spin size="small" />
           <span>{processingLabel}</span>
         </div>
       ) : null}
-      {errorLabel || processingLabel || footnote === null ? null : (
+      {processingLabel || footnote === null ? null : (
         <div className="workstation-canvas-footnote">{footnote ?? defaultFootnote}</div>
       )}
     </div>

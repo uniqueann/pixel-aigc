@@ -3580,6 +3580,17 @@ body.sidebar-resizing * {
   white-space: nowrap;
 }
 
+/* 读取失败结论包含原因与计费提醒，必须完整换行，不能被页脚省略。 */
+.image-workstation-input-description.is-result-error {
+  flex: 1 0 100%;
+  max-width: 100%;
+  overflow: visible;
+  color: var(--color-warning-text);
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .image-workstation-footer-hints {
   display: inline-flex;
   flex-wrap: nowrap;

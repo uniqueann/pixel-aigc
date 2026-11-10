@@ -50,6 +50,16 @@ describe('工作站页脚禁用原因', () => {
     expect(pageSource).toContain('className="image-workstation-block-reason"')
     expect(pageSource).toContain('role="status"')
     expect(pageSource).not.toMatch(/image-workstation-block-reason"[^>]*title=/)
-    expect(pageSource).toContain("aria-describedby={showRetryRead ? 'workstation-retry-advice' : visibleBlockReason ? 'workstation-block-reason' : undefined}")
+    expect(pageSource).toContain("aria-describedby={controller.resultReadError ? 'workstation-result-status' : visibleBlockReason ? 'workstation-block-reason' : undefined}")
+    expect(pageSource).not.toContain('workstation-retry-advice')
+  })
+
+  it('读取失败结论完整换行，不被页脚省略', () => {
+    const conclusion = block('.image-workstation-input-description.is-result-error')
+    expect(conclusion).toMatch(/overflow:\s*visible/)
+    expect(conclusion).toMatch(/white-space:\s*normal/)
+    expect(conclusion).toMatch(/overflow-wrap:\s*anywhere/)
+    expect(conclusion).not.toMatch(/ellipsis|nowrap/)
+    expect(pageSource).toContain('is-result-error')
   })
 })

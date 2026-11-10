@@ -17,3 +17,9 @@
 - 触发：融合移动端改为自适应高度后，第二个槽位的「替换」按钮被 98px 吸底操作栏盖住，`elementFromPoint` 命中页脚而不是按钮。
 - 规则：移动端卡片高度变化后，除检查内部 `overflow` 裁切，还要用 `elementFromPoint` 测底部主操作的命中元素；必要时压低媒体高度，或给滚动容器预留页脚高度。
 - 原因：吸底操作栏是 sticky 覆盖层，不占文档流；内容变高后底部控件会滑到它下面，只看截图容易漏掉。
+
+## 重试失败状态不要用 effect 重置
+
+- 触发：在 effect 中根据 `resultReadError` 清空 `retryReadFailedAgain`，既触发 `react-hooks/set-state-in-effect`，又会在重试读取阶段把刚设置的「仍无法读取」提前抹掉。
+- 规则：把「是否重试失败」按任务 id 派生（`retryReadFailedTaskId === activeTask?.id`），不要在 effect 里同步 setState。
+- 原因：effect 在错误清空的瞬间也会运行，无法区分「换任务」和「正在重试」；派生状态会随任务 id 自动失效，换图或新任务不需要额外清理。

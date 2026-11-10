@@ -31,12 +31,10 @@ describe('工作站恢复任务的预览占位',()=>{
     fireEvent.keyDown(image,{key:' '})
     expect(onPreview).toHaveBeenCalledTimes(2)
   })
-  it('已有图片时用画布浮层展示生成中与结果不可读状态',()=>{
-    const view=render(<CanvasArea {...props} imageUrl="blob:current" processingLabel="正在生成，结果会显示在下方"/>)
+  it('已有图片时用画布浮层展示生成中状态，不再叠加结果读取错误',()=>{
+    render(<CanvasArea {...props} imageUrl="blob:current" processingLabel="正在生成，结果会显示在下方"/>)
     expect(screen.getByRole('status').textContent).toContain('正在生成')
-    view.rerender(<CanvasArea {...props} imageUrl="blob:current" errorLabel="结果暂时无法读取，可重试"/>)
-    expect(screen.getByRole('alert').textContent).toContain('结果暂时无法读取')
-    expect(screen.queryByText('正在生成，结果会显示在下方')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
   it('没有结果时隐藏原图/效果切换，脚注说明下一步',()=>{
     render(<CanvasArea {...props} interactionMode="params-only" imageUrl="blob:current" compareAvailable={false}/>)
