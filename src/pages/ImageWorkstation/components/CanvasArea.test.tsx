@@ -3,6 +3,11 @@ import {cleanup,fireEvent,render,screen} from '@testing-library/react'
 import {afterEach,describe,expect,it,vi} from 'vitest'
 import CanvasArea from './CanvasArea'
 vi.mock('@/hooks/useCapabilities',()=>({useCapabilities:()=>({capabilities:{}})}))
+// 扩图画布依赖 Fabric，jsdom 下用占位组件，只验证控制行与对比状态。
+vi.mock('./canvas/OutpaintCanvas',async()=>{
+  const React=await import('react')
+  return {default:React.forwardRef(()=>React.createElement('div',{'data-testid':'outpaint-canvas'}))}
+})
 afterEach(cleanup)
 describe('工作站恢复任务的预览占位',()=>{
   const props={interactionMode:'light-control' as const,imageNaturalSize:{width:0,height:0},compareMode:'effect' as const,onCompareModeChange:vi.fn(),onImageUpload:vi.fn(),onReady:vi.fn()}
@@ -132,5 +137,55 @@ describe('融合输入与效果切换',()=>{
   it('只有一张图时不显示交换',()=>{
     render(<CanvasArea {...props} referenceImageUrl={undefined} compareAvailable={false} onSwapImages={vi.fn()} onRemoveImage={vi.fn()}/>)
     expect(screen.queryByRole('button',{name:'交换商品图与场景图'})).toBeNull()
+  })
+})
+
+describe('扩图结果态的原图对比',()=>{
+  const props={
+    interactionMode:'drag-resize' as const,
+    imageUrl:'blob:result',
+    originalImageUrl:'blob:original',
+    imageNaturalSize:{width:480,height:480},
+    compareMode:'effect' as const,
+    onCompareModeChange:vi.fn(),
+    onImageUpload:vi.fn(),
+    onReady:vi.fn(),
+  }
+  it('生成结果后提示可继续扩图，并提供原图/结果切换',()=>{
+    render(<CanvasArea {...props} compareAvailable outpaintIdle/>)
+    expect(screen.getByText('已生成结果 · 拖拽边框或输入更大尺寸继续扩图')).toBeTruthy()
+    expect(screen.getByRole('radio',{name:'原图'})).toBeTruthy()
+    expect(screen.getByRole('radio',{name:'结果'})).toBeTruthy()
+  })
+  it('尚未扩图时不显示对比切换',()=>{
+    render(<CanvasArea {...props} compareAvailable={false} outpaintIdle/>)
+    expect(screen.getByText('尚未扩图 · 拖拽边框或输入更大的目标尺寸')).toBeTruthy()
+    expect(screen.queryByText('原图')).toBeNull()
+  })
+  it('切到原图时显示对比说明，隐藏重置，并能切回结果',()=>{
+    const onCompareModeChange=vi.fn()
+    render(
+      <CanvasArea
+        {...props}
+        compareAvailable
+        compareMode="original"
+        onCompareModeChange={onCompareModeChange}
+      />,
+    )
+    expect(screen.getByText('正在查看扩图前原图')).toBeTruthy()
+    expect(screen.queryByRole('button',{name:'重置'})).toBeNull()
+    expect(screen.getByText('正在查看扩图前原图；切回「结果」可继续扩图。')).toBeTruthy()
+    fireEvent.click(screen.getByText('结果'))
+    expect(onCompareModeChange).toHaveBeenCalledWith('effect')
+  })
+  it('目标到单边 2 倍时在提示旁标出上限',()=>{
+    render(
+      <CanvasArea
+        {...props}
+        compareAvailable={false}
+        outpaintTargetSize={{width:960,height:960}}
+      />,
+    )
+    expect(screen.getByText('已达单边 2 倍上限')).toBeTruthy()
   })
 })

@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
-import { Button, Checkbox, Input, Segmented, Select, Space } from 'antd'
-import { DownOutlined } from '@ant-design/icons'
+import { Button, Checkbox, Input, InputNumber, Segmented, Select, Space } from 'antd'
+import { DownOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import ModelChoice from '@/components/ModelChoice'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
@@ -19,9 +19,11 @@ import RelightCompass from './RelightCompass'
 import { outputPreview } from '../utils/outputPreview'
 import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
-import type { OutpaintOutputMode } from '@shared/outpaint'
+import { MAX_SCALE, type OutpaintOutputMode } from '@shared/outpaint'
 import type { CountTool } from '@shared/preferences'
 import CountMemoryHint from '@/features/preferences/CountMemoryHint'
+import { canStepOutpaintTargetSize, clampOutpaintTargetSize, stepOutpaintTargetSize } from '../utils/outpaintGeometry'
+import { outpaintTargetMode, type OutpaintTargetMode } from '../utils/outpaintTarget'
 
 interface Props {
   title?: string
@@ -43,10 +45,12 @@ interface Props {
   repaintPrompt: string
   onRepaintPromptChange: (prompt: string) => void
   outpaintMode: 'free' | 'preset'
-  onOutpaintModeChange: (mode: 'free' | 'preset') => void
   outpaintOutputMode?: OutpaintOutputMode
-  onOutpaintOutputModeChange?: (mode: OutpaintOutputMode) => void
+  /** 扩图「输出目标」三选一；同时更新 outpaintMode 与 outpaintOutputMode。 */
+  onOutpaintTargetModeChange: (mode: OutpaintTargetMode) => void
   outpaintTargetSize?: { width: number; height: number }
+  /** 自由拖拽：把精确宽高回填到画布。 */
+  onOutpaintTargetSizeChange?: (size: { width: number; height: number }) => void
   presetPlatform: string
   onPresetPlatformChange: (platform: string) => void
   retouchDirections?: RetouchDirection[]
@@ -61,6 +65,13 @@ interface Props {
   /** 裂变：本次会话里上次使用的补充要求，用于一键恢复。 */
   variationLastPrompt?: string
   onRestoreVariationPrompt?: (prompt: string) => void
+}
+
+/** InputNumber 在输入过程中可能回传字符串；统一成数字或 null，避免静默回落到旧值。 */
+function numberOrNull(value: number | string | null) {
+  if (value === null || value === '') return null
+  const next = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(next) ? next : null
 }
 
 const labelStyle = { display: 'block', marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
@@ -146,10 +157,10 @@ export default function ParamPanel({
   repaintPrompt,
   onRepaintPromptChange,
   outpaintMode,
-  onOutpaintModeChange,
   outpaintOutputMode = 'original',
-  onOutpaintOutputModeChange,
+  onOutpaintTargetModeChange,
   outpaintTargetSize,
+  onOutpaintTargetSizeChange,
   presetPlatform,
   onPresetPlatformChange,
   retouchDirections = [],
@@ -170,6 +181,31 @@ export default function ParamPanel({
   // 裂变与融合的补充说明都是可选项，默认收起；已有内容时自动展开。
   const [variationNoteOpen, setVariationNoteOpen] = useState<boolean | null>(null)
   const [fusionNoteOpen, setFusionNoteOpen] = useState<boolean | null>(null)
+  // 扩图目标尺寸：null 表示跟随画布；输入过程中只记草稿，失焦/回车才回填。
+  // 输入框不设 min/max，让任何输入都能进入草稿，提交时统一收口到合法范围。
+  const [outpaintDraft, setOutpaintDraft] = useState<{ width: number | null; height: number | null } | null>(null)
+  const commitOutpaintSize = () => {
+    if (!sourceSize || !outpaintTargetSize || !outpaintDraft) return
+    const width = numberOrNull(outpaintDraft.width) ?? outpaintTargetSize.width
+    const height = numberOrNull(outpaintDraft.height) ?? outpaintTargetSize.height
+    const clamped = clampOutpaintTargetSize(sourceSize.width, sourceSize.height, width, height)
+    // 回到跟随状态，输入框立即显示收口后的真实尺寸。
+    setOutpaintDraft(null)
+    onOutpaintTargetSizeChange?.(clamped.size)
+  }
+  // 移动端不必精确抓住控制点：用加减按钮按 10% 步进，同样走统一收口。
+  const stepOutpaintSize = (direction: 1 | -1) => {
+    if (!sourceSize || !outpaintTargetSize) return
+    const next = stepOutpaintTargetSize(sourceSize.width, sourceSize.height, outpaintTargetSize, direction)
+    setOutpaintDraft(null)
+    onOutpaintTargetSizeChange?.(next.size)
+  }
+  const canStepOutpaintDown = Boolean(sourceSize && outpaintTargetSize
+    && canStepOutpaintTargetSize(sourceSize.width, sourceSize.height, outpaintTargetSize, -1))
+  const canStepOutpaintUp = Boolean(sourceSize && outpaintTargetSize
+    && canStepOutpaintTargetSize(sourceSize.width, sourceSize.height, outpaintTargetSize, 1))
+  // 两个持久化字段收敛成唯一的「输出目标」，界面不再暴露互相改写的两个控件。
+  const outpaintTarget = outpaintTargetMode(outpaintMode, outpaintOutputMode)
   const intro = title ? (
     <header className="param-panel-intro">
       <h2>{title}</h2>
@@ -667,47 +703,98 @@ export default function ParamPanel({
       {capability === Capability.Outpaint ? (
         <>
           <div>
-            <div style={labelStyle}>输出模式</div>
-            <Select
-              aria-label="扩图输出模式"
-              style={{ width: '100%' }}
-              value={outpaintOutputMode}
-              disabled={disabled}
-              onChange={onOutpaintOutputModeChange}
-              options={[
-                { label: '保留原图分辨率', value: 'original' },
-                { label: '按平台尺寸输出', value: 'platform' },
-              ]}
-            />
-            <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
-              {outpaintOutputMode === 'original' ? '原图保持原尺寸，向外延伸画面。' : '按目标平台比例缩放原图并补全背景。'}
-              {sourceSize && outpaintTargetSize ? ` 预计输出 ${outpaintTargetSize.width} × ${outpaintTargetSize.height} 像素。` : ' 上传图片后显示预计尺寸。'}
-            </p>
-          </div>
-          <div>
-            <div style={labelStyle}>扩图方式</div>
+            <div style={labelStyle}>输出目标</div>
             <Segmented
               block
+              aria-label="输出目标"
               options={[
-                { label: '自由拖拽', value: 'free' },
-                { label: '平台预设', value: 'preset' },
+                { label: '自由扩展', value: 'free' },
+                { label: '平台比例', value: 'platform-ratio' },
+                { label: '平台尺寸', value: 'platform-size' },
               ]}
-              value={outpaintMode}
+              value={outpaintTarget}
               disabled={disabled}
-              onChange={(value) => onOutpaintModeChange(value as 'free' | 'preset')}
+              onChange={(value) => onOutpaintTargetModeChange(value as OutpaintTargetMode)}
             />
+            <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
+              {outpaintTarget === 'free'
+                ? '原图保持原尺寸，向外延伸画面。'
+                : outpaintTarget === 'platform-ratio'
+                  ? '沿用原图分辨率，只把画幅改成平台比例。'
+                  : '按平台精确像素缩放原图并补全背景。'}
+              {/* 尺寸变化用 polite 播报，键盘调整时读屏能听到新目标。 */}
+              <span aria-live="polite">
+                {sourceSize && outpaintTargetSize ? ` 预计输出 ${outpaintTargetSize.width} × ${outpaintTargetSize.height} 像素。` : ' 上传图片后显示预计尺寸。'}
+              </span>
+            </p>
           </div>
-          {outpaintMode === 'preset' ? (
+          {outpaintTarget === 'free' && sourceSize && outpaintTargetSize ? (
             <div>
-              <div style={labelStyle}>{outpaintOutputMode === 'original' ? '参考平台比例' : '目标平台'}</div>
+              <div style={labelStyle}>目标尺寸</div>
+              <div className="workstation-outpaint-size">
+                <Button
+                  className="workstation-outpaint-step"
+                  size="small"
+                  aria-label="缩小目标尺寸"
+                  title="缩小目标尺寸"
+                  icon={<MinusOutlined aria-hidden="true" />}
+                  disabled={disabled || !canStepOutpaintDown}
+                  onClick={() => stepOutpaintSize(-1)}
+                />
+                <InputNumber
+                  aria-label="目标宽度"
+                  precision={0}
+                  value={outpaintDraft ? outpaintDraft.width : outpaintTargetSize.width}
+                  disabled={disabled}
+                  onChange={(value) => setOutpaintDraft(prev => ({
+                    width: value,
+                    height: prev ? prev.height : null,
+                  }))}
+                  onBlur={commitOutpaintSize}
+                  onPressEnter={commitOutpaintSize}
+                />
+                <span className="workstation-outpaint-size-sep" aria-hidden="true">×</span>
+                <InputNumber
+                  aria-label="目标高度"
+                  precision={0}
+                  value={outpaintDraft ? outpaintDraft.height : outpaintTargetSize.height}
+                  disabled={disabled}
+                  onChange={(value) => setOutpaintDraft(prev => ({
+                    width: prev ? prev.width : null,
+                    height: value,
+                  }))}
+                  onBlur={commitOutpaintSize}
+                  onPressEnter={commitOutpaintSize}
+                />
+                <Button
+                  className="workstation-outpaint-step"
+                  size="small"
+                  aria-label="放大目标尺寸"
+                  title="放大目标尺寸"
+                  icon={<PlusOutlined aria-hidden="true" />}
+                  disabled={disabled || !canStepOutpaintUp}
+                  onClick={() => stepOutpaintSize(1)}
+                />
+              </div>
+              <p className="toolbox-hint" style={{ margin: '6px 0 0', fontSize: 12 }}>
+                单边最多扩到 {MAX_SCALE} 倍；超出会自动收住到合法尺寸。
+              </p>
+            </div>
+          ) : null}
+          {outpaintTarget !== 'free' ? (
+            <div>
+              <div style={labelStyle}>目标平台</div>
               <Select
+                aria-label="目标平台"
                 style={{ width: '100%' }}
                 value={presetPlatform}
                 disabled={disabled}
                 onChange={onPresetPlatformChange}
                 options={PLATFORM_SIZE_PRESETS.map((preset) => ({
                   value: preset.platform,
-                  label: outpaintOutputMode === 'original' ? `${preset.label} · 仅使用比例` : `${preset.label} · ${preset.width}×${preset.height}`,
+                  label: outpaintTarget === 'platform-size'
+                    ? `${preset.label} · ${preset.width}×${preset.height}`
+                    : `${preset.label} · 仅使用比例`,
                 }))}
               />
             </div>

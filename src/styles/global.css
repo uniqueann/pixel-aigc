@@ -2038,8 +2038,22 @@ body.sidebar-resizing * {
 .workstation-canvas-hint {
   min-width: 0;
   flex: 1 1 180px;
-  color: var(--color-text-secondary);
+  /* #64748B 在浅灰底只有 3.84:1；改用更深一档，12px 也达到 4.5:1。 */
+  color: var(--color-text-secondary-strong);
   font-size: 12px;
+}
+
+/* 拖到服务端上限时给出即时反馈，避免继续拖拽却毫无变化。 */
+.workstation-canvas-limit {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-warning-text);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .workstation-preview-stage {
@@ -2663,7 +2677,36 @@ body.sidebar-resizing * {
 }
 
 .workstation-canvas-replace {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   z-index: 4;
+}
+
+/* 扩图自由拖拽：精确宽高输入，和画布实时联动。 */
+.workstation-outpaint-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workstation-outpaint-size .ant-input-number {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 加减按钮代替拖拽控制点，桌面保持紧凑，移动端再放大到 44px。 */
+.workstation-outpaint-step.ant-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.workstation-outpaint-size-sep {
+  color: var(--color-text-secondary);
+  font-size: 12px;
 }
 
 .workstation-canvas-footnote {
@@ -2753,6 +2796,7 @@ body.sidebar-resizing * {
   left: 50%;
   bottom: 6px;
   z-index: 3;
+  width: max-content;
   max-width: calc(100% - 16px);
   padding: 4px 8px;
   border: 1px solid var(--color-border);
@@ -2813,6 +2857,23 @@ body.sidebar-resizing * {
 
 .workstation-paint-stage canvas {
   cursor: crosshair;
+}
+
+/* 对比扩图前原图：覆盖画布并挡住拖拽，避免误改目标尺寸。 */
+.workstation-outpaint-compare {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-2);
+}
+
+.workstation-outpaint-compare img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 @media (hover: none) {
@@ -5388,6 +5449,22 @@ html[data-theme='light'] .toolbox-watermark .ant-btn.ant-btn-dangerous:not(.ant-
 
   .workstation-canvas-shell { height: 480px; }
   .workstation-canvas-shell.is-empty { height: 480px; min-height: 480px; }
+  /* 扩图画布吃掉桌面剩余高度，避免画布下方留出大片空白。 */
+  .workstation-canvas-shell.is-outpaint {
+    height: clamp(480px, calc(100vh - 300px), 720px);
+  }
+  /* 空态上传框与有图时的画布保持同一高度，切换上传不跳动。 */
+  .workstation-canvas-shell.is-empty.is-outpaint {
+    height: clamp(480px, calc(100vh - 300px), 720px);
+    min-height: 480px;
+  }
+  /* 桌面视觉保持 24px，命中区上下各扩 10px 到 44px 高，满足 AAA 目标尺寸。 */
+  .workstation-canvas-replace .ant-btn { position: relative; }
+  .workstation-canvas-replace .ant-btn::after {
+    content: '';
+    position: absolute;
+    inset: -10px 0;
+  }
 
   .image-workstation-canvas-column.is-sticky {
     position: sticky;
@@ -6133,6 +6210,28 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   .workstation-prompt-templates .ant-btn { min-height: 40px; }
   .image-workstation-footer-actions .ant-btn { min-height: 44px; }
   .workstation-canvas-replace .ant-btn { min-height: 44px; }
+  /* 扩图尺寸步进与平台选择在移动端满足 44px 触控高度。 */
+  .workstation-outpaint-step.ant-btn {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+  .workstation-outpaint-size .ant-input-number {
+    height: 44px;
+  }
+  .workstation-outpaint-size .ant-input-number-input {
+    height: 42px;
+  }
+  .image-workstation-settings .ant-select-single {
+    height: 44px;
+  }
+  .image-workstation-settings .ant-select-single .ant-select-selector {
+    height: 44px;
+  }
+  .image-workstation-settings .ant-select-single .ant-select-selection-item,
+  .image-workstation-settings .ant-select-single .ant-select-selection-placeholder {
+    line-height: 42px;
+  }
   /* 涂抹工具条在移动端保持单行横滑，避免换行吃掉画布高度。 */
   .workstation-canvas-shell.is-mask-paint .workstation-canvas-controls {
     flex-wrap: nowrap;

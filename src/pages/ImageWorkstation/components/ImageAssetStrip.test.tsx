@@ -87,6 +87,23 @@ describe('智能编辑候选结果条', () => {
     expect(screen.queryByText('下一轮输入')).toBeNull()
   })
 
+  it('扩图结果条说明结果已在画布显示，可继续扩图', () => {
+    render(
+      <ImageAssetStrip
+        assets={assets}
+        selectedAssetId="asset-1"
+        variant="outpaint-result"
+        onSelect={() => undefined}
+        onPreview={() => undefined}
+      />,
+    )
+    expect(screen.getByText('本次结果')).toBeTruthy()
+    expect(screen.getByText('第 1 张已在画布显示，可继续扩图')).toBeTruthy()
+    expect(screen.getByText('画布中')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '选择结果 1，已在画布显示' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByText('下一轮输入')).toBeNull()
+  })
+
   it('融合结果条只描述预览，不承诺作为下一轮输入', () => {
     render(
       <ImageAssetStrip

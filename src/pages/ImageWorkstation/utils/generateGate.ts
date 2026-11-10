@@ -5,6 +5,15 @@ import { emptyMaskMessage } from './maskExport'
 
 export const TASK_RUNNING_REASON = '请等待当前任务完成'
 
+/** 零扩图时服务端会直接返回原图副本，提交前按当前目标给出可执行的下一步。 */
+export const OUTPAINT_IDLE_REASONS = {
+  // 结果生成后当前图就是结果，再说「尚未扩图」会与结果条矛盾。
+  free: '当前目标与当前图片尺寸相同：请拖拽绿色边框或输入更大的目标尺寸',
+  preset: '当前平台输出与源图尺寸相同，请更换平台或返回自由扩展',
+} as const
+
+export type OutpaintIdleMode = keyof typeof OUTPAINT_IDLE_REASONS
+
 export function workstationGenerateBlockReason(input: {
   toolReady: boolean
   configurationPending?: boolean
@@ -23,6 +32,8 @@ export function workstationGenerateBlockReason(input: {
   referenceCount?: number
   maxRefImages?: number
   insufficientCredits?: boolean
+  outpaintIdle?: OutpaintIdleMode
+  outpaintLimitError?: string
   mode?: 'remove' | 'repaint'
 }): string | undefined {
   if (input.submitting) return undefined
@@ -37,6 +48,8 @@ export function workstationGenerateBlockReason(input: {
     && input.referenceCount > input.maxRefImages
   ) return referenceImageLimitMessage(input.maxRefImages)
   if (input.formLocked) return TASK_RUNNING_REASON
+  if (input.outpaintLimitError) return input.outpaintLimitError
+  if (input.outpaintIdle) return OUTPAINT_IDLE_REASONS[input.outpaintIdle]
   if (input.retouchBlocked) return '请先选择精修方向'
   if (input.repaintBlocked) return '重绘尚未配置'
   if (input.removeBlocked) return '消除服务暂不可用，请稍后重试或联系客服。'

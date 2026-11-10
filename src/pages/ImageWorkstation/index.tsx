@@ -30,6 +30,7 @@ import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, take
 import { liveCapabilityReady } from '@/services/api/task'
 import { canonicalizeImageModelProfileId, defaultImageModel } from '@shared/image-models'
 import { normalizeRetouchDirections } from '@shared/retouch'
+import { paddingAround, planBailianOutpaint, validateOutpaintOutputSize } from '@shared/outpaint'
 import { uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
 import { downloadFailureMessage, downloadImageAsset, filenameForWorkstationResult, blobFromImageSource } from '@/features/image-workstation/download'
@@ -48,7 +49,8 @@ import VariationExample from './components/VariationExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
 import { TASK_RUNNING_REASON, workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
-import { freeOutpaintGeometry, presetOutpaintGeometry } from './utils/outpaintGeometry'
+import { freeOutpaintGeometry, outpaintHasWork, presetOutpaintGeometry } from './utils/outpaintGeometry'
+import { outpaintTargetParameters } from './utils/outpaintTarget'
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
@@ -168,6 +170,7 @@ export default function ImageWorkstation() {
   const configurationReady = activeTool.slug === 'repaint' ? repaintReady : activeTool.slug === 'remove' ? eraseReady : toolState
   const showSourcePreview = workstationDisplaysSourcePreview(activeTool.interactionMode) && toolState !== false
   const variationTool = activeTool.capability === Capability.Variation
+  const outpaintTool = activeTool.capability === Capability.Outpaint
   // 裂变补充要求只在本次会话里记住；停止输入 400ms 后落盘，避免每次按键都写存储。
   useEffect(() => {
     if (!variationTool || !variationPrompt.trim()) return
@@ -352,28 +355,15 @@ export default function ImageWorkstation() {
   const referenceCount = fusionTool
     ? Number(Boolean(fusionProduct)) + Number(Boolean(fusionReference))
     : controller.inputAsset ? 1 : 0
-  const generateBlockReason = fusionTool && fusionLoading ? '请等待图片载入完成' : workstationGenerateBlockReason({
-    toolReady,
-    configurationPending: configurationReady === undefined && !capabilityError,
-    configurationError: configurationReady === undefined && Boolean(capabilityError),
-    hasInput: fusionTool ? Boolean(fusionProduct && fusionReference) : Boolean(controller.inputAsset),
-    formLocked: controller.formLocked,
-    submitting: controller.submitting,
-    maskRequired,
-    hasMaskPaint,
-    repaintBlocked: activeTool.slug === 'repaint' && repaintReady === false,
-    removeBlocked: activeTool.slug === 'remove' && eraseReady === false,
-    retouchBlocked: retouchTool && normalizeRetouchDirections(retouchDirections).length === 0,
-    fusionBlocked: fusionTool && (!fusionProduct || !fusionReference),
-    promptRequired: activeTool.capability === Capability.ImageEdit || activeTool.slug === 'repaint',
-    promptEmpty: !activePrompt.trim(),
-    referenceCount: variationTool || fusionTool || activeTool.capability === Capability.ImageEdit || retouchTool || relightTool ? referenceCount : undefined,
-    maxRefImages: activeModel?.ui.maxRefImages,
-    mode: inpaintMode,
-  })
 
   const handleCanvasReady = useCallback((handle: CanvasHandle | null) => {
     canvasHandleRef.current = handle
+  }, [])
+
+  /** 参数面板的精确宽高回填到扩图画布；画布收口后再通过 onTargetSizeChange 同步回来。 */
+  const commitOutpaintTargetSize = useCallback((size: { width: number; height: number }) => {
+    const handle = canvasHandleRef.current
+    if (handle && 'setTargetSize' in handle) handle.setTargetSize(size)
   }, [])
 
   const recoveryTool=activeTool.slug as TaskTool
@@ -631,20 +621,46 @@ export default function ImageWorkstation() {
   const inputWidth = controller.inputAsset?.width ?? 0
   const inputHeight = controller.inputAsset?.height ?? 0
   const inputSize = useMemo(() => ({ width: inputWidth, height: inputHeight }), [inputWidth, inputHeight])
-  const predictedOutpaintSize = inputWidth && inputHeight
-    ? presetTargetSize
-      ? presetOutpaintGeometry(inputWidth, inputHeight, presetTargetSize.width, presetTargetSize.height, outpaintOutputMode).targetSize
-      : outpaintTargetSize ?? inputSize
-    : undefined
+  // 目标几何只算一次：预计输出、积分与提交前限额校验共用同一份结果。
+  const outpaintGeometry = useMemo(() => {
+    if (!inputWidth || !inputHeight) return undefined
+    try {
+      return presetTargetSize
+        ? presetOutpaintGeometry(inputWidth, inputHeight, presetTargetSize.width, presetTargetSize.height, outpaintOutputMode)
+        : freeOutpaintGeometry(inputWidth, inputHeight, outpaintTargetSize?.width ?? inputWidth, outpaintTargetSize?.height ?? inputHeight)
+    } catch {
+      return undefined
+    }
+  }, [inputWidth, inputHeight, presetTargetSize, outpaintOutputMode, outpaintTargetSize])
+  const predictedOutpaintSize = outpaintGeometry?.targetSize
   const mockGateway = isCanvasMockGateway()
   let outpaintCredits: number | undefined = syncCreditPrice('outpaint', 2)
-  if (activeTool.capability === Capability.Outpaint && inputWidth && inputHeight) {
+  if (activeTool.capability === Capability.Outpaint && outpaintGeometry) {
+    try { outpaintCredits = outpaintCreditAmount(outpaintGeometry) } catch { outpaintCredits = undefined }
+  }
+  // 零扩图时控制器会直接返回原图副本；限额校验提前到提交前，避免任务成功但结果不可用。
+  const outpaintWork = activeTool.capability === Capability.Outpaint && outpaintGeometry
+    ? outpaintHasWork(inputWidth, inputHeight, outpaintGeometry)
+    : undefined
+  const outpaintIdle = outpaintWork === false ? (presetTargetSize ? 'preset' : 'free') : undefined
+  let outpaintLimitError: string | undefined
+  if (activeTool.capability === Capability.Outpaint && outpaintGeometry && outpaintWork) {
     try {
-      const geometry = presetTargetSize
-        ? presetOutpaintGeometry(inputWidth, inputHeight, presetTargetSize.width, presetTargetSize.height, outpaintOutputMode)
-        : freeOutpaintGeometry(inputWidth, inputHeight, predictedOutpaintSize?.width ?? inputWidth, predictedOutpaintSize?.height ?? inputHeight)
-      outpaintCredits = outpaintCreditAmount(geometry)
-    } catch { outpaintCredits = undefined }
+      validateOutpaintOutputSize(outpaintGeometry.targetSize.width, outpaintGeometry.targetSize.height)
+      const padding = paddingAround(
+        outpaintGeometry.sourceSize.width,
+        outpaintGeometry.sourceSize.height,
+        outpaintGeometry.originOffset.x,
+        outpaintGeometry.originOffset.y,
+        outpaintGeometry.targetSize.width,
+        outpaintGeometry.targetSize.height,
+      )
+      if (padding.left + padding.right + padding.top + padding.bottom > 0) {
+        planBailianOutpaint(outpaintGeometry.sourceSize.width, outpaintGeometry.sourceSize.height, padding)
+      }
+    } catch (error) {
+      outpaintLimitError = error instanceof Error ? error.message : '扩图范围超出服务限制'
+    }
   }
   const generateQuote = inpaintMode
     ? creditQuote(syncCreditPrice(inpaintMode === 'remove' ? 'erase' : 'repaint'), { mock: mockGateway })
@@ -659,6 +675,27 @@ export default function ImageWorkstation() {
   const retryCreditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
   const bridgeBlock = bridgeId && (!suiteBinding || (controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey) !== suiteBinding.inputObjectKey)
     ? '请恢复本会话输入后再提交，已有结果可以显式回填' : undefined
+  const generateBlockReason = fusionTool && fusionLoading ? '请等待图片载入完成' : workstationGenerateBlockReason({
+    toolReady,
+    configurationPending: configurationReady === undefined && !capabilityError,
+    configurationError: configurationReady === undefined && Boolean(capabilityError),
+    hasInput: fusionTool ? Boolean(fusionProduct && fusionReference) : Boolean(controller.inputAsset),
+    formLocked: controller.formLocked,
+    submitting: controller.submitting,
+    maskRequired,
+    hasMaskPaint,
+    repaintBlocked: activeTool.slug === 'repaint' && repaintReady === false,
+    removeBlocked: activeTool.slug === 'remove' && eraseReady === false,
+    retouchBlocked: retouchTool && normalizeRetouchDirections(retouchDirections).length === 0,
+    fusionBlocked: fusionTool && (!fusionProduct || !fusionReference),
+    promptRequired: activeTool.capability === Capability.ImageEdit || activeTool.slug === 'repaint',
+    promptEmpty: !activePrompt.trim(),
+    referenceCount: variationTool || fusionTool || activeTool.capability === Capability.ImageEdit || retouchTool || relightTool ? referenceCount : undefined,
+    maxRefImages: activeModel?.ui.maxRefImages,
+    outpaintIdle,
+    outpaintLimitError,
+    mode: inpaintMode,
+  })
   const blockReason = bridgeBlock ?? generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
   // 提交函数每次渲染都会重建；ref 只保存最新版本，键盘监听不必随渲染重挂。
   const generateRef = useRef(handleGenerate)
@@ -865,6 +902,8 @@ export default function ImageWorkstation() {
               originalImageUrl={showSourcePreview ? sourceAsset?.url : undefined}
               imageNaturalSize={inputSize}
               presetTargetSize={presetTargetSize}
+              outpaintTargetSize={predictedOutpaintSize}
+              outpaintIdle={outpaintIdle !== undefined}
               outpaintOutputMode={outpaintOutputMode}
               onOutpaintTargetSizeChange={setOutpaintTargetSize}
               compareMode={compareMode}
@@ -888,7 +927,9 @@ export default function ImageWorkstation() {
                 ? '上传图片后，涂抹需要消除的区域'
                 : activeTool.slug === 'repaint'
                   ? '上传后先涂抹要重绘的区域，再填写描述'
-                  : undefined}
+                  : activeTool.slug === 'outpaint'
+                    ? '上传后拖拽绿色边框向外扩展，商品主体保持不变'
+                    : undefined}
               onPreview={(view) => {
                 const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
                 if (id) openAt(id)
@@ -915,7 +956,7 @@ export default function ImageWorkstation() {
               <ImageAssetStrip
                 assets={controller.outputAssets}
                 selectedAssetId={controller.inputAsset?.id}
-                variant={fusionTool ? 'result' : inpaintMode ? 'inpaint-result' : 'next-input'}
+                variant={fusionTool ? 'result' : inpaintMode ? 'inpaint-result' : outpaintTool ? 'outpaint-result' : 'next-input'}
                 layout={fusionTool && controller.outputAssets.length > 1 ? 'grid' : undefined}
                 downloadingAssetId={downloadingAssetId}
                 downloadingAll={downloadingAll}
@@ -972,14 +1013,10 @@ export default function ImageWorkstation() {
               repaintPrompt={repaintPrompt}
               onRepaintPromptChange={setRepaintPrompt}
               outpaintMode={outpaintMode}
-              onOutpaintModeChange={mode => {
-                updateParameters({ outpaintMode: mode, ...(mode === 'free' ? { outpaintOutputMode: 'original' as const } : {}) })
-              }}
               outpaintOutputMode={outpaintOutputMode}
-              onOutpaintOutputModeChange={mode => {
-                updateParameters({ outpaintOutputMode: mode, ...(mode === 'platform' ? { outpaintMode: 'preset' as const } : {}) })
-              }}
+              onOutpaintTargetModeChange={target => updateParameters(outpaintTargetParameters(target))}
               outpaintTargetSize={predictedOutpaintSize}
+              onOutpaintTargetSizeChange={commitOutpaintTargetSize}
               presetPlatform={presetPlatform}
               onPresetPlatformChange={presetPlatform => updateParameters({ presetPlatform })}
               promptMinHeight={promptMinHeight}
