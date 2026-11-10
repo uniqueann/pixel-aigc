@@ -48,6 +48,23 @@ describe('mockTaskGateway', () => {
     expect(completed.resultUrls?.[0]).not.toBe(completed.resultUrls?.[1])
   })
 
+  it('保持原尺寸时 mock 结果使用原图宽高', async () => {
+    const params: ImageEditTaskParams = {
+      sourceImageUrl: 'source.png',
+      count: 1,
+      resolution: '2k',
+      size: { width: 1500, height: 1000 },
+      sourceWidth: 1500,
+      sourceHeight: 1000,
+      keepSourceSize: true,
+    }
+    const created = await createMockTask({ capability: Capability.ImageEdit, requestId: 'edit-source-size', params })
+    await getMockTask(created.id)
+    const completed = await getMockTask(created.id)
+    const svg = decodeURIComponent((completed.resultUrls?.[0] ?? '').split(',')[1] ?? '')
+    expect(svg).toContain('width="1500" height="1000"')
+  })
+
   it('为图片裂变生成指定数量的候选', async () => {
     const params: VariationTaskParams = {
       sourceImageUrl: 'source.png',

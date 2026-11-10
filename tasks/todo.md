@@ -2100,3 +2100,35 @@
 - 1:1 切换后把滚动容器居中到分割线，避免 2048/4096 宽的结果把分割线留在视口外；双击复位时同样重新居中。
 - 分割模式不再给图片绑定点击打开大图，避免拖动误触；结果缩略条与预览画廊仍提供放大入口。
 - 截图：`/tmp/compare-slider-desktop.png`、`/tmp/compare-slider-desktop-dragged.png`、`/tmp/compare-slider-desktop-1to1.png`、`/tmp/compare-slider-end.png`、`/tmp/compare-slider-1to1-reset.png`、`/tmp/compare-slider-mobile-clean.png`、`/tmp/compare-slider-mobile-1to1.png`。
+
+# 工作站精修：输出尺寸「保持原尺寸」
+
+目标：在 1K/2K/4K 之外增加「保持原尺寸」，按原图长边自动选最小可覆盖档位计费，服务端把结果精确缩放到原图像素并回传尺寸。
+
+## 计划
+
+- [x] `shared/retouch.ts`：新增档位推导、原尺寸输出、`keepSourceSize` 读取与 40M 像素上限
+- [x] 偏好：`WorkstationParameters.keepSourceSize`、记忆 schema、有效档位推导
+- [x] `ParamPanel`：精修输出尺寸增加「保持原尺寸」选项与计费文案
+- [x] 请求链路：builder 仅在 true 时携带字段，controller 按有效档位提交
+- [x] 页面：报价、controller、历史恢复、mock 尺寸同步
+- [x] 服务端：schema 校验、`cropToSourceAspect` 同管线 resize、descriptor 尺寸回传
+- [x] 测试与全量验证
+
+## 验收
+
+- [x] 1500×1000 → 输出 1500×1000，按 2K 计费；800×600 → 1K；3000×1688 → 4K
+- [x] 3000×2000（3:2）不在 4K 比例白名单，按 2K 计费并提示「生成后缩放到原尺寸」
+- [x] 固定档位、其他工具行为不变；默认请求不新增字段（现有 `toEqual` 断言未改）
+- [x] 全量 351 文件 / 2388 用例通过；前端、node、server `tsc`、ESLint、`git diff --check` 通过
+- [x] Playwright 1440×900 与 390×844：结果图实测 1500×1000、其他工具无该选项、移动端零横向溢出、刷新后记住选择
+
+## 复查
+
+- 只用一个布尔字段 `keepSourceSize`，不把 `resolution` 扩成枚举：档位仍表示计费与生成档，原尺寸只是后处理开关；避免污染 preferences、报价与 provider 映射。
+- 档位推导放 `shared/retouch.ts` 的 `retouchResolutionForSource`，页面报价、controller 请求、面板文案共用；`effectiveImageParameters` 先推导再收敛模型能力与 4K 比例限制，所以三者永远一致。
+- 服务端把 resize 合进 `cropToSourceAspect` 的同一条 sharp 管线（extract → resize fill → encode），4K 结果不需要二次解码；`persisted` 后的 descriptor、transfer、`result_width/height` 自动是原图尺寸，客户端尺寸校验无需改动。
+- 仅在 `params.keepSourceSize` 时传第四参，其余任务仍三参数调用，保护 `text-to-image.test.ts` 的既有断言。
+- 文案分三种：原尺寸且档位足够、原尺寸但被 4K 比例规则降到 2K（说明先生成再缩放）、原图长边超过 4K（提示会放大）；固定档位才显示原有的「当前比例不支持 4K」。
+- 截图：`/tmp/pw-retouch/keep-source-desktop.png`、`keep-source-result.png`、`keep-source-800.png`、`keep-source-3000x1688.png`、`keep-source-3000x2000.png`、`keep-source-mobile.png`。
+- PR #269 CI：`verify` pass（5m1s）；Vercel 与 Preview Comments pass。

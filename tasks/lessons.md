@@ -24,6 +24,12 @@
 - 规则：对比层统一 `width:100%; height:100%; object-fit: contain`，1:1 时再改 `object-fit: fill`；不要依赖 `max-width/max-height` 保留自然尺寸。
 - 原因：分割线是按同一框宽度的百分比定位的，只有两层共享同一几何，裁剪位置和标签才一致；小图放大带来的轻微模糊是可接受的代价。
 
+## 输出尺寸承诺要三处同时保证
+
+- 触发：做精修「保持原尺寸」时，只改客户端 `size` 并不会改变模型输出像素，服务端 `cropToSourceAspect` 原先只裁比例不缩放，客户端又只校验「声明尺寸 vs 实测尺寸」。
+- 规则：任何「输出就是 N×N」的承诺，都要在客户端推导目标尺寸、服务端后处理真正 resize、并把 resize 后的宽高写回 descriptor / result_width / result_height 三处对齐；只改其中一处会导致界面承诺与实际文件不符。
+- 原因：计费按档位、生成按档位、交付按原像素，三者是不同层；档位推导集中在 `shared/retouch.ts` 才能让报价、请求、文案永远一致。
+
 ## 重试失败状态不要用 effect 重置
 
 - 触发：在 effect 中根据 `resultReadError` 清空 `retryReadFailedAgain`，既触发 `react-hooks/set-state-in-effect`，又会在重试读取阶段把刚设置的「仍无法读取」提前抹掉。

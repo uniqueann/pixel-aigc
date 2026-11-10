@@ -81,7 +81,7 @@ import {
   RELIGHT_TEMPERATURE_LABELS,
   readRelight,
 } from '@shared/relight'
-import { readRetouchDirections } from '@shared/retouch'
+import { readKeepSourceSize, readRetouchDirections } from '@shared/retouch'
 import WorkstationBridge, { type WorkstationSuiteBinding } from '@/features/ecommerce-suite/WorkstationBridge'
 import type { SuiteActor } from '@shared/ecommerce-suite'
 import type { SuiteBridgeDetail } from '@shared/ecommerce-suite-runtime'
@@ -157,7 +157,7 @@ export default function ImageWorkstation() {
   const recoveringActive=account?.features?.taskCenter&&observedTask?.owner===currentActor?.owner&&observedTask?.scope===currentActor?.scope&&observedTask?.task.tool===activeTool.slug
     &&observedTask.task.taskKey===new URLSearchParams(location?.location.search).get('task')&&taskIsActive(observedTask.task)
   const { parameters, update: updateParameters } = useWorkstationParameters(activeTool.slug)
-  const { retouchDirections, relight: relightOptions, count: activeCount, resolution: editResolution, outpaintMode, outpaintOutputMode, presetPlatform } = parameters
+  const { retouchDirections, relight: relightOptions, count: activeCount, resolution: editResolution, keepSourceSize, outpaintMode, outpaintOutputMode, presetPlatform } = parameters
   const fusionSelection = useFusionImageSelection(activeTool.slug)
   const fusionProduct = fusionSelection.product
   const fusionReference = fusionSelection.reference
@@ -215,6 +215,7 @@ export default function ImageWorkstation() {
     prompt: activePrompt,
     count: activeCount,
     resolution: editResolution,
+    keepSourceSize,
     modelProfileId: activeModelId,
     modelUi: activeModel?.ui,
     capabilityReady,
@@ -255,7 +256,7 @@ export default function ImageWorkstation() {
   // 只有「同一个任务重试后仍失败」才显示「仍无法读取」；换图或新任务会因任务 id 变化自动失效。
   const retryReadFailedAgain = Boolean(controller.resultReadError)
     && retryReadFailedTaskId === (controller.activeTask?.id ?? 'unknown')
-  const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui)
+  const effectiveParameters = effectiveImageParameters(activeCount, editResolution, fusionTool ? fusionProduct : controller.inputAsset, activeModel?.ui, retouchTool && keepSourceSize)
   const relightOutput = relightTool
     ? outputPreview(activeModel, controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined, effectiveParameters.resolution)
     : undefined
@@ -836,6 +837,7 @@ export default function ImageWorkstation() {
           if(!prepared.source || (fusionTool&&!prepared.reference))throw new Error('原输入或参考图缺失，不能完整载入')
           if(typeof params.count!=='number'||!Number.isInteger(params.count)||params.count<1||!['1k','2k','4k'].includes(String(params.resolution)))throw new Error('原生成参数不完整')
           if(params.prompt!==undefined&&typeof params.prompt!=='string')throw new Error('原提示词参数无效')
+          if(params.keepSourceSize!==undefined&&typeof params.keepSourceSize!=='boolean')throw new Error('原输出尺寸参数无效')
           if(!await confirmRecovery('载入原参数将替换当前原图、蒙版和表单，是否继续？'))return false
           assertRecoveryActor(context.actor,context.signal)
           saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:undefined})
@@ -849,7 +851,7 @@ export default function ImageWorkstation() {
           else {setSourceAsset(visibleSource);replaceSourceAsset(source)}
           const note=typeof params.prompt==='string'?params.prompt:''
           if(relightTool)setRelightNote(note);else if(fusionTool)setFusionNote(note);else if(retouchTool)setRetouchNote(note);else if(variationTool)setVariationPrompt(note);else setSmartEditPrompt(note)
-          updateParameters({count:params.count,resolution:params.resolution as '1k'|'2k'|'4k',...(retouchTool?{retouchDirections:readRetouchDirections(params)}:{}),...(relightTool&&readRelight(params)?{relight:readRelight(params)}:{})},false)
+          updateParameters({count:params.count,resolution:params.resolution as '1k'|'2k'|'4k',...(retouchTool?{retouchDirections:readRetouchDirections(params),keepSourceSize:readKeepSourceSize(params)}:{}),...(relightTool&&readRelight(params)?{relight:readRelight(params)}:{})},false)
           if(detail.task.modelProfileId){const storedModelId=canonicalizeImageModelProfileId(detail.task.modelProfileId);if(variationTool)setVariationModelId(storedModelId);else if(relightTool)setRelightModelId(storedModelId);else setModelProfileId(storedModelId)}
           setHasMaskPaint(false)
         }:undefined}/>
@@ -1053,6 +1055,10 @@ export default function ImageWorkstation() {
               onRetouchDirectionsChange={retouchDirections => updateParameters({ retouchDirections })}
               resolution={effectiveParameters.resolution}
               onResolutionChange={resolution => updateParameters({ resolution })}
+              keepSourceSize={keepSourceSize}
+              onRetouchOutputChange={value => updateParameters(
+                value === 'source' ? { keepSourceSize: true } : { keepSourceSize: false, resolution: value },
+              )}
               models={activeModels}
               modelProfileId={activeModelId}
               onModelProfileIdChange={relightTool ? setRelightModelId : variationTool ? setVariationModelId : setModelProfileId}

@@ -74,6 +74,8 @@ export interface ImageEditTaskParams extends ImageTaskParams {
   sourceImageKey?: string
   sourceWidth?: number
   sourceHeight?: number
+  /** 精修：服务端把结果缩放到 sourceWidth×sourceHeight。 */
+  keepSourceSize?: boolean
   prompt?: string
   count: number
   resolution: '1k' | '2k' | '4k'

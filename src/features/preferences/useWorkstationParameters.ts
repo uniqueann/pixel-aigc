@@ -34,6 +34,7 @@ export function useWorkstationParameters(tool: string) {
       if (patch.count !== undefined) memory.count = patch.count
       if (patch.resolution !== undefined) memory.resolution = patch.resolution
       if (tool === 'retouch' && patch.retouchDirections) memory.retouchDirections = patch.retouchDirections
+      if (tool === 'retouch' && patch.keepSourceSize !== undefined) memory.keepSourceSize = patch.keepSourceSize
       if (tool === 'relight' && patch.relight) memory.relight = patch.relight
       state.remember(tool as CountTool, memory)
     } else if (tool === 'outpaint') {

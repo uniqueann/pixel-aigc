@@ -35,7 +35,10 @@ const watermark = z.object({
 }).strict()
 export const imageMemorySchema = z.object({
   'smart-edit': imageParameters.optional(), variation: imageParameters.optional(), fusion: imageParameters.optional(),
-  retouch: imageParameters.extend({ retouchDirections: z.array(z.enum(RETOUCH_DIRECTION_IDS)).max(4).optional() }).optional(),
+  retouch: imageParameters.extend({
+    retouchDirections: z.array(z.enum(RETOUCH_DIRECTION_IDS)).max(4).optional(),
+    keepSourceSize: z.boolean().optional(),
+  }).optional(),
   relight: imageParameters.extend({ relight: relight.optional() }).optional(),
   outpaint: z.object({
     outpaintMode: z.enum(['free', 'preset']).optional(), outpaintOutputMode: z.enum(['original', 'platform']).optional(),

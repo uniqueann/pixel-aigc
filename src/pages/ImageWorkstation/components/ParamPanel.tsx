@@ -17,7 +17,7 @@ import {
 } from '@shared/relight'
 import RelightCompass from './RelightCompass'
 import { outputPreview } from '../utils/outputPreview'
-import { RETOUCH_DIRECTIONS, RETOUCH_NOTE_MAX, RETOUCH_PRESETS, normalizeRetouchDirections, retouchDirectionLabel, retouchOutputSize, type RetouchDirection } from '@shared/retouch'
+import { RETOUCH_DIRECTIONS, RETOUCH_MAX_SOURCE_PIXELS, RETOUCH_NOTE_MAX, RETOUCH_PRESETS, RETOUCH_TARGET_LONG_EDGE, normalizeRetouchDirections, retouchDirectionLabel, retouchOutputSize, retouchResolutionForSource, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import { MAX_SCALE, type OutpaintOutputMode } from '@shared/outpaint'
 import type { CountTool } from '@shared/preferences'
@@ -35,6 +35,10 @@ interface Props {
   onCountChange: (count: number) => void
   resolution: '1k' | '2k' | '4k'
   onResolutionChange: (resolution: '1k' | '2k' | '4k') => void
+  /** 精修：输出缩回原图像素，档位仍按原图长边推导。 */
+  keepSourceSize?: boolean
+  /** 精修输出尺寸：'source' 表示保持原尺寸；档位值同时关闭保持原尺寸。 */
+  onRetouchOutputChange?: (value: '1k' | '2k' | '4k' | 'source') => void
   models?: PublicImageModel[]
   modelProfileId?: string
   onModelProfileIdChange?: (id: string) => void
@@ -167,6 +171,8 @@ export default function ParamPanel({
   onCountChange,
   resolution,
   onResolutionChange,
+  keepSourceSize = false,
+  onRetouchOutputChange,
   models = [],
   modelProfileId,
   onModelProfileIdChange,
@@ -263,9 +269,32 @@ export default function ParamPanel({
       && retouchPreset.directions.every(direction => selectedDirections.includes(direction))
     const selectedDirectionLabel = selectedDirections.map(retouchDirectionLabel).join('、')
     const resolutionLabel = retouch ? '输出尺寸' : '渲染分辨率'
+    const keepSource = retouch && keepSourceSize && Boolean(sourceSize)
+    const sourcePixelsTooLarge = Boolean(sourceSize && sourceSize.width * sourceSize.height > RETOUCH_MAX_SOURCE_PIXELS)
+    const derivedResolution = sourceSize
+      ? retouchResolutionForSource(sourceSize.width, sourceSize.height)
+      : resolution
+    const needsUpscale = Boolean(keepSource && sourceSize
+      && RETOUCH_TARGET_LONG_EDGE[resolution] < Math.max(sourceSize.width, sourceSize.height))
     const retouchOutput = retouch && sourceSize
-      ? retouchOutputSize(sourceSize.width, sourceSize.height, resolution)
+      ? retouchOutputSize(sourceSize.width, sourceSize.height, resolution, keepSource)
       : undefined
+    const tierOptions = resolutions.map(value => ({
+      value,
+      label: value.toUpperCase(),
+      disabled: value === '4k' && !fourKAllowed,
+      'aria-disabled': value === '4k' && !fourKAllowed ? true : undefined,
+      title: value === '4k' && !fourKAllowed ? '当前比例不支持 4K' : undefined,
+    }))
+    const resolutionOptions = retouch
+      ? [...tierOptions, {
+          value: 'source' as const,
+          label: '保持原尺寸',
+          disabled: !sourceSize || sourcePixelsTooLarge,
+          'aria-disabled': !sourceSize || sourcePixelsTooLarge ? true : undefined,
+          title: !sourceSize ? '请先上传原图' : sourcePixelsTooLarge ? '原图尺寸过大，无法保持原尺寸' : undefined,
+        }]
+      : tierOptions
     // 裂变与融合的补充说明是可选项：默认收起，已有内容时自动展开，接近上限才显示字数。
     const variationNoteExpanded = variationNoteOpen ?? Boolean(smartEditPrompt)
     const variationNoteNearLimit = smartEditPrompt.length >= Math.floor(promptMaxLength * 0.85)
@@ -284,26 +313,34 @@ export default function ParamPanel({
         <Select
           aria-label={resolutionLabel}
           style={{ width: '100%' }}
-          value={resolution}
+          value={keepSource ? 'source' : resolution}
           disabled={disabled}
-          onChange={onResolutionChange}
-          options={resolutions.map(value => ({
-            value,
-            label: value.toUpperCase(),
-            disabled: value === '4k' && !fourKAllowed,
-            'aria-disabled': value === '4k' && !fourKAllowed ? true : undefined,
-            title: value === '4k' && !fourKAllowed ? '当前比例不支持 4K' : undefined,
-          }))}
+          onChange={value => {
+            if (retouch && onRetouchOutputChange) {
+              onRetouchOutputChange(value as '1k' | '2k' | '4k' | 'source')
+              return
+            }
+            if (value !== 'source') onResolutionChange(value as '1k' | '2k' | '4k')
+          }}
+          options={resolutionOptions}
         />
         {mapped ? (
-          <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
+          <p className="toolbox-hint" role="status" aria-live="polite" style={{ margin: '8px 0 0', fontSize: 12 }}>
             {retouch && retouchOutput
-              ? `输出 ${retouchOutput.width}×${retouchOutput.height}（长边 ${resolution.toUpperCase()}）`
+              ? keepSource
+                ? `输出 ${retouchOutput.width}×${retouchOutput.height}（原图尺寸）· 按 ${resolution.toUpperCase()} 计费`
+                : `输出 ${retouchOutput.width}×${retouchOutput.height}（长边 ${resolution.toUpperCase()}）`
               : `预计输出 ${mapped.size} · ${mapped.resolution.toUpperCase()}`}
-            {!fourKAllowed ? ' · 当前比例不支持 4K，按 2K 生成' : ''}
+            {!fourKAllowed && !keepSource
+              ? ' · 当前比例不支持 4K，按 2K 生成'
+              : keepSource && needsUpscale
+                ? derivedResolution === resolution
+                  ? ` · 原图长边超过 ${resolution.toUpperCase()}，生成后放大到原尺寸`
+                  : ` · 原图长边需要 ${derivedResolution.toUpperCase()}，按 ${resolution.toUpperCase()} 生成后缩放到原尺寸`
+                : ''}
           </p>
         ) : null}
-        {retouch && sourceSize && retouchOutput && Math.max(sourceSize.width, sourceSize.height) < 1024 ? (
+        {retouch && sourceSize && retouchOutput && !keepSource && Math.max(sourceSize.width, sourceSize.height) < 1024 ? (
           <p className="toolbox-hint" style={{ margin: '4px 0 0', fontSize: 12 }}>
             原图 {sourceSize.width}×{sourceSize.height}，将放大到 {retouchOutput.width}×{retouchOutput.height}；精修不会重绘，但尺寸会变化。
           </p>

@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
     active: false, submitting: false, cancelling: false, cancel: vi.fn(), activeTask: undefined as unknown,
   },
   taskStatusProps: undefined as Record<string, unknown> | undefined,
-  controllerArgs: undefined as { modelProfileId?: string; keepInputOnSuccess?: boolean } | undefined,
+  controllerArgs: undefined as { modelProfileId?: string; keepInputOnSuccess?: boolean; keepSourceSize?: boolean } | undefined,
   models: [] as unknown[],
   modelsLoading: false,
   fusion: {
@@ -456,6 +456,21 @@ describe('图片工作站配置提示', () => {
     render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/生成 1 张 · 6 积分/)).toBeTruthy()
     expect(screen.queryByText(/生成 1 张 · 14 积分/)).toBeNull()
+  })
+
+  it('精修保持原尺寸时按原图长边档位报价并传给控制器', () => {
+    const preferences = defaultPreferences()
+    preferences.image.resolution = '4k'
+    preferences.image.lastUsed.retouch = { keepSourceSize: true }
+    usePreferencesStore.setState({ preferences, memoryEpoch: 5 })
+    mocks.tool = 'retouch'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 1500, height: 1000, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(mocks.controllerArgs?.keepSourceSize).toBe(true)
+    expect(buttonByText(/生成 1 张 · 6 积分/)).toBeTruthy()
+    expect(screen.getByText(/输出 1500×1000（原图尺寸）· 按 2K 计费/)).toBeTruthy()
   })
 
   it('智能编辑未填写编辑要求时禁用生成，填写后恢复', () => {

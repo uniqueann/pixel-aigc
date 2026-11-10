@@ -27,6 +27,8 @@ export interface WorkstationContext {
   }
   count?: number
   resolution?: '1k' | '2k' | '4k'
+  /** 精修：结果缩回原图像素。 */
+  keepSourceSize?: boolean
   modelProfileId?: string
   /** 所选模型的提示词上限。重新打光用来截断补充说明。 */
   promptMaxLength?: number

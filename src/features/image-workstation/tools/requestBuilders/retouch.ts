@@ -7,8 +7,9 @@ export function buildRetouchRequest(context: WorkstationContext): WorkstationGen
   const directions = normalizeRetouchDirections(context.retouchDirections)
   const note = context.prompt?.trim() ?? ''
   const resolution = context.resolution ?? '2k'
+  const keepSourceSize = context.keepSourceSize === true
   const count = Math.min(4, Math.max(1, Math.round(context.count ?? 1)))
-  const outputSize = retouchOutputSize(context.sourceAsset.width, context.sourceAsset.height, resolution)
+  const outputSize = retouchOutputSize(context.sourceAsset.width, context.sourceAsset.height, resolution, keepSourceSize)
   const params: ImageEditTaskParams = {
     sourceImageUrl: context.sourceAsset.url,
     count,
@@ -17,6 +18,7 @@ export function buildRetouchRequest(context: WorkstationContext): WorkstationGen
     sourceWidth: context.sourceAsset.width,
     sourceHeight: context.sourceAsset.height,
     retouchDirections: directions,
+    ...(keepSourceSize ? { keepSourceSize: true } : {}),
     ...(note ? { prompt: note } : {}),
   }
   return { capability: Capability.ImageEdit, params, outputSize }

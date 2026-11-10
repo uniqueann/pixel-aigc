@@ -37,4 +37,20 @@ describe('buildRetouchRequest', () => {
       retouchDirections: ['brighten'],
     })
   })
+
+  it('保持原尺寸时提交原图像素与开关，档位仍为计费档', () => {
+    const sourceAsset = createImageAsset({ name: '商品图', url: 'source.png', width: 1500, height: 1000 })
+    const request = buildRetouchRequest({
+      sourceAsset,
+      retouchDirections: ['blemish'],
+      resolution: '2k',
+      keepSourceSize: true,
+    })
+    expect(request.outputSize).toEqual({ width: 1500, height: 1000 })
+    expect(request.params).toMatchObject({
+      resolution: '2k',
+      size: { width: 1500, height: 1000 },
+      keepSourceSize: true,
+    })
+  })
 })

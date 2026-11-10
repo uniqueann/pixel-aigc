@@ -34,6 +34,21 @@ describe('工具默认参数与记忆', () => {
     expect(effectiveImageParameters(4, '4k', { width: 1080, height: 1920 }, ui)).toEqual({ count: 2, resolution: '4k' })
     expect(effectiveImageParameters(3, '4k', undefined, { ...ui, resolutions: ['1k'] })).toEqual({ count: 2, resolution: '1k' })
   })
+  it('精修保持原尺寸按原图长边推导计费档位', () => {
+    const p = defaultPreferences()
+    expect(initialWorkstationParameters(p, 'retouch').keepSourceSize).toBe(false)
+    p.image.lastUsed.retouch = { keepSourceSize: true }
+    expect(initialWorkstationParameters(p, 'retouch').keepSourceSize).toBe(true)
+    expect(initialWorkstationParameters(p, 'variation').keepSourceSize).toBe(false)
+    const ui = defaultImageModel('image_edit')!.ui
+    expect(effectiveImageParameters(1, '2k', { width: 800, height: 600 }, ui, true)).toEqual({ count: 1, resolution: '1k' })
+    expect(effectiveImageParameters(1, '1k', { width: 1500, height: 1000 }, ui, true)).toEqual({ count: 1, resolution: '2k' })
+    expect(effectiveImageParameters(1, '2k', { width: 3000, height: 1688 }, ui, true)).toEqual({ count: 1, resolution: '4k' })
+    // 3:2 不在 4K 比例白名单，仍按 2K 计费。
+    expect(effectiveImageParameters(1, '2k', { width: 3000, height: 2000 }, ui, true)).toEqual({ count: 1, resolution: '2k' })
+    expect(effectiveImageParameters(1, '2k', { width: 5000, height: 1000 }, { ...ui, resolutions: ['1k', '2k'] }, true))
+      .toEqual({ count: 1, resolution: '2k' })
+  })
   it('工具箱不恢复裁剪焦点或 Logo 文件', () => {
     expect(initialBgRemoveSettings(defaultPreferences()).background).toBe('transparent')
     const p = defaultPreferences()

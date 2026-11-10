@@ -44,6 +44,7 @@ describe('真实文生图任务', () => {
       { prompt: '  ' }, { prompt: '字'.repeat(3501) }, { sourceImageKey: 'media/other/source' },
       { sourceImageUrl: 'https://external.test/source.png' }, { count: 5 },
       { size: { width: 0, height: 900 } }, { resolution: '8k' },
+      { keepSourceSize: true },
     ]) expect(createImageTaskSchema.safeParse(payload(invalid)).success).toBe(false)
     expect(createImageTaskSchema.safeParse(payload({ prompt: '字'.repeat(3500) })).success).toBe(true)
     expect(createImageTaskSchema.safeParse(payload({ enableThinking: true })).success).toBe(true)

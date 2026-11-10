@@ -8,8 +8,36 @@ import {
   RETOUCH_NOTE_MAX,
   RETOUCH_NOTE_PREFIX,
   composeRetouchPrompt,
+  readKeepSourceSize,
   retouchHistoryText,
+  retouchOutputSize,
+  retouchResolutionForSource,
 } from './retouch'
+
+describe('精修输出尺寸', () => {
+  it('按原图长边选择最小可覆盖档位', () => {
+    expect(retouchResolutionForSource(1024, 512)).toBe('1k')
+    expect(retouchResolutionForSource(1025, 512)).toBe('2k')
+    expect(retouchResolutionForSource(2048, 1024)).toBe('2k')
+    expect(retouchResolutionForSource(2049, 1024)).toBe('4k')
+    expect(retouchResolutionForSource(4096, 4096)).toBe('4k')
+    expect(retouchResolutionForSource(4097, 100)).toBe('4k')
+    expect(retouchResolutionForSource(600, 900)).toBe('1k')
+  })
+
+  it('保持原尺寸时不做缩放，默认档位行为不变', () => {
+    expect(retouchOutputSize(1200, 801, '2k')).toEqual({ width: 2048, height: 1367 })
+    expect(retouchOutputSize(1200, 801, '2k', true)).toEqual({ width: 1200, height: 801 })
+    expect(retouchOutputSize(1200.4, 800.6, '2k', true)).toEqual({ width: 1200, height: 801 })
+  })
+
+  it('读取历史参数中的保持原尺寸标记', () => {
+    expect(readKeepSourceSize({ keepSourceSize: true })).toBe(true)
+    expect(readKeepSourceSize({ keepSourceSize: false })).toBe(false)
+    expect(readKeepSourceSize({})).toBe(false)
+    expect(readKeepSourceSize(null)).toBe(false)
+  })
+})
 
 describe('精修提示词', () => {
   it('补充说明上限按四个方向都选中来预留', () => {
