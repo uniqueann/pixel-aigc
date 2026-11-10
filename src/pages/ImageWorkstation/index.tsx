@@ -119,13 +119,15 @@ export default function ImageWorkstation() {
     assertRecoveryActor(context.actor,context.signal)
     setObservedTask({task:detail.task,...context.actor})
   },[])
-  const { message, notification } = App.useApp()
+  const { message, notification, modal } = App.useApp()
   const knownBalance = useKnownCreditBalance()
   const project = useEditorStore(state => state.project)
   const canvasHandleRef = useRef<CanvasHandle | null>(null)
   const [sourceAsset, setSourceAsset] = useState<ImageAsset>()
   const [uploading, setUploading] = useState(false)
   const [compareMode, setCompareMode] = useState<'original' | 'effect'>('effect')
+  // 精修结果只切换预览，不直接替换原图；需要继续精修时由显式操作确认。
+  const [retouchPreviewId, setRetouchPreviewId] = useState<AssetId>()
   const [smartEditPrompt, setSmartEditPrompt] = useState('')
   const [variationPrompt, setVariationPrompt] = useState('')
   const [retouchNote, setRetouchNote] = useState('')
@@ -221,7 +223,7 @@ export default function ImageWorkstation() {
     productAsset: fusionProduct,
     referenceAsset: fusionReference,
     useProductAsset: fusionTool,
-    keepInputOnSuccess: activeTool.slug === 'repaint' || activeTool.slug === 'remove',
+    keepInputOnSuccess: activeTool.slug === 'repaint' || activeTool.slug === 'remove' || activeTool.slug === 'retouch',
   })
   // 任务成功不等于结果可用：等结果读取结束后，由页面给出唯一结论。
   const notifiedResultRef = useRef<string>()
@@ -245,9 +247,11 @@ export default function ImageWorkstation() {
     if (controller.outputAssets.length > 0) {
       notification.success({
         message: '任务已完成',
-        description: activeTool.slug === 'repaint'
-          ? `已生成 ${controller.outputAssets.length} 个结果，原图与蒙版已保留，可调整描述再生成一版。`
-          : `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
+        description: activeTool.slug === 'retouch'
+          ? `已生成 ${controller.outputAssets.length} 个结果，原图已保留，可对比后下载或继续精修。`
+          : activeTool.slug === 'repaint'
+            ? `已生成 ${controller.outputAssets.length} 个结果，原图与蒙版已保留，可调整描述再生成一版。`
+            : `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
       })
     }
   }, [activeTool.slug, controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, relightTool, variationTool])
@@ -315,8 +319,13 @@ export default function ImageWorkstation() {
     if (task.status === 'failed') return taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
     return '正在处理中，请稍候...'
   }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
-  const selectedResult = controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
-    ?? controller.outputAssets[0]
+  // 精修保留原图后，选中结果只影响预览；其他工具仍以「当前输入正好是结果」为准。
+  const selectedResult = retouchTool
+    ? controller.outputAssets.find((asset) => asset.id === retouchPreviewId)
+      ?? controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
+      ?? controller.outputAssets[0]
+    : controller.outputAssets.find((asset) => asset.id === controller.inputAsset?.id)
+      ?? controller.outputAssets[0]
   const resultPreviewItems: PreviewItem[] = controller.outputAssets.map(asset => {
     const generation = Object.values(project?.generations ?? {}).find(job => job.outputAssetIds.includes(asset.id))
     const source = generation?.inputAssetIds[0] ? project?.assets[generation.inputAssetIds[0]] : undefined
@@ -592,10 +601,36 @@ export default function ImageWorkstation() {
   }
 
   const handleSelectResult = async (assetId: AssetId) => {
+    // 精修结果用于对比与导出，点缩略图只换预览，不替换原图。
+    if (retouchTool) {
+      setRetouchPreviewId(assetId)
+      setCompareMode('effect')
+      return
+    }
     if (inpaintMode && hasMaskPaint
       && !await confirmRecovery('切换到该结果将清空当前蒙版，是否继续？')) return
     controller.selectOutput(assetId)
     setCompareMode('effect')
+  }
+
+  /** 精修结果作为新输入是破坏性操作：确认后才替换当前原图。 */
+  const handleContinueOnResult = (asset = selectedResult) => {
+    if (!asset) return
+    if (asset.id === controller.inputAsset?.id) {
+      setCompareMode('effect')
+      return
+    }
+    modal.confirm({
+      title: '在这张结果上继续精修？',
+      content: '将把这张结果设为新的原图，后续精修基于它进行；原图仍保留在项目中。',
+      okText: '继续精修',
+      cancelText: '取消',
+      onOk: () => {
+        controller.selectOutput(asset.id)
+        setRetouchPreviewId(undefined)
+        setCompareMode('effect')
+      },
+    })
   }
 
   const handleRetry = async () => {
@@ -748,11 +783,11 @@ export default function ImageWorkstation() {
   const visibleBlockReason = blockReason && !duplicateFusionInputReason && !duplicateBusyReason && blockReason !== footerInfo && !creditBlocked && configurationReady !== undefined && toolReady
     ? blockReason
     : undefined
-  const inpaintHasPreservedInput = Boolean(inpaintMode)
+  const hasPreservedInput = Boolean(inpaintMode || retouchTool)
     && controller.outputAssets.length > 0
     && !controller.outputAssets.some(asset => asset.id === controller.inputAsset?.id)
-  // 涂抹类工具完成后，「下载结果」是主操作；「再生成一版」降为次操作。
-  const downloadIsPrimary = Boolean(inpaintMode) && controller.outputAssets.length > 0 && Boolean(selectedResult)
+  // 涂抹类与精修完成后，「下载结果」是主操作；「再生成一版」降为次操作。
+  const downloadIsPrimary = Boolean(inpaintMode || retouchTool) && controller.outputAssets.length > 0 && Boolean(selectedResult)
   const recoveryRuntime = useRef({})
   useEffect(() => { const user = recoveryRuntime.current; return () => releaseRuntimeImageUser(user) }, [])
   useEffect(() => useUserStore.subscribe((state, previous) => {
@@ -966,15 +1001,18 @@ export default function ImageWorkstation() {
             ) : (
               <ImageAssetStrip
                 assets={controller.outputAssets}
-                selectedAssetId={controller.inputAsset?.id}
-                variant={fusionTool ? 'result' : inpaintMode ? 'inpaint-result' : outpaintTool ? 'outpaint-result' : 'next-input'}
-                layout={fusionTool && controller.outputAssets.length > 1 ? 'grid' : undefined}
+                selectedAssetId={retouchTool ? selectedResult?.id : controller.inputAsset?.id}
+                variant={fusionTool || retouchTool ? 'result' : inpaintMode ? 'inpaint-result' : outpaintTool ? 'outpaint-result' : 'next-input'}
+                layout={(fusionTool || retouchTool) && controller.outputAssets.length > 1 ? 'grid' : undefined}
                 downloadingAssetId={downloadingAssetId}
                 downloadingAll={downloadingAll}
                 onSelect={(assetId) => void handleSelectResult(assetId)}
                 onDownload={(asset, index) => void handleDownload(asset, index)}
                 onPreview={openAt}
-                onDownloadAll={fusionTool && controller.outputAssets.length > 1 ? () => void handleDownloadAll() : undefined}
+                onDownloadAll={(fusionTool || retouchTool) && controller.outputAssets.length > 1 ? () => void handleDownloadAll() : undefined}
+                onContinue={retouchTool && selectedResult && selectedResult.id !== controller.inputAsset?.id ? handleContinueOnResult : undefined}
+                continueLabel="继续精修此结果"
+                continueDisabled={controller.formLocked}
               />
             )}
           </section>
@@ -1074,6 +1112,11 @@ export default function ImageWorkstation() {
                 {visibleBlockReason}
               </span>
             ) : null}
+            {showRetryRead ? (
+              <span id="workstation-retry-advice" className="image-workstation-block-reason" role="status">
+                重新生成会再次计费，建议先重试读取
+              </span>
+            ) : null}
             {!edgeRefine ? (
               <span className="image-workstation-shortcut-hint" aria-hidden="true">⌘/Ctrl + Enter 生成</span>
             ) : null}
@@ -1094,7 +1137,7 @@ export default function ImageWorkstation() {
               <>
                 {selectedResult ? (
                   <Button
-                    type={downloadIsPrimary ? 'primary' : 'default'}
+                    type={downloadIsPrimary && !showRetryRead ? 'primary' : 'default'}
                     icon={<DownloadOutlined />}
                     disabled={controller.formLocked}
                     loading={downloadingAssetId === selectedResult.id}
@@ -1118,18 +1161,18 @@ export default function ImageWorkstation() {
                     取消生成
                   </Button>
                 ) : null}
-                <Tooltip title={showRetryRead ? '重新生成会再次计费，建议先重试读取' : blockReason}>
+                <Tooltip title={showRetryRead ? undefined : blockReason}>
                   <span>
                     <CreditActionButton data-task-generate
                       type={showRetryRead || downloadIsPrimary ? 'default' : 'primary'}
                       loading={controller.submitting}
                       quote={generateQuote}
-                      aria-describedby={visibleBlockReason ? 'workstation-block-reason' : undefined}
+                      aria-describedby={showRetryRead ? 'workstation-retry-advice' : visibleBlockReason ? 'workstation-block-reason' : undefined}
                       aria-keyshortcuts="Meta+Enter Control+Enter"
                       disabled={Boolean(blockReason) || controller.submitting || controller.inputPreparation?.phase === 'failed'}
                       onClick={handleGenerate}
                     >
-                      {inpaintHasPreservedInput
+                      {hasPreservedInput
                         ? '再生成一版'
                         : COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}
                     </CreditActionButton>

@@ -53,6 +53,15 @@ vi.mock('@/features/credits/useImageModels', () => ({ useImageModels: () => ({ m
 vi.mock('@/services/api/task', () => ({ liveCapabilityReady: () => false }))
 vi.mock('@/components/GenerationTaskStatus', () => ({ default: () => null }))
 vi.mock('@/features/image-workstation/hooks/useFusionImageSelection', () => ({ useFusionImageSelection: () => mocks.fusion }))
+// 涂抹/扩图画布依赖 Fabric 与真实 canvas；页面测试只验证流程，不挂载画布实现。
+vi.mock('./components/canvas/MaskPaintCanvas', async () => {
+  const React = await import('react')
+  return { default: React.forwardRef(() => null) }
+})
+vi.mock('./components/canvas/OutpaintCanvas', async () => {
+  const React = await import('react')
+  return { default: React.forwardRef(() => null) }
+})
 vi.mock('@/features/image-workstation/download', async importOriginal => {
   const actual = await importOriginal<typeof import('@/features/image-workstation/download')>()
   return { ...actual, blobFromImageSource: vi.fn(async () => new Blob(['variant'], { type: 'image/png' })), downloadImageAsset: vi.fn(async () => {}) }
@@ -75,6 +84,12 @@ function buttonByText(name: RegExp) {
 describe('图片工作站配置提示', () => {
   beforeEach(() => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
+    // 涂抹/扩图画布是懒加载的真实组件，jsdom 没有 ResizeObserver。
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
     mocks.status.capabilities = { imageEdit: undefined, variation: undefined, repaint: undefined, erase: undefined, smartSelect: undefined }
     mocks.status.error = null
     mocks.status.refetch.mockReset()
@@ -828,6 +843,76 @@ describe('图片工作站配置提示', () => {
     mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
     render(<App><ImageWorkstation /></App>)
     expect(buttonByText(/再生成一版/)).toBeTruthy()
+  })
+
+  it('精修成功后保留原图，下载为主操作并可再生成一版', () => {
+    mocks.tool = 'retouch'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
+    render(<App><ImageWorkstation /></App>)
+    expect(mocks.controllerArgs?.keepInputOnSuccess).toBe(true)
+    expect(screen.getByText('本次结果')).toBeTruthy()
+    expect(buttonByText(/再生成一版/).className).not.toContain('ant-btn-primary')
+    expect(buttonByText(/下载结果/).className).toContain('ant-btn-primary')
+    expect(screen.getByRole('radiogroup', { name: '对比原图与效果' })).toBeTruthy()
+  })
+
+  it('精修点击缩略图只切换预览，不替换输入', () => {
+    mocks.tool = 'retouch'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [
+      { id: 'result-1', name: '结果 1.png', width: 800, height: 800, url: 'blob:result-1', mimeType: 'image/png' },
+      { id: 'result-2', name: '结果 2.png', width: 800, height: 800, url: 'blob:result-2', mimeType: 'image/png' },
+    ]
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByAltText('当前编辑效果').getAttribute('src')).toBe('blob:result-1')
+    fireEvent.click(screen.getByRole('button', { name: '选择结果 2' }))
+    expect(mocks.controller.selectOutput).not.toHaveBeenCalled()
+    expect(screen.getByAltText('当前编辑效果').getAttribute('src')).toBe('blob:result-2')
+  })
+
+  it('精修多结果以网格展示并可打包下载', async () => {
+    mocks.tool = 'retouch'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [
+      { id: 'result-1', name: '结果 1.png', width: 800, height: 800, url: 'blob:result-1', mimeType: 'image/png' },
+      { id: 'result-2', name: '结果 2.png', width: 800, height: 800, url: 'blob:result-2', mimeType: 'image/png' },
+    ]
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByRole('group', { name: '本次结果' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '下载全部' }))
+    await vi.waitFor(() => expect(vi.mocked(downloadBlob)).toHaveBeenCalledTimes(1))
+    const [, filename] = vi.mocked(downloadBlob).mock.calls[0]
+    expect(filename).toBe('精修_2张结果.zip')
+  })
+
+  it('继续精修此结果需要确认，确认后才设为新输入', async () => {
+    mocks.tool = 'retouch'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
+    render(<App><ImageWorkstation /></App>)
+    fireEvent.click(screen.getByRole('button', { name: '继续精修此结果' }))
+    await vi.waitFor(() => expect(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')).toBeTruthy())
+    expect(mocks.controller.selectOutput).not.toHaveBeenCalled()
+    fireEvent.click(document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')!)
+    await vi.waitFor(() => expect(mocks.controller.selectOutput).toHaveBeenCalledWith('result'))
+  })
+
+  it('读取失败时把计费提醒内联到页脚并让重试成为唯一主操作', () => {
+    mocks.tool = 'retouch'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
+    mocks.controller.resultReadError = '结果读取失败'
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getByText('重新生成会再次计费，建议先重试读取')).toBeTruthy()
+    expect(buttonByText(/再生成一版/).getAttribute('aria-describedby')).toBe('workstation-retry-advice')
+    expect(buttonByText(/下载结果/).className).not.toContain('ant-btn-primary')
+    expect(screen.getByRole('button', { name: '重试读取' }).className).toContain('ant-btn-primary')
   })
 
   it('消除和扩图在已知余额不足时显示积分不足，未知余额不拦截', () => {

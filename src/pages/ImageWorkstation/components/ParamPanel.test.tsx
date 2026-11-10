@@ -251,6 +251,31 @@ describe('智能编辑参数面板', () => {
     expect(onDirections).toHaveBeenCalledWith(['blemish', 'brighten'])
   })
 
+  it('精修方向提供分组与必选语义，4K 禁用时说明原因', () => {
+    render(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 1000, height: 1000 }}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+      />,
+    )
+    const group = screen.getByRole('group', { name: /精修方向/ })
+    expect(group.getAttribute('aria-describedby')).toBe('retouch-direction-summary')
+    expect(group.querySelectorAll('input[type="checkbox"]')).toHaveLength(4)
+    expect(group.textContent).toContain('（必选）')
+    expect(document.getElementById('retouch-direction-summary')?.textContent).toContain('已选：去瑕疵')
+    expect(screen.getByText(/当前比例不支持 4K/)).toBeTruthy()
+    const resolution = screen.getAllByRole('combobox').find(item => item.getAttribute('aria-label') === '输出尺寸')
+    if (!resolution) throw new Error('未找到输出尺寸选择')
+    fireEvent.mouseDown(resolution)
+    const fourK = [...document.querySelectorAll('.ant-select-item-option')].find(item => item.textContent === '4K')
+    expect(fourK?.getAttribute('aria-disabled')).toBe('true')
+  })
+
   it('融合只保留可选补充说明', () => {
     render(
       <ParamPanel

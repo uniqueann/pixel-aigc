@@ -291,6 +291,8 @@ export default function ParamPanel({
             value,
             label: value.toUpperCase(),
             disabled: value === '4k' && !fourKAllowed,
+            'aria-disabled': value === '4k' && !fourKAllowed ? true : undefined,
+            title: value === '4k' && !fourKAllowed ? '当前比例不支持 4K' : undefined,
           }))}
         />
         {mapped ? (
@@ -298,7 +300,7 @@ export default function ParamPanel({
             {retouch && retouchOutput
               ? `输出 ${retouchOutput.width}×${retouchOutput.height}（长边 ${resolution.toUpperCase()}）`
               : `预计输出 ${mapped.size} · ${mapped.resolution.toUpperCase()}`}
-            {!retouch && !fourKAllowed ? '（当前比例不支持 4K，按 2K 生成）' : ''}
+            {!fourKAllowed ? ' · 当前比例不支持 4K，按 2K 生成' : ''}
           </p>
         ) : null}
         {retouch && sourceSize && retouchOutput && Math.max(sourceSize.width, sourceSize.height) < 1024 ? (
@@ -464,61 +466,66 @@ export default function ParamPanel({
         {retouch ? (
           <div>
             <RetouchContract />
-            <div style={{ ...labelStyle, marginTop: 12 }}>精修方向</div>
-            <button
-              type="button"
-              className={`retouch-preset${presetActive ? ' is-active' : ''}`}
-              aria-pressed={presetActive}
-              disabled={disabled}
-              onClick={() => onRetouchDirectionsChange?.(normalizeRetouchDirections(retouchPreset.directions))}
-            >
-              <span className="retouch-preset-main">
-                <span className="retouch-preset-name">{retouchPreset.label}</span>
-                <span className="retouch-preset-badge">推荐</span>
-              </span>
-              <span className="retouch-preset-desc">{retouchPreset.description}</span>
-            </button>
-            <div className="retouch-direction-summary">
-              <span className="retouch-direction-selected">
-                {selectedDirections.length === 0
-                  ? '请选择至少一个方向'
-                  : selectedDirections.length === RETOUCH_DIRECTIONS.length
-                    ? `已选全部 ${RETOUCH_DIRECTIONS.length} 项`
-                    : `已选：${selectedDirectionLabel}`}
-              </span>
-              <span className="retouch-direction-actions">
-                <button
-                  type="button"
-                  disabled={disabled || selectedDirections.length === RETOUCH_DIRECTIONS.length}
-                  onClick={() => onRetouchDirectionsChange?.(normalizeRetouchDirections(RETOUCH_DIRECTIONS.map(item => item.id)))}
-                >
-                  全选
-                </button>
-                <button
-                  type="button"
-                  disabled={disabled || selectedDirections.length === 0}
-                  onClick={() => onRetouchDirectionsChange?.([])}
-                >
-                  清空
-                </button>
-              </span>
-            </div>
-            <Checkbox.Group
-              className="retouch-direction-group"
-              style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-              disabled={disabled}
-              value={retouchDirections}
-              onChange={(values) => onRetouchDirectionsChange?.(normalizeRetouchDirections(values.map(String)))}
-              options={RETOUCH_DIRECTIONS.map(item => ({
-                value: item.id,
-                label: (
-                  <span className="retouch-direction-option">
-                    <span className="retouch-direction-name">{item.label}</span>
-                    <span className="retouch-direction-hint">{item.hint}</span>
-                  </span>
-                ),
-              }))}
-            />
+            <fieldset className="retouch-direction-fieldset" aria-describedby="retouch-direction-summary">
+              <legend style={{ ...labelStyle, marginTop: 12 }} className="retouch-direction-legend">
+                精修方向<span className="param-required" aria-hidden="true">*</span>
+                <span className="sr-only">（必选）</span>
+              </legend>
+              <button
+                type="button"
+                className={`retouch-preset${presetActive ? ' is-active' : ''}`}
+                aria-pressed={presetActive}
+                disabled={disabled}
+                onClick={() => onRetouchDirectionsChange?.(normalizeRetouchDirections(retouchPreset.directions))}
+              >
+                <span className="retouch-preset-main">
+                  <span className="retouch-preset-name">{retouchPreset.label}</span>
+                  <span className="retouch-preset-badge">推荐</span>
+                </span>
+                <span className="retouch-preset-desc">{retouchPreset.description}</span>
+              </button>
+              <div className="retouch-direction-summary">
+                <span id="retouch-direction-summary" className="retouch-direction-selected" aria-live="polite">
+                  {selectedDirections.length === 0
+                    ? '请选择至少一个方向'
+                    : selectedDirections.length === RETOUCH_DIRECTIONS.length
+                      ? `已选全部 ${RETOUCH_DIRECTIONS.length} 项`
+                      : `已选：${selectedDirectionLabel}`}
+                </span>
+                <span className="retouch-direction-actions">
+                  <button
+                    type="button"
+                    disabled={disabled || selectedDirections.length === RETOUCH_DIRECTIONS.length}
+                    onClick={() => onRetouchDirectionsChange?.(normalizeRetouchDirections(RETOUCH_DIRECTIONS.map(item => item.id)))}
+                  >
+                    全选
+                  </button>
+                  <button
+                    type="button"
+                    disabled={disabled || selectedDirections.length === 0}
+                    onClick={() => onRetouchDirectionsChange?.([])}
+                  >
+                    清空
+                  </button>
+                </span>
+              </div>
+              <Checkbox.Group
+                className="retouch-direction-group"
+                style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+                disabled={disabled}
+                value={retouchDirections}
+                onChange={(values) => onRetouchDirectionsChange?.(normalizeRetouchDirections(values.map(String)))}
+                options={RETOUCH_DIRECTIONS.map(item => ({
+                  value: item.id,
+                  label: (
+                    <span className="retouch-direction-option">
+                      <span className="retouch-direction-name">{item.label}</span>
+                      <span className="retouch-direction-hint">{item.hint}</span>
+                    </span>
+                  ),
+                }))}
+              />
+            </fieldset>
           </div>
         ) : null}
         {variation ? countBlock : null}
@@ -606,6 +613,8 @@ export default function ParamPanel({
                 value,
                 label: value.toUpperCase(),
                 disabled: value === '4k' && !fourKAllowed,
+                'aria-disabled': value === '4k' && !fourKAllowed ? true : undefined,
+                title: value === '4k' && !fourKAllowed ? '当前比例不支持 4K' : undefined,
               }))}
             />
           </div>

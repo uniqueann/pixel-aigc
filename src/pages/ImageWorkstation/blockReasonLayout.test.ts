@@ -50,6 +50,6 @@ describe('工作站页脚禁用原因', () => {
     expect(pageSource).toContain('className="image-workstation-block-reason"')
     expect(pageSource).toContain('role="status"')
     expect(pageSource).not.toMatch(/image-workstation-block-reason"[^>]*title=/)
-    expect(pageSource).toContain("aria-describedby={visibleBlockReason ? 'workstation-block-reason' : undefined}")
+    expect(pageSource).toContain("aria-describedby={showRetryRead ? 'workstation-retry-advice' : visibleBlockReason ? 'workstation-block-reason' : undefined}")
   })
 })
