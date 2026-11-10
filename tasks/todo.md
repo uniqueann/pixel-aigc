@@ -2070,3 +2070,32 @@
 - `resultReadFailureCount` 与 `resultReadError` 同步更新；成功张数直接用 `outputAssets.length`，不新增第二个状态。
 - 「仍无法读取」用任务 id 派生，换图或新任务自动失效，不需要在 effect 里同步 setState。
 - 截图：`/tmp/error-state-failed.png`、`/tmp/error-state-mobile.png`、`/tmp/error-state-retry-failed.png`。
+
+# 工作站精修：画布前后对比（拖动分割线 + 1:1）
+
+目标：把精修结果态的「原图 / 效果」二选一升级为同屏分割对比，并补按结果实际像素查看，帮助用户判断细微修图差异。
+
+## 计划
+
+- [x] 新增 `CompareSlider`：分割线拖动/点击、键盘、双击复位、1:1 切换
+- [x] 新增 `utils/compareSlider.ts`：位置换算与宽高比兼容判断
+- [x] `CanvasArea` 精修分支接入分割对比，其他工具保持原切换
+- [x] 页面传 `splitCompare` 与 `resultNaturalSize`，继续精修后同图不对比
+- [x] 样式：分割线、44px 手柄、标签、1:1 滚动、移动端吸顶态
+- [x] 测试：CompareSlider、CanvasArea、index 断言更新
+
+## 验收
+
+- [x] 精修结果态只有分割对比，无 radiogroup；拖动/键盘/1:1 均可用
+- [x] 重新打光、消除、重绘、扩图、融合保持原交互
+- [x] 1440×900 与 390×844 实测无横向溢出、无控制台错误
+- [x] 全量 351 文件 / 2369 用例通过；前端、node、server `tsc`、ESLint、`git diff --check` 通过
+
+## 复查
+
+- 两层图片共用同一显示框，fit 时都铺满容器；原图较小时也放大到与结果同尺寸，否则分割线两侧对不齐。1:1 时再改为 `object-fit: fill` 严格逐像素对齐。
+- 宽高比差异 ≥2% 时退回原图/效果切换，避免拉伸；继续精修后结果成为新输入、与当前结果同图时也不显示分割对比。
+- 指针移动超过 4px 且横向占优才开始拖动，移动端纵向滚动不会误跳分割线；点击才跳转。
+- 1:1 切换后把滚动容器居中到分割线，避免 2048/4096 宽的结果把分割线留在视口外；双击复位时同样重新居中。
+- 分割模式不再给图片绑定点击打开大图，避免拖动误触；结果缩略条与预览画廊仍提供放大入口。
+- 截图：`/tmp/compare-slider-desktop.png`、`/tmp/compare-slider-desktop-dragged.png`、`/tmp/compare-slider-desktop-1to1.png`、`/tmp/compare-slider-end.png`、`/tmp/compare-slider-1to1-reset.png`、`/tmp/compare-slider-mobile-clean.png`、`/tmp/compare-slider-mobile-1to1.png`。

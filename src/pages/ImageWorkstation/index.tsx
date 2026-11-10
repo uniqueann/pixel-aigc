@@ -983,6 +983,8 @@ export default function ImageWorkstation() {
                 if (asset) openAt(asset.id)
               } : undefined}
               compareAvailable={controller.outputAssets.length > 0}
+              splitCompare={retouchTool && selectedResult?.id !== controller.inputAsset?.id}
+              resultNaturalSize={selectedResult ? { width: selectedResult.width, height: selectedResult.height } : undefined}
               footnote={variationTool && (controller.readingResults || controller.resultReadError) ? null : previewFootnote}
             />
             {variationTool ? (

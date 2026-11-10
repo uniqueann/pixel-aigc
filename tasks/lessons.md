@@ -18,6 +18,12 @@
 - 规则：移动端卡片高度变化后，除检查内部 `overflow` 裁切，还要用 `elementFromPoint` 测底部主操作的命中元素；必要时压低媒体高度，或给滚动容器预留页脚高度。
 - 原因：吸底操作栏是 sticky 覆盖层，不占文档流；内容变高后底部控件会滑到它下面，只看截图容易漏掉。
 
+## 同屏对比的两层必须共用同一显示框
+
+- 触发：精修画布做前后对比时，原图 480×480、结果 1024×1024；fit 模式下若用 `max-width/max-height` 让两张图各自决定显示尺寸，原图只占中间一小块，分割线两侧对不齐。
+- 规则：对比层统一 `width:100%; height:100%; object-fit: contain`，1:1 时再改 `object-fit: fill`；不要依赖 `max-width/max-height` 保留自然尺寸。
+- 原因：分割线是按同一框宽度的百分比定位的，只有两层共享同一几何，裁剪位置和标签才一致；小图放大带来的轻微模糊是可接受的代价。
+
 ## 重试失败状态不要用 effect 重置
 
 - 触发：在 effect 中根据 `resultReadError` 清空 `retryReadFailedAgain`，既触发 `react-hooks/set-state-in-effect`，又会在重试读取阶段把刚设置的「仍无法读取」提前抹掉。
