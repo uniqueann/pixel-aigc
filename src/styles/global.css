@@ -3437,19 +3437,24 @@ body.sidebar-resizing * {
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   overflow: hidden;
 }
 
+/* 省略号没有悬停或焦点入口。原因独占一行并换行，窄屏和桌面都能读完整句。 */
 .image-workstation-block-reason {
+  flex: 1 0 100%;
+  max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   color: var(--color-warning-text);
   font-size: 12px;
   line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .image-workstation-input-description {
@@ -6282,12 +6287,12 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
     margin: 0 -12px;
     padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
   }
-  /* 键盘聚焦到页脚后方内容时，预留吸底栏高度，避免焦点被遮住。 */
+  /* 键盘聚焦到页脚后方内容时，预留吸底栏高度，避免焦点被遮住。
+     禁用原因换行后大约多出两行，原来的 128px 会把焦点压进吸底栏。 */
   .app-main-content:has(.image-workstation-page) {
-    scroll-padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: calc(168px + env(safe-area-inset-bottom, 0px));
   }
   .image-workstation-footer-info {
-    flex-wrap: wrap;
     gap: 4px 8px;
     width: 100%;
   }

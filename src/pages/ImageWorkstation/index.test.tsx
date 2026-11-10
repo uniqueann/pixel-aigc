@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
     outputAssets: [] as unknown[], formLocked: false, replaceSourceAsset: vi.fn(),
     inputAsset: undefined as { id: string; name: string; width: number; height: number; url: string } | undefined,
     resultReadError: undefined as string | undefined, readingResults: false, retryRead: vi.fn(), generate: vi.fn(), selectOutput: vi.fn(),
-    active: false, cancelling: false, cancel: vi.fn(), activeTask: undefined as unknown,
+    active: false, submitting: false, cancelling: false, cancel: vi.fn(), activeTask: undefined as unknown,
   },
   controllerArgs: undefined as { modelProfileId?: string; keepInputOnSuccess?: boolean } | undefined,
   models: [] as unknown[],
@@ -91,6 +91,7 @@ describe('图片工作站配置提示', () => {
     mocks.controller.generate.mockResolvedValue({ status: 'succeeded' })
     mocks.controller.selectOutput.mockReset()
     mocks.controller.active = false
+    mocks.controller.submitting = false
     mocks.controller.cancelling = false
     mocks.controller.activeTask = undefined
     mocks.controller.cancel.mockReset()
@@ -656,15 +657,37 @@ describe('图片工作站配置提示', () => {
 
   it('扩图零扩展时禁用生成，选择平台尺寸后恢复', () => {
     mocks.tool = 'outpaint'
-    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 480, height: 480, url: 'blob:uploaded' }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 256, height: 256, url: 'blob:uploaded' }
     render(<App><ImageWorkstation /></App>)
     const generate = () => buttonByText(/^生成/)
+    const reason = document.getElementById('workstation-block-reason')
     expect(generate().disabled).toBe(true)
-    expect(screen.getByText(OUTPAINT_IDLE_REASONS.free)).toBeTruthy()
+    expect(reason?.getAttribute('role')).toBe('status')
+    expect(reason?.textContent).toBe(OUTPAINT_IDLE_REASONS.free)
+    expect(reason?.getAttribute('title')).toBeNull()
+    expect(generate().getAttribute('aria-describedby')).toBe('workstation-block-reason')
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true })
+    expect(mocks.controller.generate).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('radio', { name: '平台尺寸' }))
     expect(generate().disabled).toBe(false)
-    expect(screen.queryByText(OUTPAINT_IDLE_REASONS.free)).toBeNull()
+    expect(document.getElementById('workstation-block-reason')).toBeNull()
+    expect(generate().getAttribute('aria-describedby')).toBeNull()
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true })
+    expect(mocks.controller.generate).toHaveBeenCalledTimes(1)
+  })
+
+  it('扩图提交中隐藏禁用原因，页脚改为正在生成且不能再次提交', () => {
+    mocks.tool = 'outpaint'
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 256, height: 256, url: 'blob:uploaded' }
+    mocks.controller.submitting = true
+    render(<App><ImageWorkstation /></App>)
+    const generate = buttonByText(/^生成/)
+    expect(generate.disabled).toBe(true)
+    expect(document.getElementById('workstation-block-reason')).toBeNull()
+    expect(screen.getByText('正在生成 · 请稍候')).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true })
+    expect(mocks.controller.generate).not.toHaveBeenCalled()
   })
 
   it('重新打光单独选择模型，报价和提交跟着当前下拉', () => {
