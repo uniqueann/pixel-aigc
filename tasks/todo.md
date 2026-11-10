@@ -2090,6 +2090,7 @@
 - [x] 重新打光、消除、重绘、扩图、融合保持原交互
 - [x] 1440×900 与 390×844 实测无横向溢出、无控制台错误
 - [x] 全量 351 文件 / 2369 用例通过；前端、node、server `tsc`、ESLint、`git diff --check` 通过
+- [x] PR #268 CI：`verify` pass（5m1s），Vercel 与 Preview Comments pass
 
 ## 复查
 
