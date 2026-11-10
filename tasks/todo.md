@@ -2060,6 +2060,7 @@
 - [x] 重试再次失败显示「仍无法读取」，部分读取显示「已就绪 N 张，M 张读取失败」
 - [x] 1440×900 与 390×844 实测：结论完整换行、无横向溢出
 - [x] 全量 349 文件 / 2354 用例通过；前端、server、node `tsc`、ESLint、`git diff --check` 通过
+- [x] CI `verify` 首次失败为 `ecommerce-suite/GenerationPanel.test.tsx` 的 `waitFor` 超时；该文件不在本 PR 改动范围，本地复跑 3/3 通过，重跑失败任务后 `verify` 通过（4m54s）
 
 ## 复查
 
