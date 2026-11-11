@@ -47,6 +47,7 @@ import RelightExample from './components/RelightExample'
 import SmartEditExample from './components/SmartEditExample'
 import VariationExample from './components/VariationExample'
 import RetouchExample from './components/RetouchExample'
+import InpaintExample from './components/InpaintExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
 import { TASK_RUNNING_REASON, UNAVAILABLE_SERVICE_MESSAGES, workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
@@ -941,7 +942,9 @@ export default function ImageWorkstation() {
                       ? <VariationExample />
                       : retouchTool && !previewHasImage
                         ? <RetouchExample />
-                        : undefined
+                        : inpaintMode && !previewHasImage
+                          ? <InpaintExample mode={inpaintMode} />
+                          : undefined
               }
               overlayToggle={relightTool && previewHasImage ? {
                 label: '方向示意',

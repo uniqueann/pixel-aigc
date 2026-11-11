@@ -150,6 +150,35 @@ describe('图片工作站配置提示', () => {
     expect(container.querySelector('.image-workstation-footer')?.contains(buttonByText(/生成(?: \d+ 张)? ·/))).toBe(true)
   })
 
+  it('消除未上传时展示涂抹到补背景的示意，上传后隐藏', () => {
+    mocks.tool = 'remove'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    const { container } = render(<App><ImageWorkstation /></App>)
+    const example = screen.getByText('示例').closest('details')!
+    expect(container.querySelector('.workstation-empty-extra .inpaint-example.is-remove')).toBe(example)
+    for (const label of ['原图', '涂抹', '背景被补齐']) expect(screen.getByText(label)).toBeTruthy()
+    expect(screen.getByRole('img', { name: '涂抹示意：蒙版盖住杂物，商品保持原样' })).toBeTruthy()
+    // 消除不描述内容，因此不出现重绘那一帧。
+    expect(screen.queryByText('按描述生成')).toBeNull()
+    cleanup()
+
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.queryByText('示例')).toBeNull()
+  })
+
+  it('重绘未上传时的示意必须讲清「涂抹 + 描述」这一层因果', () => {
+    mocks.tool = 'repaint'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    const { container } = render(<App><ImageWorkstation /></App>)
+    expect(container.querySelector('.workstation-empty-extra .inpaint-example.is-repaint')).toBeTruthy()
+    expect(screen.getByText('涂抹 + 描述')).toBeTruthy()
+    expect(screen.getByText('按描述生成')).toBeTruthy()
+    // 消除和重绘共用组件，但结果帧的语义必须分开。
+    expect(screen.queryByText('背景被补齐')).toBeNull()
+    expect(screen.getByRole('img', { name: '按描述生成示意：蒙版位置变成描述里的事物' })).toBeTruthy()
+  })
+
   it('示例位于上传区上方，折叠不重建右侧配置和图片区域', () => {
     mocks.tool = 'variation'
     const { container } = render(<App><ImageWorkstation /></App>)
