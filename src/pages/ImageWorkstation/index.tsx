@@ -48,6 +48,7 @@ import VariationExample from './components/VariationExample'
 import RetouchExample from './components/RetouchExample'
 import InpaintExample from './components/InpaintExample'
 import FusionExample from './components/FusionExample'
+import OutpaintExample from './components/OutpaintExample'
 import { TASK_RUNNING_REASON, UNAVAILABLE_SERVICE_MESSAGES, workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
 import { freeOutpaintGeometry, outpaintHasWork, presetOutpaintGeometry } from './utils/outpaintGeometry'
@@ -943,7 +944,9 @@ export default function ImageWorkstation() {
                           ? <RetouchExample />
                           : inpaintMode && !previewHasImage
                             ? <InpaintExample mode={inpaintMode} />
-                            : undefined
+                            : outpaintTool && !previewHasImage
+                              ? <OutpaintExample />
+                              : undefined
               }
               overlayToggle={relightTool && previewHasImage ? {
                 label: '方向示意',
