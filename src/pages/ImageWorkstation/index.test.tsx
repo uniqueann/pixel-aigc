@@ -404,6 +404,23 @@ describe('图片工作站配置提示', () => {
     expect(screen.getByRole('img', { name: '场景示意：虚线框标出场景图只提供背景，场景里的物件不会画进商品' })).toBeTruthy()
   })
 
+  it('扩图未上传时展示拖边框扩画布的示意，上传后隐藏', () => {
+    mocks.tool = 'outpaint'
+    const { container } = render(<App><ImageWorkstation /></App>)
+    const example = screen.getByText('示例').closest('details')!
+    // 与其它工具同位置：空态上传区上方的 emptyExtra。
+    expect(container.querySelector('.workstation-empty-extra .outpaint-example')).toBe(example)
+    const captions = [...example.querySelectorAll('figcaption')].map(node => node.textContent)
+    expect(captions).toEqual(['原图', '向外拖绿框', '框外补背景'])
+    // 图例必须讲清「框外是 AI 补的、框内原样保留」，这是扩图最容易误解的一层。
+    expect(example.querySelector('.concept-example-note')?.textContent).toContain('实线框 = 原图像素边界')
+    cleanup()
+
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.queryByText('示例')).toBeNull()
+  })
+
   it('智能编辑未上传时在上传区展示示意教学，上传后隐藏', () => {
     mocks.tool = 'smart-edit'
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
