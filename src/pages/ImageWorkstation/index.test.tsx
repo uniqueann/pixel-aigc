@@ -982,4 +982,72 @@ describe('图片工作站配置提示', () => {
     expect(buttonByText(/生成 · 最多 10 积分/).disabled).toBe(true)
     expect(outpaint.container.textContent).toContain('积分不足（本次最多需 10 积分，当前可用 1 积分）')
   })
+
+  it('消除生成中在画布上给出阶段提示，读取阶段切换文案', async () => {
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.tool = 'remove'
+    mocks.controller.submitting = true
+    const view = render(<App><ImageWorkstation /></App>)
+
+    const pill = await vi.waitFor(() => {
+      const node = document.querySelector('.workstation-canvas-processing')
+      if (!node) throw new Error('阶段浮层尚未渲染')
+      return node
+    })
+    expect(pill.textContent).toContain('正在消除')
+
+    // 同步接口读取结果时 submitting 仍为 true，读取文案必须优先。
+    mocks.controller.readingResults = true
+    view.rerender(<App><ImageWorkstation /></App>)
+    await vi.waitFor(() => expect(document.querySelector('.workstation-canvas-processing')?.textContent).toContain('正在读取结果'))
+    expect(document.querySelector('.workstation-canvas-processing')?.textContent).not.toContain('正在消除')
+  })
+
+  it('重试读取阶段即使没有 submitting 也显示画布阶段提示', async () => {
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.tool = 'repaint'
+    mocks.controller.submitting = false
+    mocks.controller.readingResults = true
+    render(<App><ImageWorkstation /></App>)
+
+    const pill = await vi.waitFor(() => {
+      const node = document.querySelector('.workstation-canvas-processing')
+      if (!node) throw new Error('阶段浮层尚未渲染')
+      return node
+    })
+    expect(pill.textContent).toContain('正在读取结果')
+  })
+
+  it('读取失败时画布不出现阶段浮层，结论仍只在页脚一处', async () => {
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.tool = 'remove'
+    mocks.controller.resultReadError = '下载中断'
+    mocks.controller.resultReadFailureCount = 1
+    mocks.controller.activeTask = {
+      id: 'task-1', capability: 'inpaint', status: 'succeeded',
+      params: { count: 1, resolution: '1k' }, creditsCost: 0,
+      createdAt: '2026-11-10T00:00:00Z', updatedAt: '2026-11-10T00:01:00Z',
+    }
+    render(<App><ImageWorkstation /></App>)
+    await act(async () => { await Promise.resolve() })
+
+    expect(document.querySelector('.workstation-canvas-processing')).toBeNull()
+    expect(screen.getAllByText(/结果暂时无法读取/)).toHaveLength(1)
+  })
+
+  it('消除完成后画布不再显示阶段浮层，页脚恢复已生成', async () => {
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.controller.outputAssets = [{ id: 'result', name: '结果.png', width: 800, height: 800, url: 'blob:result', mimeType: 'image/png' }]
+    mocks.tool = 'remove'
+    render(<App><ImageWorkstation /></App>)
+    await act(async () => { await Promise.resolve() })
+
+    expect(document.querySelector('.workstation-canvas-processing')).toBeNull()
+    expect(document.querySelector('.image-workstation-footer')?.textContent).toContain('已生成 1 张')
+  })
 })

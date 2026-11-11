@@ -296,6 +296,14 @@ export default function ImageWorkstation() {
   })
 
   const inpaintMode = inpaintTool ? (activeTool.slug === 'repaint' ? 'repaint' : 'remove') : undefined
+  // 消除/重绘走同步接口：submitting 覆盖读原图到请求往返，readingResults 覆盖下载解码与重试读取；
+  // active 对这类任务恒为 false，不能单独用它判断。
+  const inpaintProcessingLabel = !controller.resultReadError
+    && (controller.active || controller.submitting || controller.readingResults)
+    ? controller.readingResults
+      ? '正在读取结果，请稍候'
+      : `正在${activeTool.label}，完成后会显示效果`
+    : undefined
   const selectedPreset = PLATFORM_SIZE_PRESETS.find((preset) => preset.platform === presetPlatform)
   const presetTargetSize = useMemo(() => outpaintMode === 'preset' && selectedPreset
     ? { width: selectedPreset.width, height: selectedPreset.height }
@@ -915,7 +923,7 @@ export default function ImageWorkstation() {
             <CanvasArea
               interactionMode={activeTool.interactionMode}
               activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
-              processingLabel={!controller.resultReadError && (controller.active || controller.submitting) ? fusionTool ? '正在生成，完成后在这里查看结果' : '正在生成，结果会显示在下方' : undefined}
+              processingLabel={inpaintMode ? inpaintProcessingLabel : !controller.resultReadError && (controller.active || controller.submitting) ? fusionTool ? '正在生成，完成后在这里查看结果' : '正在生成，结果会显示在下方' : undefined}
               overlay={showRelightOverlay ? (
                 <RelightDirectionOverlay
                   direction={relightOptions.direction}

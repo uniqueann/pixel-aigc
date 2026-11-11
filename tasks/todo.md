@@ -2132,3 +2132,35 @@
 - 文案分三种：原尺寸且档位足够、原尺寸但被 4K 比例规则降到 2K（说明先生成再缩放）、原图长边超过 4K（提示会放大）；固定档位才显示原有的「当前比例不支持 4K」。
 - 截图：`/tmp/pw-retouch/keep-source-desktop.png`、`keep-source-result.png`、`keep-source-800.png`、`keep-source-3000x1688.png`、`keep-source-3000x2000.png`、`keep-source-mobile.png`。
 - PR #269 CI：`verify` pass（5m1s）；Vercel 与 Preview Comments pass。
+
+# 消除/重绘：画布生成阶段浮层
+
+目标：mask-paint 分支（消除/重绘）此前不渲染 `processingLabel`，生成时画布上只有一句硬编码「正在生成，暂不可涂抹」，读取结果阶段仍在说「生成」。本轮补一条分阶段浮层：生成中与读取结果中各一句。
+
+## 计划
+
+- [x] `index.tsx`：为涂抹类派生 `inpaintProcessingLabel`（含 `readingResults`，覆盖重试读取），`processingLabel` 分流
+- [x] `CanvasArea.tsx`：mask-paint 分支渲染 `.workstation-canvas-processing`，处理中压制脚注
+- [x] `MaskPaintCanvas.tsx`：新增 `hideDisabledHint`，仅让 `disabled` 那条提示让位，保留 `comparing` 提示
+- [x] `global.css`：新类与 `.workstation-canvas-state` 共享基础块、`z-index:4`、贴顶态显式保留
+- [x] 测试：`CanvasArea.test.tsx` 新增 mask-paint 用例组；`index.test.tsx` 新增页面接线用例
+- [x] 全量验证与 Playwright
+
+## 验收
+
+- [x] 生成中画布上只有一条「正在消除，完成后会显示效果」，本地「暂不可涂抹」提示让位
+- [x] 结果返回后切换为「正在读取结果，请稍候」；重试读取（`submitting` 为 false）同样显示
+- [x] 读取失败时画布不出现浮层，结论仍只有页脚一处、重试入口仍只有一个
+- [x] 全量 351 文件 / 2397 用例通过；前端、node、server `tsc`、ESLint、`git diff --check` 通过
+- [x] Playwright 1440×900 与 390×844：文案序列完整、无重复提示与脚注、`z-index=4` 且 `pointer-events:none`、结束后浮层消失、零横向溢出、无控制台错误
+- [x] 吸顶紧凑态实测：`.workstation-canvas-state` 为 `display:none`，新类仍 `display:flex` 且收紧到 `bottom:8px / 12px`
+
+## 复查
+
+- 消除/重绘走同步 `Capability.Inpaint`，任务回来即是 `succeeded`，`controller.active` 恒为 false；可观测的只有 `submitting`（读原图→导出蒙版→上传→往返）与 `readingResults`（下载解码，`retryRead` 亦然）。浮层闸门必须含 `readingResults`，否则重试读取阶段会漏。
+- 不复用 `.workstation-canvas-state`：移动端 `.is-stuck` 下它被 `display:none`，而那正是用户滚到设置区等结果的时刻（已用计算样式实测确认）。新类共享同一基础块、单独 `z-index:4`，稳定压过画笔提示与脚注（均 z-index 3）。
+- 浮层是 `.workstation-canvas-shell` 的直接子元素，不进 `.workstation-paint-frame`／`-stage`（后者 `overflow:hidden` 且 `transform` 自成堆叠上下文会被困住）。
+- `MaskPaintCanvas` 用布尔 `hideDisabledHint` 让位而不是把文案做成 prop：后者会在画框底部与画布底部各出现一条，是叠加而非去重；`comparing` 那条对比提示不受影响。
+- E2E 对照实验：stash 掉本轮改动后，相同脚本的阶段文案序列为 `[]`（浮层完全不存在），可见新增 6 条 PASS 确由本轮带来。
+- 已知既有局限（与本轮无关）：mock 模式的消除结果返回 SVG data URL，`readImageResult` 只接受 PNG/JPEG/WebP，因此本地 E2E 到不了「效果」对比态；改动前后行为一致。「对比效果时保留脚注」由 `CanvasArea.test.tsx` 单测覆盖。
+- 截图：`/tmp/pw-overlay/verify-desktop-1300ms.png`、`verify-mobile-1300ms.png`、`desktop-final.png`、`mobile-final.png`、`mobile-stuck.png`。

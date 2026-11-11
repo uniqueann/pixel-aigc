@@ -2894,7 +2894,8 @@ body.sidebar-resizing * {
   line-height: 1.4;
 }
 
-.workstation-canvas-state {
+.workstation-canvas-state,
+.workstation-canvas-processing {
   position: absolute;
   z-index: 3;
   left: 50%;
@@ -2919,6 +2920,11 @@ body.sidebar-resizing * {
 .workstation-canvas-state.is-warning {
   border-color: var(--color-warning);
   color: var(--color-warning-text);
+}
+
+/* 消除/重绘的阶段浮层：压过画笔提示与 :has 脚注（均为 z-index 3），不依赖 DOM 顺序。 */
+.workstation-canvas-processing {
+  z-index: 4;
 }
 
 .workstation-canvas-shell:has(.workstation-paint-host) .workstation-canvas-footnote {
@@ -6469,6 +6475,13 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
   }
   .image-workstation-preview-panel.is-stuck .workstation-canvas-shell.is-mask-paint {
     height: 180px;
+  }
+  /* 贴顶紧凑态会隐藏 .workstation-canvas-state 与脚注；涂抹阶段浮层必须保留，
+     否则滚到设置区等结果时会被误认为没有在生成。 */
+  .image-workstation-preview-panel.is-stuck .workstation-canvas-shell.is-mask-paint .workstation-canvas-processing {
+    bottom: 8px;
+    padding: 5px 12px;
+    font-size: 12px;
   }
   .image-workstation-preview-panel.is-stuck .workstation-inpaint-guide { display: none; }
   .image-workstation-preview-panel.is-stuck .workstation-preview-compact-row { display: flex; }
