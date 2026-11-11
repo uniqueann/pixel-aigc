@@ -2207,3 +2207,26 @@
 - [x] 窄屏无横向溢出；图注高度与其他示例一致（33px）
 - [x] `npx tsc --noEmit`、`eslint . --max-warnings 0`、全量 2403 用例全通过
 - [x] impeccable 检测器无新增命中
+
+# 融合空态示例改 SVG（对齐消除 / 重绘 / 裂变）
+
+目标：融合是唯一还在用实拍 webp 的示例，且位置在 480px 画布下方而非上传框上方。
+
+## 计划
+
+- [x] 新增 `FusionExample`：商品实线框 = 保真，场景虚线框 = 只取背景，合成帧标 check
+- [x] 场景物件三帧站位固定，证明它留在背景、没被画进商品
+- [x] `CanvasArea` 的 `multi-source` 分支支持 `emptyExtra`，仅两路输入皆空时渲染
+- [x] `index.tsx` 接入 `emptyExtra`，移除画布下方的 `ToolExampleStrip`
+- [x] 删除 `TOOL_EXAMPLES` / `toolExample` / `ToolExampleStrip` 与 5 张 webp
+- [x] 删除 `.tool-example img` / `.tool-example-group` 的硬编码 `#fff` 底样式
+- [x] 页面测试改为校验 emptyExtra 位置与三帧图注
+- [x] 帮助文档「示例图怎么看」补实线框语义
+
+## 验收
+
+- [x] 桌面 1440 / 平板 768 / 手机 390 均无横向溢出，槽位高度 255 / 372 不被压扁
+- [x] 上传任一输入后示例立刻隐藏，画布恢复 480px、槽位 460px
+- [x] 明暗两主题渲染核对：虚线框、实线框、check 徽标均可辨识
+- [x] `tsc --noEmit`、`eslint --max-warnings 0` 通过
+- [x] 全量 2402 用例通过

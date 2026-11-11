@@ -391,27 +391,17 @@ describe('图片工作站配置提示', () => {
     expect(screen.queryByText('补充要求（可选）')).toBeNull()
   })
 
-  it('未上传时展示裂变和融合示例，上传后收起', () => {
-    mocks.tool = 'variation'
-    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
-    const view = render(<App><ImageWorkstation /></App>)
-    expect(screen.queryByText('基于原图再生成一版变体。')).toBeNull()
-    expect(screen.getByRole('heading', { name: '裂变' })).toBeTruthy()
-    expect(screen.getByRole('img', { name: '变体示意：保留商品，背景换成户外木桌' })).toBeTruthy()
-    view.unmount()
-
-    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
-    render(<App><ImageWorkstation /></App>)
-    expect(screen.queryByText('示例')).toBeNull()
-    cleanup()
-
+  it('融合未上传时在上传槽位上方展示 SVG 示意，接入任一输入后隐藏', () => {
     mocks.tool = 'fusion'
-    mocks.controller.inputAsset = undefined
-    render(<App><ImageWorkstation /></App>)
-    expect(screen.queryByText('把多张图合成一个场景。')).toBeNull()
-    expect(screen.getByRole('heading', { name: '融合' })).toBeTruthy()
-    expect(screen.getByAltText('提供新背景的木桌场景图')).toBeTruthy()
-    expect(screen.getByAltText('滴管瓶放入木桌场景后的合成结果')).toBeTruthy()
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true, fusion: true }
+    const { container } = render(<App><ImageWorkstation /></App>)
+    const example = screen.getByText('示例').closest('details')!
+    // 与其它工具同位置：空态上传区上方的 emptyExtra，而不是 480px 画布下面。
+    expect(container.querySelector('.workstation-empty-extra .fusion-example')).toBe(example)
+    // 图注文字与槽位 label 重名，按示例内部的 figcaption 校验三帧。
+    const captions = [...example.querySelectorAll('figcaption')].map(node => node.textContent)
+    expect(captions).toEqual(['商品', '场景', '合成'])
+    expect(screen.getByRole('img', { name: '场景示意：虚线框标出场景图只提供背景，场景里的物件不会画进商品' })).toBeTruthy()
   })
 
   it('智能编辑未上传时在上传区展示示意教学，上传后隐藏', () => {

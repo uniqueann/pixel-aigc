@@ -1,7 +1,5 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { Capability } from '@/types'
-import { toolExample } from './examples'
 import {
   getWorkstationTool,
   isWorkstationToolReady,
@@ -23,20 +21,6 @@ describe('图片工作站工具开关', () => {
     expect(isWorkstationToolReady(getWorkstationTool('variation'), (capability) => capability === Capability.Variation)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('retouch'), (capability) => capability === Capability.Retouch)).toBe(true)
     expect(isWorkstationToolReady(getWorkstationTool('fusion'), (capability) => capability === Capability.Fusion)).toBe(true)
-  })
-
-  it('融合带上传前示例图，裂变与智能编辑改用画布内 SVG 示意', () => {
-    const example = toolExample('fusion')
-    expect(example?.before.length).toBeGreaterThan(0)
-    for (const frame of [...example!.before, example!.after]) {
-      const bytes = readFileSync(`public${frame.src}`).byteLength
-      expect(bytes).toBeGreaterThan(500)
-      expect(bytes).toBeLessThan(80_000)
-      expect(frame.src.endsWith('.webp')).toBe(true)
-    }
-    expect(toolExample('variation')).toBeUndefined()
-    expect(toolExample('smart-edit')).toBeUndefined()
-    expect(toolExample('remove')).toBeUndefined()
   })
 
   it('融合不展示上一工具的单图预览', () => {
