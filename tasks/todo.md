@@ -2164,3 +2164,46 @@
 - E2E 对照实验：stash 掉本轮改动后，相同脚本的阶段文案序列为 `[]`（浮层完全不存在），可见新增 6 条 PASS 确由本轮带来。
 - 已知既有局限（与本轮无关）：mock 模式的消除结果返回 SVG data URL，`readImageResult` 只接受 PNG/JPEG/WebP，因此本地 E2E 到不了「效果」对比态；改动前后行为一致。「对比效果时保留脚注」由 `CanvasArea.test.tsx` 单测覆盖。
 - 截图：`/tmp/pw-overlay/verify-desktop-1300ms.png`、`verify-mobile-1300ms.png`、`desktop-final.png`、`mobile-final.png`、`mobile-stuck.png`。
+
+# 消除/重绘：不可用文案单一来源
+
+目标：消除与重绘的能力不可用文案在 `index.tsx`（右卡 `CapabilityStatus`）与 `generateGate.ts`（页脚禁用原因）各写了一份。消除是同一句重复，重绘则是两处说法不一致——右卡说「重绘服务暂不可用」，页脚说「重绘尚未配置」，后者听起来像在怪用户。
+
+## 计划
+
+- [x] `generateGate.ts` 新增 `UNAVAILABLE_SERVICE_MESSAGES`，作为消除/重绘不可用的唯一文案来源
+- [x] `workstationGenerateBlockReason` 改用该常量；重绘那条从「重绘尚未配置」改为与右卡一致的「暂不可用」
+- [x] `index.tsx` 的 `CapabilityStatus.unavailableMessage` 改用同一常量
+- [x] 测试：门禁单测与页面级各补一组断言
+
+## 验收
+
+- [x] 全量 351 文件 / 2401 用例通过（新增 4 条）；前端、node、server `tsc`、ESLint、`git diff --check` 通过
+- [x] 重绘不可用时页面不再出现「重绘尚未配置」
+
+## 复查
+
+- 只改文案来源，不改渲染结构：右卡与页脚仍各显示一处（消除一直如此），两处字符串现在同源，不会再漂移。
+- 曾考虑把页脚那处也抑制掉，但那会连带改动 `aria-describedby` 的接线（`blockReasonLayout.test.ts` 已锁住该行为），超出本轮去重范围，故未做。
+- 重绘那句原来是「重绘尚未配置」，与右卡「服务暂不可用」语义冲突；现统一为「暂不可用，请稍后重试或联系客服」。
+
+# 消除 / 重绘空态示例（impeccable）
+
+目标：为工作站里唯一「必须先涂抹」的两个工具补 SVG 教学示意，让六个工具的空态语法一致。
+
+## 计划
+
+- [x] 新增 `InpaintExample`，用 `mode` 区分消除与重绘，共用前两帧
+- [x] 蒙版红直接引用 `MASK_PAINT_CSS`，与画布真实画笔色同源
+- [x] 接入 `CanvasArea` 的 `emptyExtra`，仅在未上传时出现
+- [x] 图注只讲图例、不重复步骤文案
+- [x] 页面测试覆盖消除 / 重绘的差异帧
+- [x] 帮助文档补「消除怎么用」与「示例图怎么看」
+
+## 验收
+
+- [x] 消除第三帧是「背景被补齐」，重绘第三帧是「按描述生成」，两套语义不混
+- [x] 明暗主题下蒙版红与主色均可辨识（渲染核对）
+- [x] 窄屏无横向溢出；图注高度与其他示例一致（33px）
+- [x] `npx tsc --noEmit`、`eslint . --max-warnings 0`、全量 2403 用例全通过
+- [x] impeccable 检测器无新增命中

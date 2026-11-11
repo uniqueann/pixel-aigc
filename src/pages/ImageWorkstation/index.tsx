@@ -47,8 +47,9 @@ import RelightExample from './components/RelightExample'
 import SmartEditExample from './components/SmartEditExample'
 import VariationExample from './components/VariationExample'
 import RetouchExample from './components/RetouchExample'
+import InpaintExample from './components/InpaintExample'
 import ToolExampleStrip from './components/ToolExampleStrip'
-import { TASK_RUNNING_REASON, workstationGenerateBlockReason } from './utils/generateGate'
+import { TASK_RUNNING_REASON, UNAVAILABLE_SERVICE_MESSAGES, workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
 import { freeOutpaintGeometry, outpaintHasWork, presetOutpaintGeometry } from './utils/outpaintGeometry'
 import { outpaintTargetParameters } from './utils/outpaintTarget'
@@ -941,7 +942,9 @@ export default function ImageWorkstation() {
                       ? <VariationExample />
                       : retouchTool && !previewHasImage
                         ? <RetouchExample />
-                        : undefined
+                        : inpaintMode && !previewHasImage
+                          ? <InpaintExample mode={inpaintMode} />
+                          : undefined
               }
               overlayToggle={relightTool && previewHasImage ? {
                 label: '方向示意',
@@ -1043,9 +1046,9 @@ export default function ImageWorkstation() {
             ready={configurationReady}
             error={capabilityError}
             unavailableMessage={activeTool.slug === 'repaint'
-              ? '重绘服务暂不可用，请稍后重试或联系客服。'
+              ? UNAVAILABLE_SERVICE_MESSAGES.repaint
               : activeTool.slug === 'remove'
-                ? '消除服务暂不可用，请稍后重试或联系客服。'
+                ? UNAVAILABLE_SERVICE_MESSAGES.remove
                 : `${COMING_SOON_SUBMIT_MESSAGE}。`}
             onRetry={() => void refetchCapabilities()}
           />
