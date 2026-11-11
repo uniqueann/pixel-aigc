@@ -3,6 +3,7 @@ import { Button, Segmented, Spin, Upload, message } from 'antd'
 import { BulbOutlined, HistoryOutlined, InboxOutlined, SwapOutlined, UploadOutlined } from '@ant-design/icons'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { useCapabilities } from '@/hooks/useCapabilities'
+import { imageFileError } from '@/services/api/upload'
 import type { InteractionMode } from '../tools'
 import BrushToolbar, { type PaintTool } from './canvas/BrushToolbar'
 import CompareSlider from './CompareSlider'
@@ -110,6 +111,11 @@ function FusionSlot({
   reusingLastScene?: boolean
 }) {
   const beforeUpload = (file: File) => {
+    const invalid = imageFileError(file)
+    if (invalid) {
+      message.error(invalid)
+      return Upload.LIST_IGNORE
+    }
     onUpload(file)
     return Upload.LIST_IGNORE
   }
@@ -251,6 +257,12 @@ export default function CanvasArea({
   }, [imageUrl, interactionMode, onMaskChange, onReady])
 
   const interceptUpload = (file: File) => {
+    // 选图时先做同步体积检查，不要等进入上传流程、看到转圈之后才报错。
+    const invalid = imageFileError(file)
+    if (invalid) {
+      message.error(invalid)
+      return Upload.LIST_IGNORE
+    }
     onImageUpload(file)
     return Upload.LIST_IGNORE
   }

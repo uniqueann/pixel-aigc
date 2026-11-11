@@ -683,7 +683,7 @@ describe('图片工作站配置提示', () => {
     expect(screen.queryByText(/object Object|secret-token/)).toBeNull()
   })
 
-  it('裂变提交遇到空的 413 时 toast 保留状态句', async () => {
+  it('裂变提交遇到空的 413 时换成可操作的中文结论', async () => {
     mocks.tool = 'variation'
     mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
@@ -700,7 +700,9 @@ describe('图片工作站配置提示', () => {
     mocks.controller.generate.mockRejectedValue(failure)
     render(<App><ImageWorkstation /></App>)
     fireEvent.keyDown(window, { key: 'Enter', metaKey: true })
-    expect(await screen.findByText('任务提交失败：Request failed with status code 413')).toBeTruthy()
+    expect(await screen.findByText('任务提交失败：图片太大，提交的内容超出了服务上限，请压缩图片后重试')).toBeTruthy()
+    // 平台英文原文与对象文本都不能漏到界面上。
+    expect(screen.queryByText(/Request failed with status code 413/)).toBeNull()
     expect(screen.queryByText(/object Object/)).toBeNull()
   })
 

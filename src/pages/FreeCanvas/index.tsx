@@ -53,6 +53,7 @@ import { CANVAS_MODES } from './modes'
 import { imageCreditAmount } from '@/features/credits/quotes'
 import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 import CanvasAddImageButton from './CanvasAddImageButton'
+import { imageFileError } from '@/services/api/upload'
 import type { Asset } from '@/editor/types'
 
 const EMPTY_ASSETS: Record<string, Asset> = {}
@@ -163,6 +164,11 @@ export default function FreeCanvas() {
 
   const importPicture = async (input: File | WorkstationHistoryListItem) => {
     if (importGate.current || !project || !scene) return
+    // 选图时先做同步体积检查，避免已经进入导入流程、看到转圈后才报错。
+    if (input instanceof File) {
+      const invalid = imageFileError(input)
+      if (invalid) { message.error(invalid); return }
+    }
     importGate.current = true
     setImporting(true)
     const context: CanvasImageImportContext = {

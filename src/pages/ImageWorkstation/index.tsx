@@ -30,7 +30,7 @@ import { liveCapabilityReady } from '@/services/api/task'
 import { canonicalizeImageModelProfileId, defaultImageModel } from '@shared/image-models'
 import { normalizeRetouchDirections, retouchDirectionLabel } from '@shared/retouch'
 import { paddingAround, planBailianOutpaint, validateOutpaintOutputSize } from '@shared/outpaint'
-import { uploadImage } from '@/services/api/upload'
+import { imageFileError, uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
 import { downloadFailureMessage, downloadImageAsset, filenameForWorkstationResult, blobFromImageSource } from '@/features/image-workstation/download'
 import { createResultZip, downloadBlob } from '@/pages/Toolbox/shared/zip'
@@ -385,6 +385,8 @@ export default function ImageWorkstation() {
     reason:'当前包含未保存的提示词或涂抹蒙版，切换后将放弃草稿，是否继续？',
     blocked:uploading || fusionLoading ? '正在读取输入图片，请完成后再切换' : undefined })
   const handleFusionUpload = async (slot: 'product' | 'reference', file: File) => {
+    const invalid = imageFileError(file)
+    if (invalid) { message.error(invalid); return }
     const actor=currentTaskActor();if(actor&&slot==='product')saveWorkstationSession(actor,recoveryTool,{input:undefined})
     controller.modifyParameters()
     try {
@@ -397,6 +399,8 @@ export default function ImageWorkstation() {
   }
 
   const handleImageUpload = useCallback(async (file: File) => {
+    const invalid = imageFileError(file)
+    if (invalid) { message.error(invalid); return }
     if (hasMaskPaint && !await confirmRecovery('替换图片将清除当前蒙版，是否继续？')) return
     const actor=currentTaskActor();if(actor)saveWorkstationSession(actor,recoveryTool,{input:undefined})
     setUploading(true)

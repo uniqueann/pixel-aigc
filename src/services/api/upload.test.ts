@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { uploadTaskInput, validateImageFile } from './upload'
+import { uploadTaskInput, validateImageFile, imageFileError } from './upload'
 
 const mocks = vi.hoisted(() => ({ sign: vi.fn() }))
 vi.mock('./client', () => ({ apiClient: { post: mocks.sign } }))
@@ -29,6 +29,19 @@ describe('uploadTaskInput', () => {
     expect(mocks.sign).toHaveBeenNthCalledWith(2, '/task-inputs/fallback', expect.objectContaining({
       objectKey: 'input-key', mimeType: 'image/png', dataBase64: expect.any(String),
     }))
+  })
+  it('直传失败后的大图不再回退：base64 装不进平台请求体时直接报结论', async () => {
+    mocks.sign.mockResolvedValueOnce({ uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' })
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    // 4 MB 原图经 base64 后约 5.3 MB，必然被平台在进函数前拒掉。首字节保持合法 PNG 头。
+    const large = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), new Uint8Array(4 * 1024 * 1024)], { type: 'image/png' })
+    const metrics = vi.fn()
+    await expect(uploadTaskInput(large, 'image/jpeg', undefined, { onMetrics: metrics })).rejects.toThrow(
+      '图片太大，无法通过备用通道上传，请压缩后重试',
+    )
+    // 关键：不得发出 fallback 请求，否则用户看到的是平台英文 413。
+    expect(mocks.sign).toHaveBeenCalledTimes(1)
+    expect(metrics).toHaveBeenCalledWith(expect.objectContaining({ transport: 'fallback', outcome: 'failed' }))
   })
   it('签名等待期间取消，迟到签名不能发起 PUT', async () => {
     let finish!: (value: unknown) => void
@@ -120,5 +133,14 @@ describe('validateImageFile', () => {
   it('拒绝不支持的格式和超大文件', () => {
     expect(() => validateImageFile({ type: 'image/gif', size: 1024 })).toThrow('仅支持 PNG、JPEG 和 WebP 图片')
     expect(() => validateImageFile({ type: 'image/jpeg', size: 21 * 1024 * 1024 })).toThrow('图片大小不能超过 20 MB')
+  })
+})
+
+describe('imageFileError', () => {
+  it('选图时同步给出超限结论，不进入上传流程', () => {
+    expect(imageFileError({ type: 'image/png', size: 1024 })).toBeNull()
+    expect(imageFileError({ type: 'image/jpeg', size: 21 * 1024 * 1024 })).toBe('图片大小不能超过 20 MB')
+    expect(imageFileError({ type: 'image/gif', size: 1024 })).toBe('仅支持 PNG、JPEG 和 WebP 图片')
+    expect(imageFileError({ type: 'image/png', size: 0 })).toBe('图片文件不能为空')
   })
 })

@@ -1,4 +1,7 @@
 import { normalizeImageBlob } from '@shared/image-format'
+import {
+  base64FitsPlatform, FALLBACK_TOO_LARGE_MESSAGE, IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES,
+} from '@shared/upload-limits'
 import { filenameWithMimeExtension } from '@/features/image-workstation/download'
 import { authEnabled, cloudEnabled } from '@/cloud/client'
 import { apiClient } from './client'
@@ -7,7 +10,6 @@ import { trackFirstUpload, uploadToolForPath } from '@/features/activation/clien
 import { fileToBase64 } from './image-transfer'
 
 const ACCEPTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock'
 
 export interface UploadedImage {
@@ -120,6 +122,9 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
       metrics.transport = 'direct'
     } else {
       metrics.transport = 'fallback'
+      // 回退要把整张图 base64 塞进一个 JSON 请求体，超过平台请求体上限时会在进入函数前就被拒掉，
+      // 用户看到的只会是平台英文原文。这里先拦住，给出可操作的结论。
+      if (!base64FitsPlatform(file.size)) throw new Error(FALLBACK_TOO_LARGE_MESSAGE)
       const encodeStarted = performance.now()
       let dataBase64: string
       try { dataBase64 = await fileToBase64(file) }
@@ -149,7 +154,7 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
 export async function uploadImage(file: File, options: { local?: boolean } = {}): Promise<UploadedImage> {
   const owner = useUserStore.getState().userId
   const tool = uploadToolForPath()
-  if (file.size > MAX_IMAGE_BYTES) throw new Error('图片大小不能超过 20 MB')
+  if (file.size > MAX_IMAGE_BYTES) throw new Error(IMAGE_TOO_LARGE_MESSAGE)
   const normalized = await normalizeImageBlob(file)
   file = new File([normalized], filenameWithMimeExtension(file.name, normalized.type), { type: normalized.type, lastModified: file.lastModified })
   validateImageFile(file)
@@ -170,7 +175,19 @@ export async function uploadImage(file: File, options: { local?: boolean } = {})
 
 export function validateImageFile(file: Pick<File, 'type' | 'size'>) {
   if (!ACCEPTED_IMAGE_TYPES.has(file.type)) throw new Error('仅支持 PNG、JPEG 和 WebP 图片')
-  if (file.size > MAX_IMAGE_BYTES) throw new Error('图片大小不能超过 20 MB')
+  if (file.size > MAX_IMAGE_BYTES) throw new Error(IMAGE_TOO_LARGE_MESSAGE)
+}
+
+/**
+ * 选图瞬间的同步体积检查。
+ * 只看 size 与 type，不读文件内容，因此能在 beforeUpload 里立即给结果，
+ * 不让用户先看到载入中的转圈再收到失败。返回错误文案，null 表示可以继续。
+ */
+export function imageFileError(file: Pick<File, 'type' | 'size'>) {
+  if (!file.size) return '图片文件不能为空'
+  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) return '仅支持 PNG、JPEG 和 WebP 图片'
+  if (file.size > MAX_IMAGE_BYTES) return IMAGE_TOO_LARGE_MESSAGE
+  return null
 }
 
 function readFileAsDataUrl(file: File) {
