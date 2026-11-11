@@ -51,15 +51,15 @@ describe('接口失败文案', () => {
     expect(alert.textContent).not.toMatch(/object Object|secret-token/)
   })
 
-  it('没有可用 message 的对象退回状态句', async () => {
+  it('没有可用 message 的 413 不展示平台英文原文', async () => {
     const error = await rejected(413, {
       error: { token: 'secret-token', detail: { authorization: 'Bearer secret' } },
     })
     expect(error).toMatchObject({
       status: 413,
-      message: 'Request failed with status code 413',
+      message: '图片太大，提交的内容超出了服务上限，请压缩图片后重试',
     })
-    expect(String((error as Error).message)).not.toMatch(/object Object|secret/)
+    expect(String((error as Error).message)).not.toMatch(/object Object|secret|Request Entity Too Large/i)
   })
 
   it('保留服务端字符串错误和错误码', async () => {
@@ -75,7 +75,8 @@ describe('接口失败文案', () => {
     const empty = await rejected(413, '')
     const blank = await rejected(502, { error: '   ' })
     const missing = await rejected(500, null)
-    expect(empty).toMatchObject({ status: 413, message: 'Request failed with status code 413' })
+    // 413 是唯一会被换成中文结论的状态，其余仍保留状态句。
+    expect(empty).toMatchObject({ status: 413, message: '图片太大，提交的内容超出了服务上限，请压缩图片后重试' })
     expect(blank).toMatchObject({ status: 502, message: 'Request failed with status code 502' })
     expect(missing).toMatchObject({ status: 500, message: 'Request failed with status code 500' })
   })

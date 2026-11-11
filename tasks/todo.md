@@ -2250,3 +2250,31 @@
 - [x] 明暗两主题渲染核对：绿虚线框、控制点、补齐带均可辨识，商品位置三帧完全一致
 - [x] `tsc --noEmit`、`eslint --max-warnings 0` 通过
 - [x] 全量 2403 用例通过（`index.test.tsx` 80 例）
+
+# 图片过大：提前检测与 413 文案
+
+目标：超限图片不应先上传、再由平台层返回 `Request Entity Too Large`。
+
+## 根因（已核实）
+
+- `Request Entity Too Large` 是 Vercel 平台层在请求进入函数前返回的英文原文，非业务文案。
+- 真实漏洞：`uploadTaskInput` 的直传失败回退链路把整张图 base64 塞进 JSON，无任何上限
+  （只受 20 MB 业务上限约束）。4 MB 原图 → 5.3 MB body → 必然撞 4.5 MB 平台上限。
+- 三层上限互相矛盾：UI 承诺 20 MB、服务端 `task-inputs` 20 MB、平台请求体 4.5 MB、
+  内联预算 3.5 MB（编码后）。
+
+## 计划
+
+- [x] 新增 `shared/upload-limits.ts`：把业务上限、平台上限、base64 开销、文案收敛到一处
+- [x] 回退链路加预算判断 `base64FitsPlatform`，装不下时直接报结论、不发 fallback 请求
+- [x] `imageFileError()` 同步体积检查，在 `beforeUpload` / 选图时立即拦截
+- [x] 工作站主图、融合两个槽位、自由画布导入、云端工作台替换均接入
+- [x] 三个网络出口（axios、cloudRequest、postBilledSyncImage）把平台英文 413 译为中文
+- [x] `uploadFailureText` 只在拿不到业务文案时生效，服务端自己的中文 413 原样保留
+- [x] 补回归测试：回退超预算不得发出 fallback 请求；选图即校验；中英文案互不覆盖
+
+## 验收
+
+- [x] `tsc --noEmit`、`eslint . --max-warnings 0` 通过
+- [x] 全量 2411 用例通过
+- [x] 超限文案不再把体积问题说成网络问题

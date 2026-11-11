@@ -1,4 +1,5 @@
 import { CloudError } from '@/cloud/client'
+import { uploadFailureText } from '@shared/upload-limits'
 import { apiErrorCode, responseErrorText } from './apiErrorText'
 import { useUserStore } from '@/store/useUserStore'
 import { imageAuthHeader } from './image-transfer'
@@ -39,7 +40,9 @@ export async function postBilledSyncImage(path: string,body: Record<string,unkno
     }
     const payload: unknown = await response.json().catch(() => null)
     if (response.status === 402) openCreditRecharge()
-    throw new CloudError(response.status, responseErrorText(payload) ?? '图片操作失败', apiErrorCode(payload))
+    // 平台层 413 只有英文原文，换成可操作的中文结论。
+    const message = responseErrorText(payload) ?? '图片操作失败'
+    throw new CloudError(response.status, uploadFailureText(message, response.status) || message, apiErrorCode(payload))
   }
   submittedReceipt(receipt,quote.requestId)
   return response

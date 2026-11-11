@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { uploadFailureText } from '@shared/upload-limits'
 import { apiErrorCode, responseErrorText } from '@/services/api/apiErrorText'
 export const cloudEnabled = import.meta.env.VITE_CLOUD_MODE === 'enabled'
 export const authEnabled = import.meta.env.VITE_AUTH_MODE === undefined ? cloudEnabled : import.meta.env.VITE_AUTH_MODE === 'enabled'
@@ -36,7 +37,9 @@ export async function cloudRequest<T>(path: string, method = 'GET', body?: unkno
   options?.signal?.throwIfAborted()
   if (!response.ok) {
     if (response.status === 402 && typeof window !== 'undefined') window.dispatchEvent(new Event('aigc:recharge'))
-    throw new CloudError(response.status, responseErrorText(result) ?? '请求失败', apiErrorCode(result))
+    // 平台层 413 只有英文原文，换成可操作的中文结论；服务端已给中文时保持原样。
+    const message = responseErrorText(result) ?? '请求失败'
+    throw new CloudError(response.status, uploadFailureText(message, response.status) || message, apiErrorCode(result))
   }
   return result as T
 }

@@ -7,7 +7,7 @@ import { currentSnapshot, flushProject, newProject, replaceSnapshot } from '@/ed
 import { readLegacySnapshot } from '@/editor/persistence/database'
 import { parseSnapshot } from '@/editor/persistence/snapshot'
 import { useEditorStore } from '@/editor/store'
-import { uploadImage } from '@/services/api/upload'
+import { imageFileError, uploadImage } from '@/services/api/upload'
 import { createImageAsset } from '@/editor/services/assetService'
 import { calculateInitialImageNode } from '@/features/free-canvas/geometry'
 import { AddNodeCommand } from '@/editor/commands'
@@ -58,6 +58,9 @@ export default function CloudToolbar({ disabled, onUploadImage }: { disabled: bo
     <input type="file" accept="image/png,image/jpeg,image/webp" ref={input} hidden onChange={event => {
       const file = event.target.files?.[0]; event.target.value = ''
       if (!file) return
+      // 选图时先做同步体积检查，避免进入上传流程后才报错。
+      const invalid = imageFileError(file)
+      if (invalid) { message.error(invalid); return }
       void run(async () => {
         const targetId = useEditorStore.getState().project?.id
         const uploaded = await uploadImage(file)

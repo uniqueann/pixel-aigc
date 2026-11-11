@@ -1,5 +1,6 @@
 import { authEnabled, supabase } from '@/cloud/client'
 import axios from 'axios'
+import { uploadFailureText } from '@shared/upload-limits'
 import { useUserStore } from '@/store/useUserStore'
 import { apiErrorCode, responseErrorText } from './apiErrorText'
 
@@ -69,9 +70,10 @@ apiClient.interceptors.response.use(
     if (err.response?.status === 402 && typeof window !== 'undefined')
       window.dispatchEvent(new Event('aigc:recharge'))
     const data = err.response?.data
+    // 413 常见于平台层提前拒掉请求，此时没有中文业务文案，只有平台英文原文。
+    const message = responseErrorText(data) || err.message || '请求失败，请重试'
     return Promise.reject(
-      new ApiError(
-        responseErrorText(data) || err.message || '请求失败，请重试',
+      new ApiError(uploadFailureText(message, err.response?.status) || message,
         err.response?.status,
         apiErrorCode(data),
       ),

@@ -4,7 +4,7 @@ import type { SyncImageObjectResult } from '@shared/sync-image'
 import type { TaskOrigin } from '@shared/task-center'
 
 export const INLINE_IMAGE_BYTES = Math.floor(3.5 * 1024 * 1024)
-export const MAX_IMAGE_BYTES = 20 * 1024 * 1024
+export { MAX_IMAGE_BYTES } from '@shared/upload-limits'
 
 export async function imageAuthHeader(): Promise<Record<string, string>> {
   const token = authEnabled
