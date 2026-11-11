@@ -35,6 +35,11 @@ interface Props {
   onCountChange: (count: number) => void
   resolution: '1k' | '2k' | '4k'
   onResolutionChange: (resolution: '1k' | '2k' | '4k') => void
+  /**
+   * 用户点选的档位。精修传入的 resolution 已是有效档，
+   * 只有二者不同才能区分「选了 2K」和「4K 因比例回退到 2K」。
+   */
+  requestedResolution?: '1k' | '2k' | '4k'
   /** 精修：输出缩回原图像素，档位仍按原图长边推导。 */
   keepSourceSize?: boolean
   /** 精修输出尺寸：'source' 表示保持原尺寸；档位值同时关闭保持原尺寸。 */
@@ -171,6 +176,7 @@ export default function ParamPanel({
   onCountChange,
   resolution,
   onResolutionChange,
+  requestedResolution,
   keepSourceSize = false,
   onRetouchOutputChange,
   models = [],
@@ -286,6 +292,10 @@ export default function ParamPanel({
       'aria-disabled': value === '4k' && !fourKAllowed ? true : undefined,
       title: value === '4k' && !fourKAllowed ? '当前比例不支持 4K' : undefined,
     }))
+    const requested = requestedResolution ?? resolution
+    // 比例不在 4K 白名单只说明 4K 选项不可用。精修的「按 2K 生成」仅在用户要了 4K、
+    // 有效档已经落到 2K 时出现；正常 1K/2K 与保持原尺寸没有发生这次回退。
+    const showFourKFallback = !fourKAllowed && !keepSource && (!retouch || (requested === '4k' && resolution === '2k'))
     const resolutionOptions = retouch
       ? [...tierOptions, {
           value: 'source' as const,
@@ -331,7 +341,7 @@ export default function ParamPanel({
                 ? `输出 ${retouchOutput.width}×${retouchOutput.height}（原图尺寸）· 按 ${resolution.toUpperCase()} 计费`
                 : `输出 ${retouchOutput.width}×${retouchOutput.height}（长边 ${resolution.toUpperCase()}）`
               : `预计输出 ${mapped.size} · ${mapped.resolution.toUpperCase()}`}
-            {!fourKAllowed && !keepSource
+            {showFourKFallback
               ? ' · 当前比例不支持 4K，按 2K 生成'
               : keepSource && needsUpscale
                 ? derivedResolution === resolution

@@ -458,6 +458,48 @@ describe('图片工作站配置提示', () => {
     expect(screen.queryByText(/生成 1 张 · 14 积分/)).toBeNull()
   })
 
+  it('精修 1K/2K 不提示 4K 回退，请求 4K 且比例不支持时才按 2K 说明', () => {
+    const preferences = defaultPreferences()
+    preferences.image.counts.retouch = 1
+    usePreferencesStore.setState({ preferences, memoryEpoch: 6 })
+    mocks.tool = 'retouch'
+    mocks.models = [publicImageModel(defaultImageModel('image_edit')!)]
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+    const renderRetouch = (resolution: '1k' | '2k' | '4k', size: { width: number; height: number }, epoch: number) => {
+      preferences.image.resolution = resolution
+      preferences.image.lastUsed.retouch = { resolution }
+      usePreferencesStore.setState({ preferences, memoryEpoch: epoch })
+      mocks.controller.inputAsset = { id: 'uploaded', name: 'pr245-disposable.png', ...size, url: 'blob:uploaded' }
+      return render(<App><ImageWorkstation /></App>)
+    }
+    const square = { width: 256, height: 256 }
+    let view = renderRetouch('1k', square, 6)
+    expect(screen.getByText('输出 1024×1024（长边 1K）')).toBeTruthy()
+    expect(screen.getByText('原图 256×256，将放大到 1024×1024；精修不会重绘，但尺寸会变化。')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
+    expect(buttonByText(/生成 1 张 · 4 积分/)).toBeTruthy()
+    view.unmount()
+
+    view = renderRetouch('2k', square, 7)
+    expect(screen.getByText('输出 2048×2048（长边 2K）')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
+    expect(buttonByText(/生成 1 张 · 6 积分/)).toBeTruthy()
+    view.unmount()
+
+    view = renderRetouch('4k', square, 8)
+    expect(screen.getByText(/输出 2048×2048（长边 2K）/)).toBeTruthy()
+    expect(screen.getByText(/当前比例不支持 4K，按 2K 生成/)).toBeTruthy()
+    expect(buttonByText(/生成 1 张 · 6 积分/)).toBeTruthy()
+    expect(screen.queryByText(/生成 1 张 · 14 积分/)).toBeNull()
+    view.unmount()
+
+    view = renderRetouch('4k', { width: 1920, height: 1080 }, 9)
+    expect(screen.getByText('输出 4096×2304（长边 4K）')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
+    expect(buttonByText(/生成 1 张 · 14 积分/)).toBeTruthy()
+    view.unmount()
+  })
+
   it('精修保持原尺寸时按原图长边档位报价并传给控制器', () => {
     const preferences = defaultPreferences()
     preferences.image.resolution = '4k'

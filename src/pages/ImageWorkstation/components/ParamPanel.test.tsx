@@ -268,12 +268,137 @@ describe('智能编辑参数面板', () => {
     expect(group.querySelectorAll('input[type="checkbox"]')).toHaveLength(4)
     expect(group.textContent).toContain('（必选）')
     expect(document.getElementById('retouch-direction-summary')?.textContent).toContain('已选：去瑕疵')
-    expect(screen.getByText(/当前比例不支持 4K/)).toBeTruthy()
+    expect(screen.getByText('输出 2048×2048（长边 2K）')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
     const resolution = screen.getAllByRole('combobox').find(item => item.getAttribute('aria-label') === '输出尺寸')
     if (!resolution) throw new Error('未找到输出尺寸选择')
     fireEvent.mouseDown(resolution)
     const fourK = [...document.querySelectorAll('.ant-select-item-option')].find(item => item.textContent === '4K')
     expect(fourK?.getAttribute('aria-disabled')).toBe('true')
+    expect(fourK?.getAttribute('title')).toBe('当前比例不支持 4K')
+  })
+
+  it('精修只在 4K 回退到 2K 时提示，1K、2K、保持原尺寸和支持 4K 不提示', () => {
+    const square = { width: 256, height: 256 }
+    const wide = { width: 1920, height: 1080 }
+    const view = render(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        resolution="1k"
+        requestedResolution="1k"
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={square}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('输出 1024×1024（长边 1K）')).toBeTruthy()
+    expect(screen.getByText('原图 256×256，将放大到 1024×1024；精修不会重绘，但尺寸会变化。')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
+
+    view.rerender(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        resolution="2k"
+        requestedResolution="2k"
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={square}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('输出 2048×2048（长边 2K）')).toBeTruthy()
+    expect(screen.getByText('原图 256×256，将放大到 2048×2048；精修不会重绘，但尺寸会变化。')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
+
+    view.rerender(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        resolution="1k"
+        requestedResolution="4k"
+        keepSourceSize
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={square}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('输出 256×256（原图尺寸）· 按 1K 计费')).toBeTruthy()
+    expect(screen.queryByText(/将放大到/)).toBeNull()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
+
+    view.rerender(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        resolution="2k"
+        requestedResolution="4k"
+        keepSourceSize
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={{ width: 3000, height: 2000 }}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('输出 3000×2000（原图尺寸）· 按 2K 计费 · 原图长边需要 4K，按 2K 生成后缩放到原尺寸')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
+
+    view.rerender(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        resolution="2k"
+        requestedResolution="4k"
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={square}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText(/输出 2048×2048（长边 2K）/)).toBeTruthy()
+    expect(screen.getByText(/当前比例不支持 4K，按 2K 生成/)).toBeTruthy()
+    expect(screen.getByText('原图 256×256，将放大到 2048×2048；精修不会重绘，但尺寸会变化。')).toBeTruthy()
+
+    view.rerender(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        resolution="4k"
+        requestedResolution="4k"
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={wide}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('输出 4096×2304（长边 4K）')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
+    expect(screen.queryByText(/将放大到/)).toBeNull()
+
+    view.rerender(
+      <ParamPanel
+        capability={Capability.Retouch}
+        {...panelProps}
+        resolution="1k"
+        requestedResolution="1k"
+        models={[model]}
+        modelProfileId={model.id}
+        sourceSize={wide}
+        retouchDirections={['blemish']}
+        onRetouchDirectionsChange={() => undefined}
+      />,
+    )
+    expect(screen.getByText('输出 1024×576（长边 1K）')).toBeTruthy()
+    expect(screen.queryByText(/当前比例不支持 4K，按 2K 生成/)).toBeNull()
   })
 
   it('精修保持原尺寸时显示原图像素与计费档', () => {
