@@ -34,6 +34,8 @@ interface MaskPaintCanvasProps {
   refineMode?: boolean
   /** 生成中或读取结果时锁定涂抹。 */
   disabled?: boolean
+  /** 父级已在画布上渲染阶段浮层时，隐藏本地重复的「正在生成」提示。 */
+  hideDisabledHint?: boolean
   onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void
   onMaskChange?: (hasPaint: boolean) => void
   /** 键盘 B/E 切换画笔与橡皮擦时同步工具条状态。 */
@@ -64,7 +66,7 @@ function flushOverlayHasPaint(canvas: Canvas | null, fallback: HTMLCanvasElement
 }
 
 const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(function MaskPaintCanvas(
-  { imageUrl, previewImageUrl, comparing = false, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, disabled = false, onHistoryChange, onMaskChange, onToolChange, onBrushSizeChange },
+  { imageUrl, previewImageUrl, comparing = false, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, disabled = false, hideDisabledHint = false, onHistoryChange, onMaskChange, onToolChange, onBrushSizeChange },
   ref,
 ) {
   const { hostRef, display } = useCanvasDisplay()
@@ -699,7 +701,9 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
           </div>
         ) : null}
         {disabled ? (
-          <div className="workstation-paint-disabled-hint" role="status">正在生成，暂不可涂抹</div>
+          hideDisabledHint ? null : (
+            <div className="workstation-paint-disabled-hint" role="status">正在生成，暂不可涂抹</div>
+          )
         ) : comparing ? (
           <div className="workstation-paint-disabled-hint" role="status">正在查看生成效果，切回「原图」可继续涂抹</div>
         ) : null}

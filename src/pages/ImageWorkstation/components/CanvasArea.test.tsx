@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {cleanup,fireEvent,render,screen} from '@testing-library/react'
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
 import {afterEach,describe,expect,it,vi} from 'vitest'
 import CanvasArea from './CanvasArea'
 vi.mock('@/hooks/useCapabilities',()=>({useCapabilities:()=>({capabilities:{}})}))
@@ -7,6 +7,22 @@ vi.mock('@/hooks/useCapabilities',()=>({useCapabilities:()=>({capabilities:{}})}
 vi.mock('./canvas/OutpaintCanvas',async()=>{
   const React=await import('react')
   return {default:React.forwardRef(()=>React.createElement('div',{'data-testid':'outpaint-canvas'}))}
+})
+// 涂抹画布依赖 Fabric；把决定提示行为的 props 透出成 data-*，供 CanvasArea 断言。
+vi.mock('./canvas/MaskPaintCanvas',async()=>{
+  const React=await import('react')
+  return {default:React.forwardRef((props:{disabled?:boolean;hideDisabledHint?:boolean},ref)=>{
+    React.useImperativeHandle(ref,()=>({
+      exportMask:()=>({maskDataUrl:'data:image/png;base64,mask'}),
+      exportRefineMarks:()=>new Uint8ClampedArray(4),clear:vi.fn(),undo:vi.fn(),redo:vi.fn(),
+      invertSelection:()=>Promise.resolve(),canUndo:false,canRedo:false,
+    }))
+    return React.createElement('div',{
+      'data-testid':'mask-paint-canvas',
+      'data-hide-hint':String(Boolean(props.hideDisabledHint)),
+      'data-disabled':String(Boolean(props.disabled)),
+    })
+  })}
 })
 afterEach(cleanup)
 describe('工作站恢复任务的预览占位',()=>{
@@ -251,5 +267,49 @@ describe('扩图结果态的原图对比',()=>{
       />,
     )
     expect(screen.getByText('已达单边 2 倍上限')).toBeTruthy()
+  })
+})
+
+describe('消除/重绘的阶段浮层',()=>{
+  const props={interactionMode:'mask-paint' as const,imageUrl:'blob:source',imageNaturalSize:{width:800,height:800},compareMode:'original' as const,onCompareModeChange:vi.fn(),onImageUpload:vi.fn(),onReady:vi.fn()}
+  // 画布是 lazy + Suspense 挂载的，浮层与 stub 都要等一拍。
+  const waitPill=()=>waitFor(()=>{
+    const pill=document.querySelector('.workstation-canvas-processing')
+    if(!pill) throw new Error('阶段浮层尚未渲染')
+    return pill
+  })
+  it('生成中只保留一条画布级提示，本地涂抹提示让位',async()=>{
+    render(<CanvasArea {...props} paintDisabled processingLabel="正在消除，完成后会显示效果"/>)
+    const pill=await waitPill()
+    expect(pill.textContent).toContain('正在消除')
+    // 不复用旧类，否则移动端贴顶态会被 display:none 隐藏。
+    expect(document.querySelector('.workstation-canvas-state')).toBeNull()
+    expect(screen.getByTestId('mask-paint-canvas').getAttribute('data-hide-hint')).toBe('true')
+  })
+  it('读取结果阶段切换文案，不残留生成文案',async()=>{
+    const view=render(<CanvasArea {...props} paintDisabled processingLabel="正在消除，完成后会显示效果"/>)
+    await waitPill()
+    view.rerender(<CanvasArea {...props} paintDisabled processingLabel="正在读取结果，请稍候"/>)
+    await waitFor(()=>expect(document.querySelector('.workstation-canvas-processing')?.textContent).toContain('正在读取结果'))
+    expect(screen.queryByText('正在消除，完成后会显示效果')).toBeNull()
+  })
+  it('未在处理时不渲染浮层，本地涂抹提示恢复',async()=>{
+    render(<CanvasArea {...props} paintDisabled/>)
+    await screen.findByTestId('mask-paint-canvas')
+    expect(document.querySelector('.workstation-canvas-processing')).toBeNull()
+    expect(screen.getByTestId('mask-paint-canvas').getAttribute('data-hide-hint')).toBe('false')
+  })
+  it('查看生成效果时保留对比脚注与本地提示',async()=>{
+    render(<CanvasArea {...props} compareAvailable resultImageUrl="blob:result" compareMode="effect"/>)
+    expect(await screen.findByText('正在查看生成效果；切回「原图」可继续涂抹。')).toBeTruthy()
+    expect(document.querySelector('.workstation-canvas-processing')).toBeNull()
+    expect(screen.getByTestId('mask-paint-canvas').getAttribute('data-hide-hint')).toBe('false')
+  })
+  it('处理中压制脚注，避免同一底带叠两条消息',async()=>{
+    render(<CanvasArea {...props} paintDisabled compareAvailable resultImageUrl="blob:result" compareMode="effect" processingLabel="正在消除，完成后会显示效果"/>)
+    const pill=await waitPill()
+    expect(pill.textContent).toContain('正在消除')
+    expect(screen.queryByText('正在查看生成效果；切回「原图」可继续涂抹。')).toBeNull()
+    expect(document.querySelector('.workstation-canvas-footnote')).toBeNull()
   })
 })

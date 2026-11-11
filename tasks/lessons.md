@@ -30,6 +30,18 @@
 - 规则：任何「输出就是 N×N」的承诺，都要在客户端推导目标尺寸、服务端后处理真正 resize、并把 resize 后的宽高写回 descriptor / result_width / result_height 三处对齐；只改其中一处会导致界面承诺与实际文件不符。
 - 原因：计费按档位、生成按档位、交付按原像素，三者是不同层；档位推导集中在 `shared/retouch.ts` 才能让报价、请求、文案永远一致。
 
+## 同步接口的「生成中」要靠 submitting 而不是 active
+
+- 触发：给消除/重绘制画布加生成浮层时，页面原本的 `processingLabel` 用 `controller.active || controller.submitting`，而这类任务走同步 `Capability.Inpaint`，返回即是 `succeeded`，`active` 恒为 false；同时 mask-paint 分支根本就没渲染这个 prop。
+- 规则：判断同步任务是否在跑，用 `submitting`（覆盖读原图→导出蒙版→上传→往返）叠加 `readingResults`（下载解码）；两者都真时读取阶段优先。给状态浮层加闸门时别漏掉 `retryRead`：它只置 `readingResults`，`submitting` 仍为 false。
+- 原因：`active` 来自任务状态集合，只对异步任务有意义；把两种链路的 busy 语义混在一个表达式里，必然在同步链路上静默失真。
+
+## 复用状态浮层类之前先查它在媒体查询里被怎么处理
+
+- 触发：消除/重绘的阶段浮层本想直接复用 `.workstation-canvas-state`，但移动端 `.is-stuck .workstation-canvas-state { display:none }` 会在用户滚到设置区等结果时把提示藏掉。
+- 规则：新浮层要么用独立类并在媒体查询里显式声明保留，要么先确认旧类的所有 `display`/`visibility` 覆盖；不要靠「DOM 顺序碰巧赢」推断它会显示。
+- 原因：这类「吸顶紧凑态隐藏次要元素」的规则是为静态信息写的，对「正在生成」这类必须可见的反馈是错的；用计算样式实测比读 CSS 更可靠。
+
 ## 重试失败状态不要用 effect 重置
 
 - 触发：在 effect 中根据 `resultReadError` 清空 `retryReadFailedAgain`，既触发 `react-hooks/set-state-in-effect`，又会在重试读取阶段把刚设置的「仍无法读取」提前抹掉。

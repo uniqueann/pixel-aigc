@@ -395,6 +395,8 @@ export default function CanvasArea({
 
   if (interactionMode === 'mask-paint') {
     const comparingResult = compareAvailable && compareMode === 'effect' && Boolean(resultImageUrl)
+    // 处理中：整块画布只留一条阶段提示，本地涂抹提示与脚注让位，避免同一底带叠三条消息。
+    const paintStatus = processingLabel
     return (
       <div className={`${canvasShellClass} is-mask-paint`}>
         <div className="workstation-canvas-controls">
@@ -448,13 +450,20 @@ export default function CanvasArea({
             smartSelectEnabled={smartSelectEnabled}
             refineMode={refineMode}
             disabled={paintDisabled}
+            hideDisabledHint={Boolean(paintStatus)}
             onHistoryChange={setHistoryState}
             onMaskChange={onMaskChange}
             onToolChange={selectPaintTool}
             onBrushSizeChange={setBrushSize}
           />
         </Suspense>
-        {comparingResult ? (
+        {paintStatus ? (
+          <div className="workstation-canvas-processing" role="status">
+            <Spin size="small" />
+            <span>{paintStatus}</span>
+          </div>
+        ) : null}
+        {paintStatus ? null : comparingResult ? (
           <div className="workstation-canvas-footnote">正在查看生成效果；切回「原图」可继续涂抹。</div>
         ) : smartSelectEnabled ? (
           <div className="workstation-canvas-footnote">点击主体自动选取轮廓；文字、水印或细节建议使用画笔涂抹。</div>
