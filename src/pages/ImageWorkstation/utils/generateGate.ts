@@ -14,6 +14,15 @@ export const OUTPAINT_IDLE_REASONS = {
 
 export type OutpaintIdleMode = keyof typeof OUTPAINT_IDLE_REASONS
 
+/**
+ * 能力未接入时的唯一文案来源：右卡 CapabilityStatus 与页脚禁用原因共用，
+ * 避免同一句话在页面上出现两次（之前消除重复两遍、重绘两处说法还不一致）。
+ */
+export const UNAVAILABLE_SERVICE_MESSAGES = {
+  remove: '消除服务暂不可用，请稍后重试或联系客服。',
+  repaint: '重绘服务暂不可用，请稍后重试或联系客服。',
+} as const
+
 export function workstationGenerateBlockReason(input: {
   toolReady: boolean
   configurationPending?: boolean
@@ -51,8 +60,8 @@ export function workstationGenerateBlockReason(input: {
   if (input.outpaintLimitError) return input.outpaintLimitError
   if (input.outpaintIdle) return OUTPAINT_IDLE_REASONS[input.outpaintIdle]
   if (input.retouchBlocked) return '请先选择精修方向'
-  if (input.repaintBlocked) return '重绘尚未配置'
-  if (input.removeBlocked) return '消除服务暂不可用，请稍后重试或联系客服。'
+  if (input.repaintBlocked) return UNAVAILABLE_SERVICE_MESSAGES.repaint
+  if (input.removeBlocked) return UNAVAILABLE_SERVICE_MESSAGES.remove
   if (input.maskRequired && !input.hasMaskPaint) return emptyMaskMessage(input.mode)
   if (input.promptRequired && input.promptEmpty) {
     return input.mode === 'repaint' ? '请先填写重绘描述' : '请先填写编辑要求'

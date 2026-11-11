@@ -877,6 +877,25 @@ describe('图片工作站配置提示', () => {
     expect(buttonByText(/生成 · 5 积分/).disabled).toBe(true)
   })
 
+  it('消除与重绘不可用时右卡与页脚说同一句，重绘不再另说「尚未配置」', () => {
+    mocks.controller.inputAsset = { id: 'uploaded', name: '商品.png', width: 800, height: 800, url: 'blob:uploaded' }
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
+
+    mocks.tool = 'remove'
+    mocks.status.capabilities.erase = false
+    const remove = render(<App><ImageWorkstation /></App>)
+    const removeTexts = screen.getAllByText('消除服务暂不可用，请稍后重试或联系客服。')
+    // 右卡与页脚各一处，但两处字符串必须一致（同一常量）。
+    expect(new Set(removeTexts.map(node => node.textContent)).size).toBe(1)
+    remove.unmount()
+
+    mocks.tool = 'repaint'
+    mocks.status.capabilities = { imageEdit: true, variation: true, repaint: false, erase: true, smartSelect: true }
+    render(<App><ImageWorkstation /></App>)
+    expect(screen.getAllByText('重绘服务暂不可用，请稍后重试或联系客服。').length).toBeGreaterThan(0)
+    expect(screen.queryByText('重绘尚未配置')).toBeNull()
+  })
+
   it('重绘有图未涂抹时展示步骤与页脚可见禁用原因', () => {
     mocks.tool = 'repaint'
     mocks.status.capabilities = { imageEdit: true, variation: true, repaint: true, erase: true, smartSelect: true }
