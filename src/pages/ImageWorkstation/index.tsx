@@ -15,7 +15,6 @@ import type { AssetId, ImageAsset } from '@/editor/types'
 import { useImageWorkstationController } from '@/features/image-workstation/hooks/useImageWorkstationController'
 import { useFusionImageSelection } from '@/features/image-workstation/hooks/useFusionImageSelection'
 import { isPreparationCancelled } from '@/features/image-workstation/fusionInputs'
-import { toolExample } from '@/features/image-workstation/tools/examples'
 import {
   COMING_SOON_SUBMIT_MESSAGE,
   FUSION_INPUTS_REQUIRED_REASON,
@@ -48,7 +47,7 @@ import SmartEditExample from './components/SmartEditExample'
 import VariationExample from './components/VariationExample'
 import RetouchExample from './components/RetouchExample'
 import InpaintExample from './components/InpaintExample'
-import ToolExampleStrip from './components/ToolExampleStrip'
+import FusionExample from './components/FusionExample'
 import { TASK_RUNNING_REASON, UNAVAILABLE_SERVICE_MESSAGES, workstationGenerateBlockReason } from './utils/generateGate'
 import { taskFailureText } from '@/features/generation/providerErrorCopy'
 import { freeOutpaintGeometry, outpaintHasWork, presetOutpaintGeometry } from './utils/outpaintGeometry'
@@ -752,8 +751,6 @@ export default function ImageWorkstation() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [blockReason, controller.inputPreparation, controller.submitting, edgeRefine])
   const showRetryRead = Boolean(controller.resultReadError) || controller.readingResults
-  const example = toolExample(activeTool.slug)
-  const showExample = Boolean(example) && (fusionTool ? !fusionProduct && !fusionReference : !controller.inputAsset)
   const { previewRef, footerRef, sticky } = useStickyPreview(true)
   const inputDescription = recoveringActive&&!controller.inputAsset&&!fusionProduct&&!fusionReference
     ? '正在同步任务，请稍候...'
@@ -936,15 +933,17 @@ export default function ImageWorkstation() {
               emptyExtra={
                 relightTool && !previewHasImage
                   ? <RelightExample />
-                  : smartEditTool && !previewHasImage
-                    ? <SmartEditExample />
-                    : variationTool && !previewHasImage
-                      ? <VariationExample />
-                      : retouchTool && !previewHasImage
-                        ? <RetouchExample />
-                        : inpaintMode && !previewHasImage
-                          ? <InpaintExample mode={inpaintMode} />
-                          : undefined
+                  : fusionTool && !fusionProduct && !fusionReference
+                    ? <FusionExample />
+                    : smartEditTool && !previewHasImage
+                      ? <SmartEditExample />
+                      : variationTool && !previewHasImage
+                        ? <VariationExample />
+                        : retouchTool && !previewHasImage
+                          ? <RetouchExample />
+                          : inpaintMode && !previewHasImage
+                            ? <InpaintExample mode={inpaintMode} />
+                            : undefined
               }
               overlayToggle={relightTool && previewHasImage ? {
                 label: '方向示意',
@@ -1029,7 +1028,6 @@ export default function ImageWorkstation() {
               />
             )}
           </section>
-          {!relightTool && showExample && example ? <ToolExampleStrip example={example} /> : null}
         </div>
         <aside ref={settingsPanelRef} className="workstation-panel image-workstation-settings" aria-labelledby="workstation-settings-heading">
           <div className="workstation-panel-heading-row">

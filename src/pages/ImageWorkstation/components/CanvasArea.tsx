@@ -269,8 +269,12 @@ export default function CanvasArea({
   if (interactionMode === 'multi-source') {
     // 有结果时主舞台默认展示效果，输入槽位收进「输入」视图，避免结果只出现在下方缩略条。
     const viewingResult = compareAvailable && compareMode === 'effect' && Boolean(resultImageUrl)
+    // 两路输入都为空时才是「未开始」：示例放在槽位上方，与单图工具的空态示例同位置。
+    const emptyBoth = !imageUrl && !referenceImageUrl && !viewingResult
+    const showEmptyExtra = emptyBoth && Boolean(emptyExtra)
     return (
-      <div className={`${canvasShellClass}${!imageUrl && !referenceImageUrl && !viewingResult ? ' is-empty' : ''}`}>
+      <div className={`${canvasShellClass}${emptyBoth ? ' is-empty' : ''}${showEmptyExtra ? ' has-empty-extra' : ''}`}>
+        {showEmptyExtra ? <div className="workstation-empty-extra">{emptyExtra}</div> : null}
         {compareAvailable ? (
           <div className="workstation-canvas-controls">
             <div className="workstation-canvas-toolbar">

@@ -3147,11 +3147,6 @@ body.sidebar-resizing * {
   overscroll-behavior-x: contain;
 }
 
-.tool-example-group {
-  display: flex;
-  gap: 8px;
-}
-
 .tool-example figure {
   display: flex;
   width: 112px;
@@ -3159,15 +3154,6 @@ body.sidebar-resizing * {
   flex-direction: column;
   gap: 4px;
   margin: 0;
-}
-
-.tool-example img {
-  width: 112px;
-  height: 112px;
-  object-fit: contain;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #fff;
 }
 
 .tool-example figcaption {
@@ -3243,6 +3229,26 @@ body.sidebar-resizing * {
 .variation-example figure {
   width: auto;
   flex: 0 0 auto;
+}
+
+/* 融合是「两路输入 → 一张合成」，箭头表达汇合；三帧等宽，示意行不横向溢出。 */
+.fusion-example .tool-example-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  overflow-x: auto;
+}
+
+.fusion-example figure {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+/* 空态示例出现后槽位只剩剩余高度；融合槽位原本 height:100% 会连示例一起撑出画布，改为按内容高度。 */
+.workstation-canvas-shell.is-empty.has-empty-extra .workstation-fusion-sources {
+  height: auto;
+  min-height: 180px;
 }
 
 /* 裂变、融合与精修的固定契约，放在标题下，先于参数出现。 */
