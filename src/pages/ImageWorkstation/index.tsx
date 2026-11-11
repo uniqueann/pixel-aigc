@@ -1062,6 +1062,7 @@ export default function ImageWorkstation() {
               retouchDirections={retouchDirections}
               onRetouchDirectionsChange={retouchDirections => updateParameters({ retouchDirections })}
               resolution={effectiveParameters.resolution}
+              requestedResolution={retouchTool ? editResolution : undefined}
               onResolutionChange={resolution => updateParameters({ resolution })}
               keepSourceSize={keepSourceSize}
               onRetouchOutputChange={value => updateParameters(
