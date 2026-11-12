@@ -1,6 +1,6 @@
 import { normalizeImageBlob } from '@shared/image-format'
 import {
-  base64FitsPlatform, FALLBACK_TOO_LARGE_MESSAGE, IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES,
+  base64FitsTaskInputFallback, FALLBACK_TOO_LARGE_MESSAGE, IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES,
 } from '@shared/upload-limits'
 import { filenameWithMimeExtension } from '@/features/image-workstation/download'
 import { authEnabled, cloudEnabled } from '@/cloud/client'
@@ -46,6 +46,8 @@ export interface TaskInputUploadMetrics {
   directUploadMs?: number
   directStatus?: number
   directOutcome?: 'success' | 'network-error' | 'http-error' | 'cancelled'
+  /** 备用上传未执行时的原因；不能把预算拒绝记为已走备用通道。 */
+  fallbackBlockedReason?: 'body-limit'
   fallbackEncodeMs?: number
   fallbackUploadMs?: number
   transport?: 'direct' | 'fallback'
@@ -102,6 +104,8 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
     check()
     if (!signed.uploadUrl || !signed.objectKey) throw new Error('未获得原图上传地址')
     let uploaded: Response | undefined
+    let directError: unknown
+    metrics.transport = 'direct'
     const directStarted = performance.now()
     try {
       uploaded = await stage('uploading', () => fetch(signed.uploadUrl, {
@@ -113,18 +117,20 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
     } catch (fetchErr) {
       metrics.directOutcome = signal?.aborted ? 'cancelled' : 'network-error'
       if (signal?.aborted) throw fetchErr
+      directError = fetchErr
     } finally {
       metrics.directUploadMs = Math.round(performance.now() - directStarted)
       metrics.networkTiming = uploadNetworkTiming(signed.uploadUrl, directStarted)
     }
     if (uploaded) {
       if (!uploaded.ok) throw new Error('原图上传失败，请重试')
-      metrics.transport = 'direct'
     } else {
+      // 原图仍可能在业务上限内；仅备用 JSON 请求受更小的服务端预算约束。
+      if (!base64FitsTaskInputFallback(file.size)) {
+        metrics.fallbackBlockedReason = 'body-limit'
+        throw Object.assign(new Error(FALLBACK_TOO_LARGE_MESSAGE), { cause: directError })
+      }
       metrics.transport = 'fallback'
-      // 回退要把整张图 base64 塞进一个 JSON 请求体，超过平台请求体上限时会在进入函数前就被拒掉，
-      // 用户看到的只会是平台英文原文。这里先拦住，给出可操作的结论。
-      if (!base64FitsPlatform(file.size)) throw new Error(FALLBACK_TOO_LARGE_MESSAGE)
       const encodeStarted = performance.now()
       let dataBase64: string
       try { dataBase64 = await fileToBase64(file) }

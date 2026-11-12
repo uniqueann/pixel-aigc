@@ -2255,9 +2255,9 @@
 
 目标：超限图片不应先上传、再由平台层返回 `Request Entity Too Large`。
 
-## 根因（已核实）
+## 请求体问题（代码已确认，直传故障另行调查）
 
-- `Request Entity Too Large` 是 Vercel 平台层在请求进入函数前返回的英文原文，非业务文案。
+- `Request Entity Too Large` 可能由平台层返回；此前未取得线上响应或日志，不能仅据英文文案确定返回来源。
 - 真实漏洞：`uploadTaskInput` 的直传失败回退链路把整张图 base64 塞进 JSON，无任何上限
   （只受 20 MB 业务上限约束）。4 MB 原图 → 5.3 MB body → 必然撞 4.5 MB 平台上限。
 - 三层上限互相矛盾：UI 承诺 20 MB、服务端 `task-inputs` 20 MB、平台请求体 4.5 MB、
@@ -2277,4 +2277,45 @@
 
 - [x] `tsc --noEmit`、`eslint . --max-warnings 0` 通过
 - [x] 全量 2411 用例通过
-- [x] 超限文案不再把体积问题说成网络问题
+- [ ] 合法大图上传恢复：此前只阻止了超预算回退，未验证直传成功，原验收结论不完整。
+
+# 合法 4 MB 图片扩图上传失败
+
+目标：区分业务超限与直传失败，修正备用预算并取得真实直传证据。
+
+## 计划
+
+- [x] 核对签名和上传路径：4 MB 走签名 PUT；报错来自 PUT 异常后的备用预算判断。
+- [x] 核对存储签名：已关闭自动 checksum，未发现已确认的签名缺陷。
+- [x] 尝试只读 OPTIONS 诊断：本地缺少全部四项 R2 配置，未发出预检。
+- [x] 前后端共用备用通道请求体预算，修正 4.5 MB 与 3 MiB 不一致。
+- [x] 纠正报错，保留直传异常 cause，区分预算阻止与实际备用上传。
+- [x] 增加脱敏的只读 CORS 诊断入口。
+- [x] 补回归测试、类型检查和 lint。
+- [x] 在用户实际域名 aigc.pixelsai.app 完成 4 MiB 原图直传验收；本次未调用收费扩图生成。
+
+## 验收与限制
+
+- 本地缺少 R2_ACCOUNT_ID、R2_BUCKET、R2_ACCESS_KEY_ID、R2_SECRET_ACCESS_KEY；生产 CORS、写权限与网络故障尚未确认。
+- 经用户授权，通过已有 Vercel CLI 核对 Production：四项 R2 变量均存在，类型为不可拉取的 Secret；`env run -e production` 无法将其注入诊断子进程，未发出目标桶 OPTIONS。这不代表线上缺少配置。
+- GitHub 的 a2d5177 Vercel 部署状态为 success；正式站 HEAD 返回 200，未见 Content-Security-Policy；未发现代码层全局 fetch 拦截或 Service Worker。
+- 已尝试已有 Wrangler 的 `r2 bucket cors list pixel-aigc-media`，因未登录/缺少 API Token 未能读取规则；随后经用户授权，通过 macOS 辅助功能操作 Chrome，使用现有 Google 会话登录工作站和 Cloudflare 控制台，只读查看目标桶设置。
+- 目标桶的正式站 Origin 已允许 GET/HEAD/PUT 与 Content-Type。实际路径式与虚拟主机式地址的 PUT/content-type OPTIONS 均返回 204；固定域名 pixel-aigc.vercel.app 也返回 204。
+- 已确认 CORS 配置缺口：localhost:5173、127.0.0.1:5173，以及 PR #275 的实际部署域名和分支别名，OPTIONS 都返回 403，且没有 Access-Control-Allow-Origin；这能解释这些来源的直传失败，但原始故障来源尚未确认。
+- 用户分别授权了受保护的签名诊断与真实临时对象上传。浏览器实际签名绑定 content-length;content-type;host，无 checksum query，类型 image/png、大小 4,194,304 字节。用自制合法 PNG 在正式站真实 PUT 返回 200，耗时 4,957 ms，当前环境未复现直传失败。
+- 全程未调用收费生成接口，积分余额保持 46。临时请求拦截与内存签名已移除。测试对象留在 temporary/task-inputs 下，由现有 7 天生命周期清理；未修改桶配置、未导出密钥或签名 URL。
+- 无签名 HEAD 的 R2 400 响应没有跨域头，浏览器表现为 Failed to fetch；因此网络异常不能单独用来区分网络断开和存储拒绝。该探测未使用有效签名，不能据此认定业务 PUT 签名有误。
+- 不以文案和预算修正代替真实上传验收，不改动未经证实有错的签名与 endpoint。
+- 针对性 Vitest：6 个文件、77 个用例通过，包含签名、4 MiB 直传、回退预算、取消、超限服务端入口与诊断脱敏。
+- 服务端、前端和 Node TypeScript 检查通过；全仓 ESLint 通过。
+- 诊断脚本在缺配置时只输出变量名并以非零状态退出，已实际验证。
+
+## 最终根因与生产修复（2026-11-12）
+
+- 用户确认原始失败来源为 https://aigc.pixelsai.app。目标桶此前仅允许旧正式来源及少量预览来源，该域名的 PUT/content-type OPTIONS 实测返回 403，且没有 Access-Control-Allow-Origin。
+- 根因链路：实际正式域名缺少 CORS 许可 → 浏览器直传预检失败 → 前端进入备用逻辑 → 合法 4 MiB 图片又超备用请求体预算，最终被误导为图片过大。
+- 经用户明确批准，通过 Cloudflare 控制台仅将 https://aigc.pixelsai.app 加入现有第一条 AllowedOrigins，保留两条原有规则及方法、请求头、ExposeHeaders、MaxAgeSeconds。修改前后 JSON 已本地备份，保存后重新读取全部规则，与批准草稿完全一致。
+- 目标来源预检从 403 变为 204；旧正式来源仍返回 204。
+- 在用户实际域名的真实浏览器中，页面申请签名并上传自制 4,194,304 字节 PNG，PUT 返回 200，耗时 4,803 ms。
+- 测试在原图上传后主动停止；收费生成 fetch/XHR 经拦截验证未发出。积分余额保持 46。临时拦截与诊断内存已撤除，页面已离开受控失败态。
+- 生产 CORS 修复已生效，无需部署代码；本次提交交付备用预算、失败诊断、测试和文档。完整供应商扩图生成未执行，不作为本次上传故障修复的已完成项。
