@@ -30,18 +30,31 @@ describe('uploadTaskInput', () => {
       objectKey: 'input-key', mimeType: 'image/png', dataBase64: expect.any(String),
     }))
   })
-  it('直传失败后的大图不再回退：base64 装不进平台请求体时直接报结论', async () => {
+  it.each([3, 4])('%i MiB 原图直传异常且备用受限时，保留原因并说明首次失败阶段', async mib => {
     mocks.sign.mockResolvedValueOnce({ uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' })
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
-    // 4 MB 原图经 base64 后约 5.3 MB，必然被平台在进函数前拒掉。首字节保持合法 PNG 头。
-    const large = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), new Uint8Array(4 * 1024 * 1024)], { type: 'image/png' })
+    const cause = new TypeError('Failed to fetch')
+    vi.stubGlobal('fetch', vi.fn(async () => { throw cause }))
+    const large = new Blob([png, new Uint8Array(mib * 1024 * 1024 - png.size)], { type: 'image/png' })
     const metrics = vi.fn()
-    await expect(uploadTaskInput(large, 'image/jpeg', undefined, { onMetrics: metrics })).rejects.toThrow(
-      '图片太大，无法通过备用通道上传，请压缩后重试',
-    )
-    // 关键：不得发出 fallback 请求，否则用户看到的是平台英文 413。
+    await expect(uploadTaskInput(large, 'image/jpeg', undefined, { onMetrics: metrics })).rejects.toMatchObject({
+      message: '原图直传失败，当前图片无法通过备用通道上传，请重试；仍失败可压缩后重试', cause,
+    })
     expect(mocks.sign).toHaveBeenCalledTimes(1)
-    expect(metrics).toHaveBeenCalledWith(expect.objectContaining({ transport: 'fallback', outcome: 'failed' }))
+    expect(metrics).toHaveBeenCalledWith(expect.objectContaining({
+      transport: 'direct', directOutcome: 'network-error', fallbackBlockedReason: 'body-limit', outcome: 'failed',
+    }))
+    expect(metrics.mock.calls[0][0].fallbackUploadMs).toBeUndefined()
+    expect(JSON.stringify(metrics.mock.calls)).not.toMatch(/Failed to fetch|r2\.test|input-key/)
+  })
+  it('合法 4 MiB 原图直接上传完整字节，不使用备用通道', async () => {
+    mocks.sign.mockResolvedValueOnce({ uploadUrl: 'https://r2.test/upload', objectKey: 'input-key' })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
+    const large = new Blob([png, new Uint8Array(4 * 1024 * 1024 - png.size)], { type: 'image/png' })
+    const metrics = vi.fn()
+    await expect(uploadTaskInput(large, undefined, undefined, { onMetrics: metrics })).resolves.toBe('input-key')
+    expect((vi.mocked(fetch).mock.calls[0][1]!.body as Blob).size).toBe(large.size)
+    expect(mocks.sign).toHaveBeenCalledTimes(1)
+    expect(metrics).toHaveBeenCalledWith(expect.objectContaining({ transport: 'direct', outcome: 'success', uploadedBytes: large.size }))
   })
   it('签名等待期间取消，迟到签名不能发起 PUT', async () => {
     let finish!: (value: unknown) => void

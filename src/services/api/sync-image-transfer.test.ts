@@ -69,13 +69,22 @@ describe('重绘与扩图的大图请求', () => {
       headers: { 'Content-Type': 'image/jpeg' },
     }))
     vi.stubGlobal('fetch', fetchMock)
-    const input = new Blob([new Uint8Array([255, 216, 255]), new Uint8Array(3 * 1024 * 1024 - 3)], { type: 'image/jpeg' })
+    const input = new Blob([new Uint8Array([255, 216, 255]), new Uint8Array(4 * 1024 * 1024 - 3)], { type: 'image/jpeg' })
     await requestOutpaint(input, 'image/jpeg', { left: 100, right: 0, top: 0, bottom: 0 })
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const body = JSON.parse(String(init.body)) as Record<string, unknown>
     expect(body.sourceImageKey).toBe('temporary/task-inputs/user/scaled')
     expect(body.dataBase64).toBeUndefined()
     expect(mocks.uploadTaskInput).toHaveBeenCalledWith(input, 'image/jpeg', expect.any(AbortSignal))
+  })
+
+  it('扩图原图上传失败时不调用收费生成接口', async () => {
+    mocks.uploadTaskInput.mockRejectedValue(new Error('原图直传失败'))
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const input = new Blob([new Uint8Array([255, 216, 255]), new Uint8Array(4 * 1024 * 1024 - 3)], { type: 'image/jpeg' })
+    await expect(requestOutpaint(input, 'image/jpeg', { left: 100, right: 0, top: 0, bottom: 0 })).rejects.toThrow('原图直传失败')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('图片工作站未缩放的扩图直接复用原图键', async () => {

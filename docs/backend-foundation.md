@@ -67,7 +67,7 @@ Vercel 使用 Node.js 24，Vite 构建，API 在 `api/[...path].ts`。配置函�
 ```json
 [
   {
-    "AllowedOrigins": ["http://127.0.0.1:5173", "https://aigc.contentup.cc"],
+    "AllowedOrigins": ["http://127.0.0.1:5173", "https://aigc.contentup.cc", "https://aigc.pixelsai.app"],
     "AllowedMethods": ["GET", "HEAD", "PUT"],
     "AllowedHeaders": ["content-type", "range"],
     "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
@@ -75,6 +75,16 @@ Vercel 使用 Node.js 24，Vite 构建，API 在 `api/[...path].ts`。配置函�
   }
 ]
 ```
+
+排查直传跨域时，可在具有目标环境 R2 配置的终端执行只读预检（把 Origin 换成实际页面来源）：
+
+```sh
+node --env-file-if-exists=.env.local --import tsx scripts/check-upload-cors.ts https://aigc.pixelsai.app
+```
+
+新增正式域名或切换访问来源时，必须同步更新桶的 CORS 精确来源列表；Vercel 域名绑定不会自动更新 R2。2026-11-12 已修复 `https://aigc.pixelsai.app` 缺失的问题：此前 PUT 预检返回 403，新增来源后返回 204，实际 4 MiB 上传返回 200。开发与预览来源仍需按实际用途单独配置，不能以旧正式域名的验收代替当前域名。
+
+该命令只发送去除签名参数的 OPTIONS，不上传对象，也不输出存储地址或密钥。预检通过只证明 PUT/content-type 的跨域许可，还需在浏览器核对实际 PUT 的状态、类型与大小；无可见响应也可能由网络或被跨域屏蔽的存储错误引起。不要导出包含签名地址和令牌的原始 HAR。4 MB 图片在业务上限内，直传异常且备用通道容纳不下，不能据此归因于原图超限。备用通道的 JSON 请求受服务端 3 MiB 上限约束，需计入 Base64 膨胀与字段开销。
 
 上传仅支持静态 PNG/JPEG/WebP，最大 20 MB、解码像素最多 4000 万。PUT 签名有效期 10 分钟，绑定类型与大小；完成接口重新读取并核验实际字节，以同一份字节写入不可由客户端覆盖的正式 key，再更新数据库。临时对象保留到生命周期清理，事务失败后可重复完成。GET 签名有效期 15 分钟，前端提前刷新。R2 与 Postgres 无跨服务事务，正式对象写入后数据库失败可能留下孤立对象；重复完成可恢复，本轮不执行永久删除。
 

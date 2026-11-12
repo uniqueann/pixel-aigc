@@ -1,5 +1,6 @@
 import { BAILIAN_IMAGEEDIT_PROMPT_MAX } from '../shared/prompt-limits.js'
 import { MAX_OUTPAINT_OUTPUT_PIXELS } from '../shared/outpaint.js'
+import { TASK_INPUT_FALLBACK_BODY_BYTES } from '../shared/upload-limits.js'
 import { outpaintCreditPrice } from '../shared/billing.js'
 import sharp from 'sharp'
 import { readRequestBody } from './request-body.js'
@@ -124,7 +125,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const query = withoutPlatformQuery(inboundQuery)
     const method = req.method ?? 'GET'
     const heavy = ['bg-remove','subject-detect','outpaint','erase','repaint','smart-select'].includes(path[0])
-    await readRequestBody(req,path[0] === 'repaint' ? 48*1024*1024 : heavy ? 28*1024*1024 : 3*1024*1024)
+    const maxBytes = path.join('/') === 'task-inputs/fallback' ? TASK_INPUT_FALLBACK_BODY_BYTES
+      : path[0] === 'repaint' ? 48*1024*1024 : heavy ? 28*1024*1024 : 3*1024*1024
+    await readRequestBody(req,maxBytes)
     if (path.join('/') === 'internal/image-benchmark') {
       const { authorizeImageBenchmark, runImageBenchmark } = await import('./image-benchmark/probe.js')
       authorizeImageBenchmark(req.headers.authorization)
@@ -249,8 +252,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json({ items: publicConfiguredImageModels(parsed?.data) })
       return
     }
-    const heavyRoute = path[0] === 'bg-remove' || path[0] === 'subject-detect' || path[0] === 'outpaint' || path[0] === 'erase' || path[0] === 'repaint' || path[0] === 'smart-select'
-    const maxBytes = path[0] === 'repaint' ? 48 * 1024 * 1024 : heavyRoute ? 28 * 1024 * 1024 : 3 * 1024 * 1024
     const user = await authenticate(req.headers.authorization)
     userId = user.id
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body

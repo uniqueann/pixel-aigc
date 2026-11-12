@@ -449,6 +449,19 @@ describe('API 认证、版本和写入边界', () => {
     expect(res.json).toHaveBeenCalledWith({ objectKey: 'temporary/task-inputs/owner/file-1.png', ok: true })
   })
 
+  it.each(['raw', 'parsed'])('任务输入 fallback 的 %s 请求超过共享预算时拒绝且不写对象', async kind => {
+    const { TASK_INPUT_FALLBACK_BODY_BYTES } = await import('../shared/upload-limits')
+    const body = { objectKey: 'temporary/task-inputs/owner/large', mimeType: 'image/png', dataBase64: 'A'.repeat(TASK_INPUT_FALLBACK_BODY_BYTES) }
+    const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/task-inputs/fallback',
+      ...(kind === 'raw' ? { rawBody: JSON.stringify(body) } : { body }),
+    } as VercelRequest
+    const res = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn(), end: vi.fn() }
+    res.status.mockReturnValue(res)
+    await handler(req, res as unknown as VercelResponse)
+    expect(res.status).toHaveBeenCalledWith(413)
+    expect(mocks.putObject).not.toHaveBeenCalled()
+  })
+
   it('任务输入 fallback 接口拒绝非自身路径', async () => {
     const req = { headers: { authorization: 'Bearer test' }, method: 'POST', url: '/api/task-inputs/fallback', body: {
       objectKey: 'temporary/task-inputs/other-user/file-1.png',

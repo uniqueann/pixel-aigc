@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  base64FitsPlatform, base64Length, formatMegabytes,
-  IMAGE_TOO_LARGE_MESSAGE, JSON_BODY_OVERHEAD_BYTES, MAX_IMAGE_BYTES, PLATFORM_BODY_BYTES, REQUEST_TOO_LARGE_MESSAGE, uploadFailureText,
+  base64FitsTaskInputFallback, base64Length, formatMegabytes,
+  IMAGE_TOO_LARGE_MESSAGE, JSON_BODY_OVERHEAD_BYTES, MAX_IMAGE_BYTES, PLATFORM_BODY_BYTES, TASK_INPUT_FALLBACK_BODY_BYTES, REQUEST_TOO_LARGE_MESSAGE, uploadFailureText,
 } from './upload-limits'
 
 describe('上传体积预算', () => {
@@ -12,11 +12,16 @@ describe('上传体积预算', () => {
     expect(base64Length(4)).toBe(8)
   })
 
-  it('只有 base64 后仍装进平台请求体才允许回退', () => {
-    // 3 MB 原图 → 4 MB base64，加上 64 KB 开销仍在 4.5 MB 内。
-    expect(base64FitsPlatform(3 * 1024 * 1024)).toBe(true)
-    // 4 MB 原图 → 5.33 MB base64，必然被平台拒掉。
-    expect(base64FitsPlatform(4 * 1024 * 1024)).toBe(false)
+  it('备用请求同时满足服务端与平台预算，编码临界值精确到字节', () => {
+    const limit = Math.min(PLATFORM_BODY_BYTES, TASK_INPUT_FALLBACK_BODY_BYTES)
+    const maxImageBytes = Math.floor((limit - JSON_BODY_OVERHEAD_BYTES) / 4) * 3
+    expect(base64FitsTaskInputFallback(maxImageBytes)).toBe(true)
+    expect(base64FitsTaskInputFallback(maxImageBytes + 1)).toBe(false)
+    expect(TASK_INPUT_FALLBACK_BODY_BYTES).toBe(3 * 1024 * 1024)
+    // 3 MiB 原图虽能满足平台预算，仍会超出服务端的 3 MiB JSON 上限。
+    expect(base64FitsTaskInputFallback(3 * 1024 * 1024)).toBe(false)
+    expect(base64FitsTaskInputFallback(4 * 1024 * 1024)).toBe(false)
+    expect(base64FitsTaskInputFallback(2 * 1024 * 1024)).toBe(true)
   })
 
   it('业务上限与平台上限分开，业务可远大于平台', () => {
