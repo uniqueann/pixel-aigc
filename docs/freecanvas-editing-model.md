@@ -269,3 +269,16 @@ fabric 画不出 CSS 变量，所以画布配色靠 `src/features/free-canvas/ca
 - **默认项目名** `自由画布` → `未命名画布`，面包屑不再出现"自由画布 / 自由画布"。
 - **节点操作条** "图生视频 · 加载失败" 的灰字去掉，原因留在 tooltip。
 - `CanvasAssetPicker` 缩略图改为 `useMemo` 生成 object URL（不再命令式给 `<img>` 赋 src，也没有空 src 的首帧）。
+
+## 15. 图层面板（Tier B 第 1 项）
+
+工具条新增「图层」开关，画布左侧浮出面板（`z-index: 5`）：
+
+- 数据源 `src/features/free-canvas/layers.ts` 的 `buildLayerItems(nodes, assets, generations)`：**顶层在前**（与渲染顺序一致），只列画布真正会渲染的类型（图片/视频/生成占位），与 `FreeCanvasStage` 的 reconcile 过滤保持一致。
+- 同名副本（`⌘D` 产生的）**从下往上编号**，原件保留原名：`示例商品图 9 … 示例商品图 2 / 示例商品图`。
+- 图片给缩略图（仅 `http(s)/data:/blob:` 协议；`__aigc_asset__` 占位符不展示），视频用图标（没有可塞进 `<img>` 的封面），生成占位显示任务状态；素材缺失/加载失败标 `素材不可用` + 警示图标。
+- 交互：单击选中并 `revealNode`（已经可见时不移动视口，复用 `calculateRevealViewport` 的幂等行为），⇧ 单击切换集合成员，Delete/Backspace 删除，聚焦时在画布上画焦点环。
+- 面板打开时：画布上的选择操作条隐藏（避免被面板压住或挡住列表），`.sr-only` 节点列表设为 `hidden`（避免两条 Tab 路径）。
+- 窄屏（≤720px）面板铺满画布可用宽度，工具条保持单行（7 个按钮改为 40×44，隐藏百分比文字），面板底边 `84px` 让开工具条。
+
+测试：`layers.test.ts`（8 条，排序/类型过滤/缩略图协议/视频无封面/占位状态/同名编号/类型兜底）、`layerPanel.test.ts`（6 条源码契约：开关、无障碍标签、⇧ 追加、读屏列表隐藏、操作条收起、窄屏宽度）。

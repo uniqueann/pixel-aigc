@@ -1,19 +1,25 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react'
 import {
   AudioMutedOutlined,
   BranchesOutlined,
   CaretRightOutlined,
+  CloseOutlined,
   CopyOutlined,
   DeleteOutlined,
   ExpandOutlined,
   AppstoreOutlined,
+  LoadingOutlined,
   MinusOutlined,
   PauseOutlined,
+  PictureOutlined,
   PlusOutlined,
   RedoOutlined,
   SoundOutlined,
   UndoOutlined,
+  UnorderedListOutlined,
   VideoCameraAddOutlined,
+  VideoCameraOutlined,
+  WarningFilled,
 } from '@ant-design/icons'
 import { Button, Dropdown, Tooltip } from 'antd'
 import { ActiveSelection, Canvas, FabricImage, FabricText, Group, Point, Rect, Shadow, type FabricObject } from 'fabric'
@@ -33,6 +39,7 @@ import { sortedByZIndex, type ZOrderAction } from './zOrder'
 import type { FreeCanvasStageHandle, FreeCanvasStageProps, NodeTransform } from './types'
 import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 import { readCanvasPalette, useCanvasPalette, type CanvasPalette } from './canvasTheme'
+import { buildLayerItems, type LayerKind } from './layers'
 
 const PLACEHOLDER_LABEL = '#f5f5f4'
 const PLACEHOLDER_DETAIL = '#aeb7b4'
@@ -72,6 +79,12 @@ interface StageCallbacks {
 function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLElement
     && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+}
+
+const LAYER_ICONS: Record<LayerKind, ReactNode> = {
+  image: <PictureOutlined />,
+  video: <VideoCameraOutlined />,
+  generation: <LoadingOutlined />,
 }
 
 const GENERATION_LABELS: Record<string, string> = {
@@ -467,6 +480,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const [mediaErrorCount, setMediaErrorCount] = useState(0)
   const [videoState, setVideoState] = useState<{ id?: NodeId; paused: boolean; muted: boolean }>({ paused: true, muted: true })
   const [dropActive, setDropActive] = useState(false)
+  const [layersOpen, setLayersOpen] = useState(false)
   const sceneSizeRef = useRef({ width: scene.width, height: scene.height })
   const spacePressedRef = useRef(false)
   const panningRef = useRef(false)
@@ -1258,6 +1272,28 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const selectedImage = singleSelected?.type === 'image' && !brokenNodeIds.has(singleSelected.id) ? singleSelected : undefined
   const focusedNode = focusedNodeId ? scene.nodes.find((node) => node.id === focusedNodeId) : undefined
 
+  const layerItems = useMemo(() => buildLayerItems(scene.nodes, assets, generations), [assets, generations, scene.nodes])
+
+  /** 把节点带进视野；已经可见时不移动视口（calculateRevealViewport 会原样返回）。 */
+  const revealNode = useCallback((nodeId: NodeId) => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    const node = scene.nodes.find((item) => item.id === nodeId)
+    if (!canvas || !container || !node) return
+    setCanvasViewport(calculateRevealViewport(
+      { width: container.clientWidth, height: container.clientHeight },
+      [calculateNodeBounds(node)],
+      viewportFromCanvas(canvas),
+    ))
+  }, [scene.nodes, setCanvasViewport])
+
+  const toggleLayerNode = useCallback((nodeId: NodeId) => {
+    const next = selectedNodeIds.includes(nodeId)
+      ? selectedNodeIds.filter((id) => id !== nodeId)
+      : [...selectedNodeIds, nodeId]
+    onSelectNodes(next)
+  }, [onSelectNodes, selectedNodeIds])
+
   /** 操作条贴在选择包围盒上方；空间不够时落到下方，且不进入底部工具条占用的区域。 */
   const actionBarStyle = (bounds: ReturnType<typeof calculateNodeBounds>) => {
     const zoom = viewport.zoom
@@ -1315,7 +1351,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
 
   return (
     <div
-      className={`free-canvas-stage${dropActive ? ' is-drop-active' : ''}`}
+      className={`free-canvas-stage${dropActive ? ' is-drop-active' : ''}${layersOpen ? ' has-layers' : ''}`}
       ref={containerRef}
       tabIndex={0}
       role="application"
@@ -1336,7 +1372,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       }}
     >
       <canvas ref={canvasElementRef} aria-hidden="true" />
-      <ul className="free-canvas-node-list">
+      <ul className="free-canvas-node-list" hidden={layersOpen}>
         {sortedByZIndex(scene.nodes).map((node) => (
           <li key={node.id}>
             <button
@@ -1375,6 +1411,60 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       </ul>
       {focusRingStyle && <div className="free-canvas-focus-ring" style={focusRingStyle} aria-hidden="true" />}
       {dropActive && <div className="free-canvas-dropzone" aria-hidden="true"><span>松开添加到画布</span></div>}
+
+      {layersOpen && <div className="free-canvas-layers" role="group" aria-label="图层">
+        <div className="free-canvas-layers-head">
+          <span>图层</span>
+          <span className="free-canvas-layers-count">{layerItems.length}</span>
+          <Button
+            size="small"
+            type="text"
+            icon={<CloseOutlined />}
+            onClick={() => setLayersOpen(false)}
+            aria-label="关闭图层面板"
+          />
+        </div>
+        {layerItems.length === 0
+          ? <p className="free-canvas-layers-empty">画布上还没有内容</p>
+          : <ul>
+            {layerItems.map((item) => {
+              const selected = selectedNodeIds.includes(item.id)
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className={`free-canvas-layer${selected ? ' is-selected' : ''}`}
+                    aria-pressed={selected}
+                    aria-label={`${item.name}，${item.meta}${selected ? '，已选中' : ''}`}
+                    onClick={(event) => {
+                      if (event.shiftKey) toggleLayerNode(item.id)
+                      else onSelectNodes([item.id])
+                      revealNode(item.id)
+                    }}
+                    onFocus={() => { setFocusedNodeId(item.id); revealNode(item.id) }}
+                    onBlur={() => setFocusedNodeId((current) => current === item.id ? undefined : current)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Delete' || event.key === 'Backspace') {
+                        event.preventDefault()
+                        onSelectNodes([item.id])
+                        onDeleteSelection()
+                      }
+                    }}
+                  >
+                    <span className="free-canvas-layer-thumb" aria-hidden="true">
+                      {item.thumbnail ? <img src={item.thumbnail} alt="" /> : LAYER_ICONS[item.kind]}
+                    </span>
+                    <span className="free-canvas-layer-copy">
+                      <strong>{item.name}</strong>
+                      <span>{item.meta}</span>
+                    </span>
+                    {item.broken && <WarningFilled className="free-canvas-layer-broken" aria-hidden="true" />}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>}
+      </div>}
 
       <div className="free-canvas-stage-chrome">
         <div
@@ -1509,6 +1599,17 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
             </Tooltip>
           </>
         )}
+        <span className="free-canvas-toolbar-divider" />
+        <Tooltip title={layersOpen ? '关闭图层' : '图层（按叠放顺序列出画布内容）'}>
+          <Button
+            type="text"
+            icon={<UnorderedListOutlined />}
+            className={layersOpen ? 'is-active' : undefined}
+            aria-pressed={layersOpen}
+            onClick={() => setLayersOpen((value) => !value)}
+            aria-label="图层"
+          />
+        </Tooltip>
         <span className="free-canvas-toolbar-divider" />
         <Tooltip title="缩小"><Button type="text" icon={<MinusOutlined />} onClick={() => zoomBy(0.8)} aria-label="缩小画布" /></Tooltip>
         <span className="free-canvas-zoom-label">{Math.round(viewport.zoom * 100)}%</span>
