@@ -1627,6 +1627,143 @@ body.sidebar-resizing * {
   outline-offset: 2px;
 }
 
+.free-canvas-toolbar .ant-btn.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+/*
+ * 图层面板打开时收起画布上的选择操作条：面板本身在看选择状态，右栏也有多选摘要，
+ * 再叠一条会被面板压住或挡住列表。
+ */
+.free-canvas-stage.has-layers .free-canvas-node-actions {
+  display: none;
+}
+
+/* 图层面板：按叠放顺序列出画布内容，点一下选中并带到视野里。 */
+.free-canvas-layers {
+  position: absolute;
+  z-index: 5;
+  top: 56px;
+  bottom: 76px;
+  left: 12px;
+  display: flex;
+  width: 196px;
+  max-width: calc(100% - 24px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.free-canvas-layers-head {
+  display: flex;
+  min-height: 34px;
+  padding: 3px 4px 3px 10px;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.free-canvas-layers-count {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.free-canvas-layers-empty {
+  margin: 0;
+  padding: 14px 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.free-canvas-layers ul {
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+.free-canvas-layer {
+  display: flex;
+  width: 100%;
+  padding: 4px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.free-canvas-layer:hover {
+  background: var(--color-surface-2);
+}
+
+.free-canvas-layer.is-selected {
+  background: var(--color-accent-soft);
+}
+
+.free-canvas-layer:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.free-canvas-layer-thumb {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.free-canvas-layer-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.free-canvas-layer-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.free-canvas-layer-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.free-canvas-layer-copy span {
+  color: var(--color-text-secondary-strong);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.free-canvas-layer-broken {
+  flex: 0 0 auto;
+  color: var(--color-warning-text);
+  font-size: 12px;
+}
+
 .free-canvas-selection-summary {
   display: flex;
   margin: 0;
@@ -1692,7 +1829,7 @@ body.sidebar-resizing * {
 }
 
 .free-canvas-node-actions .ant-btn.ant-btn-dangerous {
-  color: var(--color-danger);
+  color: var(--color-danger-text);
 }
 
 .free-canvas-node-actions .ant-btn.ant-btn-dangerous:not(:disabled):hover {
@@ -2038,6 +2175,12 @@ body.sidebar-resizing * {
 .free-canvas-field .ant-radio-group,
 .free-canvas-generation-panel .ant-btn {
   max-width: 100%;
+}
+
+/* antd 的 danger 文案在深色主题只有 3.9:1、浅色 3.3:1，统一换成令牌里的可读版本。 */
+.free-canvas-page .ant-btn-dangerous:not(:disabled),
+.free-canvas-page .ant-btn-dangerous:not(:disabled) > span {
+  color: var(--color-danger-text);
 }
 
 /* antd 默认 placeholder / 字数统计 / link 在这套主题下低于 4.5:1。 */
@@ -5200,14 +5343,19 @@ body.sidebar-resizing * {
     transform: none;
   }
 
-  /* 触控目标：图标按钮 42×44（保持单行），带文字的节点操作 36px。 */
+  /* 触控目标：图标按钮 40×44（7 个按钮保持单行），带文字的节点操作 36px。 */
   .free-canvas-toolbar .ant-btn {
-    width: 42px;
+    width: 40px;
     height: 44px;
   }
 
+  /* 手机端工具条已经 7 个按钮，去掉百分比文字保持单行；缩放靠 +/- 与适合画板。 */
   .free-canvas-zoom-label {
-    min-width: 40px;
+    display: none;
+  }
+
+  .free-canvas-layers {
+    bottom: 84px;
   }
 
   .free-canvas-node-actions .ant-btn {
@@ -5242,6 +5390,11 @@ body.sidebar-resizing * {
     max-width: calc(100% - 16px);
     flex-wrap: wrap;
     white-space: normal;
+  }
+
+  /* 窄屏上图层是覆盖式面板。 */
+  .free-canvas-layers {
+    width: calc(100% - 24px);
   }
 
   .free-canvas-generation-panel {
