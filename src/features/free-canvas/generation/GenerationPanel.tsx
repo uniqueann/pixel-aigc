@@ -157,11 +157,15 @@ export default function GenerationPanel({
   const showForm = !textToVideo || videoState === 'ready'
   const quote = creditQuote(estimatedCredits, { mock: mockGateway, loading: modelsLoading })
   const retryQuote = creditQuote(taskIsVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
+  const advancedSummary = textToVideo
+    ? `${videoModel?.label ?? '视频模型'} · ${videoResolution ?? videoModel?.resolution ?? '720p'}`
+    : `${model?.label ?? '默认模型'} · ${resolution.toUpperCase()}`
   const imageCreditBlocked = !textToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote, balance: knownBalance })
   const imageRetryBlocked = !taskIsVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
 
   return (
     <aside className="free-canvas-generation-panel">
+      <div className="free-canvas-panel-body">
       <div>
         <h2>{textToVideo ? '文生视频' : '文生图'}</h2>
         {showForm && <p>{textToVideo ? '描述镜头内容，生成结果会作为可播放视频加入画布。' : '输入创意描述，结果会直接加入当前视口中心。'}</p>}
@@ -228,18 +232,33 @@ export default function GenerationPanel({
         </label>
       )}
 
+      <details className="free-canvas-advanced">
+        <summary>
+          <span className="free-canvas-advanced-title">高级设置</span>
+          <span className="free-canvas-advanced-value">{advancedSummary}</span>
+        </summary>
+        <div className="free-canvas-advanced-fields">
+          {!textToVideo && <>
+            <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="文生图模型" hintScope="text_to_image" models={models} value={model?.id} disabled={formLocked || modelsLoading} onChange={onModelChange} />
+            <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="文生图分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
+              {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
+            </Radio.Group></label>
+            {model?.provider === 'bailian' && <>
+              <label className="free-canvas-field free-canvas-switch-field">
+                <span>自动扩写</span>
+                <Switch aria-label="自动扩写" checked={enableThinking} disabled={formLocked} onChange={onThinkingChange} />
+              </label>
+              <p>开启后模型将丰富细节描述；耗时相对增加，画面细节更为丰富。</p>
+            </>}
+          </>}
+          {textToVideo && <VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
+            loading={modelsLoading} configured={videoConfigured || mockGateway} model={videoModel} models={videoModels}
+            resolution={videoResolution} selectedId={selectedVideoModelId} onModelChange={onVideoModelChange} onResolutionChange={onVideoResolutionChange} />}
+          {textToVideo && <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />}
+        </div>
+      </details>
+
       {!textToVideo && <>
-        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="文生图模型" hintScope="text_to_image" models={models} value={model?.id} disabled={formLocked || modelsLoading} onChange={onModelChange} />
-        <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="文生图分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
-          {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
-        </Radio.Group></label>
-        {model?.provider === 'bailian' && <>
-          <label className="free-canvas-field free-canvas-switch-field">
-            <span>自动扩写</span>
-            <Switch aria-label="自动扩写" checked={enableThinking} disabled={formLocked} onChange={onThinkingChange} />
-          </label>
-          <p>开启后模型将丰富细节描述；耗时相对增加，画面细节更为丰富。</p>
-        </>}
         {resolutionAdjusted && <p role="status">当前模型或画面比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
         {ratioAdjusted && <p role="status">当前模型不支持所选比例，已按 {presetKey} 计算本次参数。</p>}
         {countAdjusted && <p role="status">当前模型最多支持本次数量，已按 {count} 张计算本次参数与积分。</p>}
@@ -249,29 +268,7 @@ export default function GenerationPanel({
             : `本次预计消耗 ${estimatedCredits} 积分，按实际成功张数结算。`}</p>}
         {!modelsLoading && generateDisabled && <p className="toolbox-hint">文生图服务暂不可用，请检查网络或稍后重试。</p>}
       </>}
-      {textToVideo && <VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
-        loading={modelsLoading} configured={videoConfigured || mockGateway} model={videoModel} models={videoModels}
-        resolution={videoResolution} selectedId={selectedVideoModelId} onModelChange={onVideoModelChange} onResolutionChange={onVideoResolutionChange} />}
-      {textToVideo && <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />}
 
-      <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
-      <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
-        <span style={{ display: 'block' }}>
-          <CreditActionButton data-task-generate
-            className="free-canvas-generate"
-            type="primary"
-            block
-            loading={submitting}
-            quote={quote}
-            disabled={formLocked || generateDisabled || imageCreditBlocked || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || prompt.trim().length > imagePromptMax)) || !prompt.trim()}
-            onClick={onGenerate}
-          >
-            {active ? '正在生成' : textToVideo ? '生成' : `生成 ${count} 张`}
-          </CreditActionButton>
-        </span>
-      </Tooltip>
-      <CreditSettlementHint quote={quote} />
-      {!textToVideo && <CreditBalanceNotice quote={quote} />}
       {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
         手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
       </p>}
@@ -303,7 +300,28 @@ export default function GenerationPanel({
         return downloadImageSource(item.fullSrc, `生成结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
       }} />}
 
-      {showForm && <p className="free-canvas-panel-hint">生成期间可移动占位位置；生成完成后将自动替换为实际内容。</p>}
+      {showForm && <p className="free-canvas-panel-hint">生成期间可以拖动占位框调整位置；生成完成后会自动替换为实际内容。</p>}
+      </div>
+      {showForm && <div className="free-canvas-panel-footer">
+        <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
+        <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+          <span style={{ display: 'block' }}>
+            <CreditActionButton data-task-generate
+              className="free-canvas-generate"
+              type="primary"
+              block
+              loading={submitting}
+              quote={quote}
+              disabled={formLocked || generateDisabled || imageCreditBlocked || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || prompt.trim().length > imagePromptMax)) || !prompt.trim()}
+              onClick={onGenerate}
+            >
+              {active ? '正在生成' : textToVideo ? '生成' : `生成 ${count} 张`}
+            </CreditActionButton>
+          </span>
+        </Tooltip>
+        <CreditSettlementHint quote={quote} />
+        {!textToVideo && <CreditBalanceNotice quote={quote} />}
+      </div>}
     </aside>
   )
 }

@@ -1,10 +1,12 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
 import {
   AudioMutedOutlined,
   BranchesOutlined,
   CaretRightOutlined,
+  CopyOutlined,
   DeleteOutlined,
   ExpandOutlined,
+  AppstoreOutlined,
   MinusOutlined,
   PauseOutlined,
   PlusOutlined,
@@ -13,24 +15,47 @@ import {
   UndoOutlined,
   VideoCameraAddOutlined,
 } from '@ant-design/icons'
-import { Button, Tooltip } from 'antd'
-import { Canvas, FabricImage, FabricText, Group, Point, Rect, Shadow, type FabricObject } from 'fabric'
-import type { Asset, EditorNode, GenerationNode, ImageNode, NodeId, VideoNode, ViewportState } from '@/editor/types'
+import { Button, Dropdown, Tooltip } from 'antd'
+import { ActiveSelection, Canvas, FabricImage, FabricText, Group, Point, Rect, Shadow, type FabricObject } from 'fabric'
+import type { Asset, EditorNode, GenerationJob, GenerationNode, ImageNode, NodeId, VideoNode, ViewportState } from '@/editor/types'
 import type { TaskStatus } from '@/types'
 import {
   calculateFitViewport,
   calculateNodeBounds,
   calculateRevealViewport,
   clampZoom,
+  FIT_PADDING,
   MIN_NODE_SIZE,
   normalizeNodeTransform,
+  unionBounds,
 } from './geometry'
+import { sortedByZIndex, type ZOrderAction } from './zOrder'
 import type { FreeCanvasStageHandle, FreeCanvasStageProps, NodeTransform } from './types'
 import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
+import { readCanvasPalette, useCanvasPalette, type CanvasPalette } from './canvasTheme'
 
-const ARTBOARD_FILL = '#f7f7f5'
-const ARTBOARD_STROKE = '#d6d6d2'
-const SELECTION_COLOR = '#21cfa0'
+const PLACEHOLDER_LABEL = '#f5f5f4'
+const PLACEHOLDER_DETAIL = '#aeb7b4'
+const PLACEHOLDER_FILL = '#292f30'
+const PLACEHOLDER_STROKE = '#6b7b78'
+const PLACEHOLDER_ACTIVE_FILL = '#173b35'
+const PLACEHOLDER_ACTIVE_STROKE = '#21cfa0'
+const PLACEHOLDER_FAILED_FILL = '#3b2729'
+const PLACEHOLDER_FAILED_STROKE = '#ff7875'
+const ARTBOARD_BLUR = 18
+
+/** 窄屏上留 64px 内边距会把画板压得太小，按容器宽度收一档。 */
+function fitPaddingFor(width: number) {
+  return width <= 720 ? 24 : FIT_PADDING
+}
+
+/** canvas 的 fillStyle 不理解 color-mix，只能把十六进制转成 rgba。 */
+function withAlpha(color: string, alpha: number) {
+  const match = /^#([0-9a-f]{6})$/i.exec(color.trim())
+  if (!match) return color
+  const value = Number.parseInt(match[1], 16)
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`
+}
 
 interface PendingMedia {
   assetUrl: string
@@ -38,8 +63,8 @@ interface PendingMedia {
 }
 
 interface StageCallbacks {
-  onSelectNode: FreeCanvasStageProps['onSelectNode']
-  onTransformNode: FreeCanvasStageProps['onTransformNode']
+  onSelectNodes: FreeCanvasStageProps['onSelectNodes']
+  onTransformNodes: FreeCanvasStageProps['onTransformNodes']
   onViewportChange: FreeCanvasStageProps['onViewportChange']
   onAssetLoadError: FreeCanvasStageProps['onAssetLoadError']
 }
@@ -47,6 +72,63 @@ interface StageCallbacks {
 function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLElement
     && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+}
+
+const GENERATION_LABELS: Record<string, string> = {
+  failed: '生成失败的占位框',
+  cancelled: '已取消的生成占位框',
+  processing: '生成中的占位框',
+}
+
+/** 读屏与键盘导航用的节点名称。 */
+function nodeLabel(node: EditorNode, generations: Record<string, GenerationJob>) {
+  if (node.type === 'generation') {
+    const status = generations[node.generationId]?.status
+    return (status && GENERATION_LABELS[status]) ?? '排队中的生成占位框'
+  }
+  const kind = node.type === 'video' ? '视频' : node.type === 'image' ? '图片' : '节点'
+  return `${kind}：${node.name}`
+}
+
+/** 多选框沿用单选图案，避免 Fabric 默认的浅蓝边框和品牌绿打架。 */
+function styleActiveSelection(canvas: Canvas, accent: string) {
+  const active = canvas.getActiveObject()
+  if (!(active instanceof ActiveSelection)) return
+  active.set({
+    borderColor: accent,
+    borderDashArray: null,
+    cornerColor: accent,
+    cornerStrokeColor: '#0b6f59',
+    cornerStyle: 'circle',
+    cornerSize: 11,
+    transparentCorners: false,
+  })
+  active.setCoords()
+  // 组内成员单独渲染时也沿用同一套描边，避免默认虚线与浅蓝残留。
+  for (const child of active.getObjects()) {
+    child.set({ borderColor: accent, borderDashArray: null, cornerColor: accent })
+    child.setCoords()
+  }
+}
+
+function ZOrderMenu({ onReorder, disabled }: { onReorder: (action: ZOrderAction) => void; disabled?: boolean }) {
+  return (
+    <Dropdown
+      trigger={['click']}
+      disabled={disabled}
+      menu={{
+        items: [
+          { key: 'front', label: '置顶' },
+          { key: 'forward', label: '上移一层' },
+          { key: 'backward', label: '下移一层' },
+          { key: 'back', label: '置底' },
+        ],
+        onClick: ({ key }) => onReorder(key as ZOrderAction),
+      }}
+    >
+      <Button size="small" type="text" icon={<AppstoreOutlined />} aria-label="调整层级">层级</Button>
+    </Dropdown>
+  )
 }
 
 function viewportFromCanvas(canvas: Canvas): ViewportState {
@@ -62,7 +144,7 @@ function applyViewport(canvas: Canvas, viewport: ViewportState) {
   canvas.setViewportTransform([viewport.zoom, 0, 0, viewport.zoom, viewport.panX, viewport.panY])
 }
 
-function applyNodeToObject(object: FabricImage, node: ImageNode | VideoNode) {
+function applyNodeToObject(object: FabricImage, node: ImageNode | VideoNode, accent: string) {
   const sourceWidth = object.width || node.width
   const sourceHeight = object.height || node.height
   object.set({
@@ -84,9 +166,9 @@ function applyNodeToObject(object: FabricImage, node: ImageNode | VideoNode) {
     lockScalingY: node.locked,
     lockScalingFlip: true,
     transparentCorners: false,
-    cornerColor: SELECTION_COLOR,
+    cornerColor: accent,
     cornerStrokeColor: '#0b6f59',
-    borderColor: SELECTION_COLOR,
+    borderColor: accent,
     cornerStyle: 'circle',
     cornerSize: 11,
     padding: 1,
@@ -146,27 +228,33 @@ function loadVideo(url: string, signal: AbortSignal) {
   })
 }
 
-function readNodeTransform(object: FabricImage): NodeTransform {
-  return normalizeNodeTransform({
-    x: object.left,
-    y: object.top,
-    width: object.getScaledWidth(),
-    height: object.getScaledHeight(),
-    rotation: object.angle,
-  })
+function readNodeTransform(object: FabricObject, node: EditorNode): NodeTransform {
+  // 组变换结束后才能读到画板坐标；调用方保证对象已脱离 ActiveSelection。
+  const position = object.getXY()
+  if (object instanceof FabricImage) {
+    return normalizeNodeTransform({
+      x: position.x,
+      y: position.y,
+      width: object.getScaledWidth(),
+      height: object.getScaledHeight(),
+      rotation: object.angle,
+    })
+  }
+  return normalizeNodeTransform({ x: position.x, y: position.y, width: node.width, height: node.height, rotation: node.rotation })
 }
 
 function generationAppearance(status: TaskStatus | undefined) {
   if (status === 'failed' || status === 'cancelled') {
-    return { fill: '#3b2729', stroke: '#ff7875', label: '生成失败', detail: '可在右侧重试或修改参数' }
+    return { fill: PLACEHOLDER_FAILED_FILL, stroke: PLACEHOLDER_FAILED_STROKE, label: '生成失败', detail: '可在右侧重试或修改参数' }
   }
   if (status === 'processing') {
-    return { fill: '#173b35', stroke: SELECTION_COLOR, label: '生成中', detail: '结果完成后会替换此占位' }
+    // 占位框底色始终是深色，边框要继续用亮薄荷绿，不跟随主题。
+    return { fill: PLACEHOLDER_ACTIVE_FILL, stroke: PLACEHOLDER_ACTIVE_STROKE, label: '生成中', detail: '结果完成后会替换此占位' }
   }
-  return { fill: '#292f30', stroke: '#6b7b78', label: '排队中', detail: '正在等待生成任务' }
+  return { fill: PLACEHOLDER_FILL, stroke: PLACEHOLDER_STROKE, label: '排队中', detail: '正在等待生成任务' }
 }
 
-function createGenerationObject(node: GenerationNode, status: TaskStatus | undefined) {
+function createGenerationObject(node: GenerationNode, status: TaskStatus | undefined, accent: string) {
   const appearance = generationAppearance(status)
   const background = new Rect({
     left: 0,
@@ -187,7 +275,7 @@ function createGenerationObject(node: GenerationNode, status: TaskStatus | undef
     top: node.height / 2 - 14,
     originX: 'center',
     originY: 'center',
-    fill: '#f5f5f4',
+    fill: PLACEHOLDER_LABEL,
     fontFamily: 'sans-serif',
     fontSize: 17,
     fontWeight: 600,
@@ -197,7 +285,7 @@ function createGenerationObject(node: GenerationNode, status: TaskStatus | undef
     top: node.height / 2 + 17,
     originX: 'center',
     originY: 'center',
-    fill: '#aeb7b4',
+    fill: PLACEHOLDER_DETAIL,
     fontFamily: 'sans-serif',
     fontSize: 11,
   })
@@ -217,7 +305,7 @@ function createGenerationObject(node: GenerationNode, status: TaskStatus | undef
     lockScalingX: true,
     lockScalingY: true,
     hasControls: false,
-    borderColor: SELECTION_COLOR,
+    borderColor: accent,
     padding: 2,
     hoverCursor: node.locked ? 'not-allowed' : 'move',
   })
@@ -245,7 +333,7 @@ function hasDisplayableUrl(url?: string) {
   return typeof url === 'string' && (url.startsWith('data:') || url.startsWith('blob:'))
 }
 
-function createBrokenImageObject(node: ImageNode) {
+function createBrokenImageObject(node: ImageNode, accent: string) {
   const background = new Rect({
     left: 0,
     top: 0,
@@ -255,8 +343,8 @@ function createBrokenImageObject(node: ImageNode) {
     height: node.height,
     rx: 12,
     ry: 12,
-    fill: '#3b2729',
-    stroke: '#ff7875',
+    fill: PLACEHOLDER_FAILED_FILL,
+    stroke: PLACEHOLDER_FAILED_STROKE,
     strokeWidth: 2,
   })
   const label = new FabricText('图片损坏', {
@@ -264,7 +352,7 @@ function createBrokenImageObject(node: ImageNode) {
     top: node.height / 2 - 14,
     originX: 'center',
     originY: 'center',
-    fill: '#f5f5f4',
+    fill: PLACEHOLDER_LABEL,
     fontFamily: 'sans-serif',
     fontSize: 17,
     fontWeight: 600,
@@ -274,7 +362,7 @@ function createBrokenImageObject(node: ImageNode) {
     top: node.height / 2 + 17,
     originX: 'center',
     originY: 'center',
-    fill: '#aeb7b4',
+    fill: PLACEHOLDER_DETAIL,
     fontFamily: 'sans-serif',
     fontSize: 11,
   })
@@ -294,7 +382,7 @@ function createBrokenImageObject(node: ImageNode) {
     lockScalingX: true,
     lockScalingY: true,
     hasControls: false,
-    borderColor: SELECTION_COLOR,
+    borderColor: accent,
     padding: 2,
     hoverCursor: node.locked ? 'not-allowed' : 'move',
   })
@@ -322,7 +410,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   scene,
   assets,
   generations,
-  selectedNodeId,
+  selectedNodeIds,
   viewport,
   canUndo,
   canRedo,
@@ -330,14 +418,21 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   variationEnabled = false,
   imageToVideoEnabled = false,
   imageToVideoState = imageToVideoEnabled ? 'ready' : 'soon',
-  onSelectNode,
-  onTransformNode,
+  canDeleteSelection = false,
+  canDuplicateSelection = false,
+  selectionBlockedReason,
+  onSelectNodes,
+  onTransformNodes,
   onViewportChange,
   onUndo,
   onRedo,
-  onDelete,
+  onDeleteSelection,
+  onDuplicateSelection,
+  onReorderSelection,
   onNodeGenerationAction,
   onAssetLoadError,
+  onFilesDropped,
+  onCanvasFocusChange,
   children,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -357,13 +452,21 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const reportedLoadErrorsRef = useRef(new Set<string>())
   const [mediaLoadVersion, setMediaLoadVersion] = useState(0)
   const callbacksRef = useRef<StageCallbacks>({
-    onSelectNode,
-    onTransformNode,
+    onSelectNodes,
+    onTransformNodes,
     onViewportChange,
     onAssetLoadError,
   })
   const viewportRef = useRef(viewport)
-  const selectedNodeIdRef = useRef(selectedNodeId)
+  const selectedNodeIdsRef = useRef(new Set<NodeId>(selectedNodeIds))
+  const palette = useCanvasPalette()
+  const paletteRef = useRef<CanvasPalette>(palette)
+  const [themeVersion, setThemeVersion] = useState(0)
+  const [focusedNodeId, setFocusedNodeId] = useState<NodeId>()
+  const [brokenNodeIds, setBrokenNodeIds] = useState<ReadonlySet<NodeId>>(new Set())
+  const [mediaErrorCount, setMediaErrorCount] = useState(0)
+  const [videoState, setVideoState] = useState<{ id?: NodeId; paused: boolean; muted: boolean }>({ paused: true, muted: true })
+  const [dropActive, setDropActive] = useState(false)
   const sceneSizeRef = useRef({ width: scene.width, height: scene.height })
   const spacePressedRef = useRef(false)
   const panningRef = useRef(false)
@@ -371,11 +474,21 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const dismissHintRef = useRef(() => {})
   const [hintDismissed, setHintDismissed] = useState(false)
   const [hintHovered, setHintHovered] = useState(false)
-  dismissHintRef.current = () => setHintDismissed(true)
+  useEffect(() => { dismissHintRef.current = () => setHintDismissed(true) }, [])
   const reconcilingObjectsRef = useRef(false)
   const lastPointerRef = useRef({ x: 0, y: 0 })
   const initialFitAppliedRef = useRef(false)
-  const [, setVideoUiVersion] = useState(0)
+  const lastStageSizeRef = useRef<{ width: number; height: number }>()
+  const fitTimerRef = useRef<number>()
+  const [videoUiVersion, setVideoUiVersion] = useState(0)
+
+  useEffect(() => { paletteRef.current = palette }, [palette])
+
+  const reloadMedia = useCallback(() => {
+    reportedLoadErrorsRef.current.clear()
+    setMediaErrorCount(0)
+    setMediaLoadVersion((version) => version + 1)
+  }, [])
 
   const startVideoRendering = useCallback(() => {
     if (videoFrameRef.current !== undefined) return
@@ -408,6 +521,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       video.pause()
       canvasRef.current?.requestRenderAll()
     }
+    setVideoState({ id: nodeId, paused: video.paused, muted: video.muted })
     setVideoUiVersion((version) => version + 1)
   }, [startVideoRendering])
 
@@ -415,6 +529,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     const video = videoElementsRef.current.get(nodeId)
     if (!video) return
     video.muted = !video.muted
+    setVideoState({ id: nodeId, paused: video.paused, muted: video.muted })
     setVideoUiVersion((version) => version + 1)
   }, [])
 
@@ -425,6 +540,49 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     applyViewport(canvas, normalized)
     canvas.requestRenderAll()
     callbacksRef.current.onViewportChange(normalized)
+  }, [])
+
+  const fitToScene = useCallback(() => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+    setCanvasViewport(calculateFitViewport(
+      { width: container.clientWidth, height: container.clientHeight },
+      sceneSizeRef.current,
+      fitPaddingFor(container.clientWidth),
+    ))
+    dismissHintRef.current()
+  }, [setCanvasViewport])
+
+  /** 把 store 里的选择集同步到 Fabric（支持单选与多选）。 */
+  const applySelection = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const wanted = [...selectedNodeIdsRef.current]
+      .map((nodeId) => nodeObjectsRef.current.get(nodeId))
+      .filter((object): object is FabricObject => !!object)
+    const current = canvas.getActiveObjects()
+    if (current.length === wanted.length && wanted.every((object) => current.includes(object))) return
+    reconcilingObjectsRef.current = true
+    canvas.discardActiveObject()
+    if (wanted.length === 1) canvas.setActiveObject(wanted[0])
+    else if (wanted.length > 1) {
+      // 多选框沿用单选图案，避免 Fabric 默认的蓝色边框和品牌绿打架。
+      canvas.setActiveObject(new ActiveSelection(wanted, { canvas }))
+      styleActiveSelection(canvas, paletteRef.current.accent)
+    }
+    reconcilingObjectsRef.current = false
+    canvas.requestRenderAll()
+  }, [])
+
+  const zoomTo = useCallback((zoom: number) => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+    canvas.zoomToPoint(new Point(container.clientWidth / 2, container.clientHeight / 2), clampZoom(zoom))
+    canvas.requestRenderAll()
+    callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+    dismissHintRef.current()
   }, [])
 
   useImperativeHandle(ref, () => ({
@@ -439,6 +597,18 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         y: (container.clientHeight / 2 - transform[5]) / zoom,
       }
     },
+    getCanvasPoint: (clientX, clientY) => {
+      const canvas = canvasRef.current
+      const container = containerRef.current
+      if (!canvas || !container) return { x: sceneSizeRef.current.width / 2, y: sceneSizeRef.current.height / 2 }
+      const rect = canvas.upperCanvasEl.getBoundingClientRect()
+      const transform = canvas.viewportTransform
+      const zoom = canvas.getZoom()
+      return {
+        x: (clientX - rect.left - transform[4]) / zoom,
+        y: (clientY - rect.top - transform[5]) / zoom,
+      }
+    },
     revealBounds: (targets) => {
       const canvas = canvasRef.current
       const container = containerRef.current
@@ -449,25 +619,16 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         viewportFromCanvas(canvas),
       ))
     },
-  }), [setCanvasViewport])
+    fitToScene: () => { fitToScene() },
+    zoomTo: (zoom) => { zoomTo(zoom) },
+  }), [fitToScene, setCanvasViewport, zoomTo])
 
   useEffect(() => {
-    callbacksRef.current = { onSelectNode, onTransformNode, onViewportChange, onAssetLoadError }
+    callbacksRef.current = { onSelectNodes, onTransformNodes, onViewportChange, onAssetLoadError }
     viewportRef.current = viewport
-    selectedNodeIdRef.current = selectedNodeId
+    selectedNodeIdsRef.current = new Set(selectedNodeIds)
     sceneSizeRef.current = { width: scene.width, height: scene.height }
-  }, [onAssetLoadError, onSelectNode, onTransformNode, onViewportChange, scene.height, scene.width, selectedNodeId, viewport])
-
-  const fitToScene = useCallback(() => {
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
-    setCanvasViewport(calculateFitViewport(
-      { width: container.clientWidth, height: container.clientHeight },
-      sceneSizeRef.current,
-    ))
-    dismissHintRef.current()
-  }, [setCanvasViewport])
+  }, [onAssetLoadError, onSelectNodes, onTransformNodes, onViewportChange, scene.height, scene.width, selectedNodeIds, viewport])
 
   const zoomBy = useCallback((factor: number) => {
     const canvas = canvasRef.current
@@ -485,11 +646,15 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     const container = containerRef.current
     if (!canvasElement || !container) return
 
+    const initialPalette = readCanvasPalette()
     const canvas = new Canvas(canvasElement, {
-      backgroundColor: '#303035',
+      backgroundColor: initialPalette.background,
       preserveObjectStacking: true,
-      selection: false,
+      selection: true,
       uniformScaling: true,
+      selectionColor: withAlpha(initialPalette.accent, 0.08),
+      selectionBorderColor: initialPalette.accent,
+      selectionLineWidth: 1,
     })
     canvasRef.current = canvas
     const pendingMedia = pendingMediaRef.current
@@ -504,43 +669,63 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       originY: 'top',
       width: sceneSizeRef.current.width,
       height: sceneSizeRef.current.height,
-      fill: ARTBOARD_FILL,
-      stroke: ARTBOARD_STROKE,
+      fill: initialPalette.artboard,
+      stroke: initialPalette.artboardStroke,
       strokeWidth: 1,
       selectable: false,
       evented: false,
-      shadow: new Shadow({ color: 'rgba(0, 0, 0, 0.28)', blur: 18, offsetX: 0, offsetY: 6 }),
+      shadow: new Shadow({ color: initialPalette.artboardShadow, blur: ARTBOARD_BLUR, offsetX: 0, offsetY: 6 }),
     })
     artboardRef.current = artboard
     canvas.add(artboard)
     applyViewport(canvas, viewportRef.current)
 
+    /** 尺寸变化后统一在稳定尺寸上重排，避免布局中间态把缩放算到最小档。 */
+    const scheduleFit = () => {
+      if (fitTimerRef.current) window.clearTimeout(fitTimerRef.current)
+      fitTimerRef.current = window.setTimeout(() => {
+        const container = containerRef.current
+        if (!container) return
+        const width = container.clientWidth
+        const height = container.clientHeight
+        if (width < 120 || height < 120) return
+        const fitted = calculateFitViewport({ width, height }, sceneSizeRef.current, fitPaddingFor(width))
+        applyViewport(canvas, fitted)
+        callbacksRef.current.onViewportChange(fitted)
+      }, 140)
+    }
+
     const observer = new ResizeObserver(([entry]) => {
       const width = Math.max(1, Math.floor(entry.contentRect.width))
       const height = Math.max(1, Math.floor(entry.contentRect.height))
       canvas.setDimensions({ width, height })
+      const previousSize = lastStageSizeRef.current
+      lastStageSizeRef.current = { width, height }
 
-      if (!initialFitAppliedRef.current) {
-        initialFitAppliedRef.current = true
-        const current = viewportRef.current
-        if (current.zoom === 1 && current.panX === 0 && current.panY === 0) {
-          const fitted = calculateFitViewport({ width, height }, sceneSizeRef.current)
-          applyViewport(canvas, fitted)
-          callbacksRef.current.onViewportChange(fitted)
-        }
-      }
+      const current = viewportRef.current
+      const scene = sceneSizeRef.current
+      const fits = scene.width * current.zoom <= width && scene.height * current.zoom <= height
+      // 首次挂载：窄屏（手机布局）沿用桌面视口会让画板冲出屏幕；其他情况只在没有视口时按画板居中。
+      const initialOverflow = !initialFitAppliedRef.current && (width <= 720 ? !fits : current.zoom === 1 && current.panX === 0 && current.panY === 0)
+      const shrank = !!previousSize && (width < previousSize.width * 0.8 || height < previousSize.height * 0.8)
+      initialFitAppliedRef.current = true
+      if (initialOverflow || shrank) scheduleFit()
       canvas.requestRenderAll()
     })
     observer.observe(container)
 
-    canvas.on('selection:created', ({ selected }) => {
-      callbacksRef.current.onSelectNode(selected[0] ? objectNodeIdsRef.current.get(selected[0]) : undefined)
-    })
-    canvas.on('selection:updated', ({ selected }) => {
-      callbacksRef.current.onSelectNode(selected[0] ? objectNodeIdsRef.current.get(selected[0]) : undefined)
-    })
+    const reportSelection = () => {
+      styleActiveSelection(canvas, paletteRef.current.accent)
+      canvas.requestRenderAll()
+      const ids = canvas.getActiveObjects()
+        .map((object) => objectNodeIdsRef.current.get(object))
+        .filter((id): id is NodeId => !!id)
+      callbacksRef.current.onSelectNodes(ids)
+    }
+    canvas.on('selection:created', reportSelection)
+    canvas.on('selection:updated', reportSelection)
     canvas.on('selection:cleared', () => {
-      if (!panningRef.current && !reconcilingObjectsRef.current) callbacksRef.current.onSelectNode()
+      if (!panningRef.current && !reconcilingObjectsRef.current) callbacksRef.current.onSelectNodes([])
     })
     canvas.on('mouse:dblclick', ({ target }) => {
       const nodeId = target ? objectNodeIdsRef.current.get(target) : undefined
@@ -548,7 +733,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       if (nodeId && node?.type === 'video') void toggleVideo(nodeId)
     })
     canvas.on('object:scaling', ({ target }) => {
-      if (!(target instanceof FabricImage)) return
+      if (target instanceof ActiveSelection || !(target instanceof FabricImage)) return
       const width = target.getScaledWidth()
       const height = target.getScaledHeight()
       if (width >= MIN_NODE_SIZE && height >= MIN_NODE_SIZE) return
@@ -558,18 +743,24 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       target.setCoords()
     })
     canvas.on('object:modified', ({ target }) => {
+      if (target instanceof ActiveSelection) {
+        const objects = target.getObjects()
+        // 退出选择集会把组变换烘焙回子对象，之后才能读到画板坐标。
+        reconcilingObjectsRef.current = true
+        canvas.discardActiveObject()
+        reconcilingObjectsRef.current = false
+        const updates = objects.flatMap((object) => {
+          const nodeId = objectNodeIdsRef.current.get(object)
+          const node = nodeId ? nodesByIdRef.current.get(nodeId) : undefined
+          return nodeId && node ? [{ id: nodeId, transform: readNodeTransform(object, node) }] : []
+        })
+        if (updates.length) callbacksRef.current.onTransformNodes(updates)
+        return
+      }
       const nodeId = objectNodeIdsRef.current.get(target)
       const node = nodeId ? nodesByIdRef.current.get(nodeId) : undefined
       if (!nodeId || !node) return
-      const transform = target instanceof FabricImage
-        ? readNodeTransform(target)
-        : normalizeNodeTransform({
-          x: target.left,
-          y: target.top,
-          width: node.width,
-          height: node.height,
-          rotation: node.rotation,
-        })
+      const transform = readNodeTransform(target, node)
       if (target instanceof FabricImage) {
         target.set({
           left: transform.x,
@@ -582,7 +773,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         target.set({ left: transform.x, top: transform.y })
       }
       target.setCoords()
-      callbacksRef.current.onTransformNode(nodeId, transform)
+      callbacksRef.current.onTransformNodes([{ id: nodeId, transform }])
     })
     canvas.on('object:moving', () => { dismissHintRef.current() })
     canvas.on('object:scaling', () => { dismissHintRef.current() })
@@ -627,6 +818,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       if (overlayPanningRef.current || !panningRef.current) return
       panningRef.current = false
       canvas.skipTargetFind = false
+      canvas.selection = true
       canvas.defaultCursor = spacePressedRef.current ? 'grab' : 'default'
       callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
     })
@@ -672,6 +864,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       overlayPanningRef.current = false
       panningRef.current = false
       canvas.skipTargetFind = false
+      canvas.selection = true
       canvas.defaultCursor = spacePressedRef.current ? 'grab' : 'default'
       callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
     }
@@ -718,6 +911,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       videoElements.forEach(releaseVideo)
       videoElements.clear()
       objectAssetUrls.clear()
+      if (fitTimerRef.current) window.clearTimeout(fitTimerRef.current)
       if (videoFrameRef.current !== undefined) cancelAnimationFrame(videoFrameRef.current)
       videoFrameRef.current = undefined
       nodeObjects.clear()
@@ -727,11 +921,51 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     }
   }, [toggleVideo])
 
+  // 主题切换：画布底色、画板纸面、选中色跟着令牌走；占位框整体重建以换配色。
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const artboard = artboardRef.current
+    if (!canvas || !artboard) return
+    canvas.backgroundColor = palette.background
+    canvas.selectionColor = withAlpha(palette.accent, 0.08)
+    canvas.selectionBorderColor = palette.accent
+    artboard.set({
+      fill: palette.artboard,
+      stroke: palette.artboardStroke,
+      shadow: new Shadow({ color: palette.artboardShadow, blur: ARTBOARD_BLUR, offsetX: 0, offsetY: 6 }),
+    })
+    artboard.setCoords()
+    let droppedPlaceholder = false
+    nodeObjectsRef.current.forEach((object, nodeId) => {
+      if (object instanceof FabricImage) {
+        object.set({ borderColor: palette.accent, cornerColor: palette.accent })
+        object.setCoords()
+        return
+      }
+      canvas.remove(object)
+      nodeObjectsRef.current.delete(nodeId)
+      generationStatusesRef.current.delete(nodeId)
+      brokenImageNodesRef.current.delete(nodeId)
+      droppedPlaceholder = true
+    })
+    canvas.requestRenderAll()
+    if (droppedPlaceholder) setThemeVersion((version) => version + 1)
+  }, [palette])
+
   useEffect(() => {
     const canvas = canvasRef.current
     const artboard = artboardRef.current
     if (!canvas || !artboard) return
     reconcilingObjectsRef.current = true
+
+    // 组选中时子对象坐标在组内坐标系，先退出选择才能按画板坐标重算。
+    if (canvas.getActiveObject() instanceof ActiveSelection) canvas.discardActiveObject()
+
+    /** 单选时才把 Fabric 选中跟着对象走；多选由 applySelection 统一重建。 */
+    const selectIfOnlySelected = (nodeId: NodeId, object: FabricObject) => {
+      const selected = selectedNodeIdsRef.current
+      if (selected.size === 1 && selected.has(nodeId)) canvas.setActiveObject(object)
+    }
 
     artboard.set({ width: scene.width, height: scene.height })
     artboard.setCoords()
@@ -753,7 +987,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       reportedLoadErrorsRef.current.delete(url)
       removedStaleError = true
     })
-    if (removedStaleError) setMediaLoadVersion((version) => version + 1)
+    if (removedStaleError) {
+      setMediaLoadVersion((version) => version + 1)
+      setMediaErrorCount(reportedLoadErrorsRef.current.size)
+    }
     const wantedNodeIds = new Set(supportedNodes.map((node) => node.id))
     wantedNodeIdsRef.current = wantedNodeIds
     nodesByIdRef.current = new Map(supportedNodes.map((node) => [node.id, node]))
@@ -796,12 +1033,12 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           return
         }
 
-        const placeholder = createGenerationObject(node, status)
+        const placeholder = createGenerationObject(node, status, palette.accent)
         generationStatusesRef.current.set(node.id, status)
         nodeObjectsRef.current.set(node.id, placeholder)
         objectNodeIdsRef.current.set(placeholder, node.id)
         canvas.add(placeholder)
-        if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(placeholder)
+        selectIfOnlySelected(node.id, placeholder)
         return
       }
 
@@ -828,12 +1065,12 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           pendingMediaRef.current.get(node.id)?.controller.abort()
           pendingMediaRef.current.delete(node.id)
 
-          const placeholder = createBrokenImageObject(node)
+          const placeholder = createBrokenImageObject(node, palette.accent)
           brokenImageNodesRef.current.add(node.id)
           nodeObjectsRef.current.set(node.id, placeholder)
           objectNodeIdsRef.current.set(placeholder, node.id)
           canvas.add(placeholder)
-          if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(placeholder)
+          selectIfOnlySelected(node.id, placeholder)
           return
         }
 
@@ -855,7 +1092,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         }
 
         if (existing instanceof FabricImage && objectAssetUrlsRef.current.get(node.id) === asset.url) {
-          applyNodeToObject(existing, node)
+          applyNodeToObject(existing, node, palette.accent)
           return
         }
         if (existing) {
@@ -879,13 +1116,13 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
             pendingMediaRef.current.delete(node.id)
             const latestNode = nodesByIdRef.current.get(node.id)
             if (latestNode?.type !== 'image') return
-            applyNodeToObject(image, latestNode)
+            applyNodeToObject(image, latestNode, palette.accent)
             nodeObjectsRef.current.set(node.id, image)
             objectAssetUrlsRef.current.set(node.id, asset.url)
             objectNodeIdsRef.current.set(image, node.id)
             canvas.add(image)
             reorderObjects()
-            if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(image)
+            selectIfOnlySelected(node.id, image)
             canvas.requestRenderAll()
           })
           .catch((error: unknown) => {
@@ -913,7 +1150,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       }
 
       if (existing instanceof FabricImage && objectAssetUrlsRef.current.get(node.id) === asset.url) {
-        applyNodeToObject(existing, node)
+        applyNodeToObject(existing, node, palette.accent)
         return
       }
       if (existing) {
@@ -945,14 +1182,14 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
             return
           }
           const object = new FabricImage(video)
-          applyNodeToObject(object, latestNode)
+          applyNodeToObject(object, latestNode, palette.accent)
           nodeObjectsRef.current.set(node.id, object)
           objectAssetUrlsRef.current.set(node.id, asset.url)
           videoElementsRef.current.set(node.id, video)
           objectNodeIdsRef.current.set(object, node.id)
           canvas.add(object)
           reorderObjects()
-          if (selectedNodeIdRef.current === node.id) canvas.setActiveObject(object)
+          selectIfOnlySelected(node.id, object)
           canvas.requestRenderAll()
           setVideoUiVersion((version) => version + 1)
         })
@@ -961,6 +1198,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           if (controller.signal.aborted || reportedLoadErrorsRef.current.has(asset.url)) return
           reportedLoadErrorsRef.current.add(asset.url)
           setMediaLoadVersion((version) => version + 1)
+          setMediaErrorCount(reportedLoadErrorsRef.current.size)
           const detail = error instanceof Error ? error.message : '未知错误'
           callbacksRef.current.onAssetLoadError(`视频“${asset.name}”加载失败：${detail}`)
         })
@@ -969,7 +1207,14 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     reorderObjects()
     canvas.requestRenderAll()
     reconcilingObjectsRef.current = false
-  }, [assets, generations, mediaLoadVersion, scene.height, scene.nodes, scene.width, selectedNodeId])
+    applySelection()
+    setBrokenNodeIds((previous) => {
+      const next = new Set(brokenImageNodesRef.current)
+      if (previous.size === next.size && [...next].every((id) => previous.has(id))) return previous
+      return next
+    })
+    setMediaErrorCount(reportedLoadErrorsRef.current.size)
+  }, [applySelection, assets, generations, mediaLoadVersion, palette.accent, scene.height, scene.nodes, scene.width, themeVersion])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -979,50 +1224,158 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   }, [viewport])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const activeObject = canvas.getActiveObject()
-    const nextObject = selectedNodeId ? nodeObjectsRef.current.get(selectedNodeId) : undefined
-    if (nextObject && activeObject !== nextObject) canvas.setActiveObject(nextObject)
-    if (!nextObject && activeObject) {
-      // 媒体加载期间暂时清理 Fabric 选择，保留领域层等待选中的新节点。
-      reconcilingObjectsRef.current = true
-      canvas.discardActiveObject()
-      reconcilingObjectsRef.current = false
-    }
-    canvas.requestRenderAll()
-  }, [selectedNodeId, scene.nodes])
+    applySelection()
+  }, [applySelection, selectedNodeIds, scene.nodes])
 
-  const selectedNode = selectedNodeId
-    ? scene.nodes.find((node) => node.id === selectedNodeId)
+  const selectedNodes = useMemo(() => {
+    const byId = new Map(scene.nodes.map((node) => [node.id, node]))
+    return selectedNodeIds.flatMap((id) => {
+      const node = byId.get(id)
+      return node ? [node] : []
+    })
+  }, [scene.nodes, selectedNodeIds])
+  const singleSelected = selectedNodes.length === 1 ? selectedNodes[0] : undefined
+  const selectedGenerationStatus = singleSelected?.type === 'generation'
+    ? generations[singleSelected.generationId]?.status
     : undefined
-  const selectedGenerationStatus = selectedNode?.type === 'generation'
-    ? generations[selectedNode.generationId]?.status
-    : undefined
-  const isSelectedTerminalGeneration = selectedNode?.type === 'generation'
+  const isSelectedTerminalGeneration = singleSelected?.type === 'generation'
     && !!selectedGenerationStatus
     && (selectedGenerationStatus === 'failed' || selectedGenerationStatus === 'cancelled')
-  const canDeleteSelected = !!selectedNode && (selectedNode.type !== 'generation' || isSelectedTerminalGeneration)
-  const selectedVideo = selectedNode?.type === 'video'
-    ? videoElementsRef.current.get(selectedNode.id)
-    : undefined
-  const selectedImage = selectedNode?.type === 'image' && !brokenImageNodesRef.current.has(selectedNode.id) ? selectedNode : undefined
-  const nodeActionPosition = selectedImage ? (() => {
-    const bounds = calculateNodeBounds(selectedImage)
-    const centerX = (bounds.left + bounds.right) / 2 * viewport.zoom + viewport.panX
-    const top = bounds.top * viewport.zoom + viewport.panY
-    const bottom = bounds.bottom * viewport.zoom + viewport.panY
+  const canDeleteSelected = !!singleSelected && (singleSelected.type !== 'generation' || isSelectedTerminalGeneration)
+  const deletableSelection = selectedNodes.length > 1 ? canDeleteSelection : canDeleteSelected
+  const selectedVideo = singleSelected?.type === 'video' && videoState.id === singleSelected.id ? videoState : undefined
+  const selectedVideoId = singleSelected?.type === 'video' ? singleSelected.id : undefined
+
+  // 播放/静音状态来自 <video> 元素本身，这里把它镜像到 state 供工具栏渲染。
+  useEffect(() => {
+    if (!selectedVideoId) return
+    const video = videoElementsRef.current.get(selectedVideoId)
+    if (!video) return
+    setVideoState((previous) => previous.id === selectedVideoId && previous.paused === video.paused && previous.muted === video.muted
+      ? previous
+      : { id: selectedVideoId, paused: video.paused, muted: video.muted })
+  }, [mediaLoadVersion, selectedVideoId, videoUiVersion])
+  const selectedImage = singleSelected?.type === 'image' && !brokenNodeIds.has(singleSelected.id) ? singleSelected : undefined
+  const focusedNode = focusedNodeId ? scene.nodes.find((node) => node.id === focusedNodeId) : undefined
+
+  /** 操作条贴在选择包围盒上方；空间不够时落到下方，且不进入底部工具条占用的区域。 */
+  const actionBarStyle = (bounds: ReturnType<typeof calculateNodeBounds>) => {
+    const zoom = viewport.zoom
+    const top = bounds.top * zoom + viewport.panY
+    const bottom = bounds.bottom * zoom + viewport.panY
+    const center = (bounds.left + bounds.right) / 2 * zoom + viewport.panX
     const preferredTop = top >= 52 ? top - 48 : bottom + 12
     return {
-      left: `clamp(104px, ${centerX}px, calc(100% - 104px))`,
-      top: `clamp(12px, ${preferredTop}px, calc(100% - 48px))`,
-      transform: 'translateX(-50%)',
+      top: `clamp(12px, ${preferredTop}px, calc(100% - 118px))`,
+      '--bar-center': `${center}px`,
+    } as CSSProperties
+  }
+  const selectionBounds = selectedNodes.length ? unionBounds(selectedNodes.map((node) => calculateNodeBounds(node))) : undefined
+  const nodeActionStyle = selectedImage ? actionBarStyle(calculateNodeBounds(selectedImage)) : undefined
+  const selectionActionStyle = selectedNodes.length > 1 && selectionBounds ? actionBarStyle(selectionBounds) : undefined
+  const focusRingStyle = focusedNode ? (() => {
+    const bounds = calculateNodeBounds(focusedNode)
+    const zoom = viewport.zoom
+    return {
+      left: bounds.left * zoom + viewport.panX,
+      top: bounds.top * zoom + viewport.panY,
+      width: (bounds.right - bounds.left) * zoom,
+      height: (bounds.bottom - bounds.top) * zoom,
     }
   })() : undefined
 
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!onFilesDropped) return
+    if (!event.dataTransfer?.types.includes('Files')) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+    if (!dropActive) setDropActive(true)
+  }
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!onFilesDropped || !dropActive) return
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    setDropActive(false)
+  }
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!onFilesDropped) return
+    const files = Array.from(event.dataTransfer?.files ?? [])
+    if (!files.length) return
+    event.preventDefault()
+    setDropActive(false)
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.upperCanvasEl.getBoundingClientRect()
+    const transform = canvas.viewportTransform
+    const zoom = canvas.getZoom()
+    onFilesDropped(files, {
+      x: (event.clientX - rect.left - transform[4]) / zoom,
+      y: (event.clientY - rect.top - transform[5]) / zoom,
+    })
+  }
+
   return (
-    <div className="free-canvas-stage" ref={containerRef}>
-      <canvas ref={canvasElementRef} aria-label="自由画布编辑区域" />
+    <div
+      className={`free-canvas-stage${dropActive ? ' is-drop-active' : ''}`}
+      ref={containerRef}
+      tabIndex={0}
+      role="application"
+      aria-label="自由画布编辑区域"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onFocus={(event) => {
+        onCanvasFocusChange?.(true)
+        if (event.target === event.currentTarget && !focusedNodeId && scene.nodes.length) {
+          setFocusedNodeId(sortedByZIndex(scene.nodes)[0].id)
+        }
+      }}
+      onBlur={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+        onCanvasFocusChange?.(false)
+        setFocusedNodeId(undefined)
+      }}
+    >
+      <canvas ref={canvasElementRef} aria-hidden="true" />
+      <ul className="free-canvas-node-list">
+        {sortedByZIndex(scene.nodes).map((node) => (
+          <li key={node.id}>
+            <button
+              type="button"
+              aria-pressed={selectedNodeIds.includes(node.id)}
+              aria-label={`${nodeLabel(node, generations)}，${Math.round(node.width)}×${Math.round(node.height)}${
+                selectedNodeIds.includes(node.id) ? '，已选中' : ''}`}
+              onFocus={() => {
+                setFocusedNodeId(node.id)
+                const canvas = canvasRef.current
+                const container = containerRef.current
+                if (!canvas || !container) return
+                setCanvasViewport(calculateRevealViewport(
+                  { width: container.clientWidth, height: container.clientHeight },
+                  [calculateNodeBounds(node)],
+                  viewportFromCanvas(canvas),
+                ))
+              }}
+              onBlur={() => setFocusedNodeId((current) => current === node.id ? undefined : current)}
+              onClick={() => onSelectNodes([node.id])}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelectNodes([node.id])
+                } else if (event.key === 'Delete' || event.key === 'Backspace') {
+                  event.preventDefault()
+                  onSelectNodes([node.id])
+                  onDeleteSelection()
+                }
+              }}
+            >
+              {nodeLabel(node, generations)}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {focusRingStyle && <div className="free-canvas-focus-ring" style={focusRingStyle} aria-hidden="true" />}
+      {dropActive && <div className="free-canvas-dropzone" aria-hidden="true"><span>松开添加到画布</span></div>}
+
       <div className="free-canvas-stage-chrome">
         <div
           className={`free-canvas-help${hintDismissed && !hintHovered ? ' is-dismissed' : ''}`}
@@ -1030,54 +1383,92 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           onMouseLeave={() => setHintHovered(false)}
           aria-hidden={hintDismissed && !hintHovered}
         >
-          滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · 双击视频播放/暂停
+          滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · 拖入图片 · 双击视频播放
         </div>
         {children}
       </div>
-      {reportedLoadErrorsRef.current.size > 0 && <div className="free-canvas-media-error" role="status">
+      {mediaErrorCount > 0 && <div className="free-canvas-media-error" role="status">
         部分媒体加载失败，节点数据已保留。
-        <Button size="small" onClick={() => { reportedLoadErrorsRef.current.clear(); setMediaLoadVersion((version) => version + 1) }}>重新加载媒体</Button>
+        <Button size="small" onClick={reloadMedia}>重新加载媒体</Button>
       </div>}
-      {selectedImage && nodeActionPosition && (
-        <div className="free-canvas-node-actions" style={nodeActionPosition} aria-label="图片派生操作">
-          <Tooltip title={variationEnabled ? '基于这张图再生成一版' : '请先确认登录与裂变模型配置'}>
-            <span>
-              <Button
+      {selectedImage && nodeActionStyle && (
+        <div className="free-canvas-selection-row" style={nodeActionStyle}>
+          <div className="free-canvas-node-actions" aria-label="图片派生操作">
+            <Tooltip title={variationEnabled ? '基于这张图再生成一版' : '请先确认登录与裂变模型配置'}>
+              <span>
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<BranchesOutlined />}
+                  disabled={generationActive || !variationEnabled}
+                  onClick={() => onNodeGenerationAction('variation', selectedImage.id)}
+                >
+                  裂变
+                </Button>
+              </span>
+            </Tooltip>
+            <span className="free-canvas-node-actions-divider" />
+            <Tooltip title={imageToVideoEnabled ? '让这张图片动起来' : `视频生成${capabilityAvailabilityLabel(imageToVideoState)}`}>
+              <span><Button
                 size="small"
                 type="text"
-                icon={<BranchesOutlined />}
-                disabled={generationActive || !variationEnabled}
-                onClick={() => onNodeGenerationAction('variation', selectedImage.id)}
-              >
-                裂变
-              </Button>
-            </span>
-          </Tooltip>
-          <span className="free-canvas-node-actions-divider" />
-          <Tooltip title={imageToVideoEnabled ? '让这张图片动起来' : `视频生成${capabilityAvailabilityLabel(imageToVideoState)}`}>
-            <span><Button
-              size="small"
-              type="text"
-              icon={<VideoCameraAddOutlined />}
-              disabled={generationActive || !imageToVideoEnabled}
-              onClick={() => onNodeGenerationAction('image-to-video', selectedImage.id)}
-            >图生视频{imageToVideoState === 'ready' ? '' : ` · ${capabilityAvailabilityLabel(imageToVideoState)}`}</Button></span>
-          </Tooltip>
-          <span className="free-canvas-node-actions-divider" />
-          <Tooltip title="删除图片（Delete / Backspace）">
-            <span>
-              <Button
-                size="small"
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                disabled={generationActive || !canDeleteSelected}
-                onClick={onDelete}
-              >
-                删除
-              </Button>
-            </span>
-          </Tooltip>
+                icon={<VideoCameraAddOutlined />}
+                disabled={generationActive || !imageToVideoEnabled}
+                onClick={() => onNodeGenerationAction('image-to-video', selectedImage.id)}
+              >图生视频</Button></span>
+            </Tooltip>
+            <span className="free-canvas-node-actions-divider" />
+            <ZOrderMenu onReorder={onReorderSelection} disabled={generationActive} />
+            <span className="free-canvas-node-actions-divider" />
+            <Tooltip title={"删除图片（Delete / Backspace）"}>
+              <span>
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={generationActive || !canDeleteSelected}
+                  onClick={onDeleteSelection}
+                >
+                  删除
+                </Button>
+              </span>
+            </Tooltip>
+          </div>
+        </div>
+      )}
+      {selectionActionStyle && (
+        <div className="free-canvas-selection-row" style={selectionActionStyle}>
+          <div className="free-canvas-node-actions" aria-label="多选操作">
+            <span className="free-canvas-selection-count">已选 {selectedNodes.length} 项</span>
+            <span className="free-canvas-node-actions-divider" />
+            <Tooltip title={canDuplicateSelection ? '复制所选（⌘/Ctrl+D）' : selectionBlockedReason ?? '所选内容无法复制'}>
+              <span>
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<CopyOutlined />}
+                  disabled={generationActive || !canDuplicateSelection}
+                  onClick={onDuplicateSelection}
+                >复制</Button>
+              </span>
+            </Tooltip>
+            <span className="free-canvas-node-actions-divider" />
+            <ZOrderMenu onReorder={onReorderSelection} disabled={generationActive} />
+            <span className="free-canvas-node-actions-divider" />
+            <Tooltip title={canDeleteSelection ? '删除所选（Delete）' : selectionBlockedReason ?? '所选内容无法删除'}>
+              <span>
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={generationActive || !canDeleteSelection}
+                  onClick={onDeleteSelection}
+                >删除</Button>
+              </span>
+            </Tooltip>
+          </div>
         </div>
       )}
       <div className="free-canvas-toolbar" aria-label="画布工具栏">
@@ -1086,14 +1477,16 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <span className="free-canvas-toolbar-divider" />
         <Tooltip
           title={
-            selectedNode?.type === 'generation'
+            singleSelected?.type === 'generation'
               ? (isSelectedTerminalGeneration ? '删除占位框' : '生成中的占位框暂不支持删除')
-              : '删除所选节点'
+              : selectedNodes.length > 1
+                ? (canDeleteSelection ? '删除所选节点' : selectionBlockedReason ?? '所选内容无法删除')
+                : '删除所选节点'
           }
         >
-          <Button type="text" danger icon={<DeleteOutlined />} disabled={!canDeleteSelected} onClick={onDelete} aria-label="删除节点" />
+          <Button type="text" danger icon={<DeleteOutlined />} disabled={!deletableSelection} onClick={onDeleteSelection} aria-label="删除节点" />
         </Tooltip>
-        {selectedNode?.type === 'video' && (
+        {singleSelected?.type === 'video' && (
           <>
             <span className="free-canvas-toolbar-divider" />
             <Tooltip title={selectedVideo?.paused ? '播放视频' : '暂停视频'}>
@@ -1101,7 +1494,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
                 type="text"
                 icon={selectedVideo?.paused ? <CaretRightOutlined /> : <PauseOutlined />}
                 disabled={!selectedVideo}
-                onClick={() => { void toggleVideo(selectedNode.id) }}
+                onClick={() => { void toggleVideo(singleSelected.id) }}
                 aria-label={selectedVideo?.paused ? '播放视频' : '暂停视频'}
               />
             </Tooltip>
@@ -1110,7 +1503,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
                 type="text"
                 icon={selectedVideo?.muted ? <AudioMutedOutlined /> : <SoundOutlined />}
                 disabled={!selectedVideo}
-                onClick={() => toggleVideoMuted(selectedNode.id)}
+                onClick={() => toggleVideoMuted(singleSelected.id)}
                 aria-label={selectedVideo?.muted ? '取消静音' : '静音'}
               />
             </Tooltip>

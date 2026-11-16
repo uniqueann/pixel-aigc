@@ -59,7 +59,8 @@ export class UpdateNodeCommand extends BaseCommand {
   }
 
   execute(ctx: EditorContext) {
-    this.previous = findNode(ctx, this.sceneId, this.nodeId) ?? this.previous
+    // 调用方可以预置 previous（无损拖动提交、历史恢复），此时保留它作为撤销快照。
+    if (!this.previous) this.previous = findNode(ctx, this.sceneId, this.nodeId)
     ctx.updateNode(this.sceneId, this.nodeId, this.changes)
   }
 
@@ -138,6 +139,27 @@ export class ResolveGenerationCommand extends BaseCommand {
   }
 }
 
+/** 把多条命令合成一次可撤销的操作：顺序执行，逆序回滚。 */
+export class CompositeCommand extends BaseCommand {
+  constructor(
+    private readonly sceneId: SceneId,
+    private readonly commands: EditorCommand[],
+    id?: string,
+  ) { super(id) }
+
+  execute(ctx: EditorContext) {
+    for (const command of this.commands) command.execute(ctx)
+  }
+
+  undo(ctx: EditorContext) {
+    for (const command of [...this.commands].reverse()) command.undo(ctx)
+  }
+
+  serialize(): SerializedEditorCommand {
+    return { type: 'composite', id: this.id, sceneId: this.sceneId, commands: this.commands.map((command) => command.serialize()) }
+  }
+}
+
 export function deserializeCommand(value: SerializedEditorCommand): EditorCommand {
   switch (value.type) {
     case 'add-node':
@@ -150,5 +172,7 @@ export function deserializeCommand(value: SerializedEditorCommand): EditorComman
       return new InsertGeneratedAssetCommand(value.sceneId, value.asset, value.node, value.id)
     case 'resolve-generation':
       return new ResolveGenerationCommand(value.sceneId, value.placeholderNodeIds, value.outputs as GeneratedMediaOutput[], value.id)
+    case 'composite':
+      return new CompositeCommand(value.sceneId, value.commands.map(deserializeCommand), value.id)
   }
 }

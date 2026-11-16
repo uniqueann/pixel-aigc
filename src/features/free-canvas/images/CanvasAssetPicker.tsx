@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Empty, Modal } from 'antd'
 import { authEnabled } from '@/cloud/client'
 import { isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
@@ -7,14 +7,9 @@ import { listHistoryPreviews, HISTORY_CHANGED, type WorkstationHistoryListItem }
 import { workstationToolLabel } from '@/features/assets/labels'
 
 function HistoryThumbnail({ blob, label }: { blob: Blob; label: string }) {
-  const image = useRef<HTMLImageElement>(null)
-  useEffect(() => {
-    const url = URL.createObjectURL(blob)
-    const element = image.current!
-    element.src = url
-    return () => { element.removeAttribute('src'); URL.revokeObjectURL(url) }
-  }, [blob])
-  return <img ref={image} alt={label} />
+  const url = useMemo(() => URL.createObjectURL(blob), [blob])
+  useEffect(() => () => { URL.revokeObjectURL(url) }, [url])
+  return <img src={url} alt={label} />
 }
 
 function PickerSkeleton() {

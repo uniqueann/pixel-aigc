@@ -14,6 +14,7 @@ export type SerializedEditorCommand =
   | { type: 'update-node'; id: string; sceneId: SceneId; nodeId: string; changes: Partial<EditorNode>; previous?: EditorNode }
   | { type: 'insert-generated'; id: string; sceneId: SceneId; asset: Asset; node: EditorNode }
   | { type: 'resolve-generation'; id: string; sceneId: SceneId; placeholderNodeIds: string[]; outputs: Array<{ asset: Asset; node: EditorNode }> }
+  | { type: 'composite'; id: string; sceneId: SceneId; commands: SerializedEditorCommand[] }
 
 export interface EditorCommand {
   id: string

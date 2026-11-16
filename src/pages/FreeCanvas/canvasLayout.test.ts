@@ -25,12 +25,31 @@ describe('自由画布面板布局', () => {
     expect(derivedPanel.indexOf('<VideoCreditEstimate')).toBeLessThan(derivedPanel.indexOf('className="free-canvas-generate"'))
   })
 
-  it('宽屏下提示、积分和生成按钮留在卡片内并在面板里滚动', () => {
+  it('宽屏下参数区滚动、操作区常驻，生成按钮不会掉出首屏', () => {
     const panel = block('.free-canvas-generation-panel')
     expect(panel).toMatch(/min-height:\s*0/)
     expect(panel).toMatch(/max-height:\s*100%/)
-    expect(panel).toMatch(/overflow-x:\s*hidden/)
-    expect(panel).toMatch(/overflow-y:\s*auto/)
+    expect(panel).toMatch(/overflow:\s*hidden/)
+    expect(panel).not.toMatch(/overflow-y:\s*auto/)
+
+    const body = block('.free-canvas-panel-body')
+    expect(body).toMatch(/flex:\s*1 1 auto/)
+    expect(body).toMatch(/min-height:\s*0/)
+    expect(body).toMatch(/overflow-y:\s*auto/)
+
+    const footer = block('.free-canvas-panel-footer')
+    expect(footer).toMatch(/flex:\s*0 0 auto/)
+    expect(footer).toMatch(/border-top:/)
+
+    for (const source of [textPanel, derivedPanel]) {
+      expect(source).toContain('className="free-canvas-panel-body"')
+      expect(source).toContain('className="free-canvas-panel-footer"')
+      // 主按钮必须在常驻操作区里，不能被字段挤到滚动区。
+      expect(source.indexOf('free-canvas-panel-footer')).toBeLessThan(source.indexOf('className="free-canvas-generate"'))
+      // 模型与分辨率收进可折叠的高级设置。
+      expect(source).toContain('className="free-canvas-advanced"')
+      expect(source).toContain('<details')
+    }
   })
 
   it('窄屏工具栏换行，画布自适应，面板堆到画布下方且宽度 100%', () => {
@@ -77,7 +96,9 @@ describe('自由画布面板布局', () => {
     expect(chrome).toMatch(/justify-content:\s*space-between/)
     expect(Number(chrome.match(/z-index:\s*(\d+)/)?.[1])).toBeLessThan(20)
     const help = block('.free-canvas-help')
-    expect(help).toMatch(/opacity:\s*0\.62/)
+    // 提示文案曾是 11px + opacity .62（对比度约 2.6:1），现在用实色 12px。
+    expect(help).toMatch(/font-size:\s*12px/)
+    expect(help).not.toMatch(/opacity:\s*0\.62/)
     expect(help).toMatch(/pointer-events:\s*auto/)
     expect(block('.free-canvas-help.is-dismissed')).toMatch(/opacity:\s*0/)
     expect(block('.free-canvas-add-image')).toMatch(/pointer-events:\s*auto/)

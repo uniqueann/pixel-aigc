@@ -234,11 +234,17 @@ function parseHistory(value: unknown, project: PixelProject): ProjectHistory {
   }
 }
 
-function validateSerializedCommand(value: unknown, project: PixelProject): SerializedEditorCommand {
+function validateSerializedCommand(value: unknown, project: PixelProject, depth = 0): SerializedEditorCommand {
   object(value)
   string(value.id)
   string(value.sceneId)
+  if (depth > 4) throw new Error('历史命令嵌套过深')
   if (!project.document.scenes.some(scene => scene.id === value.sceneId)) throw new Error('历史命令的场景不存在')
+  if (value.type === 'composite') {
+    array(value.commands)
+    for (const command of value.commands) validateSerializedCommand(command, project, depth + 1)
+    return value as SerializedEditorCommand
+  }
   if (value.type === 'add-node') {
     validateNode(value.node, project)
     return value as SerializedEditorCommand
@@ -359,6 +365,10 @@ function collectNodeRefs(node: unknown, assets: Set<string>, generations: Set<st
 }
 
 function collectCommandRefs(command: SerializedEditorCommand, assets: Set<string>, generations: Set<string>, embedded: Asset[]) {
+  if (command.type === 'composite') {
+    for (const child of command.commands) collectCommandRefs(child, assets, generations, embedded)
+    return
+  }
   if (command.type === 'add-node') collectNodeRefs(command.node, assets, generations)
   if (command.type === 'remove-node') collectNodeRefs(command.removedNode, assets, generations)
   if (command.type === 'update-node') {
@@ -476,6 +486,9 @@ function persistableMediaReference(url: unknown, assets: Record<string, Asset>, 
 }
 
 function persistableCommand(command: SerializedEditorCommand, assets: Record<string, Asset>): SerializedEditorCommand {
+  if (command.type === 'composite') {
+    return { ...command, commands: command.commands.map(child => persistableCommand(child, assets)) }
+  }
   if (command.type === 'insert-generated') {
     return { ...command, asset: persistableAsset(command.asset, assets) }
   }
@@ -522,6 +535,9 @@ export function serializeSnapshot(snapshot: ProjectSnapshot) {
 
 function hydrateSerializedCommand(command: SerializedEditorCommand, assets?: Record<string, Asset>): SerializedEditorCommand {
   if (!assets) return command
+  if (command.type === 'composite') {
+    return { ...command, commands: command.commands.map(child => hydrateSerializedCommand(child, assets)) }
+  }
   if (command.type === 'insert-generated' && assets[command.asset.id]) {
     return { ...command, asset: assets[command.asset.id] }
   }

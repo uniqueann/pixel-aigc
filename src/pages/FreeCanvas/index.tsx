@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams,useSearchParams } from 'react-router-dom'
 import CanvasTaskRecovery from '@/features/task-center/CanvasTaskRecovery'
 import { parseTaskRoute } from '@/features/task-center/route'
-import { Alert, App, Button, Segmented, Space } from 'antd'
+import { App, Segmented } from 'antd'
 import { Capability } from '@/types'
 import CloudToolbar from '@/cloud/CloudToolbar'
 import { useCloudStore } from '@/cloud/sync'
@@ -11,7 +11,7 @@ import { flushProject, copyProjectLocally, hasUnfinishedGeneration } from '@/edi
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import type { GenerationDraft } from '@/editor/persistence/types'
 import { generationIdForTask } from '@/editor/adapters/taskAdapter'
-import { RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
+import { AddNodeCommand, CompositeCommand, RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
 import { useEditorStore } from '@/editor/store'
 import FreeCanvasStage from '@/features/free-canvas/FreeCanvasStage'
 import DerivedGenerationPanel, {
@@ -47,20 +47,30 @@ import {
   useFreeCanvasGenerationController,
 } from '@/features/free-canvas/generation/useFreeCanvasGenerationController'
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
-import { boundsFromPlacement, calculateNodeBounds } from '@/features/free-canvas/geometry'
-import type { FreeCanvasStageHandle, NodeTransform } from '@/features/free-canvas/types'
+import { boundsFromPlacement, calculateNodeBounds, NODE_CASCADE_OFFSET, offsetPlacementToAvoidOverlap } from '@/features/free-canvas/geometry'
+import { nextZIndex, reorderZIndex, type ZOrderAction } from '@/features/free-canvas/zOrder'
+import type { FreeCanvasStageHandle, NodeTransformUpdate } from '@/features/free-canvas/types'
 import { CANVAS_MODES } from './modes'
 import { imageCreditAmount } from '@/features/credits/quotes'
 import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 import CanvasAddImageButton from './CanvasAddImageButton'
+import CanvasNoticeBar, { type CanvasNotice } from '@/features/free-canvas/CanvasNoticeBar'
+import SelectionSummary from '@/features/free-canvas/SelectionSummary'
 import { imageFileError } from '@/services/api/upload'
-import type { Asset } from '@/editor/types'
+import type { Asset, EditorNode, PixelProject } from '@/editor/types'
 
 const EMPTY_ASSETS: Record<string, Asset> = {}
 
 function isEditingText(target: EventTarget | null) {
   return target instanceof HTMLElement
     && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+}
+
+/** 生成中的占位框不能删除/复制；失败与取消属于可清理的终态。 */
+function isTerminalGeneration(node: EditorNode, project: PixelProject | null | undefined) {
+  if (node.type !== 'generation') return true
+  const status = project?.generations[node.generationId]?.status
+  return status === 'failed' || status === 'cancelled'
 }
 
 export default function FreeCanvas() {
@@ -117,12 +127,12 @@ export default function FreeCanvas() {
   const stageRef = useRef<FreeCanvasStageHandle>(null)
   const project = useEditorStore((state) => state.project)
   const activeSceneId = useEditorStore((state) => state.activeSceneId)
-  const selectedNodeId = useEditorStore((state) => state.selectedNodeIds[0])
+  const selectedNodeIds = useEditorStore((state) => state.selectedNodeIds)
+  const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined
   const viewport = useEditorStore((state) => state.viewport)
   const canUndo = useEditorStore((state) => state.undoStack.length > 0)
   const canRedo = useEditorStore((state) => state.redoStack.length > 0)
   const selectNodes = useEditorStore((state) => state.selectNodes)
-  const executeCommand = useEditorStore((state) => state.executeCommand)
   const undo = useEditorStore((state) => state.undo)
   const redo = useEditorStore((state) => state.redo)
   const setViewport = useEditorStore((state) => state.setViewport)
@@ -162,28 +172,33 @@ export default function FreeCanvas() {
     }
   }, [derivedDraft, generation.formLocked, project?.assets, scene, selectedNodeId])
 
-  const importPicture = async (input: File | WorkstationHistoryListItem) => {
-    if (importGate.current || !project || !scene) return
+  const importPicture = async (
+    input: File | WorkstationHistoryListItem,
+    options?: { center?: { x: number; y: number }; reveal?: boolean; keepPickerOpen?: boolean },
+  ) => {
+    if (importGate.current || !project || !scene) return undefined
     // 选图时先做同步体积检查，避免已经进入导入流程、看到转圈后才报错。
     if (input instanceof File) {
       const invalid = imageFileError(input)
-      if (invalid) { message.error(invalid); return }
+      if (invalid) { message.error(invalid); return undefined }
     }
     importGate.current = true
     setImporting(true)
     const context: CanvasImageImportContext = {
       ownerId, projectId: project.id, sceneId: scene.id, epoch, signal: importAbort.current.signal,
-      center: stageRef.current?.getViewportCenter() ?? { x: scene.width / 2, y: scene.height / 2 },
+      center: options?.center ?? stageRef.current?.getViewportCenter() ?? { x: scene.width / 2, y: scene.height / 2 },
     }
     try {
       const imported = input instanceof File ? await importCanvasFile(input, context) : await importCanvasHistory(input, context)
       if (!context.signal.aborted) {
-        stageRef.current?.revealBounds([calculateNodeBounds(imported.node)])
-        setPickerOpen(false)
+        if (options?.reveal !== false) stageRef.current?.revealBounds([calculateNodeBounds(imported.node)])
+        if (!options?.keepPickerOpen) setPickerOpen(false)
         await flushProject()
       }
+      return context.signal.aborted ? undefined : imported.node
     } catch (error) {
       if (!context.signal.aborted) message.error(error instanceof Error ? error.message : '图片添加失败')
+      return undefined
     } finally {
       importGate.current = false
       if (!context.signal.aborted) setImporting(false)
@@ -203,51 +218,179 @@ export default function FreeCanvas() {
     }
   }, [activeSlug, derivedDraft, generation.formLocked, generation.task, navigate])
 
-  const handleSelectNode = useCallback((nodeId?: string) => {
-    selectNodes(nodeId ? [nodeId] : [])
-  }, [selectNodes])
-
-  const handleTransformNode = useCallback((nodeId: string, transform: NodeTransform) => {
-    const state = useEditorStore.getState()
-    const currentScene = state.project?.document.scenes.find((item) => item.id === state.activeSceneId)
-    const node = currentScene?.nodes.find((item) => item.id === nodeId)
-    if (!currentScene || !node) return
-    if (node.type === 'generation') {
-      state.updateNode(currentScene.id, nodeId, { x: transform.x, y: transform.y })
+  /** 从系统拖入的图片：逐张串行导入，落点是鼠标位置，全部完成后一起选中。 */
+  const handleFilesDropped = async (files: File[], center: { x: number; y: number }) => {
+    if (!project || !scene || generation.formLocked) return
+    const accepted: File[] = []
+    let rejected = 0
+    for (const file of files) {
+      if (imageFileError(file)) rejected += 1
+      else accepted.push(file)
+    }
+    if (!accepted.length) {
+      message.warning('仅支持 PNG/JPG/WebP 图片')
       return
     }
-    executeCommand(new UpdateNodeCommand(currentScene.id, nodeId, transform))
-  }, [executeCommand])
+    const importedNodes: EditorNode[] = []
+    for (const file of accepted) {
+      const node = await importPicture(file, { center, reveal: false, keepPickerOpen: true })
+      if (node) importedNodes.push(node)
+    }
+    if (importedNodes.length) {
+      selectNodes(importedNodes.map((node) => node.id))
+      stageRef.current?.revealBounds(importedNodes.map((node) => calculateNodeBounds(node)))
+    }
+    if (rejected) message.warning(`已添加 ${importedNodes.length} 张，${rejected} 个文件格式不支持`)
+  }
 
-  const handleDelete = useCallback(() => {
+  // 方向键微调：按下时直接改坐标（实时反馈），停顿 400ms 或失焦时提交为一条撤销记录。
+  const nudgeSession = useRef<{ start: Map<string, EditorNode> } | null>(null)
+  const nudgeTimer = useRef<number>()
+
+  const flushNudge = useCallback(() => {
+    const session = nudgeSession.current
+    if (!session) return
+    nudgeSession.current = null
+    if (nudgeTimer.current) window.clearTimeout(nudgeTimer.current)
+    nudgeTimer.current = undefined
     const state = useEditorStore.getState()
-    const nodeId = state.selectedNodeIds[0]
-    if (!state.activeSceneId || !nodeId) return
+    const sceneId = state.activeSceneId
+    const currentScene = state.project?.document.scenes.find((item) => item.id === sceneId)
+    if (!sceneId || !currentScene) return
+    const commands = [...session.start.entries()].flatMap(([id, start]) => {
+      const node = currentScene.nodes.find((item) => item.id === id)
+      if (!node || (node.x === start.x && node.y === start.y)) return []
+      return [new UpdateNodeCommand(sceneId, id, { x: node.x, y: node.y }, start)]
+    })
+    if (!commands.length) return
+    state.executeCommand(commands.length === 1 ? commands[0] : new CompositeCommand(sceneId, commands))
+    void flushProject().catch(() => undefined)
+  }, [])
+
+  const nudgeBy = useCallback((dx: number, dy: number) => {
+    const state = useEditorStore.getState()
+    const sceneId = state.activeSceneId
+    const currentScene = state.project?.document.scenes.find((item) => item.id === sceneId)
+    if (!sceneId || !currentScene || !state.selectedNodeIds.length) return
+    const targets = state.selectedNodeIds
+      .map((id) => currentScene.nodes.find((node) => node.id === id))
+      .filter((node): node is EditorNode => !!node)
+    if (!targets.length) return
+    nudgeSession.current = nudgeSession.current ?? { start: new Map(targets.map((node) => [node.id, node] as const)) }
+    if (nudgeTimer.current) window.clearTimeout(nudgeTimer.current)
+    nudgeTimer.current = window.setTimeout(() => flushNudge(), 400)
+    for (const node of targets) state.updateNode(sceneId, node.id, { x: node.x + dx, y: node.y + dy })
+  }, [flushNudge])
+
+  const selectAllNodes = useCallback(() => {
+    const state = useEditorStore.getState()
     const currentScene = state.project?.document.scenes.find((item) => item.id === state.activeSceneId)
-    const targetNode = currentScene?.nodes.find((node) => node.id === nodeId)
-    if (!targetNode) return
-    if (targetNode.type === 'generation') {
+    if (!currentScene) return
+    selectNodes(currentScene.nodes.map((node) => node.id))
+  }, [selectNodes])
+
+  useEffect(() => () => { flushNudge() }, [flushNudge])
+
+  const handleSelectNodes = useCallback((nodeIds: string[]) => {
+    selectNodes(nodeIds)
+  }, [selectNodes])
+
+  const handleTransformNodes = useCallback((updates: NodeTransformUpdate[]) => {
+    if (!updates.length) return
+    flushNudge()
+    const state = useEditorStore.getState()
+    const sceneId = state.activeSceneId
+    if (!sceneId) return
+    const commands = updates.map((update) => new UpdateNodeCommand(sceneId, update.id, update.transform))
+    state.executeCommand(commands.length === 1 ? commands[0] : new CompositeCommand(sceneId, commands))
+  }, [flushNudge])
+
+  const handleDeleteSelection = useCallback(() => {
+    flushNudge()
+    const state = useEditorStore.getState()
+    const sceneId = state.activeSceneId
+    const ids = state.selectedNodeIds
+    if (!sceneId || !ids.length) return
+    const currentScene = state.project?.document.scenes.find((item) => item.id === sceneId)
+    if (!currentScene) return
+    const targets = ids
+      .map((id) => currentScene.nodes.find((node) => node.id === id))
+      .filter((node): node is EditorNode => !!node)
+    if (!targets.length || targets.some((node) => !isTerminalGeneration(node, state.project))) return
+
+    const persistence = usePersistenceStore.getState()
+    for (const targetNode of targets) {
+      if (targetNode.type !== 'generation') continue
       const job = state.project?.generations[targetNode.generationId]
-      const isTerminal = job?.status && (job.status === 'failed' || job.status === 'cancelled')
-      if (!isTerminal) return
-      for (const rec of Object.values(usePersistenceStore.getState().recoveries)) {
+      for (const rec of Object.values(persistence.recoveries)) {
         if (rec.abandoned || rec.applied) continue
         if ((rec.backendTaskId && generationIdForTask(rec.backendTaskId) === targetNode.generationId)
             || (job?.backendTaskId && rec.backendTaskId === job.backendTaskId)) {
-          usePersistenceStore.getState().setRecovery({ ...rec, abandoned: true })
+          persistence.setRecovery({ ...rec, abandoned: true })
         }
       }
       if (generation.task && (generationIdForTask(generation.task.id) === targetNode.generationId || generation.task.id === job?.backendTaskId)) {
         generation.dismissTask()
       }
     }
-    const currentDraft = usePersistenceStore.getState().drafts.derived
-    if (currentDraft && (currentDraft.sourceNode.id === nodeId || (targetNode.type === 'image' && currentDraft.sourceAssetId === targetNode.assetId))) {
-      usePersistenceStore.getState().setDrafts({ ...usePersistenceStore.getState().drafts, derived: undefined })
+    const currentDraft = persistence.drafts.derived
+    if (currentDraft && targets.some((node) => node.id === currentDraft.sourceNode.id
+      || (node.type === 'image' && currentDraft.sourceAssetId === node.assetId))) {
+      usePersistenceStore.getState().setDrafts({ ...persistence.drafts, derived: undefined })
     }
-    state.executeCommand(new RemoveNodeCommand(state.activeSceneId, nodeId))
+    const commands = targets.map((node) => new RemoveNodeCommand(sceneId, node.id))
+    state.executeCommand(commands.length === 1 ? commands[0] : new CompositeCommand(sceneId, commands))
     void flushProject().catch(() => undefined)
-  }, [generation])
+  }, [flushNudge, generation])
+
+  const handleDuplicateSelection = useCallback(() => {
+    flushNudge()
+    const state = useEditorStore.getState()
+    const sceneId = state.activeSceneId
+    const currentScene = state.project?.document.scenes.find((item) => item.id === sceneId)
+    if (!sceneId || !currentScene) return
+    const selection = new Set(state.selectedNodeIds)
+    // 资产不可变可复用：复制节点不扣积分、不新增素材；生成中的占位框不参与复制。
+    const sources = currentScene.nodes.filter((node) => selection.has(node.id) && (node.type === 'image' || node.type === 'video'))
+    if (!sources.length) return
+    const occupied = currentScene.nodes.map((node) => calculateNodeBounds(node))
+    let zIndex = nextZIndex(currentScene.nodes)
+    // 复制保留原始尺寸：只做级联偏移避让，不为了塞进画板而缩小副本。
+    const clones: EditorNode[] = sources.map((node) => {
+      const placed = offsetPlacementToAvoidOverlap(
+        { x: node.x + NODE_CASCADE_OFFSET, y: node.y + NODE_CASCADE_OFFSET, width: node.width, height: node.height },
+        occupied,
+        { offset: NODE_CASCADE_OFFSET },
+      )
+      occupied.push(boundsFromPlacement(placed))
+      return {
+        ...node,
+        id: crypto.randomUUID(),
+        x: placed.x,
+        y: placed.y,
+        zIndex: zIndex++,
+      }
+    })
+    state.executeCommand(new CompositeCommand(sceneId, clones.map((node) => new AddNodeCommand(sceneId, node))))
+    state.selectNodes(clones.map((node) => node.id))
+    void flushProject().catch(() => undefined)
+  }, [flushNudge])
+
+  const handleReorderSelection = useCallback((action: ZOrderAction) => {
+    flushNudge()
+    const state = useEditorStore.getState()
+    const sceneId = state.activeSceneId
+    const currentScene = state.project?.document.scenes.find((item) => item.id === sceneId)
+    if (!sceneId || !currentScene) return
+    const changes = reorderZIndex(currentScene.nodes, state.selectedNodeIds, action)
+    if (!changes) return
+    state.executeCommand(new CompositeCommand(
+      sceneId,
+      changes.map((change) => new UpdateNodeCommand(sceneId, change.id, { zIndex: change.zIndex })),
+    ))
+    void flushProject().catch(() => undefined)
+  }, [flushNudge])
+
 
   const handleRemoveBrokenImages = useCallback(() => {
     const state = useEditorStore.getState()
@@ -391,6 +534,94 @@ export default function FreeCanvas() {
     message.error({ content, duration: 4 })
   }, [message])
 
+  const selectedNodes = (scene?.nodes ?? []).filter((node) => selectedNodeIds.includes(node.id))
+  const pendingPlaceholders = selectedNodes.filter((node) => !isTerminalGeneration(node, project))
+  const deletableSelection = pendingPlaceholders.length === 0
+  const duplicableSelection = deletableSelection && selectedNodes.some((node) => node.type === 'image' || node.type === 'video')
+  const selectionBlockedReason = pendingPlaceholders.length
+    ? `含 ${pendingPlaceholders.length} 个生成中的占位框，完成或放弃后才能批量操作`
+    : undefined
+
+  const reloadModelConfiguration = () => {
+    void configuration.reload()
+    void textToImageConfiguration.reload()
+    void videoConfiguration.reload()
+  }
+
+  // 状态提示按"阻塞 > 媒体 > 配置 > 信息"排优先级；默认只露出第一条，其余折叠。
+  const notices: CanvasNotice[] = []
+  if (generation.pendingSubmission && !generation.submitting) {
+    notices.push({
+      key: 'pending-submission',
+      level: 'warning',
+      message: foreignSubmission ? '此任务属于其他账号' : '生成请求等待恢复',
+      description: foreignSubmission
+        ? '当前账号无法续接此任务。放弃等待可清理本地占位，继续编辑画布。'
+        : '继续操作会使用原幂等键确认同一次请求，避免重复生成；放弃后将清理本地等待状态。',
+      actions: [
+        ...(!foreignSubmission ? [{ key: 'resume', label: '继续原请求', onClick: () => { void generation.resumeSubmission() } }] : []),
+        { key: 'abandon', label: '放弃等待', onClick: generation.abandonSubmission },
+      ],
+    })
+  }
+  if (generation.pollError) {
+    notices.push({
+      key: 'poll-error',
+      level: 'warning',
+      message: '原任务暂时无法查询',
+      description: generation.pollError.message,
+      actions: [{ key: 'modify', label: '放弃占位并修改参数', onClick: generation.modifyParameters }],
+    })
+  }
+  if (images.error) {
+    notices.push({
+      key: 'images-error',
+      level: 'warning',
+      message: '画布图片读取失败',
+      description: images.error,
+      actions: [
+        { key: 'reload', label: '重新加载', onClick: images.reload },
+        { key: 'clean', label: '清理损坏图片', onClick: handleRemoveBrokenImages, danger: true },
+      ],
+    })
+  }
+  if (videos.error) {
+    notices.push({
+      key: 'videos-error',
+      level: 'warning',
+      message: '画布视频读取失败',
+      description: videos.error,
+      actions: [{ key: 'reload', label: '重试读取视频', onClick: videos.reload }],
+    })
+  }
+  if (configuration.error || textToImageConfiguration.error) {
+    const detail = [
+      configuration.error ? `裂变：${configuration.error}` : '',
+      textToImageConfiguration.error ? `文生图：${textToImageConfiguration.error}` : '',
+    ].filter(Boolean).join('；')
+    notices.push({
+      key: 'model-config',
+      level: 'warning',
+      message: '模型配置读取失败',
+      description: detail,
+      actions: [{ key: 'reload', label: '重新读取', onClick: reloadModelConfiguration }],
+    })
+  }
+  if (cloudProject && ((activeSlug === 'text-to-video' && videoConfiguration.ready) || (derivedContext?.mode === 'image-to-video' && videoConfiguration.imageReady))) {
+    notices.push({
+      key: 'cloud-video',
+      level: 'info',
+      message: '视频画布暂时仅支持本地保存',
+      description: '另存为本地副本后即可生成视频，原云端项目继续保留。',
+      actions: [{
+        key: 'copy-local',
+        label: '另存为本地副本',
+        disabled: generation.formLocked,
+        onClick: () => { void copyProjectLocally().catch(error => message.error(error instanceof Error ? error.message : '另存失败')) },
+      }],
+    })
+  }
+
   const cloudBusy = useCloudStore((state) => state.busy || state.interacting)
   const actionsBlocked = importing || generation.submitting || generation.active || !!generation.pendingSubmission
   useEffect(() => {
@@ -398,29 +629,59 @@ export default function FreeCanvas() {
     return () => useCanvasActionGate.setState({ blocked: false })
   }, [actionsBlocked])
 
-  useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if (isEditingText(event.target)) return
-      const commandKey = event.metaKey || event.ctrlKey
-      if (commandKey && event.key.toLowerCase() === 'z') {
-        event.preventDefault()
-        if (event.shiftKey) redo()
-        else undo()
-        return
-      }
-      if (event.ctrlKey && event.key.toLowerCase() === 'y') {
-        event.preventDefault()
-        redo()
-        return
-      }
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        event.preventDefault()
-        handleDelete()
-      }
+  const [canvasFocused, setCanvasFocused] = useState(false)
+  const shortcutRef = useRef<(event: KeyboardEvent) => void>(() => {})
+
+  const handleShortcut = (event: KeyboardEvent) => {
+    if (isEditingText(event.target)) return
+    const commandKey = event.metaKey || event.ctrlKey
+    const key = event.key.toLowerCase()
+    if (commandKey && key === 'z') {
+      event.preventDefault()
+      flushNudge()
+      if (event.shiftKey) redo()
+      else undo()
+      return
     }
-    window.addEventListener('keydown', handleShortcut)
-    return () => window.removeEventListener('keydown', handleShortcut)
-  }, [handleDelete, redo, undo])
+    if (event.ctrlKey && key === 'y') { event.preventDefault(); flushNudge(); redo(); return }
+    if (commandKey && key === 'd') { event.preventDefault(); handleDuplicateSelection(); return }
+    if (commandKey && key === 'a') { event.preventDefault(); flushNudge(); selectAllNodes(); return }
+    if (commandKey && (event.key === ']' || event.key === '[')) {
+      event.preventDefault()
+      handleReorderSelection(event.key === ']'
+        ? (event.shiftKey ? 'front' : 'forward')
+        : (event.shiftKey ? 'back' : 'backward'))
+      return
+    }
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault()
+      handleDeleteSelection()
+      return
+    }
+    if (event.key === 'Escape') {
+      flushNudge()
+      if (derivedContext) handleCloseDerived()
+      else selectNodes([])
+      return
+    }
+    if (!canvasFocused) return
+    // 刻意避开浏览器保留键（⌘0/⌘1 切标签页），用 ⇧0/⇧1。
+    if (event.shiftKey && !commandKey && event.code === 'Digit0') { event.preventDefault(); stageRef.current?.zoomTo(1); return }
+    if (event.shiftKey && !commandKey && event.code === 'Digit1') { event.preventDefault(); stageRef.current?.fitToScene(); return }
+    const step = event.shiftKey ? 10 : 1
+    if (event.key === 'ArrowLeft') { event.preventDefault(); nudgeBy(-step, 0) }
+    else if (event.key === 'ArrowRight') { event.preventDefault(); nudgeBy(step, 0) }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); nudgeBy(0, -step) }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); nudgeBy(0, step) }
+  }
+
+  useEffect(() => { shortcutRef.current = handleShortcut })
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => shortcutRef.current(event)
+    window.addEventListener('keydown', listener)
+    return () => window.removeEventListener('keydown', listener)
+  }, [])
 
   if (!project || !scene) {
     return <div className="free-canvas-loading">正在准备自由画布…</div>
@@ -430,29 +691,17 @@ export default function FreeCanvas() {
     <div className="free-canvas-page">
       <CanvasTaskRecovery onTaskObserved={generation.observeRecoveredTask}/>
       <CloudToolbar disabled={actionsBlocked || cloudBusy || hasUnfinishedGeneration()} onUploadImage={() => fileInput.current?.click()} />
-      {pickerOpen && <CanvasAssetPicker key={ownerId} ownerId={ownerId} busy={importing} onSelect={importPicture} onClose={() => { if (!importing) setPickerOpen(false) }} />}
+      {pickerOpen && <CanvasAssetPicker key={ownerId} ownerId={ownerId} busy={importing} onSelect={async (record) => { await importPicture(record) }} onClose={() => { if (!importing) setPickerOpen(false) }} />}
       <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="上传图片到画布" onChange={event => {
         const file = event.target.files?.[0]; event.target.value = ''
         if (file) void importPicture(file)
       }} />
-      {images.error && <Alert type="warning" showIcon message="画布图片读取失败" description={images.error} action={<Space>
-        <Button size="small" onClick={images.reload}>重新加载</Button>
-        <Button size="small" danger onClick={handleRemoveBrokenImages}>清理损坏图片</Button>
-      </Space>} />}
-      {videos.error && <Alert type="warning" showIcon message="画布视频读取失败" description={videos.error} action={<Button onClick={videos.reload}>重试读取视频</Button>} />}
-      {cloudProject && ((activeSlug === 'text-to-video' && videoConfiguration.ready) || (derivedContext?.mode === 'image-to-video' && videoConfiguration.imageReady)) && <Alert type="info" showIcon message="视频画布暂时仅支持本地保存"
-        description="另存为本地副本后即可生成视频，原云端项目继续保留。" action={<Button disabled={generation.formLocked} onClick={() => { void copyProjectLocally().catch(error => message.error(error instanceof Error ? error.message : '另存失败')) }}>另存为本地副本</Button>} />}
-      {configuration.error && <Alert type="warning" showIcon message="裂变模型配置读取失败" description={configuration.error} action={<Button onClick={configuration.reload}>重新读取配置</Button>} />}
-      {textToImageConfiguration.error && <Alert type="warning" showIcon message="文生图模型配置读取失败" description={textToImageConfiguration.error} action={<Button onClick={textToImageConfiguration.reload}>重新读取文生图配置</Button>} />}
-      {generation.pendingSubmission && !generation.submitting && <Alert type="warning" showIcon message={foreignSubmission ? '此任务属于其他账号' : '生成请求等待恢复'} description={foreignSubmission ? '当前账号无法续接此任务。放弃等待可清理本地占位，继续编辑画布。' : '继续操作会使用原幂等键确认同一次请求，避免重复生成；放弃后将清理本地等待状态。'} action={<Space>
-        {!foreignSubmission && <Button onClick={() => { void generation.resumeSubmission() }}>继续原请求</Button>}
-        <Button onClick={generation.abandonSubmission}>放弃等待</Button>
-      </Space>} />}
-      {generation.pollError && <Alert type="warning" message="原任务暂时无法查询" description={generation.pollError.message} action={<Button onClick={generation.modifyParameters}>放弃占位并修改参数</Button>} />}
+      <CanvasNoticeBar notices={notices} />
       <div className="free-canvas-page-header page-tab-row">
         <Segmented
-          options={CANVAS_MODES.map((item) => ({ label: item.slug === 'text-to-video' && videoConfiguration.textState !== 'ready' ? `${item.label} · ${capabilityAvailabilityLabel(videoConfiguration.textState)}` : item.label,
-            value: item.slug, disabled: item.slug === 'text-to-video' && videoConfiguration.textState !== 'ready' }))}
+          // 能力不可用不再做成禁用页签（禁用态文字读不清，且点不进去看不到原因）：
+          // 页签照常可切，落地后用 VideoAvailabilityNotice 说明原因并提供重试。
+          options={CANVAS_MODES.map((item) => ({ label: item.label, value: item.slug }))}
           value={activeSlug}
           onChange={(value) => navigate(`/canvas/${value}`)}
         />
@@ -464,17 +713,24 @@ export default function FreeCanvas() {
           scene={scene}
           assets={videos.assets}
           generations={project.generations}
-          selectedNodeId={selectedNodeId}
+          selectedNodeIds={selectedNodeIds}
           viewport={viewport}
           canUndo={canUndo}
           canRedo={canRedo}
           generationActive={generation.formLocked}
-          onSelectNode={handleSelectNode}
-          onTransformNode={handleTransformNode}
+          canDeleteSelection={deletableSelection}
+          canDuplicateSelection={duplicableSelection}
+          selectionBlockedReason={selectionBlockedReason}
+          onSelectNodes={handleSelectNodes}
+          onTransformNodes={handleTransformNodes}
           onViewportChange={setViewport}
           onUndo={undo}
           onRedo={redo}
-          onDelete={handleDelete}
+          onDeleteSelection={handleDeleteSelection}
+          onDuplicateSelection={handleDuplicateSelection}
+          onReorderSelection={handleReorderSelection}
+          onFilesDropped={handleFilesDropped}
+          onCanvasFocusChange={setCanvasFocused}
           variationEnabled={variationEntryEnabled || configuration.loading}
           imageToVideoEnabled={videoConfiguration.imageReady}
           imageToVideoState={videoConfiguration.imageState}
@@ -542,6 +798,17 @@ export default function FreeCanvas() {
             historySaved={generation.historySaved}
             onRetrySave={generation.retryHistory}
             resultAssets={videos.assets}
+          />
+        ) : selectedNodes.length > 1 ? (
+          <SelectionSummary
+            nodes={selectedNodes}
+            assets={images.assets}
+            canDuplicate={duplicableSelection}
+            canDelete={deletableSelection}
+            blockedReason={selectionBlockedReason}
+            onDuplicate={handleDuplicateSelection}
+            onDelete={handleDeleteSelection}
+            onClearSelection={() => selectNodes([])}
           />
         ) : (
           <GenerationPanel

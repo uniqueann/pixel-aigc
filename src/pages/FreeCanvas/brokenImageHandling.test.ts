@@ -18,18 +18,18 @@ describe('损坏图片在画布上的显示与移除', () => {
   })
 
   it('源码契约：FreeCanvasStage 包含图片损坏占位及删除引导，且不展示裂变/图生视频浮动条', () => {
-    expect(stageSource).toContain("function createBrokenImageObject(node: ImageNode)")
+    expect(stageSource).toContain("function createBrokenImageObject(node: ImageNode, accent: string)")
     expect(stageSource).toContain("new FabricText('图片损坏'")
     expect(stageSource).toContain("new FabricText('无法解码，可按 Delete 删除'")
     expect(stageSource).toContain("brokenImageNodesRef.current.has(node.id)")
-    expect(stageSource).toContain("const selectedImage = selectedNode?.type === 'image' && !brokenImageNodesRef.current.has(selectedNode.id) ? selectedNode : undefined")
+    expect(stageSource).toContain("const selectedImage = singleSelected?.type === 'image' && !brokenNodeIds.has(singleSelected.id) ? singleSelected : undefined")
   })
 
   it('源码契约：FreeCanvas/index.tsx 提供清理损坏图片按钮及清除派生草稿引用', () => {
     expect(pageSource).toContain('清理损坏图片')
     expect(pageSource).toContain('handleRemoveBrokenImages')
     expect(pageSource).toContain('images.brokenAssetIds')
-    expect(pageSource).toContain("currentDraft.sourceAssetId === targetNode.assetId")
+    expect(pageSource).toContain('currentDraft.sourceAssetId === node.assetId')
   })
 
   it('清理损坏图片能够清理画布节点并重置引用它的派生草稿', () => {
