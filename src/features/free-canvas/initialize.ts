@@ -7,7 +7,7 @@ export function ensureFreeCanvasContent() {
   let state = useEditorStore.getState()
   const isNew = !state.project
   if (!state.project) {
-    state.createProject('自由画布', { width: 1280, height: 720 })
+    state.createProject('未命名画布', { width: 1280, height: 720 })
     state = useEditorStore.getState()
   }
 

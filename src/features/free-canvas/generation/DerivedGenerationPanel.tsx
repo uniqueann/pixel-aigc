@@ -154,11 +154,15 @@ export default function DerivedGenerationPanel({
   const showForm = !imageToVideo || videoState === 'ready'
   const quote = creditQuote(estimatedCredits, { mock: mockGateway, loading: modelsLoading })
   const retryQuote = creditQuote(imageToVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
+  const advancedSummary = imageToVideo
+    ? `${videoModel?.label ?? '视频模型'} · ${videoResolution ?? videoModel?.resolution ?? '720p'}`
+    : `${model?.label ?? '默认模型'} · ${resolution.toUpperCase()}`
   const imageCreditBlocked = !imageToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote, balance: knownBalance })
   const imageRetryBlocked = !imageToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
 
   return (
     <aside className="free-canvas-generation-panel free-canvas-derived-panel">
+      <div className="free-canvas-panel-body">
       <div className="free-canvas-derived-header">
         <Button
           type="text"
@@ -217,44 +221,38 @@ export default function DerivedGenerationPanel({
         </label>
       )}
 
+      <details className="free-canvas-advanced">
+        <summary>
+          <span className="free-canvas-advanced-title">高级设置</span>
+          <span className="free-canvas-advanced-value">{advancedSummary}</span>
+        </summary>
+        <div className="free-canvas-advanced-fields">
+          {!imageToVideo && <>
+            <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="裂变模型" hintScope="single_image" models={models} value={model?.id} disabled={formLocked} onChange={onModelChange} />
+            <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="裂变分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
+              {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
+            </Radio.Group></label>
+          </>}
+          {imageToVideo && <>
+            <VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
+              loading={modelsLoading} configured={videoConfigured || mockGateway} mode="image_to_video"
+              model={videoModel} models={videoModels} selectedId={selectedVideoModelId} resolution={videoResolution}
+              onModelChange={onVideoModelChange} onResolutionChange={onVideoResolutionChange} />
+            <p>保持原图比例{videoModel?.provider === 'seedance' ? '；首期暂不支持含真人人脸的图片。' : '；使用选中图片作为首帧。'}</p>
+            <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />
+          </>}
+        </div>
+      </details>
+
       {!imageToVideo && <>
-        <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="裂变模型" hintScope="single_image" models={models} value={model?.id} disabled={formLocked} onChange={onModelChange} />
-        <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="裂变分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
-          {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
-        </Radio.Group></label>
         {resolutionAdjusted && <p role="status">当前模型或图片比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
         {modelsLoading
           ? <p role="status">正在加载模型配置…</p>
           : <p>{mockGateway ? '模拟生成，不消耗积分' : estimatedCredits === undefined ? '模型积分报价尚未就绪，请重新加载。' : `本次预计消耗 ${estimatedCredits} 积分，按实际成功张数结算。`}</p>}
       </>}
-
       {modelsLoading || imageToVideo ? null : generateDisabled ? (
         <p className="toolbox-hint">裂变服务暂不可用，请检查网络或稍后重试。</p>
       ) : null}
-      {imageToVideo && <><VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
-        loading={modelsLoading} configured={videoConfigured || mockGateway} mode="image_to_video"
-        model={videoModel} models={videoModels} selectedId={selectedVideoModelId} resolution={videoResolution}
-        onModelChange={onVideoModelChange} onResolutionChange={onVideoResolutionChange} />
-        <p>保持原图比例{videoModel?.provider === 'seedance' ? '；首期暂不支持含真人人脸的图片。' : '；使用选中图片作为首帧。'}</p>
-        <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} /></>}
-      <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
-      <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
-        <span style={{ display: 'block' }}>
-          <CreditActionButton data-task-generate
-            className="free-canvas-generate"
-            type="primary"
-            block
-            loading={submitting || autoRetrying}
-            quote={quote}
-            disabled={formLocked || generateDisabled || imageCreditBlocked || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > VIDEO_PROMPT_MAX))}
-            onClick={onGenerate}
-          >
-            {active ? '正在生成' : imageToVideo ? '生成' : `生成 ${count} 张`}
-          </CreditActionButton>
-        </span>
-      </Tooltip>
-      <CreditSettlementHint quote={quote} />
-      {!imageToVideo && <CreditBalanceNotice quote={quote} />}
       {preparationPhase && <p role="status">{preparationPhase}</p>}
       {!imageToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
         手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
@@ -288,6 +286,27 @@ export default function DerivedGenerationPanel({
       }} />}
 
       {showForm && <p className="free-canvas-panel-hint">结果会落在画板内可见位置；生成后仍可继续作为新的派生起点。</p>}
+      </div>
+      {showForm && <div className="free-canvas-panel-footer">
+        <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
+        <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+          <span style={{ display: 'block' }}>
+            <CreditActionButton data-task-generate
+              className="free-canvas-generate"
+              type="primary"
+              block
+              loading={submitting || autoRetrying}
+              quote={quote}
+              disabled={formLocked || generateDisabled || imageCreditBlocked || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > VIDEO_PROMPT_MAX))}
+              onClick={onGenerate}
+            >
+              {active ? '正在生成' : imageToVideo ? '生成' : `生成 ${count} 张`}
+            </CreditActionButton>
+          </span>
+        </Tooltip>
+        <CreditSettlementHint quote={quote} />
+        {!imageToVideo && <CreditBalanceNotice quote={quote} />}
+      </div>}
     </aside>
   )
 }

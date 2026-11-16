@@ -5,6 +5,12 @@
   --color-surface: #1f1f23;
   --color-surface-2: #29292e;
   --color-canvas: #3a3a3e; /* 画布专用中性灰，不与面板背景共用，避免干扰图片色彩判断 */
+  /* 画板是"成片预览"，深色主题下也是纸面，不参与明暗反转 */
+  --color-artboard: #f7f7f5;
+  --color-artboard-stroke: #d6d6d2;
+  --color-artboard-shadow: rgba(0, 0, 0, 0.28);
+  /* 选中框/控制点/框选：要同时压在纸面(≈#f7f7f5)和画布(#3a3a3e)上都 ≥3:1 */
+  --color-canvas-accent: #0f9973;
 
   --color-border: #38383e;
   --color-border-strong: #4a4a52;
@@ -57,6 +63,10 @@ html[data-theme='light'] {
   --color-surface: #ffffff;
   --color-surface-2: #f0f2f5;
   --color-canvas: #e5e7eb;
+  --color-artboard: #ffffff;
+  --color-artboard-stroke: #cbd5e1;
+  --color-artboard-shadow: rgba(15, 23, 42, 0.14);
+  --color-canvas-accent: #0a6b52;
 
   --color-border: #e2e8f0;
   --color-border-strong: #cbd5e1;
@@ -1458,6 +1468,11 @@ body.sidebar-resizing * {
 @keyframes canvas-asset-skeleton-pulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 .canvas-asset-picker-syncing { color: var(--color-text-muted); font-size: 12px; }
 
+/* 未选中的模式页签落在页面底色上，antd 默认灰只有 4.4:1。 */
+.free-canvas-page-header .ant-segmented-item:not(.ant-segmented-item-selected) .ant-segmented-item-label {
+  color: var(--color-text-secondary-strong);
+}
+
 .free-canvas-page-header {
   display: flex;
   min-width: 0;
@@ -1517,10 +1532,20 @@ body.sidebar-resizing * {
   backdrop-filter: blur(12px);
 }
 
-.free-canvas-node-actions {
+.free-canvas-selection-row {
   position: absolute;
   z-index: 4;
+  right: 0;
+  left: 0;
   display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.free-canvas-node-actions {
+  position: relative;
+  display: flex;
+  max-width: 100%;
   min-height: 34px;
   padding: 3px 5px;
   align-items: center;
@@ -1529,7 +1554,129 @@ body.sidebar-resizing * {
   background: var(--color-surface);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   white-space: nowrap;
+  pointer-events: auto;
   backdrop-filter: blur(12px);
+  /* --bar-center 是选择包围盒中心的画布坐标；clamp 保证 ~340px 宽的操作条不越界。 */
+  margin-left: calc(clamp(170px, var(--bar-center, 50%), calc(100% - 170px)) - 50%);
+}
+
+.free-canvas-selection-count {
+  padding-inline: 6px 2px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 画布节点的键盘/读屏入口：视觉隐藏，焦点落在画布上时用描边标出位置。 */
+.free-canvas-node-list {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+  list-style: none;
+}
+
+.free-canvas-focus-ring {
+  position: absolute;
+  z-index: 3;
+  border: 2px dashed var(--color-focus-ring);
+  border-radius: 4px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.free-canvas-dropzone {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--color-accent);
+  border-radius: 12px;
+  background: rgba(33, 207, 160, 0.08);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  font-size: 13px;
+  pointer-events: none;
+  animation: free-canvas-drop-fade 120ms ease-out;
+}
+
+.free-canvas-dropzone span {
+  padding: 7px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+@keyframes free-canvas-drop-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.free-canvas-stage:focus {
+  outline: none;
+}
+
+.free-canvas-stage:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.free-canvas-selection-summary {
+  display: flex;
+  margin: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.free-canvas-selection-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.free-canvas-selection-summary dt {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+}
+
+.free-canvas-selection-summary dd {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.free-canvas-selection-blocked {
+  color: var(--color-warning-text) !important;
+}
+
+.free-canvas-selection-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.free-canvas-selection-clear {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.free-canvas-selection-clear:hover {
+  color: var(--color-text-primary);
 }
 
 .free-canvas-node-actions .ant-btn {
@@ -1604,11 +1751,10 @@ body.sidebar-resizing * {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.62;
   pointer-events: auto;
   transition: opacity 280ms ease;
 }
@@ -1631,16 +1777,181 @@ body.sidebar-resizing * {
   min-width: 0;
   min-height: 0;
   max-height: 100%;
-  padding: 18px;
   flex: 0 0 280px;
   flex-direction: column;
-  gap: 16px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-surface);
+}
+
+/* 参数区滚动、操作区常驻：主按钮不能因为字段多而掉出首屏。 */
+.free-canvas-panel-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 18px 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.free-canvas-panel-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 18px 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.free-canvas-advanced {
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.free-canvas-advanced > summary {
+  display: flex;
+  padding: 8px 0;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.free-canvas-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.free-canvas-advanced > summary::after {
+  content: '⌄';
+  margin-left: auto;
+  color: var(--color-text-muted);
+  transition: transform 160ms ease;
+}
+
+.free-canvas-advanced[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.free-canvas-advanced > summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.free-canvas-advanced-title {
+  flex: 0 0 auto;
+  color: var(--color-text-primary);
+}
+
+.free-canvas-advanced-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.free-canvas-advanced-fields {
+  display: flex;
+  padding: 2px 0 12px;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 画布状态条：一条主提示 + 可展开的其余项，不再纵排多条整行告警。 */
+.free-canvas-notices {
+  display: flex;
+  min-width: 0;
+  margin-bottom: 10px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.free-canvas-notices ul {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+}
+
+.free-canvas-notice {
+  display: flex;
+  min-width: 0;
+  padding: 7px 10px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  font-size: 12px;
+}
+
+.free-canvas-notice.is-warning { border-color: color-mix(in srgb, var(--color-warning) 42%, var(--color-border)); }
+.free-canvas-notice.is-error { border-color: color-mix(in srgb, var(--color-danger) 42%, var(--color-border)); }
+
+.free-canvas-notice-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  font-size: 13px;
+}
+
+.free-canvas-notice.is-info .free-canvas-notice-icon { color: var(--color-accent-text); }
+.free-canvas-notice.is-warning .free-canvas-notice-icon { color: var(--color-warning-text); }
+.free-canvas-notice.is-error .free-canvas-notice-icon { color: var(--color-danger-text); }
+
+.free-canvas-notice-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.free-canvas-notice-copy strong {
+  flex: 0 0 auto;
+  color: var(--color-text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.free-canvas-notice-copy span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.free-canvas-notice-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.free-canvas-notice-toggle {
+  padding: 0 2px;
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.free-canvas-notice-toggle:hover {
+  color: var(--color-text-primary);
 }
 
 .free-canvas-generation-panel h2 {
@@ -1729,6 +2040,21 @@ body.sidebar-resizing * {
   max-width: 100%;
 }
 
+/* antd 默认 placeholder / 字数统计 / link 在这套主题下低于 4.5:1。 */
+.free-canvas-generation-panel .ant-input::placeholder,
+.free-canvas-generation-panel textarea.ant-input::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1;
+}
+
+.free-canvas-generation-panel .ant-input-data-count {
+  color: var(--color-text-secondary);
+}
+
+.free-canvas-generation-panel .ant-btn-link:not(:disabled) {
+  color: var(--color-accent-text);
+}
+
 .free-canvas-field .ant-segmented-item,
 .free-canvas-field .ant-segmented-item-label {
   min-width: 0;
@@ -1763,7 +2089,8 @@ body.sidebar-resizing * {
 }
 
 .free-canvas-aspect-ratio-label {
-  font-size: 11px;
+  color: var(--color-text-secondary-strong);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.2px;
 }
@@ -4765,7 +5092,7 @@ body.sidebar-resizing * {
 
 .free-canvas-panel-hint {
   margin-top: auto !important;
-  color: var(--color-text-muted) !important;
+  color: var(--color-text-secondary) !important;
 }
 
 .free-canvas-loading {
@@ -4873,6 +5200,20 @@ body.sidebar-resizing * {
     transform: none;
   }
 
+  /* 触控目标：图标按钮 42×44（保持单行），带文字的节点操作 36px。 */
+  .free-canvas-toolbar .ant-btn {
+    width: 42px;
+    height: 44px;
+  }
+
+  .free-canvas-zoom-label {
+    min-width: 40px;
+  }
+
+  .free-canvas-node-actions .ant-btn {
+    height: 36px;
+  }
+
   .free-canvas-stage-chrome {
     right: 12px;
     left: auto;
@@ -4910,6 +5251,34 @@ body.sidebar-resizing * {
     max-height: none;
     flex: 0 0 auto;
     overflow: visible;
+  }
+
+  .free-canvas-panel-body {
+    padding: 16px 16px 8px;
+    overflow: visible;
+  }
+
+  .free-canvas-panel-footer {
+    padding: 10px 16px 14px;
+  }
+
+  .free-canvas-notice {
+    flex-wrap: wrap;
+  }
+
+  .free-canvas-notice-copy {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .free-canvas-notice-copy span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .free-canvas-notice-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 
@@ -5007,7 +5376,7 @@ body.sidebar-resizing * {
 .post-login-loading-mark { width: min(240px, 72vw); line-height: 0; }
 .post-login-loading-mark svg { display: block; width: 100%; height: auto; }
 .post-login-loading p { margin: 0; color: var(--color-text-secondary); text-align: center; }
-.free-canvas-media-error { position: absolute; bottom: 70px; left: 16px; z-index: 3; display: flex; align-items: center; gap: 12px; padding: 10px; background: #292421; border-radius: 8px; color: #ffd591; font-size: 12px; }
+.free-canvas-media-error { position: absolute; bottom: 70px; left: 16px; z-index: 3; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-warning-text); font-size: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16); }
 
 .toolbox-watermark {
   display: flex;
