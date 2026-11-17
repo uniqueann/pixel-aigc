@@ -44,6 +44,7 @@ import { cycleDown, stackAtPoint } from './stacking'
 import { computeAlignmentGuides } from './alignment'
 import { placeholderDetail } from './generation/placeholderCopy'
 import { distance as pointerDistance, midpoint, pinchViewport, type TouchPoint } from './gestures'
+import { resolveLineage } from './lineage'
 
 const PLACEHOLDER_LABEL = '#f5f5f4'
 const PLACEHOLDER_DETAIL = '#aeb7b4'
@@ -520,6 +521,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const lastStageSizeRef = useRef<{ width: number; height: number }>()
   const altSelectingRef = useRef(false)
   const guideLinesRef = useRef<FabricObject[]>([])
+  const lineageObjectsRef = useRef<FabricObject[]>([])
   const touchPointersRef = useRef(new Map<number, TouchPoint>())
   const pinchStartRef = useRef<{ distance: number; mid: TouchPoint; viewport: ViewportState } | null>(null)
   const touchPanRef = useRef<TouchPoint | null>(null)
@@ -558,6 +560,81 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     }
     if (changed) canvas.requestRenderAll()
   }, [generationTick, generations])
+
+  const clearLineageOverlay = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !lineageObjectsRef.current.length) return
+    for (const object of lineageObjectsRef.current) canvas.remove(object)
+    lineageObjectsRef.current = []
+    canvas.requestRenderAll()
+  }, [])
+
+  /**
+   * 选中单个节点时画出它的血缘（只读提示）：同批结果的虚线框 + 派生来源的虚线。
+   * 不写任何数据、不进撤销栈，取消选择即消失。
+   */
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    clearLineageOverlay()
+    const selectedId = selectedNodeIds.length === 1 ? selectedNodeIds[0] : undefined
+    const selected = selectedId ? scene.nodes.find((node) => node.id === selectedId) : undefined
+    if (!selected) return
+    const { siblings, derived } = resolveLineage(selected, scene.nodes, assets, generations)
+    if (!siblings.length && !derived) return
+    const accent = paletteRef.current.accent
+    const byId = new Map(scene.nodes.map((node) => [node.id, node]))
+    const add = (object: FabricObject) => {
+      canvas.add(object)
+      lineageObjectsRef.current.push(object)
+    }
+
+    for (const id of siblings) {
+      const node = byId.get(id)
+      if (!node) continue
+      const bounds = calculateNodeBounds(node)
+      add(new Rect({
+        left: bounds.left,
+        top: bounds.top,
+        width: bounds.right - bounds.left,
+        height: bounds.bottom - bounds.top,
+        fill: 'transparent',
+        stroke: accent,
+        strokeWidth: 1,
+        strokeDashArray: [4, 4],
+        strokeUniform: true,
+        selectable: false,
+        evented: false,
+        objectCaching: false,
+        excludeFromExport: true,
+        opacity: 0.55,
+      }))
+    }
+
+    if (derived) {
+      const target = calculateNodeBounds(selected)
+      for (const sourceId of derived.sourceNodeIds) {
+        const node = byId.get(sourceId)
+        if (!node) continue
+        const source = calculateNodeBounds(node)
+        const sourceOnLeft = source.right <= target.left
+        const from = { x: sourceOnLeft ? source.right : source.left, y: (source.top + source.bottom) / 2 }
+        const to = { x: sourceOnLeft ? target.left : target.right, y: (target.top + target.bottom) / 2 }
+        add(new Line([from.x, from.y, to.x, to.y], {
+          stroke: accent,
+          strokeWidth: 1,
+          strokeDashArray: [6, 4],
+          strokeUniform: true,
+          selectable: false,
+          evented: false,
+          objectCaching: false,
+          excludeFromExport: true,
+          opacity: 0.7,
+        }))
+      }
+    }
+    canvas.requestRenderAll()
+  }, [assets, clearLineageOverlay, generations, palette.accent, scene.nodes, selectedNodeIds])
 
   const clearAlignmentGuides = useCallback(() => {
     const canvas = canvasRef.current
