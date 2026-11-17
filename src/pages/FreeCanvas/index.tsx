@@ -49,6 +49,7 @@ import {
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
 import { boundsFromPlacement, calculateNodeBounds, NODE_CASCADE_OFFSET, offsetPlacementToAvoidOverlap } from '@/features/free-canvas/geometry'
 import { nextZIndex, reorderZIndex, type ZOrderAction } from '@/features/free-canvas/zOrder'
+import { buildPastedNodes, copyNodesToClipboard, readClipboard } from '@/features/free-canvas/clipboard'
 import type { FreeCanvasStageHandle, NodeTransformUpdate } from '@/features/free-canvas/types'
 import { CANVAS_MODES } from './modes'
 import { imageCreditAmount } from '@/features/credits/quotes'
@@ -376,6 +377,42 @@ export default function FreeCanvas() {
     void flushProject().catch(() => undefined)
   }, [flushNudge])
 
+  const handleCopySelection = useCallback(() => {
+    const state = useEditorStore.getState()
+    const project = state.project
+    const currentScene = project?.document.scenes.find((item) => item.id === state.activeSceneId)
+    if (!project || !currentScene) return
+    const selection = new Set(state.selectedNodeIds)
+    const nodes = currentScene.nodes.filter((node) => selection.has(node.id))
+    if (!nodes.length) return
+    const copied = copyNodesToClipboard(project.id, nodes)
+    if (!copied) {
+      message.warning('生成中的占位框不能复制')
+      return
+    }
+    message.success({ content: `已复制 ${copied} 项`, duration: 1.2 })
+  }, [message])
+
+  const handlePaste = useCallback(() => {
+    const state = useEditorStore.getState()
+    const project = state.project
+    const currentScene = project?.document.scenes.find((item) => item.id === state.activeSceneId)
+    if (!project || !currentScene) return
+    const clipboard = readClipboard(project.id)
+    if (!clipboard) {
+      message.info('剪贴板里没有可粘贴的画布内容')
+      return
+    }
+    const nodes = buildPastedNodes({ scene: currentScene, clipboard, pointer: stageRef.current?.getPointerCanvasPoint() })
+    if (!nodes.length) return
+    state.executeCommand(new CompositeCommand(
+      currentScene.id,
+      nodes.map((node) => new AddNodeCommand(currentScene.id, node)),
+    ))
+    state.selectNodes(nodes.map((node) => node.id))
+    void flushProject().catch(() => undefined)
+  }, [message])
+
   const handleReorderSelection = useCallback((action: ZOrderAction) => {
     flushNudge()
     const state = useEditorStore.getState()
@@ -645,6 +682,21 @@ export default function FreeCanvas() {
     }
     if (event.ctrlKey && key === 'y') { event.preventDefault(); flushNudge(); redo(); return }
     if (commandKey && key === 'd') { event.preventDefault(); handleDuplicateSelection(); return }
+    if (commandKey && key === 'c') {
+      // 页面上选中了文本时让浏览器自己复制，别抢快捷键。
+      if (window.getSelection()?.toString()) return
+      event.preventDefault()
+      handleCopySelection()
+      return
+    }
+    if (commandKey && key === 'v') {
+      const project = useEditorStore.getState().project
+      if (!project || !readClipboard(project.id)) return
+      event.preventDefault()
+      flushNudge()
+      handlePaste()
+      return
+    }
     if (commandKey && key === 'a') { event.preventDefault(); flushNudge(); selectAllNodes(); return }
     if (commandKey && (event.key === ']' || event.key === '[')) {
       event.preventDefault()

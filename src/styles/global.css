@@ -1537,13 +1537,12 @@ body.sidebar-resizing * {
   z-index: 4;
   right: 0;
   left: 0;
-  display: flex;
-  justify-content: center;
   pointer-events: none;
 }
 
 .free-canvas-node-actions {
-  position: relative;
+  position: absolute;
+  left: clamp(170px, var(--bar-center, 50%), calc(100% - 170px));
   display: flex;
   max-width: 100%;
   min-height: 34px;
@@ -1557,7 +1556,7 @@ body.sidebar-resizing * {
   pointer-events: auto;
   backdrop-filter: blur(12px);
   /* --bar-center 是选择包围盒中心的画布坐标；clamp 保证 ~340px 宽的操作条不越界。 */
-  margin-left: calc(clamp(170px, var(--bar-center, 50%), calc(100% - 170px)) - 50%);
+  transform: translateX(-50%);
 }
 
 .free-canvas-selection-count {
