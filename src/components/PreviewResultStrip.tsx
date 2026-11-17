@@ -8,6 +8,7 @@ export default function PreviewResultStrip({ items, onDownload }: { items: Previ
   const { openAt, galleryProps } = usePreviewGallery(items)
   if (!items.length) return null
   return <>
+    <p className="preview-result-caption">已在画布上 · 共 {items.length} 项，点缩略图可放大或下载</p>
     <div className="preview-result-strip" aria-label="生成结果预览">
       {items.map((item, index) => <div className="preview-result-tile" key={item.id}>
         {item.mediaType === 'video' ? <VideoPoster posterKey={item.posterKey} ownerId={item.ownerId} retentionExpiresAt={item.retentionExpiresAt} /> : <img src={item.thumbSrc} alt={item.title ?? `结果 ${index + 1}`} />}

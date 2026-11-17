@@ -42,6 +42,7 @@ import { readCanvasPalette, useCanvasPalette, type CanvasPalette } from './canva
 import { buildLayerItems, type LayerKind } from './layers'
 import { cycleDown, stackAtPoint } from './stacking'
 import { computeAlignmentGuides } from './alignment'
+import { placeholderDetail } from './generation/placeholderCopy'
 
 const PLACEHOLDER_LABEL = '#f5f5f4'
 const PLACEHOLDER_DETAIL = '#aeb7b4'
@@ -274,16 +275,16 @@ function readNodeTransform(object: FabricObject, node: EditorNode): NodeTransfor
 
 function generationAppearance(status: TaskStatus | undefined) {
   if (status === 'failed' || status === 'cancelled') {
-    return { fill: PLACEHOLDER_FAILED_FILL, stroke: PLACEHOLDER_FAILED_STROKE, label: '生成失败', detail: '可在右侧重试或修改参数' }
+    return { fill: PLACEHOLDER_FAILED_FILL, stroke: PLACEHOLDER_FAILED_STROKE, label: '生成失败' }
   }
   if (status === 'processing') {
     // 占位框底色始终是深色，边框要继续用亮薄荷绿，不跟随主题。
-    return { fill: PLACEHOLDER_ACTIVE_FILL, stroke: PLACEHOLDER_ACTIVE_STROKE, label: '生成中', detail: '结果完成后会替换此占位' }
+    return { fill: PLACEHOLDER_ACTIVE_FILL, stroke: PLACEHOLDER_ACTIVE_STROKE, label: '生成中' }
   }
-  return { fill: PLACEHOLDER_FILL, stroke: PLACEHOLDER_STROKE, label: '排队中', detail: '正在等待生成任务' }
+  return { fill: PLACEHOLDER_FILL, stroke: PLACEHOLDER_STROKE, label: '排队中' }
 }
 
-function createGenerationObject(node: GenerationNode, status: TaskStatus | undefined, accent: string) {
+function createGenerationObject(node: GenerationNode, status: TaskStatus | undefined, accent: string, detailText: string) {
   const appearance = generationAppearance(status)
   const background = new Rect({
     left: 0,
@@ -309,7 +310,7 @@ function createGenerationObject(node: GenerationNode, status: TaskStatus | undef
     fontSize: 17,
     fontWeight: 600,
   })
-  const detail = new FabricText(appearance.detail, {
+  const detail = new FabricText(detailText, {
     left: node.width / 2,
     top: node.height / 2 + 17,
     originX: 'center',
@@ -336,6 +337,8 @@ function createGenerationObject(node: GenerationNode, status: TaskStatus | undef
     hasControls: false,
     borderColor: accent,
     padding: 2,
+    // 占位框的时长文案会每秒变化，关掉缓存才能直接改文字而不被旧的组包围盒裁掉。
+    objectCaching: false,
     hoverCursor: node.locked ? 'not-allowed' : 'move',
   })
   object.setCoords()
@@ -413,6 +416,8 @@ function createBrokenImageObject(node: ImageNode, accent: string) {
     hasControls: false,
     borderColor: accent,
     padding: 2,
+    // 占位框的时长文案会每秒变化，关掉缓存才能直接改文字而不被旧的组包围盒裁掉。
+    objectCaching: false,
     hoverCursor: node.locked ? 'not-allowed' : 'move',
   })
   object.setCoords()
@@ -498,6 +503,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const [videoState, setVideoState] = useState<{ id?: NodeId; paused: boolean; muted: boolean }>({ paused: true, muted: true })
   const [dropActive, setDropActive] = useState(false)
   const [layersOpen, setLayersOpen] = useState(false)
+  const [generationTick, setGenerationTick] = useState(0)
   const sceneSizeRef = useRef({ width: scene.width, height: scene.height })
   const spacePressedRef = useRef(false)
   const panningRef = useRef(false)
@@ -517,6 +523,37 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const [videoUiVersion, setVideoUiVersion] = useState(0)
 
   useEffect(() => { paletteRef.current = palette }, [palette])
+
+  const hasActiveGeneration = useMemo(() => scene.nodes.some((node) => {
+    if (node.type !== 'generation') return false
+    const status = generations[node.generationId]?.status
+    return !status || status === 'pending' || status === 'queued' || status === 'processing'
+  }), [generations, scene.nodes])
+
+  // 只有存在进行中的占位时才开秒级计时器，空闲画布不跑任何定时器。
+  useEffect(() => {
+    if (!hasActiveGeneration) return
+    const timer = window.setInterval(() => setGenerationTick((tick) => tick + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [hasActiveGeneration])
+
+  // 每秒把"已用 N 秒"写回占位框，只改文字、不重建对象。
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    let changed = false
+    for (const [nodeId, object] of nodeObjectsRef.current) {
+      const node = nodesByIdRef.current.get(nodeId)
+      if (node?.type !== 'generation' || !(object instanceof Group)) continue
+      const detail = placeholderDetail(generations[node.generationId]?.status, generations[node.generationId])
+      const text = object.getObjects()[2]
+      if (text instanceof FabricText && text.text !== detail) {
+        text.set({ text: detail })
+        changed = true
+      }
+    }
+    if (changed) canvas.requestRenderAll()
+  }, [generationTick, generations])
 
   const clearAlignmentGuides = useCallback(() => {
     const canvas = canvasRef.current
@@ -1148,7 +1185,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           return
         }
 
-        const placeholder = createGenerationObject(node, status, palette.accent)
+        const placeholder = createGenerationObject(node, status, palette.accent, placeholderDetail(status, generations[node.generationId]))
         generationStatusesRef.current.set(node.id, status)
         nodeObjectsRef.current.set(node.id, placeholder)
         objectNodeIdsRef.current.set(placeholder, node.id)
@@ -1667,17 +1704,6 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <Tooltip title="撤销（⌘/Ctrl+Z）"><Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} aria-label="撤销" /></Tooltip>
         <Tooltip title="重做（⇧⌘/Ctrl+Z）"><Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} aria-label="重做" /></Tooltip>
         <span className="free-canvas-toolbar-divider" />
-        <Tooltip
-          title={
-            singleSelected?.type === 'generation'
-              ? (isSelectedTerminalGeneration ? '删除占位框' : '生成中的占位框暂不支持删除')
-              : selectedNodes.length > 1
-                ? (canDeleteSelection ? '删除所选节点' : selectionBlockedReason ?? '所选内容无法删除')
-                : '删除所选节点'
-          }
-        >
-          <Button type="text" danger icon={<DeleteOutlined />} disabled={!deletableSelection} onClick={onDeleteSelection} aria-label="删除节点" />
-        </Tooltip>
         {singleSelected?.type === 'video' && (
           <>
             <span className="free-canvas-toolbar-divider" />
@@ -1717,6 +1743,18 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <span className="free-canvas-zoom-label">{Math.round(viewport.zoom * 100)}%</span>
         <Tooltip title="放大"><Button type="text" icon={<PlusOutlined />} onClick={() => zoomBy(1.25)} aria-label="放大画布" /></Tooltip>
         <Tooltip title="适合画板"><Button type="text" icon={<ExpandOutlined />} onClick={fitToScene} aria-label="适合画板" /></Tooltip>
+        <span className="free-canvas-toolbar-divider" />
+        <Tooltip
+          title={
+            singleSelected?.type === 'generation'
+              ? (isSelectedTerminalGeneration ? '删除占位框' : '生成中的占位框暂不支持删除')
+              : selectedNodes.length > 1
+                ? (canDeleteSelection ? '删除所选节点' : selectionBlockedReason ?? '所选内容无法删除')
+                : '删除所选节点'
+          }
+        >
+          <Button type="text" danger icon={<DeleteOutlined />} disabled={!deletableSelection} onClick={onDeleteSelection} aria-label="删除节点" />
+        </Tooltip>
       </div>
     </div>
   )
