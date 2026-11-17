@@ -43,6 +43,10 @@
   --color-text: #ededec;
   --color-primary: #21cfa0;
 
+  /* 画布底部浮动工具条的位置与高度，媒体错误条和图层面板都按它避让。 */
+  --canvas-toolbar-offset: 18px;
+  --canvas-toolbar-size: 42px;
+
   --radius-sm: 6px;
   --radius-md: 10px;
 
@@ -1517,7 +1521,7 @@ body.sidebar-resizing * {
 .free-canvas-toolbar {
   position: absolute;
   z-index: 2;
-  bottom: 18px;
+  bottom: var(--canvas-toolbar-offset);
   left: 50%;
   display: flex;
   min-height: 42px;
@@ -1731,7 +1735,7 @@ body.sidebar-resizing * {
   position: absolute;
   z-index: 5;
   top: 56px;
-  bottom: 76px;
+  bottom: calc(var(--canvas-toolbar-offset) + var(--canvas-toolbar-size) + 16px);
   left: 12px;
   display: flex;
   width: 196px;
@@ -2071,6 +2075,13 @@ body.sidebar-resizing * {
 .free-canvas-advanced-title {
   flex: 0 0 auto;
   color: var(--color-text-primary);
+}
+
+.free-canvas-field-hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .free-canvas-advanced-value {
@@ -5429,6 +5440,10 @@ body.sidebar-resizing * {
     transform: none;
   }
 
+  :root {
+    --canvas-toolbar-size: 54px;
+  }
+
   /* 触控目标：图标按钮 40×44（7 个按钮保持单行），带文字的节点操作 36px。 */
   .free-canvas-toolbar .ant-btn {
     width: 40px;
@@ -5440,9 +5455,7 @@ body.sidebar-resizing * {
     display: none;
   }
 
-  .free-canvas-layers {
-    bottom: 84px;
-  }
+
 
   .free-canvas-node-actions .ant-btn {
     height: 36px;
@@ -5633,7 +5646,7 @@ body.sidebar-resizing * {
 .post-login-loading-mark { width: min(240px, 72vw); line-height: 0; }
 .post-login-loading-mark svg { display: block; width: 100%; height: auto; }
 .post-login-loading p { margin: 0; color: var(--color-text-secondary); text-align: center; }
-.free-canvas-media-error { position: absolute; bottom: 70px; left: 16px; z-index: 3; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-warning-text); font-size: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16); }
+.free-canvas-media-error { position: absolute; bottom: calc(var(--canvas-toolbar-offset) + var(--canvas-toolbar-size) + 10px); left: 16px; z-index: 3; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-warning-text); font-size: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16); }
 
 .toolbox-watermark {
   display: flex;

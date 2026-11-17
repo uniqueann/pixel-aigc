@@ -157,6 +157,7 @@ export default function GenerationPanel({
   const showForm = !textToVideo || videoState === 'ready'
   const quote = creditQuote(estimatedCredits, { mock: mockGateway, loading: modelsLoading })
   const retryQuote = creditQuote(taskIsVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
+  const activePreset = IMAGE_SIZE_PRESETS.find((preset) => preset.key === presetKey) ?? IMAGE_SIZE_PRESETS[0]
   const advancedSummary = textToVideo
     ? `${videoModel?.label ?? '视频模型'} · ${videoResolution ?? videoModel?.resolution ?? '720p'}`
     : `${model?.label ?? '默认模型'} · ${resolution.toUpperCase()}`
@@ -212,6 +213,8 @@ export default function GenerationPanel({
           disabled={formLocked}
           onChange={(value) => onPresetChange(String(value))}
         />
+        {/* 图标只是辅助，把当前比例的含义与像素直接写出来，不用悬停也读得懂。 */}
+        <p className="free-canvas-field-hint">{activePreset.tooltip ?? getAspectRatioTooltip(activePreset.key)} · {activePreset.width}×{activePreset.height}</p>
       </label>
 
       {textToVideo ? (

@@ -65,6 +65,7 @@
 .workstation-result-item:hover .preview-zoom-button,
 .workstation-result-item:focus-within .preview-zoom-button { opacity: 1; }
 @media (hover: none) { .preview-zoom-button { opacity: 1; } }
+.preview-result-caption { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; }
 .preview-result-strip { display: flex; flex-shrink: 0; min-height: 58px; gap: 8px; overflow-x: auto; }
 .preview-result-tile { position: relative; flex: 0 0 58px; height: 58px; }
 .preview-result-tile img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }

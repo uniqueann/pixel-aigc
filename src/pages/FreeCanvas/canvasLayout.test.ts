@@ -104,8 +104,12 @@ describe('自由画布面板布局', () => {
     expect(block('.free-canvas-add-image')).toMatch(/pointer-events:\s*auto/)
     const toolbar = block('.free-canvas-toolbar')
     expect(toolbar).toMatch(/z-index:\s*2/)
-    expect(toolbar).toMatch(/bottom:\s*18px/)
+    // 底部位置改由变量控制，媒体错误条与图层面板都按同一组变量避让。
+    expect(toolbar).toMatch(/bottom:\s*var\(--canvas-toolbar-offset\)/)
     expect(toolbar).toMatch(/left:\s*50%/)
+    expect(block(':root')).toMatch(/--canvas-toolbar-size:\s*42px/)
+    expect(block('.free-canvas-media-error')).toMatch(/bottom:\s*calc\(var\(--canvas-toolbar-offset\) \+ var\(--canvas-toolbar-size\)/)
+    expect(block('.free-canvas-layers')).toMatch(/bottom:\s*calc\(var\(--canvas-toolbar-offset\) \+ var\(--canvas-toolbar-size\)/)
     expect(pageSource).toContain('className="free-canvas-page-header page-tab-row"')
     expect(block(':root')).toMatch(/--page-tab-gap:\s*16px/)
     expect(block('.page-tab-row')).toMatch(/margin-bottom:\s*var\(--page-tab-gap\)/)
