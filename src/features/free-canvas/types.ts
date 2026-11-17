@@ -55,6 +55,8 @@ export interface FreeCanvasStageProps {
 export interface FreeCanvasStageHandle {
   getViewportCenter: () => CanvasPoint
   getCanvasPoint: (clientX: number, clientY: number) => CanvasPoint
+  /** 指针最近一次在画布上的位置（画板坐标）；指针还没进过画布时返回 undefined。 */
+  getPointerCanvasPoint: () => CanvasPoint | undefined
   revealBounds: (targets: import('./geometry').NodeBounds[]) => void
   fitToScene: () => void
   zoomTo: (zoom: number) => void

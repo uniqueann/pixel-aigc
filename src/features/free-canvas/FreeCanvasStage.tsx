@@ -51,6 +51,18 @@ const PLACEHOLDER_FAILED_FILL = '#3b2729'
 const PLACEHOLDER_FAILED_STROKE = '#ff7875'
 const ARTBOARD_BLUR = 18
 
+/** 屏幕坐标 → 画板坐标。 */
+function clientPointToCanvas(canvas: Canvas | null, clientX: number, clientY: number) {
+  if (!canvas) return { x: 0, y: 0 }
+  const rect = canvas.upperCanvasEl.getBoundingClientRect()
+  const transform = canvas.viewportTransform
+  const zoom = canvas.getZoom()
+  return {
+    x: (clientX - rect.left - transform[4]) / zoom,
+    y: (clientY - rect.top - transform[5]) / zoom,
+  }
+}
+
 /** 窄屏上留 64px 内边距会把画板压得太小，按容器宽度收一档。 */
 function fitPaddingFor(width: number) {
   return width <= 720 ? 24 : FIT_PADDING
@@ -491,6 +503,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   useEffect(() => { dismissHintRef.current = () => setHintDismissed(true) }, [])
   const reconcilingObjectsRef = useRef(false)
   const lastPointerRef = useRef({ x: 0, y: 0 })
+  const pointerOnCanvasRef = useRef<{ clientX: number; clientY: number }>()
   const initialFitAppliedRef = useRef(false)
   const lastStageSizeRef = useRef<{ width: number; height: number }>()
   const fitTimerRef = useRef<number>()
@@ -611,17 +624,11 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         y: (container.clientHeight / 2 - transform[5]) / zoom,
       }
     },
-    getCanvasPoint: (clientX, clientY) => {
-      const canvas = canvasRef.current
-      const container = containerRef.current
-      if (!canvas || !container) return { x: sceneSizeRef.current.width / 2, y: sceneSizeRef.current.height / 2 }
-      const rect = canvas.upperCanvasEl.getBoundingClientRect()
-      const transform = canvas.viewportTransform
-      const zoom = canvas.getZoom()
-      return {
-        x: (clientX - rect.left - transform[4]) / zoom,
-        y: (clientY - rect.top - transform[5]) / zoom,
-      }
+    getCanvasPoint: (clientX, clientY) => clientPointToCanvas(canvasRef.current, clientX, clientY),
+    getPointerCanvasPoint: () => {
+      const pointer = pointerOnCanvasRef.current
+      if (!pointer) return undefined
+      return clientPointToCanvas(canvasRef.current, pointer.clientX, pointer.clientY)
     },
     revealBounds: (targets) => {
       const canvas = canvasRef.current
@@ -806,6 +813,12 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       canvas.requestRenderAll()
       callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
       dismissHintRef.current()
+    })
+    canvas.on('mouse:move', ({ e }) => {
+      if (e instanceof MouseEvent) pointerOnCanvasRef.current = { clientX: e.clientX, clientY: e.clientY }
+    })
+    canvas.on('mouse:down', ({ e }) => {
+      if (e instanceof MouseEvent) pointerOnCanvasRef.current = { clientX: e.clientX, clientY: e.clientY }
     })
     canvas.on('mouse:down:before', ({ e }) => {
       if (!(e instanceof MouseEvent) || (!spacePressedRef.current && e.button !== 1)) return

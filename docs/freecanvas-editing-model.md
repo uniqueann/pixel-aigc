@@ -46,8 +46,10 @@
 |---|---|---|
 | `←↑→↓` | 移动 1px（画板坐标） | 有选择集才生效；`preventDefault` 防页面滚动 |
 | `⇧ + 方向键` | 移动 10px | |
-| `⌘D` | 复制选择集，选中副本 | 偏移 +24/+24 |
+| `⌘D` | 复制选择集，选中副本 | 偏移 `NODE_CASCADE_OFFSET`（40） |
 | `⌘A` | 全选 | |
+| `⌘C` | 复制选择集到画布剪贴板 | 页面选中文本时不抢 |
+| `⌘V` | 粘贴，整组落在指针处 | 剪贴板为空时不拦截浏览器粘贴 |
 | `Esc` | 清空选择 | 注册在 `window` 冒泡阶段，让弹窗先吃掉 |
 | `⌘]` / `⌘⇧]` | 上移一层 / 置顶 | |
 | `⌘[` / `⌘⇧[` | 下移一层 / 置底 | |
@@ -66,14 +68,14 @@
 - 反馈：画布出现 2px 虚线薄荷绿内框 + 中央"松开添加到画布"，底层 8% 暗化；`dragleave`/`drop` 100ms 淡出。不做逐文件预览。
 - 落点：`drop` 的 `clientX/clientY` → 画板坐标，新节点以该点为中心（**不是**视口中心）。
 - 防重叠：`findArtboardPlacement`；整块放不进画板才贴到画板外并 `revealBounds`。
-- 多文件：串行导入，每个 +24/+24 级联，全部完成后选中所有新节点。
+- 多文件：串行导入，每个按 `NODE_CASCADE_OFFSET`（40）级联，全部完成后选中所有新节点。
 - 失败：逐文件 `imageFileError` 预检，失败只提示该文件，成功照常入画布；末尾汇总"已添加 2 张，1 张失败"。
 - 视频文件：明确拒绝，提示"仅支持 PNG/JPG/WebP"。
 - 新增 `FreeCanvasStageHandle.getCanvasPoint(clientX, clientY)`（现在只有 `getViewportCenter`）。
 
 ### 5.2 复制（`⌘D`）
 
-- 复制节点、共享 `assetId`，`zIndex` = 当前最大值 +1，位置 +24/+24；超出画板时按 `findArtboardPlacement` 就近归位。
+- 复制节点、共享 `assetId`，`zIndex` = 当前最大值 +1，位置按 `NODE_CASCADE_OFFSET`（40）级联；超出画板时用同一偏移继续避让，不会缩小副本。
 - 复制后选择集 = 副本（连按形成级联）。
 - 生成中占位框（`type === 'generation'` 且非失败/取消）**不可复制**：按钮禁用 + tooltip"生成中的占位框不能复制"。
 - 视频节点可复制。
@@ -174,13 +176,13 @@
 - 不做智能对齐/吸附参考线
 - 不抢浏览器保留键：`⌘+` `⌘-` `⌘0` `⌘1`
 - 不让 `⌘D` 消耗积分
-- 不做批量生成、`⌘C/⌘V`、图层列表、右键菜单、触摸多选（Tier B）
+- 不做批量生成、右键菜单、触摸多选（Tier B）
 
 ## 9. 测试清单
 
 - `CompositeCommand`：execute 顺序 / undo 逆序 / 序列化往返（`snapshot.test.ts` 已有同类用例可参照）
 - 选择集：框选 3 个 → 一次位移 = 一条撤销；删除 3 个 → 一次撤销全部回来
-- `⌘D`：复制 2 个 → 副本与原件同 `assetId`、`zIndex` 在最上层、位置 +24；撤销后副本消失
+- `⌘D`：复制 2 个 → 副本与原件同 `assetId`、`zIndex` 在最上层、按 40 级联；撤销后副本消失
 - 方向键：连按 8 次 → 撤销一次回到原位
 - 层级：置顶/置底/上移/下移在多选下的组内顺序不变
 - 拖放：拒绝视频文件、单文件失败不阻断、落点被占用时自动找空位
@@ -197,14 +199,14 @@
 
 1. **批量命令只加了一个 `CompositeCommand`**：`src/editor/commands/nodeCommands.ts`，序列化类型 `{ type: 'composite', sceneId, commands[] }`。`snapshot.ts` 的 4 个辅助函数 + `deserializeCommand` 各加一层递归，并给 `validateSerializedCommand` 加了嵌套深度上限 4。多选删除、多选移动、`⌘D`、层级调整全部复用它，没有新增 `UpdateNodesCommand`。
 2. **撤销合并没有改 `historySlice`**：`UpdateNodeCommand.execute` 改为"仅在未提供 `previous` 时抓取当前状态"，于是方向键可以边按边直写 `updateNode`，停顿 400ms 后用**起始快照**提交一条命令。副作用是占位框拖动也进命令栈（原来看板里的 P3 不一致一并修掉）。
-3. **`⌘D` 用 `offsetPlacementToAvoidOverlap`，不用 `findArtboardPlacement`**：后者在画板放不下时会缩小节点，导致副本尺寸变化。复制一律保持原尺寸，只做 +24 级联避让。
+3. **`⌘D` 用 `offsetPlacementToAvoidOverlap`，不用 `findArtboardPlacement`**：后者在画板放不下时会缩小节点，导致副本尺寸变化。复制一律保持原尺寸，只做 `NODE_CASCADE_OFFSET` 级联避让。
 4. **多选框描边在 `selection:created/updated` 里统一上色**：Fabric 的框选是由 canvas 自己创建 ActiveSelection 的，`applySelection` 里的样式对框选不生效，因此抽出 `styleActiveSelection()` 在事件里调用，同时给组内成员兜底同色描边。
 5. **快捷键最终值**：`⌘D` 复制、`⌘A` 全选、`Esc` 取消选择（派生面板打开时先关闭面板）、`⌘] / ⌘[`（含 ⇧）层级、`Delete/Backspace` 删除、`⇧0` 100%、`⇧1` 适合画板、方向键 ±1 / ⇧±10。方向键与 `⇧0/⇧1` 只在画布有焦点时生效（`stage` 是可聚焦的 `role="application"`），避免抢走页面滚动。
 6. **画布运行时镜像改为 React state**：选中视频的暂停/静音、损坏节点集合、媒体加载错误数都从 ref 镜像到 state。原因不是设计，而是 `react-hooks/refs` 禁止渲染期读 ref；行为不变。
 7. **可访问性入口**：`<ul class="free-canvas-node-list">`（视觉隐藏）+ 每节点一个按钮，按 `zIndex` 升序；聚焦时用 `.free-canvas-focus-ring` 在画布上画虚线框并把节点带进视口；Enter/Space 选中、Delete 删除。画布本身 `aria-hidden`，容器承担 `role="application"`。
 8. **测试**：`src/editor/commands/composite.test.ts`（执行顺序/逆序回滚/序列化往返/预置 previous）、`src/features/free-canvas/zOrder.test.ts`（四向层级、组内顺序、空洞压缩、无变化返回 undefined）。两处源码契约测试同步到新实现。
 
-已知未做（Tier B，按原计划留下）：`⌘C/⌘V`、`⌥` 点击穿透、图层列表、对齐参考线、右键菜单、批量生成、触摸多选。
+已知未做（Tier B，按原计划留下）：`⌥` 点击穿透、对齐参考线、右键菜单、批量生成、触摸多选。
 
 ## 12. 面板结构（layout 任务，同一页面的后续改动需遵守）
 
@@ -282,3 +284,20 @@ fabric 画不出 CSS 变量，所以画布配色靠 `src/features/free-canvas/ca
 - 窄屏（≤720px）面板铺满画布可用宽度，工具条保持单行（7 个按钮改为 40×44，隐藏百分比文字），面板底边 `84px` 让开工具条。
 
 测试：`layers.test.ts`（8 条，排序/类型过滤/缩略图协议/视频无封面/占位状态/同名编号/类型兜底）、`layerPanel.test.ts`（6 条源码契约：开关、无障碍标签、⇧ 追加、读屏列表隐藏、操作条收起、窄屏宽度）。
+
+## 16. 复制粘贴（Tier B 第 2 项）
+
+`⌘C` / `⌘V` 走会话内剪贴板（`src/features/free-canvas/clipboard.ts`），不是系统剪贴板——画布节点是"资产引用 + 变换"，序列化成图片没意义。
+
+- **只复制图片与视频**：生成占位没有资产，复制时直接跳过；整个选择集都是占位时提示"生成中的占位框不能复制"。
+- **绑定项目**：剪贴板记住 `projectId`，换项目读不到（否则会粘出引用了不存在资产的节点）。
+- **粘贴位置**：有指针时整组**居中落在指针处**；没有指针（键盘操作、指针还没进过画布）时落在原位置 + 一级级联处。
+- **同一锚点重复粘贴**按 `NODE_CASCADE_OFFSET`（40）递增，不会完全叠住；换一个指针位置就重新居中，不再级联。
+- **不主动躲避画布上已有的节点**：第一版做过"整组避开所有重叠"，结果粘在已有节点旁边时会被推走 200+ 单位、离指针越来越远——粘贴到指针处是用户明确的意图，重叠由用户决定。
+- **层级与撤销**：粘贴出来的节点压在现有内容之上并保持组内原顺序；整批是一次 `CompositeCommand`，一次撤销全部移除。
+- **不抢文本复制**：页面上有选中文本时 `⌘C` 交回浏览器；输入框内的快捷键本来就由 `isEditingText` 放过。
+- 剪贴板为空时 `⌘V` 不 `preventDefault`，把粘贴让给浏览器。
+
+测试：`clipboard.test.ts` 8 条（占位过滤、项目隔离、指针居中、相对布局保持、无指针级联、重叠整组避让、层级顺序、空剪贴板）。
+
+> 验证粘贴落点时发现的一个旧问题：`.free-canvas-node-actions` 用 `justify-content: center` + `margin-left` 定位，flex 居中会把 margin 算进剩余空间，实际偏移只有 margin 的一半——操作条一直比节点中心偏左约 100px（宽度越大偏得越多）。已改成 `left: clamp(...)` + `transform: translateX(-50%)`，实测 1440px 下操作条中心与节点中心误差 0px，贴右边缘时被 clamp 在画布内。
