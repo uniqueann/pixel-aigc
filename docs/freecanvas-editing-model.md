@@ -314,3 +314,16 @@ fabric 画不出 CSS 变量，所以画布配色靠 `src/features/free-canvas/ca
 - ⌥ 点空白（命中栈为空）不拦截，走 Fabric 默认行为：清空选择。
 
 测试：`stacking.test.ts` 6 条（内外判定、90° 旋转矩形、叠放顺序与隐藏节点、循环、回到顶层、空栈/单层）。
+
+## 18. 对齐参考线（Tier B 第 4 项，只显示不吸附）
+
+拖动节点或整组选择时，和画布上其它节点的左/中/右、上/中/下对齐会给出参考线。
+
+- 纯逻辑在 `alignment.ts`：`computeAlignmentGuides(moving, others, threshold)`。**任意边对任意边**都能对齐（例如拖动方的中心压在对方的右边缘上），每个轴最多三条——起点/中心/终点各取最近的一处命中。
+- **阈值**是屏幕像素：`ALIGN_THRESHOLD_PX / zoom`，即无论缩放多少，屏幕上都是 4px 的触发距离。
+- **位置取被参照节点**的那条边，长度覆盖所有落在同一条线上的节点（所以能看出"这三张图是左对齐的"）。
+- **不吸附**：参考线不影响坐标，拖动完全自由，松手就是用户放下的位置。
+- 渲染成 Fabric `Line`：`strokeUniform: true`（屏幕上恒 1px）、`evented: false`（不参与命中）、`excludeFromExport: true`；用当前主题的 `--color-canvas-accent`。拖动结束（`mouse:up` / `object:modified`）即清除。
+- 整组拖动时用 `ActiveSelection.getBoundingRect()`，并按选中集合排除"其它节点"，避免自己和自己对齐。
+
+测试：`alignment.test.ts` 8 条（左边缘、跨类别对齐、超阈值不出线、上下对齐、跨度合并、同位置去重、每轴最多三条、空输入）。
