@@ -207,6 +207,8 @@
 7. **可访问性入口**：`<ul class="free-canvas-node-list">`（视觉隐藏）+ 每节点一个按钮，按 `zIndex` 升序；聚焦时用 `.free-canvas-focus-ring` 在画布上画虚线框并把节点带进视口；Enter/Space 选中、Delete 删除。画布本身 `aria-hidden`，容器承担 `role="application"`。
 8. **测试**：`src/editor/commands/composite.test.ts`（执行顺序/逆序回滚/序列化往返/预置 previous）、`src/features/free-canvas/zOrder.test.ts`（四向层级、组内顺序、空洞压缩、无变化返回 undefined）。两处源码契约测试同步到新实现。
 
+生成血缘（成组与连线）另有独立方案：[freecanvas-lineage-groups.md](freecanvas-lineage-groups.md)。
+
 已知未做（Tier B，按原计划留下）：`⌥` 点击穿透、对齐参考线、右键菜单、批量生成、触摸多选。
 
 ## 12. 面板结构（layout 任务，同一页面的后续改动需遵守）
