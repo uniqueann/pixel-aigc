@@ -462,6 +462,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   onAssetLoadError,
   onFilesDropped,
   onCanvasFocusChange,
+  emptyState,
   children,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1512,6 +1513,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       {focusRingStyle && <div className="free-canvas-focus-ring" style={focusRingStyle} aria-hidden="true" />}
       {dropActive && <div className="free-canvas-dropzone" aria-hidden="true"><span>松开添加到画布</span></div>}
 
+      {scene.nodes.length === 0 && emptyState && <div className="free-canvas-empty-slot">{emptyState}</div>}
       {layersOpen && <div className="free-canvas-layers" role="group" aria-label="图层">
         <div className="free-canvas-layers-head">
           <span>图层</span>

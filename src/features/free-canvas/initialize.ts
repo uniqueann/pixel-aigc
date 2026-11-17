@@ -1,32 +1,11 @@
-import { DEMO_IMAGE_ASSET } from '@/editor/services/demoImageAsset'
 import { useEditorStore } from '@/editor/store'
-import type { ImageAsset } from '@/editor/types'
-import { calculateInitialImageNode } from './geometry'
 
+/**
+ * 自由画布的项目入口：没有项目就建一个空项目。
+ * 新项目**不再预置示例图片**——空白画布由空状态引导（见 CanvasEmptyState），
+ * 避免新人第一件事是删掉一张假图。
+ */
 export function ensureFreeCanvasContent() {
-  let state = useEditorStore.getState()
-  const isNew = !state.project
-  if (!state.project) {
-    state.createProject('未命名画布', { width: 1280, height: 720 })
-    state = useEditorStore.getState()
-  }
-
-  const sceneId = state.activeSceneId
-  const project = state.project
-  if (!project || !sceneId || !isNew) return
-
-  const scene = project.document.scenes.find((item) => item.id === sceneId)
-  if (!scene || scene.nodes.length > 0) return
-
-  const latestImageAsset = Object.values(project.assets)
-    .filter((asset): asset is ImageAsset => asset.type === 'image')
-    .reduce<ImageAsset | undefined>((latest, asset) => (
-      !latest || asset.createdAt > latest.createdAt ? asset : latest
-    ), undefined)
-  const asset = latestImageAsset ?? DEMO_IMAGE_ASSET
-
-  if (!project.assets[asset.id]) state.registerAsset(asset)
-  const node = calculateInitialImageNode(asset, scene)
-  state.addNode(sceneId, node)
-  state.selectNodes([node.id])
+  if (useEditorStore.getState().project) return
+  useEditorStore.getState().createProject('未命名画布', { width: 1280, height: 720 })
 }

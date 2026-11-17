@@ -174,6 +174,7 @@ export default function GenerationPanel({
       <label className="free-canvas-field">
         <span>画面描述</span>
         <Input.TextArea
+          data-canvas-prompt
           rows={6}
           value={prompt}
           maxLength={textToVideo ? VIDEO_PROMPT_MAX : imagePromptMax}

@@ -1639,6 +1639,93 @@ body.sidebar-resizing * {
   display: none;
 }
 
+/* 空白画布的引导卡：浮在画板中央，用应用表面色（深浅主题都成立）。 */
+.free-canvas-empty-slot {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  padding: 16px;
+  place-items: center;
+  pointer-events: none;
+}
+
+.free-canvas-empty {
+  display: flex;
+  width: min(432px, 100%);
+  padding: 18px 20px;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+
+.free-canvas-empty-kicker {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.free-canvas-empty h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.free-canvas-empty-note {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.free-canvas-empty-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.free-canvas-empty-prompt {
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.free-canvas-empty-prompt:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.free-canvas-empty-prompt:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.free-canvas-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.free-canvas-empty-hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 /* 图层面板：按叠放顺序列出画布内容，点一下选中并带到视野里。 */
 .free-canvas-layers {
   position: absolute;
@@ -5394,6 +5481,24 @@ body.sidebar-resizing * {
   /* 窄屏上图层是覆盖式面板。 */
   .free-canvas-layers {
     width: calc(100% - 24px);
+  }
+
+  .free-canvas-empty-slot {
+    padding: 12px;
+  }
+
+  .free-canvas-empty {
+    padding: 14px 16px;
+    gap: 8px;
+  }
+
+  .free-canvas-empty h2 {
+    font-size: 15px;
+  }
+
+  /* 手机端画布只有 240–480px 高，快捷键那行先让位。 */
+  .free-canvas-empty-hint {
+    display: none;
   }
 
   .free-canvas-generation-panel {
