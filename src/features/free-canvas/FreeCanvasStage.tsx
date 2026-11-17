@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
   AudioMutedOutlined,
   BranchesOutlined,
@@ -43,6 +43,7 @@ import { buildLayerItems, type LayerKind } from './layers'
 import { cycleDown, stackAtPoint } from './stacking'
 import { computeAlignmentGuides } from './alignment'
 import { placeholderDetail } from './generation/placeholderCopy'
+import { distance as pointerDistance, midpoint, pinchViewport, type TouchPoint } from './gestures'
 
 const PLACEHOLDER_LABEL = '#f5f5f4'
 const PLACEHOLDER_DETAIL = '#aeb7b4'
@@ -519,6 +520,9 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const lastStageSizeRef = useRef<{ width: number; height: number }>()
   const altSelectingRef = useRef(false)
   const guideLinesRef = useRef<FabricObject[]>([])
+  const touchPointersRef = useRef(new Map<number, TouchPoint>())
+  const pinchStartRef = useRef<{ distance: number; mid: TouchPoint; viewport: ViewportState } | null>(null)
+  const touchPanRef = useRef<TouchPoint | null>(null)
   const fitTimerRef = useRef<number>()
   const [videoUiVersion, setVideoUiVersion] = useState(0)
 
@@ -1458,6 +1462,98 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     }
   })() : undefined
 
+  /** 触摸手势：双指捏合缩放（同时可双指平移），单指在空白处平移画布。 */
+  const handleTouchPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+
+    if (touchPointersRef.current.size === 2) {
+      const [first, second] = [...touchPointersRef.current.values()]
+      const rect = canvas.upperCanvasEl.getBoundingClientRect()
+      const center = midpoint(first, second)
+      pinchStartRef.current = {
+        distance: pointerDistance(first, second),
+        mid: { x: center.x - rect.left, y: center.y - rect.top },
+        viewport: viewportFromCanvas(canvas),
+      }
+      touchPanRef.current = null
+      // 双指接管整个手势：不选节点、不框选，也不让 Fabric 继续刚才的单指拖拽。
+      // endCurrentTransform 在没有活动变换时会空指针，先看私有字段再调用。
+      if ((canvas as unknown as { _currentTransform?: unknown })._currentTransform) canvas.endCurrentTransform()
+      canvas.skipTargetFind = true
+      canvas.selection = false
+      clearAlignmentGuides()
+      dismissHintRef.current()
+      event.preventDefault()
+      return
+    }
+
+    if (touchPointersRef.current.size !== 1) return
+    // 单指落在节点上交给 Fabric 拖动；只有空白处才是平移画布。
+    const point = clientPointToCanvas(canvas, event.clientX, event.clientY)
+    if (stackAtPoint([...nodesByIdRef.current.values()], point).length) return
+    touchPanRef.current = { x: event.clientX, y: event.clientY }
+  }
+
+  const handleTouchPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') return
+    if (!touchPointersRef.current.has(event.pointerId)) return
+    touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const pinch = pinchStartRef.current
+    if (pinch && touchPointersRef.current.size >= 2) {
+      const [first, second] = [...touchPointersRef.current.values()]
+      const rect = canvas.upperCanvasEl.getBoundingClientRect()
+      const center = midpoint(first, second)
+      setCanvasViewport(pinchViewport({
+        viewport: pinch.viewport,
+        startDistance: pinch.distance,
+        distance: pointerDistance(first, second),
+        startMid: pinch.mid,
+        mid: { x: center.x - rect.left, y: center.y - rect.top },
+      }))
+      dismissHintRef.current()
+      event.preventDefault()
+      return
+    }
+
+    const pan = touchPanRef.current
+    if (!pan) return
+    const deltaX = event.clientX - pan.x
+    const deltaY = event.clientY - pan.y
+    if (!deltaX && !deltaY) return
+    touchPanRef.current = { x: event.clientX, y: event.clientY }
+    const transform = canvas.viewportTransform
+    transform[4] += deltaX
+    transform[5] += deltaY
+    canvas.setViewportTransform(transform)
+    canvas.requestRenderAll()
+    callbacksRef.current.onViewportChange(viewportFromCanvas(canvas))
+    dismissHintRef.current()
+  }
+
+  const handleTouchPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') return
+    touchPointersRef.current.delete(event.pointerId)
+    if (touchPointersRef.current.size >= 2) return
+    pinchStartRef.current = null
+    const canvas = canvasRef.current
+    if (touchPointersRef.current.size === 1) {
+      // 从双指变单指：不要接着平移，等手指抬起重新开始。
+      touchPanRef.current = null
+      return
+    }
+    touchPanRef.current = null
+    if (canvas) {
+      canvas.skipTargetFind = false
+      canvas.selection = true
+    }
+  }
+
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     if (!onFilesDropped) return
     if (!event.dataTransfer?.types.includes('Files')) return
@@ -1497,6 +1593,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onPointerDown={handleTouchPointerDown}
+      onPointerMove={handleTouchPointerMove}
+      onPointerUp={handleTouchPointerUp}
+      onPointerCancel={handleTouchPointerUp}
       onFocus={(event) => {
         onCanvasFocusChange?.(true)
         if (event.target === event.currentTarget && !focusedNodeId && scene.nodes.length) {
@@ -1612,7 +1712,8 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           onMouseLeave={() => setHintHovered(false)}
           aria-hidden={hintDismissed && !hintHovered}
         >
-          滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · ⌥ 点击选中下层 · 双击视频播放
+          <span className="free-canvas-help-desktop">滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · ⌥ 点击选中下层 · 双击视频播放</span>
+          <span className="free-canvas-help-touch">双指缩放 · 单指拖动画布 · 双击视频播放</span>
         </div>
         {children}
       </div>

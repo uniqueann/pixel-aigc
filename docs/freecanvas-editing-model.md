@@ -352,3 +352,17 @@ fabric 画不出 CSS 变量，所以画布配色靠 `src/features/free-canvas/ca
 | 比例选择器要靠 tooltip | 分段控件下面直接写出当前比例的含义与像素：`1:1 正方形 · 头像/电商主图 · 1024×1024`，图标退回辅助地位。 |
 
 测试：`placeholderCopy.test.ts` 5 条（秒/分秒格式、生成中、排队中、失败态、任务未登记）、`p3Polish.test.ts` 4 条接线契约。`canvasLayout.test.ts` 同步到变量化的底部定位。
+
+## 21. 触摸手势（adapt）
+
+画布原来在手机上只能看不能动（`touch-action: none` 关掉了原生手势，自己也没处理 touch）。现在：
+
+- **单指**：落在空白处平移画布；落在节点上交给 Fabric 拖动节点（用 `stackAtPoint` 判断命中，和 ⌥ 穿透同一套判定，不额外调 Fabric API）。
+- **双指**：捏合缩放 + 双指平移。数学在 `gestures.ts` 的 `pinchViewport`（纯函数、可单测）：按两指距离比例缩放（`clampZoom` 限制 0.1–4），并让手势开始时中心下的画板内容始终跟着当前中心——所以缩放和平移是同一次手势的两个自由度。
+- **手势接管**：第二指落下时 `endCurrentTransform()` 结束 Fabric 正在进行的单指拖拽、`skipTargetFind`/`selection` 关闭命中与框选；所有手指抬起后恢复。`endCurrentTransform` 在没有活动变换时会空指针，调用前先看私有字段 `_currentTransform`。
+- **指针跟踪**用 `Map<pointerId, point>`，只处理 `pointerType === 'touch'`；从双指变单指时不再接着平移，避免"手一松画布就跳"。
+- **窄屏提示**改成手势文案（`双指缩放 · 单指拖动画布 · 双击视频播放`），桌面仍是滚轮/空格那套；两段文案都在 DOM 里，靠 `display` 切换。
+
+测试：`gestures.test.ts` 6 条（几何 helper、静止不变、缩放锚点不动、双指平移、缩放上下限、起始距离为 0）、`touchGestures.test.ts` 5 条接线契约。
+
+实测（CDP 触摸事件）：单指拖 60/−50 px → 视口 pan 正好 +60/−50；双指张开 zoom 0.2 → 0.371；单指按住节点拖动时视口不变；无异常。

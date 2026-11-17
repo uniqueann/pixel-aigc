@@ -1990,6 +1990,11 @@ body.sidebar-resizing * {
   opacity: 0;
 }
 
+/* 触摸设备看这行，桌面看另一行；两套文案都在 DOM 里，只显示一条。 */
+.free-canvas-help-touch {
+  display: none;
+}
+
 .free-canvas-add-image {
   display: inline-flex;
   flex: 0 0 auto;
@@ -5468,8 +5473,12 @@ body.sidebar-resizing * {
     max-width: calc(100% - 24px);
   }
 
-  .free-canvas-help {
+  .free-canvas-help-desktop {
     display: none;
+  }
+
+  .free-canvas-help-touch {
+    display: inline;
   }
 
   .free-canvas-add-label {
