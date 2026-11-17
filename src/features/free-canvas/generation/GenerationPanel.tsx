@@ -187,7 +187,7 @@ export default function GenerationPanel({
       </label>
 
       <label className="free-canvas-field">
-        <span>画面比例</span>
+        <span>生成比例</span>
         <Segmented
           block
           className="free-canvas-aspect-ratio-segmented"
@@ -214,7 +214,7 @@ export default function GenerationPanel({
           onChange={(value) => onPresetChange(String(value))}
         />
         {/* 图标只是辅助，把当前比例的含义与像素直接写出来，不用悬停也读得懂。 */}
-        <p className="free-canvas-field-hint">{activePreset.tooltip ?? getAspectRatioTooltip(activePreset.key)} · {activePreset.width}×{activePreset.height}</p>
+        <p className="free-canvas-field-hint">{activePreset.tooltip ?? getAspectRatioTooltip(activePreset.key)} · {activePreset.width}×{activePreset.height} · 只影响本次生成，不改变画布</p>
       </label>
 
       {textToVideo ? (
@@ -263,7 +263,7 @@ export default function GenerationPanel({
       </details>
 
       {!textToVideo && <>
-        {resolutionAdjusted && <p role="status">当前模型或画面比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
+        {resolutionAdjusted && <p role="status">当前模型或生成比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
         {ratioAdjusted && <p role="status">当前模型不支持所选比例，已按 {presetKey} 计算本次参数。</p>}
         {countAdjusted && <p role="status">当前模型最多支持本次数量，已按 {count} 张计算本次参数与积分。</p>}
         {modelsLoading ? <p role="status">正在加载文生图模型配置…</p>

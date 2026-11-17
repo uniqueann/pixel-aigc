@@ -1843,7 +1843,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <Tooltip title="缩小"><Button type="text" icon={<MinusOutlined />} onClick={() => zoomBy(0.8)} aria-label="缩小画布" /></Tooltip>
         <span className="free-canvas-zoom-label">{Math.round(viewport.zoom * 100)}%</span>
         <Tooltip title="放大"><Button type="text" icon={<PlusOutlined />} onClick={() => zoomBy(1.25)} aria-label="放大画布" /></Tooltip>
-        <Tooltip title="适合画板"><Button type="text" icon={<ExpandOutlined />} onClick={fitToScene} aria-label="适合画板" /></Tooltip>
+        <Tooltip title="适合工作面（⇧1）"><Button type="text" icon={<ExpandOutlined />} onClick={fitToScene} aria-label="适合工作面" /></Tooltip>
         <span className="free-canvas-toolbar-divider" />
         <Tooltip
           title={
