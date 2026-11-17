@@ -40,6 +40,7 @@ import type { FreeCanvasStageHandle, FreeCanvasStageProps, NodeTransform } from 
 import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 import { readCanvasPalette, useCanvasPalette, type CanvasPalette } from './canvasTheme'
 import { buildLayerItems, type LayerKind } from './layers'
+import { cycleDown, stackAtPoint } from './stacking'
 
 const PLACEHOLDER_LABEL = '#f5f5f4'
 const PLACEHOLDER_DETAIL = '#aeb7b4'
@@ -506,6 +507,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const pointerOnCanvasRef = useRef<{ clientX: number; clientY: number }>()
   const initialFitAppliedRef = useRef(false)
   const lastStageSizeRef = useRef<{ width: number; height: number }>()
+  const altSelectingRef = useRef(false)
   const fitTimerRef = useRef<number>()
   const [videoUiVersion, setVideoUiVersion] = useState(0)
 
@@ -736,6 +738,8 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     observer.observe(container)
 
     const reportSelection = () => {
+      // ⌥ 穿透手势期间由 mouse:down 决定选中谁，Fabric 的"点了空白"不能反过来清空选择。
+      if (altSelectingRef.current) return
       styleActiveSelection(canvas, paletteRef.current.accent)
       canvas.requestRenderAll()
       const ids = canvas.getActiveObjects()
@@ -746,7 +750,8 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     canvas.on('selection:created', reportSelection)
     canvas.on('selection:updated', reportSelection)
     canvas.on('selection:cleared', () => {
-      if (!panningRef.current && !reconcilingObjectsRef.current) callbacksRef.current.onSelectNodes([])
+      if (panningRef.current || reconcilingObjectsRef.current || altSelectingRef.current) return
+      callbacksRef.current.onSelectNodes([])
     })
     canvas.on('mouse:dblclick', ({ target }) => {
       const nodeId = target ? objectNodeIdsRef.current.get(target) : undefined
@@ -820,6 +825,20 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     canvas.on('mouse:down', ({ e }) => {
       if (e instanceof MouseEvent) pointerOnCanvasRef.current = { clientX: e.clientX, clientY: e.clientY }
     })
+    // ⌥ 点击：在被盖住的节点里往下穿透一层（到底回到顶层）。
+    canvas.on('mouse:down:before', ({ e }) => {
+      if (!(e instanceof MouseEvent) || !e.altKey) return
+      const point = clientPointToCanvas(canvas, e.clientX, e.clientY)
+      const stack = stackAtPoint([...nodesByIdRef.current.values()], point)
+      if (!stack.length) return
+      const selected = selectedNodeIdsRef.current
+      const next = cycleDown(stack, selected.size === 1 ? [...selected][0] : undefined)
+      // 拦下 Fabric 自己"选最上层"的行为，本次手势由这里决定选中谁。
+      altSelectingRef.current = true
+      canvas.skipTargetFind = true
+      if (next) callbacksRef.current.onSelectNodes([next])
+      e.preventDefault()
+    })
     canvas.on('mouse:down:before', ({ e }) => {
       if (!(e instanceof MouseEvent) || (!spacePressedRef.current && e.button !== 1)) return
       panningRef.current = true
@@ -842,6 +861,11 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       canvas.requestRenderAll()
     })
     canvas.on('mouse:up', () => {
+      if (altSelectingRef.current) {
+        altSelectingRef.current = false
+        canvas.skipTargetFind = false
+        return
+      }
       if (overlayPanningRef.current || !panningRef.current) return
       panningRef.current = false
       canvas.skipTargetFind = false
@@ -1486,7 +1510,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           onMouseLeave={() => setHintHovered(false)}
           aria-hidden={hintDismissed && !hintHovered}
         >
-          滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · 拖入图片 · 双击视频播放
+          滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · ⌥ 点击选中下层 · 双击视频播放
         </div>
         {children}
       </div>
