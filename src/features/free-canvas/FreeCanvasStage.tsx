@@ -22,7 +22,7 @@ import {
   WarningFilled,
 } from '@ant-design/icons'
 import { Button, Dropdown, Tooltip } from 'antd'
-import { ActiveSelection, Canvas, FabricImage, FabricText, Group, Line, Point, Rect, Shadow, type FabricObject } from 'fabric'
+import { ActiveSelection, Canvas, Circle, FabricImage, FabricText, Group, Line, Point, Rect, Shadow, Triangle, type FabricObject } from 'fabric'
 import type { Asset, EditorNode, GenerationJob, GenerationNode, ImageNode, NodeId, VideoNode, ViewportState } from '@/editor/types'
 import type { TaskStatus } from '@/types'
 import {
@@ -457,6 +457,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   canDeleteSelection = false,
   canDuplicateSelection = false,
   selectionBlockedReason,
+  taskPhase,
   onSelectNodes,
   onTransformNodes,
   onViewportChange,
@@ -522,6 +523,9 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const altSelectingRef = useRef(false)
   const guideLinesRef = useRef<FabricObject[]>([])
   const lineageObjectsRef = useRef<FabricObject[]>([])
+  const videoBadgesRef = useRef<FabricObject[]>([])
+  const lastTapRef = useRef<{ nodeId?: NodeId; at: number }>({ at: 0 })
+  const tapStartRef = useRef<{ x: number; y: number } | null>(null)
   const touchPointersRef = useRef(new Map<number, TouchPoint>())
   const pinchStartRef = useRef<{ distance: number; mid: TouchPoint; viewport: ViewportState } | null>(null)
   const touchPanRef = useRef<TouchPoint | null>(null)
@@ -551,7 +555,8 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     for (const [nodeId, object] of nodeObjectsRef.current) {
       const node = nodesByIdRef.current.get(nodeId)
       if (node?.type !== 'generation' || !(object instanceof Group)) continue
-      const detail = placeholderDetail(generations[node.generationId]?.status, generations[node.generationId])
+      const phase = taskPhase?.generationId === node.generationId ? taskPhase.phase : undefined
+      const detail = placeholderDetail(generations[node.generationId]?.status, generations[node.generationId], Date.now(), phase)
       const text = object.getObjects()[2]
       if (text instanceof FabricText && text.text !== detail) {
         text.set({ text: detail })
@@ -559,7 +564,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       }
     }
     if (changed) canvas.requestRenderAll()
-  }, [generationTick, generations])
+  }, [generationTick, generations, taskPhase])
 
   const clearLineageOverlay = useCallback(() => {
     const canvas = canvasRef.current
@@ -635,6 +640,54 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     }
     canvas.requestRenderAll()
   }, [assets, clearLineageOverlay, generations, palette.accent, scene.nodes, selectedNodeIds])
+
+  /** 暂停中的视频在中心画一个 ▶ 角标，让"这是视频、点它能播"自明（播放时消失）。 */
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    for (const badge of videoBadgesRef.current) canvas.remove(badge)
+    videoBadgesRef.current = []
+    for (const node of scene.nodes) {
+      if (node.type !== 'video' || !node.visible) continue
+      const video = videoElementsRef.current.get(node.id)
+      if (video && !video.paused) continue
+      const size = Math.max(28, Math.min(node.width, node.height) * 0.18)
+      const radius = size / 2
+      const circle = new Circle({
+        radius,
+        left: 0,
+        top: 0,
+        originX: 'center',
+        originY: 'center',
+        fill: 'rgba(15, 23, 42, 0.55)',
+        stroke: '#ffffff',
+        strokeWidth: Math.max(1, size * 0.02),
+      })
+      const triangle = new Triangle({
+        width: size * 0.34,
+        height: size * 0.4,
+        left: size * 0.05,
+        top: 0,
+        originX: 'center',
+        originY: 'center',
+        fill: '#ffffff',
+        angle: 90,
+      })
+      const badge = new Group([circle, triangle], {
+        left: node.x + node.width / 2,
+        top: node.y + node.height / 2,
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false,
+        objectCaching: false,
+        excludeFromExport: true,
+      })
+      canvas.add(badge)
+      videoBadgesRef.current.push(badge)
+    }
+    canvas.requestRenderAll()
+  }, [mediaLoadVersion, palette.accent, scene.nodes, videoUiVersion])
 
   const clearAlignmentGuides = useCallback(() => {
     const canvas = canvasRef.current
@@ -715,6 +768,11 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     const video = videoElementsRef.current.get(nodeId)
     if (!video) return
     if (video.paused) {
+      // 单播：同时播多条会各自跑一个 rAF + 整块重绘，手机上明显掉帧，声音也会叠。
+      for (const [otherId, other] of videoElementsRef.current) {
+        if (otherId === nodeId || other.paused) continue
+        other.pause()
+      }
       try {
         await video.play()
         startVideoRendering()
@@ -1266,7 +1324,8 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           return
         }
 
-        const placeholder = createGenerationObject(node, status, palette.accent, placeholderDetail(status, generations[node.generationId]))
+        const phase = taskPhase?.generationId === node.generationId ? taskPhase.phase : undefined
+        const placeholder = createGenerationObject(node, status, palette.accent, placeholderDetail(status, generations[node.generationId], Date.now(), phase))
         generationStatusesRef.current.set(node.id, status)
         nodeObjectsRef.current.set(node.id, placeholder)
         objectNodeIdsRef.current.set(placeholder, node.id)
@@ -1447,7 +1506,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       return next
     })
     setMediaErrorCount(reportedLoadErrorsRef.current.size)
-  }, [applySelection, assets, generations, mediaLoadVersion, palette.accent, scene.height, scene.nodes, scene.width, themeVersion])
+  }, [applySelection, assets, generations, mediaLoadVersion, palette.accent, scene.height, scene.nodes, scene.width, taskPhase, themeVersion])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -1568,6 +1627,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     }
 
     if (touchPointersRef.current.size !== 1) return
+    tapStartRef.current = { x: event.clientX, y: event.clientY }
     // 单指落在节点上交给 Fabric 拖动；只有空白处才是平移画布。
     const point = clientPointToCanvas(canvas, event.clientX, event.clientY)
     if (stackAtPoint([...nodesByIdRef.current.values()], point).length) return
@@ -1628,6 +1688,21 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     if (canvas) {
       canvas.skipTargetFind = false
       canvas.selection = true
+      // 触摸端不派发原生 dblclick，这里用"轻点两次同一个视频"来播放/暂停。
+      const start = tapStartRef.current
+      tapStartRef.current = null
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 8) {
+        const point = clientPointToCanvas(canvas, event.clientX, event.clientY)
+        const nodeId = stackAtPoint([...nodesByIdRef.current.values()], point)[0]
+        const node = nodeId ? nodesByIdRef.current.get(nodeId) : undefined
+        const at = Date.now()
+        if (node?.type === 'video' && lastTapRef.current.nodeId === nodeId && at - lastTapRef.current.at < 350) {
+          lastTapRef.current = { at: 0 }
+          void toggleVideo(node.id)
+        } else {
+          lastTapRef.current = { nodeId, at }
+        }
+      }
     }
   }
 

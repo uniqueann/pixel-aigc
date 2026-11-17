@@ -37,6 +37,8 @@ export interface FreeCanvasStageProps {
   canDuplicateSelection?: boolean
   /** 选择集无法删除/复制时给用户的原因，例如"含 1 个生成中的占位框"。 */
   selectionBlockedReason?: string
+  /** 当前生成任务的阶段（视频才有意义），用来让画布占位框显示"视频转存中"这类阶段。 */
+  taskPhase?: { generationId: string; phase: 'submitting' | 'queued' | 'generating' | 'transferring' }
   onSelectNodes: (nodeIds: NodeId[]) => void
   onTransformNodes: (updates: NodeTransformUpdate[]) => void
   onViewportChange: (viewport: ViewportState) => void

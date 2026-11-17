@@ -9,7 +9,9 @@ const strip = readFileSync(resolve(process.cwd(), 'src/components/PreviewResultS
 describe('画布 P3 收口接线', () => {
   it('占位框的时长文案来自共享模块，且只有进行中才跑秒级计时器', () => {
     expect(stageSource).toContain("from './generation/placeholderCopy'")
-    expect(stageSource).toContain('placeholderDetail(generations[node.generationId]?.status, generations[node.generationId])')
+    expect(stageSource).toContain('placeholderDetail(generations[node.generationId]?.status, generations[node.generationId], Date.now(), phase)')
+    // 视频阶段要透传到占位框（"视频转存中"这段最容易让人以为卡死）。
+    expect(stageSource).toContain('taskPhase?.generationId === node.generationId ? taskPhase.phase : undefined')
     expect(stageSource).toContain('const hasActiveGeneration = useMemo')
     expect(stageSource).toContain('if (!hasActiveGeneration) return')
     expect(stageSource).toContain('window.setInterval(() => setGenerationTick((tick) => tick + 1), 1000)')
