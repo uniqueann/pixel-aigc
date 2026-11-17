@@ -90,11 +90,13 @@ function rawLayerItems(
         }
       }
       const broken = isBrokenAsset(assets[node.assetId], node.type)
+      const size = `${Math.round(node.width)}×${Math.round(node.height)}`
       return {
         id: node.id,
         name: node.name?.trim() || KIND_LABELS[node.type],
         kind: node.type,
-        meta: broken ? '素材不可用' : `${Math.round(node.width)}×${Math.round(node.height)}`,
+        // 视频把时长放前面：同尺寸的 5 秒 / 10 秒结果需要区分。
+        meta: broken ? '素材不可用' : node.type === 'video' && node.duration ? `${Math.round(node.duration)} 秒 · ${size}` : size,
         // 视频没有可直接放进 <img> 的封面，交回 kind 图标。
         thumbnail: !broken && node.type === 'image' && displayable(assets[node.assetId]?.url)
           ? assets[node.assetId].url

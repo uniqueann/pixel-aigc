@@ -139,7 +139,8 @@ export default function GenerationPanel({
     const src = asset && !asset.missing ? asset.url : url
     return { id: `${task?.id}:${index}`, mediaType: taskIsVideo ? 'video' as const : 'image' as const,
       posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
-      thumbSrc: taskIsVideo ? '' : src, fullSrc: src, title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
+      thumbSrc: taskIsVideo ? '' : src, fullSrc: src,
+      ...(taskIsVideo && task?.params && 'durationSeconds' in task.params ? { durationLabel: `${task.params.durationSeconds} 秒` } : {}), title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
   })
   const originalModelId = task ? modelProfileIdForRetry(task) : undefined
   const originalModel = task ? matchImageModel(models, originalModelId) : model
@@ -276,10 +277,6 @@ export default function GenerationPanel({
         {!modelsLoading && generateDisabled && <p className="toolbox-hint">文生图服务暂不可用，请检查网络或稍后重试。</p>}
       </>}
 
-      {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
-        手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
-      </p>}
-      {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? '原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成。' : retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
       </>}
       {(task?.status === 'failed' || task?.status === 'cancelled') && (!taskIsVideo || showForm) && <CreditQuoteNotice quote={retryQuote} onRetry={onReloadModels} />}
       <GenerationTaskStatus
@@ -301,6 +298,11 @@ export default function GenerationPanel({
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
       />
+      {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
+        手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
+      </p>}
+      {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? '原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成。' : retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
+
       {task?.status === 'succeeded' && <PreviewResultStrip items={previewItems} onDownload={item => {
         const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
         const image = task.resultImages?.[index]
