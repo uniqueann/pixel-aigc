@@ -64,7 +64,10 @@ describe('自由画布面板布局', () => {
     expect(panel).toMatch(/width:\s*100%/)
     expect(panel).toMatch(/max-height:\s*none/)
     expect(panel).toMatch(/overflow:\s*visible/)
-    expect(block('.free-canvas-help', narrow)).toMatch(/display:\s*none/)
+    // 窄屏不再整块隐藏提示，而是换成触摸版文案（双指缩放 / 单指拖动画布）。
+    expect(block('.free-canvas-help-desktop', narrow)).toMatch(/display:\s*none/)
+    expect(block('.free-canvas-help-touch', narrow)).toMatch(/display:\s*inline/)
+    expect(block('.free-canvas-help-touch')).toMatch(/display:\s*none/)
     expect(block('.free-canvas-add-label', narrow)).toMatch(/display:\s*none/)
     expect(block('.free-canvas-page-header')).toMatch(/flex-wrap:\s*wrap/)
     expect(block('.free-canvas-page')).toMatch(/max-width:\s*100%/)
