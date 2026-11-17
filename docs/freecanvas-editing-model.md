@@ -31,6 +31,7 @@
 | ⇧ + 空白处拖拽 | 框选后追加 |
 | `⌘A` / `Ctrl+A` | 全选当前场景节点 |
 | `Esc` | 清空选择集 |
+| ⌥ + 点击 | 在被盖住的节点间**向下穿透**一层，到底回到顶层 |
 | 拖任一已选节点 | 整组移动（Fabric `ActiveSelection` 原生） |
 | 缩放/旋转把手 | 整组等比缩放（沿用 `uniformScaling: true`） |
 
@@ -301,3 +302,15 @@ fabric 画不出 CSS 变量，所以画布配色靠 `src/features/free-canvas/ca
 测试：`clipboard.test.ts` 8 条（占位过滤、项目隔离、指针居中、相对布局保持、无指针级联、重叠整组避让、层级顺序、空剪贴板）。
 
 > 验证粘贴落点时发现的一个旧问题：`.free-canvas-node-actions` 用 `justify-content: center` + `margin-left` 定位，flex 居中会把 margin 算进剩余空间，实际偏移只有 margin 的一半——操作条一直比节点中心偏左约 100px（宽度越大偏得越多）。已改成 `left: clamp(...)` + `transform: translateX(-50%)`，实测 1440px 下操作条中心与节点中心误差 0px，贴右边缘时被 clamp 在画布内。
+
+## 17. ⌥ 点击穿透（Tier B 第 3 项）
+
+节点完全被盖住时，普通点击只能选到最上层。现在按住 ⌥ 点击，会在命中栈里往下走一层：
+
+- 命中栈由 `stacking.ts` 的 `stackAtPoint` 计算：按 `zIndex` 降序（顶层在前）、跳过 `visible: false`；命中判断用节点自身的旋转矩形（把点反向旋转回节点本地坐标），与 `calculateNodeBounds` 的旋转假设一致，不依赖 Fabric 内部 API。
+- `cycleDown(stack, current)`：当前选中在栈里就往下走一层，到底回到顶层；不在栈里（或没有选中）就从最顶层开始。
+- 手势本身由舞台接管：`mouse:down:before` 里算出下一个节点、`preventDefault` 并临时设置 `canvas.skipTargetFind = true`，mouse up 时恢复——否则 Fabric 会同时按"点到最上层"和"点到空白"处理，把选择清掉。
+- 穿透手势期间 `selection:created/updated/cleared` 一律不上报（`altSelectingRef` 守卫），选择只由这一处驱动。
+- ⌥ 点空白（命中栈为空）不拦截，走 Fabric 默认行为：清空选择。
+
+测试：`stacking.test.ts` 6 条（内外判定、90° 旋转矩形、叠放顺序与隐藏节点、循环、回到顶层、空栈/单层）。
