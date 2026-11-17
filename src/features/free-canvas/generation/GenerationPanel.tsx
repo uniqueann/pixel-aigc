@@ -19,7 +19,7 @@ import { resultAssetForTask } from './resultAsset'
 import VideoCreditEstimate from './VideoCreditEstimate'
 import VideoGenerationSettings from './VideoGenerationSettings'
 import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits'
-import type { VideoModelProfile, VideoResolution } from '@shared/video-models'
+import type { VideoModelProfile, VideoRatio, VideoResolution } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
 import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
@@ -192,7 +192,10 @@ export default function GenerationPanel({
           block
           className="free-canvas-aspect-ratio-segmented"
           options={IMAGE_SIZE_PRESETS.map((preset) => {
-            const isSupported = textToVideo || supportedPresets.some(item => item.key === preset.key)
+            // 视频也要按模型能力过滤比例（现在两个模型都全支持，但接口里 ratios 是可变的）。
+            const isSupported = textToVideo
+              ? !videoModel?.ratios?.length || videoModel.ratios.includes(preset.key as VideoRatio)
+              : supportedPresets.some(item => item.key === preset.key)
             const baseTooltip = preset.tooltip ?? getAspectRatioTooltip(preset.key)
             const tooltipTitle = isSupported ? baseTooltip : `${baseTooltip}（当前模型不支持）`
             return {

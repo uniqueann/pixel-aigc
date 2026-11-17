@@ -1,5 +1,15 @@
 import type { GenerationJob } from '@/editor/types'
 
+/** 视频任务的阶段文案与右栏 `GenerationTaskStatus` 保持一致。 */
+export type GenerationPhase = 'submitting' | 'queued' | 'generating' | 'transferring'
+
+const PHASE_LABELS: Record<GenerationPhase, string> = {
+  submitting: '提交确认中',
+  queued: '排队中',
+  generating: '视频生成中',
+  transferring: '视频转存中',
+}
+
 /** 挂钟时长：60 秒以内只报秒，超过就报分秒。 */
 export function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000))
@@ -17,8 +27,17 @@ export function placeholderDetail(
   status: GenerationJob['status'] | undefined,
   job: GenerationJob | undefined,
   now = Date.now(),
+  phase?: GenerationPhase,
 ): string {
   if (status === 'failed' || status === 'cancelled') return '可在右侧重试或修改参数'
+  // 视频任务阶段更长，"转存中"这段最容易让人以为卡死，阶段优先于通用文案。
+  if (phase && status !== 'succeeded') {
+    const label = PHASE_LABELS[phase]
+    if (phase === 'queued' || phase === 'submitting') {
+      return job ? `${label} · 已等待 ${formatElapsed(now - Date.parse(job.createdAt))}` : label
+    }
+    return job ? `${label} · 已用 ${formatElapsed(now - Date.parse(job.createdAt))}` : label
+  }
   if (status === 'processing') {
     return job ? `已用 ${formatElapsed(now - Date.parse(job.createdAt))} · 完成后替换此占位` : '结果完成后会替换此占位'
   }

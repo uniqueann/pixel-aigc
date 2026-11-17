@@ -38,6 +38,17 @@ describe('生成占位文案', () => {
     expect(placeholderDetail('cancelled', job({ status: 'cancelled' }), START + 60_000)).toBe('可在右侧重试或修改参数')
   })
 
+  it('视频阶段优先于通用文案，并带上已用时长', () => {
+    expect(placeholderDetail('processing', job(), START + 42_000, 'generating')).toBe('视频生成中 · 已用 42 秒')
+    expect(placeholderDetail('processing', job(), START + 95_000, 'transferring')).toBe('视频转存中 · 已用 1 分 35 秒')
+    expect(placeholderDetail('queued', job({ status: 'queued' }), START + 8_000, 'queued')).toBe('排队中 · 已等待 8 秒')
+    expect(placeholderDetail('pending', job({ status: 'pending' }), START + 2_000, 'submitting')).toBe('提交确认中 · 已等待 2 秒')
+  })
+
+  it('失败态优先于阶段（阶段残留不影响失败文案）', () => {
+    expect(placeholderDetail('failed', job({ status: 'failed' }), START + 9_000, 'transferring')).toBe('可在右侧重试或修改参数')
+  })
+
   it('任务还没登记或状态未知时给中性文案', () => {
     expect(placeholderDetail(undefined, undefined)).toBe('正在等待生成任务')
     expect(placeholderDetail('processing', undefined)).toBe('结果完成后会替换此占位')

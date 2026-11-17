@@ -494,6 +494,10 @@ export default function FreeCanvas() {
       return
     }
     const preset = IMAGE_SIZE_PRESETS.find((item) => item.key === presetKey) ?? IMAGE_SIZE_PRESETS[0]
+    if (activeSlug === 'text-to-video' && videoModel?.ratios?.length && !videoModel.ratios.some((ratio) => ratio === preset.key)) {
+      message.warning('当前视频模型不支持该比例，请重新选择画面比例')
+      return
+    }
     const center = stageRef.current?.getViewportCenter() ?? {
       x: scene?.width ? scene.width / 2 : 0,
       y: scene?.height ? scene.height / 2 : 0,
@@ -792,6 +796,9 @@ export default function FreeCanvas() {
           canDeleteSelection={deletableSelection}
           canDuplicateSelection={duplicableSelection}
           selectionBlockedReason={selectionBlockedReason}
+          taskPhase={generation.task?.phase
+            ? { generationId: generationIdForTask(generation.task.id), phase: generation.task.phase }
+            : undefined}
           onSelectNodes={handleSelectNodes}
           onTransformNodes={handleTransformNodes}
           onViewportChange={setViewport}
