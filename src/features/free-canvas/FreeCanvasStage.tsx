@@ -22,7 +22,7 @@ import {
   WarningFilled,
 } from '@ant-design/icons'
 import { Button, Dropdown, Tooltip } from 'antd'
-import { ActiveSelection, Canvas, FabricImage, FabricText, Group, Point, Rect, Shadow, type FabricObject } from 'fabric'
+import { ActiveSelection, Canvas, FabricImage, FabricText, Group, Line, Point, Rect, Shadow, type FabricObject } from 'fabric'
 import type { Asset, EditorNode, GenerationJob, GenerationNode, ImageNode, NodeId, VideoNode, ViewportState } from '@/editor/types'
 import type { TaskStatus } from '@/types'
 import {
@@ -41,6 +41,7 @@ import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability
 import { readCanvasPalette, useCanvasPalette, type CanvasPalette } from './canvasTheme'
 import { buildLayerItems, type LayerKind } from './layers'
 import { cycleDown, stackAtPoint } from './stacking'
+import { computeAlignmentGuides } from './alignment'
 
 const PLACEHOLDER_LABEL = '#f5f5f4'
 const PLACEHOLDER_DETAIL = '#aeb7b4'
@@ -51,6 +52,8 @@ const PLACEHOLDER_ACTIVE_STROKE = '#21cfa0'
 const PLACEHOLDER_FAILED_FILL = '#3b2729'
 const PLACEHOLDER_FAILED_STROKE = '#ff7875'
 const ARTBOARD_BLUR = 18
+/** 参考线的触发距离（屏幕像素），换算到画板坐标时要除以缩放。 */
+const ALIGN_THRESHOLD_PX = 4
 
 /** 屏幕坐标 → 画板坐标。 */
 function clientPointToCanvas(canvas: Canvas | null, clientX: number, clientY: number) {
@@ -508,10 +511,65 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const initialFitAppliedRef = useRef(false)
   const lastStageSizeRef = useRef<{ width: number; height: number }>()
   const altSelectingRef = useRef(false)
+  const guideLinesRef = useRef<FabricObject[]>([])
   const fitTimerRef = useRef<number>()
   const [videoUiVersion, setVideoUiVersion] = useState(0)
 
   useEffect(() => { paletteRef.current = palette }, [palette])
+
+  const clearAlignmentGuides = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    if (!guideLinesRef.current.length) return
+    for (const line of guideLinesRef.current) canvas.remove(line)
+    guideLinesRef.current = []
+    canvas.requestRenderAll()
+  }, [])
+
+  /**
+   * 拖动中显示与其它节点的对齐参考线（只显示、不吸附）。
+   * 位置用被参照节点的边，长度覆盖所有落在同一条线上的节点。
+   */
+  const renderAlignmentGuides = useCallback((target: FabricObject) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    target.setCoords()
+    const movingIds = new Set<NodeId>()
+    const objects = target instanceof ActiveSelection ? target.getObjects() : [target]
+    for (const object of objects) {
+      const nodeId = objectNodeIdsRef.current.get(object)
+      if (nodeId) movingIds.add(nodeId)
+    }
+    const others = [...nodesByIdRef.current.values()]
+      .filter((node) => node.visible && !movingIds.has(node.id))
+      .map((node) => calculateNodeBounds(node))
+    const box = target.getBoundingRect()
+    const movingBounds = { left: box.left, top: box.top, right: box.left + box.width, bottom: box.top + box.height }
+    const guides = computeAlignmentGuides(movingBounds, others, ALIGN_THRESHOLD_PX / canvas.getZoom())
+    clearAlignmentGuides()
+    if (!guides.length) return
+    const accent = paletteRef.current.accent
+    for (const guide of guides) {
+      const line = new Line(
+        guide.axis === 'x'
+          ? [guide.position, guide.start, guide.position, guide.end]
+          : [guide.start, guide.position, guide.end, guide.position],
+        {
+          stroke: accent,
+          strokeWidth: 1,
+          strokeUniform: true,
+          selectable: false,
+          evented: false,
+          objectCaching: false,
+          excludeFromExport: true,
+          opacity: 0.9,
+        },
+      )
+      canvas.add(line)
+      guideLinesRef.current.push(line)
+    }
+    canvas.requestRenderAll()
+  }, [clearAlignmentGuides])
 
   const reloadMedia = useCallback(() => {
     reportedLoadErrorsRef.current.clear()
@@ -769,6 +827,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       target.setCoords()
     })
     canvas.on('object:modified', ({ target }) => {
+      clearAlignmentGuides()
       if (target instanceof ActiveSelection) {
         const objects = target.getObjects()
         // 退出选择集会把组变换烘焙回子对象，之后才能读到画板坐标。
@@ -801,7 +860,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       target.setCoords()
       callbacksRef.current.onTransformNodes([{ id: nodeId, transform }])
     })
-    canvas.on('object:moving', () => { dismissHintRef.current() })
+    canvas.on('object:moving', ({ target }) => {
+      dismissHintRef.current()
+      if (target) renderAlignmentGuides(target)
+    })
     canvas.on('object:scaling', () => { dismissHintRef.current() })
     canvas.on('mouse:wheel', ({ e, viewportPoint }) => {
       e.preventDefault()
@@ -861,6 +923,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       canvas.requestRenderAll()
     })
     canvas.on('mouse:up', () => {
+      clearAlignmentGuides()
       if (altSelectingRef.current) {
         altSelectingRef.current = false
         canvas.skipTargetFind = false
@@ -970,7 +1033,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       canvasRef.current = null
       void canvas.dispose()
     }
-  }, [toggleVideo])
+  }, [clearAlignmentGuides, renderAlignmentGuides, toggleVideo])
 
   // 主题切换：画布底色、画板纸面、选中色跟着令牌走；占位框整体重建以换配色。
   useEffect(() => {
