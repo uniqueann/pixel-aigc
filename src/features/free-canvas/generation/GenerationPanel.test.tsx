@@ -63,7 +63,7 @@ describe('自由画布文生图侧栏', () => {
       onDurationChange={() => undefined} onGenerate={() => undefined} onRetry={() => undefined}
       onModifyParameters={() => undefined} onRefetch={() => undefined} models={[model]} modelProfileId={model.id}
       resolution="2k" estimatedCredits={12} resolutionAdjusted mockGateway={false} />)
-    expect(screen.getByText('当前模型或画面比例不支持所选分辨率，已按 2K 计算本次参数与积分。')).toBeTruthy()
+    expect(screen.getByText('当前模型或生成比例不支持所选分辨率，已按 2K 计算本次参数与积分。')).toBeTruthy()
     expect(screen.getByText('本次预计消耗 12 积分，按实际成功张数结算。')).toBeTruthy()
   })
 
@@ -232,7 +232,7 @@ describe('自由画布文生图侧栏', () => {
     expect((screen.getByRole('button', { name: /按原参数重试 2 张/ }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('画面比例选项展示微型线框图标并支持切换', () => {
+  it('生成比例选项展示微型线框图标并支持切换', () => {
     const onPresetChange = vi.fn()
     renderPanel({ onPresetChange })
     const segmented = document.querySelector('.free-canvas-aspect-ratio-segmented')

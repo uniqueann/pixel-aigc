@@ -32,7 +32,7 @@ describe('画布 P3 收口接线', () => {
   it('工具条把删除放到最右、单独一组，不再挨着撤销/重做', () => {
     const undoIndex = stageSource.indexOf('aria-label="撤销"')
     const deleteIndex = stageSource.indexOf('aria-label="删除节点"')
-    const fitIndex = stageSource.indexOf('aria-label="适合画板"')
+    const fitIndex = stageSource.indexOf('aria-label="适合工作面"')
     expect(undoIndex).toBeGreaterThan(-1)
     expect(deleteIndex).toBeGreaterThan(fitIndex)
   })

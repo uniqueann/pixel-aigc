@@ -16,7 +16,7 @@ export default function CanvasEmptyState({ onUsePrompt, onFocusPrompt, onPickAss
     <div className="free-canvas-empty">
       <p className="free-canvas-empty-kicker">空白画布</p>
       <h2>写一句描述，就能生成第一张图</h2>
-      <p className="free-canvas-empty-note">结果会落在画板中央，之后可以拖动、复制，或继续裂变、做视频。</p>
+      <p className="free-canvas-empty-note">结果会落在当前视野中央，之后可以拖动、复制，或继续裂变、做视频。</p>
       <div className="free-canvas-empty-prompts" role="group" aria-label="示例画面描述">
         {EXAMPLE_PROMPTS.map((prompt) => (
           <button key={prompt} type="button" className="free-canvas-empty-prompt" onClick={() => onUsePrompt(prompt)}>
