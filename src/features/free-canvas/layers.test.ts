@@ -60,10 +60,12 @@ describe('图层列表数据', () => {
     const node: EditorNode = {
       id: 'v', type: 'video', assetId: 'asset-v', name: '视频 v',
       x: 0, y: 0, width: 100, height: 80, rotation: 0, opacity: 1, visible: true, locked: false, zIndex: 0,
+      duration: 10,
     }
     const items = buildLayerItems([node], { 'asset-v': videoAsset }, {})
     expect(items[0].thumbnail).toBeUndefined()
-    expect(items[0].meta).toBe('100×80')
+    // 同尺寸的 5 秒 / 10 秒结果需要区分，时长排在尺寸前面
+    expect(items[0].meta).toBe('10 秒 · 100×80')
   })
 
   it('生成占位显示任务状态，失败态标记为异常', () => {

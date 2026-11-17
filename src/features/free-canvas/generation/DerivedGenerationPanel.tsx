@@ -136,7 +136,8 @@ export default function DerivedGenerationPanel({
     const src = asset && !asset.missing ? asset.url : url
     return { id: `${task?.id}:${index}`, mediaType: imageToVideo ? 'video' as const : 'image' as const,
       posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
-      thumbSrc: imageToVideo ? '' : src, fullSrc: src, originalSrc: imageToVideo || sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `${imageToVideo ? '视频' : '裂变'}结果 ${(image?.ordinal ?? index) + 1}` }
+      thumbSrc: imageToVideo ? '' : src, fullSrc: src,
+      ...(imageToVideo && task?.params && 'durationSeconds' in task.params ? { durationLabel: `${task.params.durationSeconds} 秒` } : {}), originalSrc: imageToVideo || sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `${imageToVideo ? '视频' : '裂变'}结果 ${(image?.ordinal ?? index) + 1}` }
   })
   const model = matchImageModel(models, modelProfileId)
   const originalModelId = task ? modelProfileIdForRetry(task) : undefined
@@ -185,6 +186,11 @@ export default function DerivedGenerationPanel({
           <span>{sourceAsset.width} × {sourceAsset.height}</span>
         </div>
       </div>
+
+      {imageToVideo && showForm && <p className="free-canvas-field-hint">
+        比例跟随源图（{Math.round(sourceAsset.width)} × {Math.round(sourceAsset.height)}，不可单独选择）· 源图作为首帧
+        {videoModel?.provider === 'seedance' ? ' · 首期暂不支持含真人人脸的图片' : ''}
+      </p>}
 
       {!showForm ? <VideoAvailabilityNotice state={videoState} onRetry={onReloadModels} /> : <>
       <label className="free-canvas-field">
@@ -239,7 +245,6 @@ export default function DerivedGenerationPanel({
               loading={modelsLoading} configured={videoConfigured || mockGateway} mode="image_to_video"
               model={videoModel} models={videoModels} selectedId={selectedVideoModelId} resolution={videoResolution}
               onModelChange={onVideoModelChange} onResolutionChange={onVideoResolutionChange} />
-            <p>保持原图比例{videoModel?.provider === 'seedance' ? '；首期暂不支持含真人人脸的图片。' : '；使用选中图片作为首帧。'}</p>
             <VideoCreditEstimate credits={estimatedCredits} mockGateway={mockGateway} loading={modelsLoading} />
           </>}
         </div>
@@ -255,10 +260,6 @@ export default function DerivedGenerationPanel({
         <p className="toolbox-hint">裂变服务暂不可用，请检查网络或稍后重试。</p>
       ) : null}
       {preparationPhase && <p role="status">{preparationPhase}</p>}
-      {!imageToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
-        手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
-      </p>}
-      {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? '原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成。' : retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
       </>}
       {(task?.status === 'failed' || task?.status === 'cancelled') && showForm && <CreditQuoteNotice quote={retryQuote} onRetry={onReloadModels} />}
       <GenerationTaskStatus
@@ -280,6 +281,11 @@ export default function DerivedGenerationPanel({
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
       />
+      {!imageToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
+        手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
+      </p>}
+      {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? '原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成。' : retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
+
       {task?.status === 'succeeded' && <PreviewResultStrip items={previewItems} onDownload={item => {
         const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
         const image = task.resultImages?.[index]

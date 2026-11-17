@@ -27,6 +27,8 @@ export interface PreviewItem {
   historyId?: string
   ownerId?: string
   expiresAt?: number
+  /** 视频时长标签（如 "10 秒"），只用于结果条角标 */
+  durationLabel?: string
   title?: string
   meta?: { tool?: string; resolution?: string; createdAt?: string }
 }

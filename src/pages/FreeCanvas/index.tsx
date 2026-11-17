@@ -810,6 +810,7 @@ export default function FreeCanvas() {
           onFilesDropped={handleFilesDropped}
           onCanvasFocusChange={setCanvasFocused}
           emptyState={<CanvasEmptyState
+            mode={activeSlug === 'text-to-video' ? 'video' : 'image'}
             onUsePrompt={handleUseExamplePrompt}
             onFocusPrompt={focusCanvasPrompt}
             onPickAsset={() => setPickerOpen(true)}

@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import CanvasEmptyState from './CanvasEmptyState'
-import { EXAMPLE_PROMPTS } from './emptyStatePrompts'
+import { IMAGE_EXAMPLE_PROMPTS, VIDEO_EXAMPLE_PROMPTS } from './emptyStatePrompts'
 
 const stageSource = readFileSync(resolve(process.cwd(), 'src/features/free-canvas/FreeCanvasStage.tsx'), 'utf8')
 const pageSource = readFileSync(resolve(process.cwd(), 'src/pages/FreeCanvas/index.tsx'), 'utf8')
@@ -16,9 +16,15 @@ describe('空白画布引导', () => {
     const onUsePrompt = vi.fn()
     render(<CanvasEmptyState onUsePrompt={onUsePrompt} onFocusPrompt={vi.fn()} onPickAsset={vi.fn()} />)
     expect(screen.getByText('写一句描述，就能生成第一张图')).toBeTruthy()
-    for (const prompt of EXAMPLE_PROMPTS) expect(screen.getByRole('button', { name: prompt })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: EXAMPLE_PROMPTS[0] }))
-    expect(onUsePrompt).toHaveBeenCalledWith(EXAMPLE_PROMPTS[0])
+    for (const prompt of IMAGE_EXAMPLE_PROMPTS) expect(screen.getByRole('button', { name: prompt })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: IMAGE_EXAMPLE_PROMPTS[0] }))
+    expect(onUsePrompt).toHaveBeenCalledWith(IMAGE_EXAMPLE_PROMPTS[0])
+  })
+
+  it('视频模式给运动描述示例', () => {
+    render(<CanvasEmptyState mode="video" onUsePrompt={vi.fn()} onFocusPrompt={vi.fn()} onPickAsset={vi.fn()} />)
+    for (const prompt of VIDEO_EXAMPLE_PROMPTS) expect(screen.getByRole('button', { name: prompt })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: IMAGE_EXAMPLE_PROMPTS[0] })).toBeNull()
   })
 
   it('提供填写描述与添加图片两个入口', () => {
