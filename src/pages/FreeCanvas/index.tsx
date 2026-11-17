@@ -55,6 +55,7 @@ import { CANVAS_MODES } from './modes'
 import { imageCreditAmount } from '@/features/credits/quotes'
 import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 import CanvasAddImageButton from './CanvasAddImageButton'
+import CanvasEmptyState from '@/features/free-canvas/CanvasEmptyState'
 import CanvasNoticeBar, { type CanvasNotice } from '@/features/free-canvas/CanvasNoticeBar'
 import SelectionSummary from '@/features/free-canvas/SelectionSummary'
 import { imageFileError } from '@/services/api/upload'
@@ -376,6 +377,24 @@ export default function FreeCanvas() {
     state.selectNodes(clones.map((node) => node.id))
     void flushProject().catch(() => undefined)
   }, [flushNudge])
+
+  /** 空状态里的示例描述：写进当前模式的草稿，并把焦点放到描述框。 */
+  const focusCanvasPrompt = useCallback(() => {
+    const textarea = document.querySelector<HTMLTextAreaElement>('[data-canvas-prompt]')
+    if (!textarea) return
+    textarea.focus({ preventScroll: true })
+    textarea.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [])
+
+  const handleUseExamplePrompt = useCallback((example: string) => {
+    // 只写描述，不动模型/分辨率——示例不该顺带改变用户的参数选择。
+    const persistence = usePersistenceStore.getState()
+    persistence.setDrafts({
+      ...persistence.drafts,
+      [activeSlug]: { ...persistence.drafts[activeSlug], prompt: example },
+    })
+    focusCanvasPrompt()
+  }, [activeSlug, focusCanvasPrompt])
 
   const handleCopySelection = useCallback(() => {
     const state = useEditorStore.getState()
@@ -783,6 +802,11 @@ export default function FreeCanvas() {
           onReorderSelection={handleReorderSelection}
           onFilesDropped={handleFilesDropped}
           onCanvasFocusChange={setCanvasFocused}
+          emptyState={<CanvasEmptyState
+            onUsePrompt={handleUseExamplePrompt}
+            onFocusPrompt={focusCanvasPrompt}
+            onPickAsset={() => setPickerOpen(true)}
+          />}
           variationEnabled={variationEntryEnabled || configuration.loading}
           imageToVideoEnabled={videoConfiguration.imageReady}
           imageToVideoState={videoConfiguration.imageState}

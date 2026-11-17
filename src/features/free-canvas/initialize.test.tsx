@@ -23,16 +23,26 @@ describe('自由画布初始化', () => {
     })
   })
 
-  it('在 React StrictMode 重放 Effect 时只注册一个初始节点', async () => {
+  it('新项目是空白画布：不预置示例图，也不自动选中', async () => {
     await act(async () => {
       render(<StrictMode><InitializeHarness /></StrictMode>)
     })
 
     const state = useEditorStore.getState()
     const scene = state.project?.document.scenes[0]
-    expect(scene?.nodes).toHaveLength(1)
-    expect(Object.keys(state.project?.assets ?? {})).toEqual(['asset:demo-image'])
-    expect(state.selectedNodeIds).toEqual([scene?.nodes[0].id])
+    expect(state.project?.name).toBe('未命名画布')
+    expect(scene?.nodes).toHaveLength(0)
+    expect(Object.keys(state.project?.assets ?? {})).toEqual([])
+    expect(state.selectedNodeIds).toEqual([])
     expect(state.undoStack).toHaveLength(0)
+  })
+
+  it('已经有项目时不动它（StrictMode 重放也不会重建）', async () => {
+    const first = useEditorStore.getState().createProject('已有项目')
+    await act(async () => {
+      render(<StrictMode><InitializeHarness /></StrictMode>)
+    })
+    expect(useEditorStore.getState().project?.id).toBe(first.id)
+    expect(useEditorStore.getState().project?.name).toBe('已有项目')
   })
 })

@@ -327,3 +327,16 @@ fabric 画不出 CSS 变量，所以画布配色靠 `src/features/free-canvas/ca
 - 整组拖动时用 `ActiveSelection.getBoundingRect()`，并按选中集合排除"其它节点"，避免自己和自己对齐。
 
 测试：`alignment.test.ts` 8 条（左边缘、跨类别对齐、超阈值不出线、上下对齐、跨度合并、同位置去重、每轴最多三条、空输入）。
+
+## 19. 空白画布引导（onboard）
+
+新画布不再预置示例图片：`ensureFreeCanvasContent` 只负责建项目，画板保持空白。空白时由 `CanvasEmptyState` 在画布中央给引导。
+
+- **为什么换掉示例图**：原来新项目会塞一张 "DEMO PRODUCT" 商品图并自动选中，新人第一眼看到的是"一张要删掉的假图"，第一件事是学删除；真正的第一次成功动作（写描述生成）没有任何引导。
+- **卡内内容**：`空白画布` kicker → "写一句描述，就能生成第一张图" → 一句结果说明 → 三个示例描述 chips（点一下写进当前模式的草稿，并把焦点放到描述框）→ `去填写描述` / `添加图片` 两个入口 → 一行快捷键提示（拖入图片、⌘D、方向键、⌘A、图层面板）。
+- **示例描述**单独放在 `emptyStatePrompts.ts`，避免组件文件同时导出常量（react-refresh 规则）。
+- **接入方式**：页面通过 `emptyState` prop 传节点，舞台只在 `scene.nodes.length === 0` 时渲染（`free-canvas-empty-slot` 负责居中与非交互区域穿透）。
+- **描述框定位**靠 `[data-canvas-prompt]` 标记（生成面板与派生面板都加了这个属性），示例填入后 `focus({ preventScroll: true })` + `scrollIntoView`，手机端也能滚到面板。
+- **窄屏**（≤720px）：卡片占满可用宽度、隐藏快捷键那行；实测 390×844 卡片 261px 高、完全落在 439px 的画布内。
+
+测试：`CanvasEmptyState.test.tsx` 4 条（示例 chips 与回调、两个入口、只在空画布渲染、示例写入当前模式草稿并聚焦）、`initialize.test.tsx` 2 条（新项目空白且不自动选中、已有项目不被重建）。

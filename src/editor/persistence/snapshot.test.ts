@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useEditorStore } from '@/editor/store'
 import { DEMO_IMAGE_ASSET } from '@/editor/services/demoImageAsset'
 import { ensureFreeCanvasContent } from '@/features/free-canvas/initialize'
+import { calculateInitialImageNode } from '@/features/free-canvas/geometry'
 import { Capability } from '@/types'
 import { defaultDrafts, type ProjectSnapshot } from './types'
 import { parseSnapshot, persistableSnapshot, restoreHistoryCommands, serializeSnapshot } from './snapshot'
@@ -11,6 +12,11 @@ let snapshot: ProjectSnapshot
 beforeEach(() => {
   useEditorStore.setState({ project: null })
   ensureFreeCanvasContent()
+  // 快照用例需要一个图片节点与素材：显式构造，不再依赖产品里的示例图注入。
+  const state = useEditorStore.getState()
+  const scene = state.project!.document.scenes[0]
+  state.registerAsset(DEMO_IMAGE_ASSET)
+  state.addNode(scene.id, calculateInitialImageNode(DEMO_IMAGE_ASSET, scene))
   snapshot = { schemaVersion: 1, project: structuredClone(useEditorStore.getState().project!), drafts: defaultDrafts(), recoveries: {} }
 })
 

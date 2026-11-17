@@ -190,6 +190,7 @@ export default function DerivedGenerationPanel({
       <label className="free-canvas-field">
         <span>{imageToVideo ? '动态描述' : '变化描述（可选）'}</span>
         <Input.TextArea
+          data-canvas-prompt
           rows={5}
           maxLength={imageToVideo ? VIDEO_PROMPT_MAX : VARIATION_USER_PROMPT_MAX}
           showCount

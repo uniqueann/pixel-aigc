@@ -49,6 +49,8 @@ export interface FreeCanvasStageProps {
   onAssetLoadError: (message: string) => void
   onFilesDropped?: (files: File[], center: CanvasPoint) => void
   onCanvasFocusChange?: (focused: boolean) => void
+  /** 画板为空时显示在画布中央的引导（由页面提供文案与回调） */
+  emptyState?: ReactNode
   children?: ReactNode
 }
 
