@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { createGateway } from '@ai-sdk/gateway'
 import { experimental_startVideo as startVideo, experimental_getVideoStatus as getVideoStatus, type StartVideoResult } from 'ai'
 import { MINIMAX_H3_VIDEO_MODEL, type VideoResolution } from '../../../shared/video-models.js'
+import { VIDEO_REPLICATION_MODEL, VIDEO_REPLICATION_RATIOS } from '../../../shared/video-replication.js'
 import { gatewayToken } from '../../ai-gateway-auth.js'
 import type { ProviderContext } from '../../image-providers/types.js'
 import { downloadVideoResult, VIDEO_MAX_BYTES } from '../download.js'
@@ -13,15 +14,20 @@ function failure(error: unknown, submitting: boolean): VideoProviderError {
   if (status === 401 || status === 403) return new VideoProviderError('INVALID_KEY', '视频服务鉴权或访问权限异常，请联系管理员')
   if (status === 402) return new VideoProviderError('PROVIDER_BALANCE', '平台视频服务额度暂不可用')
   if (status === 429) return new VideoProviderError('RATE_LIMIT', '视频服务当前繁忙，请稍后重试', !submitting)
-  if (status >= 400 && status < 500) return new VideoProviderError('GENERATION_FAILED', '视频参数或内容未被供应商接受')
+  if (status >= 400 && status < 500) {
+    if (error instanceof Error && /face|portrait|人脸|真人/i.test(error.message)) {
+      return new VideoProviderError('VIDEO_PORTRAIT_UNSUPPORTED', '请换用以商品和手部为主、没有清晰真人脸的参考素材')
+    }
+    return new VideoProviderError('GENERATION_FAILED', '视频参数或内容未被供应商接受')
+  }
   return new VideoProviderError('UPSTREAM_UNAVAILABLE', submitting ? '正在确认视频任务状态' : '视频状态暂时无法查询', true, submitting)
 }
 
-async function model(ctx: ProviderContext) {
+async function model(ctx: ProviderContext, modelId: string) {
   let token: string
   try { token = await gatewayToken() } catch { throw new VideoProviderError('INVALID_KEY', '平台视频鉴权暂不可用') }
   if (!token) throw new VideoProviderError('INVALID_KEY', '平台视频鉴权暂不可用')
-  return createGateway({ apiKey: token, fetch: ctx.fetch }).videoModel(MINIMAX_H3_VIDEO_MODEL.model)
+  return createGateway({ apiKey: token, fetch: ctx.fetch }).videoModel(modelId)
 }
 
 function operationReference(value: unknown, id: string): StartVideoResult['operation'] {
@@ -51,8 +57,22 @@ function resultResolution(metadata: unknown): VideoResolution | undefined {
 export const aiGatewayVideoProvider: VideoProvider = {
   id: 'ai-gateway',
   async submit(input, ctx) {
-    if (input.model !== MINIMAX_H3_VIDEO_MODEL.model || !['768p', '2k'].includes(input.resolution)
-      || input.generateAudio !== true || (input.sourceImageUrl ? input.ratio !== 'adaptive' : input.ratio === 'adaptive')) {
+    const replication = input.model === VIDEO_REPLICATION_MODEL
+    if (replication) {
+      if (!input.referenceMedia || input.sourceImageUrl || input.generateAudio || input.resolution !== '720p'
+        || !VIDEO_REPLICATION_RATIOS.some(ratio => input.ratio === ratio)
+        || !Number.isInteger(input.durationSeconds) || input.durationSeconds < 4 || input.durationSeconds > 15) {
+        throw new VideoProviderError('VIDEO_PARAMS_INVALID', '视频复刻需要参考视频、商品图和有效的输出参数')
+      }
+      for (const source of [input.referenceMedia.videoUrl, input.referenceMedia.productImageUrl]) {
+        const url = URL.parse(source)
+        if (url?.protocol !== 'https:' || url.username || url.password) {
+          throw new VideoProviderError('VIDEO_PARAMS_INVALID', '复刻素材地址无效')
+        }
+      }
+    } else if (input.model !== MINIMAX_H3_VIDEO_MODEL.model || !['768p', '2k'].includes(input.resolution)
+      || input.generateAudio !== true || (input.sourceImageUrl ? input.ratio !== 'adaptive' : input.ratio === 'adaptive')
+      || ![5, 10].includes(input.durationSeconds)) {
       throw new VideoProviderError('VIDEO_PARAMS_INVALID', 'H3 支持原生有声的文生视频或单图首帧视频，分辨率请选择 768p、2K')
     }
     if (input.sourceImageUrl) {
@@ -63,11 +83,19 @@ export const aiGatewayVideoProvider: VideoProvider = {
     try {
       const key = input.idempotencyKey ?? ctx.requestId
       if (!key) throw new VideoProviderError('VIDEO_PARAMS_INVALID', '视频请求缺少幂等标识')
-      const selected = await model(ctx)
+      const selected = await model(ctx, input.model)
+      const references = replication ? input.referenceMedia : undefined
       const result = await startVideo({ model: selected,
         prompt: input.sourceImageUrl ? { image: input.sourceImageUrl, text: input.prompt } : input.prompt, n: 1,
         ...(!input.sourceImageUrl && input.ratio !== 'adaptive' ? { aspectRatio: input.ratio } : {}), duration: input.durationSeconds,
-        providerOptions: { minimax: { resolution: input.resolution === '768p' ? '768P' : '2K' } },
+        ...(references ? {
+          resolution: '1280x720' as const,
+          generateAudio: false,
+          inputReferences: [
+            { data: references.videoUrl, mediaType: 'video/mp4' },
+            { data: references.productImageUrl, mediaType: references.productImageMime },
+          ],
+        } : { providerOptions: { minimax: { resolution: input.resolution === '768p' ? '768P' : '2K' } } }),
         maxRetries: 0, abortSignal: AbortSignal.timeout(20_000),
         headers: { 'idempotency-key': createHash('sha256').update(key).digest('hex') } })
       const metadata = result.providerMetadata?.gateway?.asyncJob
@@ -76,21 +104,22 @@ export const aiGatewayVideoProvider: VideoProvider = {
         : operation && typeof operation === 'object' && !Array.isArray(operation) ? (operation as { gatewayJobId?: unknown }).gatewayJobId : undefined
       if (typeof id !== 'string' || !/^job_[\w-]+$/.test(id)) throw new VideoProviderError('BAD_RESPONSE', '视频服务未返回任务编号，正在确认状态', true, true)
       // 已受理的任务即使出现参数警告也要保存编号，等待查询后按失败退款。
-      return { providerTaskId: id, operation: { reference: operation, unsupportedSettings: result.warnings.some(warning => warning.type === 'unsupported'), ...traceMetadata(result.providerMetadata) } }
+      return { providerTaskId: id, operation: { reference: operation, ...(replication ? { modelId: VIDEO_REPLICATION_MODEL } : {}), unsupportedSettings: result.warnings.some(warning => warning.type === 'unsupported'), ...traceMetadata(result.providerMetadata) } }
     } catch (error) { throw failure(error, true) }
   },
   async getStatus(id, ctx, stored) {
     if (!/^job_[\w-]+$/.test(id)) throw new VideoProviderError('BAD_RESPONSE', '网关视频任务编号无效')
-    const envelope = stored && typeof stored === 'object' ? stored as { reference?: unknown; unsupportedSettings?: boolean; generationId?: string; usage?: Record<string, number> } : undefined
-    if (envelope?.unsupportedSettings) return { state: 'failed', model: MINIMAX_H3_VIDEO_MODEL.model, code: 'VIDEO_PARAMS_INVALID', message: '供应商未按所选参数生成，积分将退回' }
+    const envelope = stored && typeof stored === 'object' ? stored as { reference?: unknown; modelId?: unknown; unsupportedSettings?: boolean; generationId?: string; usage?: Record<string, number> } : undefined
+    const modelId = envelope?.modelId === VIDEO_REPLICATION_MODEL ? VIDEO_REPLICATION_MODEL : MINIMAX_H3_VIDEO_MODEL.model
+    if (envelope?.unsupportedSettings) return { state: 'failed', model: modelId, code: 'VIDEO_PARAMS_INVALID', message: '供应商未按所选参数生成，积分将退回' }
     try {
-      const result = await getVideoStatus(await model(ctx), { operation: operationReference(envelope?.reference ?? stored, id), maxRetries: 0, abortSignal: ctx.signal })
-      const common = { model: MINIMAX_H3_VIDEO_MODEL.model, ...(envelope?.generationId ? { generationId: envelope.generationId } : {}),
+      const result = await getVideoStatus(await model(ctx, modelId), { operation: operationReference(envelope?.reference ?? stored, id), maxRetries: 0, abortSignal: ctx.signal })
+      const common = { model: modelId, ...(envelope?.generationId ? { generationId: envelope.generationId } : {}),
         ...(envelope?.usage ? { usage: envelope.usage } : {}), ...traceMetadata(result.providerMetadata) }
       if (result.status === 'pending') return { ...common, state: 'processing' }
       if (result.status === 'error') return { ...common, state: 'failed', code: 'GENERATION_FAILED', message: '供应商未完成视频生成，积分将退回' }
       if (result.warnings.some(warning => warning.type === 'unsupported') || result.videos.length !== 1) throw new VideoProviderError('VIDEO_RESULT_INVALID', '供应商结果与所选配置不匹配')
-      const resolution = resultResolution(result.providerMetadata)
+      const resolution = modelId === VIDEO_REPLICATION_MODEL ? undefined : resultResolution(result.providerMetadata)
       const video = result.videos[0]
       if (video.type === 'url') return { ...common, resolution, state: 'succeeded', videoUrl: video.url }
       if (video.type === 'base64' && video.data.length > Math.ceil(VIDEO_MAX_BYTES / 3) * 4) throw new VideoProviderError('VIDEO_RESULT_TOO_LARGE', '视频结果超过文件大小限制')

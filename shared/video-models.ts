@@ -1,6 +1,8 @@
+import { VIDEO_REPLICATION_MODEL, VIDEO_REPLICATION_MODEL_ID, VIDEO_REPLICATION_RATIOS, type VideoReplicationPricing } from './video-replication.js'
+
 export const VIDEO_RATIOS = ['1:1', '4:3', '3:4', '16:9', '9:16'] as const
 export type VideoRatio = typeof VIDEO_RATIOS[number]
-export type VideoMode = 'text_to_video' | 'image_to_video'
+export type VideoMode = 'text_to_video' | 'image_to_video' | 'video_replication'
 export type VideoPhase = 'submitting' | 'queued' | 'generating' | 'transferring'
 export const VIDEO_RESOLUTIONS = ['720p', '768p', '2k'] as const
 export type VideoResolution = typeof VIDEO_RESOLUTIONS[number]
@@ -20,23 +22,24 @@ export interface VideoModelProfile {
   unavailableReason?: string | null
   durations: Array<5 | 10>
   ratios: readonly VideoRatio[]
+  replicationPricing?: VideoReplicationPricing
   supportsAudio: boolean
   audioMode?: 'optional' | 'native'
   pricing: {
     version: string
     /** 兼容旧客户端，表示默认分辨率的报价。 */
-    creditsPerVideo: Record<5 | 10, number>
+    creditsPerVideo?: Record<5 | 10, number>
     creditsByResolution?: Partial<Record<VideoResolution, Record<5 | 10, number>>>
   }
 }
 
-export const SEEDANCE_VIDEO_MODEL: VideoModelProfile = {
+export const SEEDANCE_VIDEO_MODEL = {
   id: 'seedance-2-0-fast', label: 'Seedance 2.0 fast', provider: 'seedance', vendor: 'bytedance',
   model: 'doubao-seedance-2-0-fast-260128', resolution: '720p', durations: [5, 10],
   resolutions: ['720p'], modes: ['text_to_video', 'image_to_video'],
   ratios: VIDEO_RATIOS, supportsAudio: true, audioMode: 'optional',
   pricing: { version: 'seedance-fast-720p-v1', creditsPerVideo: { 5: 50, 10: 100 } },
-}
+} satisfies VideoModelProfile
 
 export const MINIMAX_H3_VIDEO_MODEL: VideoModelProfile = {
   id: 'minimax-h3', label: 'MiniMax H3', provider: 'ai-gateway', vendor: 'minimax',
@@ -48,7 +51,16 @@ export const MINIMAX_H3_VIDEO_MODEL: VideoModelProfile = {
 
 /** 保留旧模型的目录顺序，默认选择由画布显式决定。 */
 export const VIDEO_MODELS = [SEEDANCE_VIDEO_MODEL, MINIMAX_H3_VIDEO_MODEL] as const
-export function videoModel(id: string | undefined) { return VIDEO_MODELS.find(model => model.id === id) }
+export const VIDEO_REPLICATION_PROFILE: VideoModelProfile = {
+  id: VIDEO_REPLICATION_MODEL_ID, label: 'Seedance 2.0 Fast', provider: 'ai-gateway', vendor: 'bytedance',
+  model: VIDEO_REPLICATION_MODEL, resolution: '720p', durations: [], modes: ['video_replication'],
+  ratios: VIDEO_REPLICATION_RATIOS, supportsAudio: false,
+  pricing: { version: 'video-replication' },
+}
+
+export function videoModel(id: string | undefined) {
+  return id === VIDEO_REPLICATION_PROFILE.id ? VIDEO_REPLICATION_PROFILE : VIDEO_MODELS.find(model => model.id === id)
+}
 export function videoModelModes(model: VideoModelProfile) { return model.modes ?? ['text_to_video', 'image_to_video'] as const }
 export function videoModelAvailableForMode(model: VideoModelProfile | undefined, mode: VideoMode) {
   return !!model && videoModelModes(model).includes(mode) && model.available !== false
@@ -62,7 +74,7 @@ export function videoModelCredits(model: VideoModelProfile | undefined, resoluti
   if (!model || (duration !== 5 && duration !== 10) || !videoModelResolutions(model).includes(resolution)) return undefined
   const value = model.pricing.creditsByResolution
     ? model.pricing.creditsByResolution[resolution]?.[duration]
-    : resolution === model.resolution ? model.pricing.creditsPerVideo[duration] : undefined
+    : resolution === model.resolution ? model.pricing.creditsPerVideo?.[duration] : undefined
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined
 }
 

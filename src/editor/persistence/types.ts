@@ -1,3 +1,4 @@
+import type { VideoReference, VideoReplicationRatio } from '@shared/video-replication'
 import type { SerializedEditorCommand } from '@/editor/commands'
 import type { ImageNode, PixelProject } from '@/editor/types'
 import type { CanvasGenerationRequest } from '@/features/free-canvas/generation/requestBuilder'
@@ -5,6 +6,7 @@ import type { GenerationPlacement } from '@/features/free-canvas/geometry'
 
 export interface GenerationContext {
   inputAssetIds: string[]
+  referenceLabel?: string
   parentGenerationId?: string
   retryOfGenerationId?: string
   autoRetryRemaining: number
@@ -38,7 +40,17 @@ export interface GenerationDraft {
   enableThinking?: boolean
 }
 
+export interface VideoReplicationDraft {
+  ownerId: string
+  prompt: string
+  ratio: VideoReplicationRatio
+  durationSeconds: number
+  reference?: VideoReference & { name: string; assetId?: string }
+  productAssetId?: string
+}
+
 export interface CanvasDrafts {
+  videoReplication?: VideoReplicationDraft
   'text-to-image': GenerationDraft
   'text-to-video': GenerationDraft
   derived?: {

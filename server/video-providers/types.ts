@@ -4,11 +4,12 @@ import type { ProviderContext } from '../image-providers/types.js'
 export interface VideoSubmitInput {
   model: string
   prompt: string
-  durationSeconds: 5 | 10
+  durationSeconds: number
   resolution: VideoResolution
   ratio: VideoRatio | 'adaptive'
   generateAudio: boolean
   sourceImageUrl?: string
+  referenceMedia?: { videoUrl: string; productImageUrl: string; productImageMime: string }
   callbackUrl?: string
   idempotencyKey?: string
 }

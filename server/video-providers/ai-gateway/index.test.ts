@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderContext } from '../../image-providers/types.js'
 import { aiGatewayVideoProvider } from './index.js'
 import { MINIMAX_H3_VIDEO_MODEL } from '../../../shared/video-models.js'
+import { VIDEO_REPLICATION_MODEL } from '../../../shared/video-replication.js'
 import type { VideoSubmitInput } from '../types.js'
 
 const input: VideoSubmitInput = { model: MINIMAX_H3_VIDEO_MODEL.model, prompt: '商品在柔和灯光下缓慢旋转', durationSeconds: 5,
@@ -26,6 +27,26 @@ describe('H3 Gateway 异步适配器', () => {
       providerOptions: { minimax: { resolution: tier } } })
     expect(JSON.parse(init.body as string)).not.toHaveProperty('generateAudio')
   })
+  it('复刻同时传递视频和商品图的签名引用，并用同一模型查询', async () => {
+    const ctx = context()
+    ctx.fetch.mockResolvedValueOnce(Response.json(accepted)).mockResolvedValueOnce(Response.json({ status: 'pending' }))
+    const result = await aiGatewayVideoProvider.submit({ ...input, model: VIDEO_REPLICATION_MODEL, durationSeconds: 7,
+      resolution: '720p', ratio: '9:16', generateAudio: false, prompt: '[Video 1] 的拍法，[Image 1] 的商品',
+      referenceMedia: { videoUrl: 'https://r2.test/ref.mp4', productImageUrl: 'https://r2.test/product.png', productImageMime: 'image/png' },
+    }, ctx)
+    const body = JSON.parse((ctx.fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(body).toMatchObject({ resolution: '1280x720', aspectRatio: '9:16', duration: 7, generateAudio: false,
+      inputReferences: [
+        { type: 'url', url: 'https://r2.test/ref.mp4', mediaType: 'video/mp4' },
+        { type: 'url', url: 'https://r2.test/product.png', mediaType: 'image/png' },
+      ] })
+    expect(body).not.toHaveProperty('image')
+    expect(body).not.toHaveProperty('frameImages')
+    expect(await aiGatewayVideoProvider.getStatus(result.providerTaskId, ctx, result.operation))
+      .toMatchObject({ state: 'processing', model: VIDEO_REPLICATION_MODEL })
+    expect(ctx.fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('单图首帧保留 HTTPS URL，不发送比例、声音或内联图片', async () => {
     const ctx = context()
     ctx.fetch.mockResolvedValue(Response.json(accepted))

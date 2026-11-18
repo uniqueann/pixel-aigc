@@ -33,7 +33,7 @@ export async function signRead(key: string, expiresIn = 900, disposition?: strin
 export async function headObject(key: string, signal = AbortSignal.timeout(5000)) {
   try {
     const object = await s3().send(new HeadObjectCommand({ Bucket: bucket(),Key: key }),{ abortSignal: signal })
-    return { bytes: object.ContentLength ?? 0,contentType: object.ContentType }
+    return { bytes: object.ContentLength ?? 0,contentType: object.ContentType, ...(object.Metadata ? { metadata: object.Metadata } : {}) }
   } catch (error) {
     if (isMissingObject(error)) throw new HttpError(404,'对象不存在','OBJECT_NOT_FOUND')
     throw error
@@ -46,10 +46,10 @@ export async function deleteObject(key: string, signal?: AbortSignal) {
   await s3().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }), operation ? { abortSignal: operation } : undefined)
 }
 
-export async function putObject(key: string, bytes: Uint8Array, contentType: string, signal?: AbortSignal) {
+export async function putObject(key: string, bytes: Uint8Array, contentType: string, signal?: AbortSignal, metadata?: Record<string, string>) {
   const operation = objectOperationSignal(signal)
   operation?.throwIfAborted()
-  await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: contentType }),
+  await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: contentType, ...(metadata ? { Metadata: metadata } : {}) }),
     operation ? { abortSignal: operation } : undefined)
 }
 

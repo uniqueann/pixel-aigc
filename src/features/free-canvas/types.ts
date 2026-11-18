@@ -48,6 +48,9 @@ export interface FreeCanvasStageProps {
   onDuplicateSelection: () => void
   onReorderSelection: (action: ZOrderAction) => void
   onNodeGenerationAction: (action: 'variation' | 'image-to-video', nodeId: NodeId) => void
+  onUseVideoReference?: (nodeId: NodeId) => void
+  onReuseVideoReplication?: () => void
+  replicationSourceSummary?: string
   onAssetLoadError: (message: string) => void
   onFilesDropped?: (files: File[], center: CanvasPoint) => void
   onCanvasFocusChange?: (focused: boolean) => void

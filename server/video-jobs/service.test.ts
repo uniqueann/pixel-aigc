@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { describe, expect, it, vi } from 'vitest'
 import { MINIMAX_H3_VIDEO_MODEL, SEEDANCE_VIDEO_MODEL, VIDEO_RETENTION_MS } from '../../shared/video-models.js'
+import { videoReplicationPricing } from './replication-pricing.js'
+import { VIDEO_REPLICATION_MODEL_ID } from '../../shared/video-replication.js'
 import { createMemoryStore } from '../image-jobs/memory-store.js'
 import { defaultImageJobRuntime, finalizeJob } from '../image-jobs/service.js'
 import { VideoProviderError } from '../video-providers/types.js'
@@ -115,8 +117,44 @@ describe('视频任务提交、转存与共用计费', () => {
     expect(first.bundle.job.credits_reserved).toBe(credits)
     expect(first.bundle.items[0]).toMatchObject({ status: 'submitted', attempts: 1 })
     expect(rt.billing.reserve).toHaveBeenCalledTimes(1)
-    await expect(createVideoJobInStore(store, user, { ...request, params: { ...request.params, generateAudio: true } }, rt)).rejects.toMatchObject({ code: 'REQUEST_CONFLICT' })
+    expect(request.params.mode).toBe('text_to_video')
+    if (request.params.mode === 'text_to_video') {
+      await expect(createVideoJobInStore(store, user, { ...request, params: { ...request.params, generateAudio: true } }, rt)).rejects.toMatchObject({ code: 'REQUEST_CONFLICT' })
+    }
   })
+  it('复刻按已核验参考片和成片分别分档，同一请求只预扣一次', async () => {
+    vi.stubEnv('VIDEO_REPLICATION_PRICING', JSON.stringify({ version: '测试报价', credits: [[11, 12, 13], [21, 22, 23], [31, 32, 33]] }))
+    try {
+      const rt = runtime(), store = createMemoryStore(user.id)
+      const request = createVideoTaskSchema.parse({ capability: 'text_to_video',
+        requestId: '00000000-0000-4000-8000-000000000002', modelProfileId: VIDEO_REPLICATION_MODEL_ID, priceVersion: videoReplicationPricing()?.version,
+        origin: { entry: 'canvas', tool: 'video-replication', projectId: 'project', sceneId: 'scene', projectSource: 'local' },
+        params: { mode: 'video_replication', sourceImageKey: sourceKey, referenceVideoKey: 'reference-original',
+          prompt: '', ratio: '9:16', resolution: '720p', generateAudio: false, count: 1, durationSeconds: 12, size: { width: 720, height: 1280 } },
+      })
+      const source = { url: 'https://r2.test/product.png', width: 800, height: 800, mimeType: 'image/png',
+        reference: { url: 'https://r2.test/reference.mp4', durationSeconds: 5.1 } }
+      await expect(createVideoJobInStore(store, user, { ...request, priceVersion: '过期报价' }, rt, source)).rejects.toMatchObject({ code: 'VIDEO_PRICE_CHANGED' })
+      const first = await createVideoJobInStore(store, user, request, rt, source)
+      expect(first.bundle.job).toMatchObject({ credits_reserved: 23, billing_state: 'reserved' })
+      expect((await createVideoJobInStore(store, user, request, rt)).created).toBe(false)
+      if (request.params.mode !== 'video_replication') throw new Error('复刻参数解析结果无效')
+      await expect(createVideoJobInStore(store, user, { ...request, params: { ...request.params, referenceVideoKey: 'reference-other' } }, rt))
+        .rejects.toMatchObject({ code: 'REQUEST_CONFLICT' })
+      expect(rt.billing.reserve).toHaveBeenCalledTimes(1)
+      const provider = { ...rt.videoProvider, id: 'ai-gateway' as const,
+        getStatus: vi.fn(async () => ({ state: 'succeeded' as const, model: 'bytedance/seedance-2.0-fast', videoBytes: new Uint8Array([1]) })) }
+      const saved = await applyVideoSubmission(store, first.bundle.job.id, rt, 'job_replica')
+      const outcome = await collectVideoOutcome(saved, { ...rt, videoProvider: provider })
+      expect(outcome.patch.status).toBe('failed')
+      await store.updateItem(saved.job.id, 0, outcome.patch)
+      await finalizeJob(store, saved.job, await store.listItems(saved.job.id), rt, false)
+      expect(rt.billing.release).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('价格版本不匹配、参数越界和余额不足都不创建任务', async () => {
     const rt = runtime(), store = createMemoryStore(user.id)
     await expect(createVideoJobInStore(store, user, { ...payload(), priceVersion: '旧价格' }, rt)).rejects.toMatchObject({ code: 'VIDEO_PRICE_CHANGED' })

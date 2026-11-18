@@ -15,7 +15,9 @@ export const useCloudStore = create<{ busy: boolean; interacting: boolean; error
 let running: Promise<void> | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 function inputOf(snapshot: ProjectSnapshot): ProjectWrite {
-  return projectWriteSchema.parse({ name: snapshot.project.name.trim() || '未命名画布', document: snapshot.project.document, drafts: snapshot.drafts, schemaVersion: 1 })
+  const drafts = { ...snapshot.drafts }
+  delete drafts.videoReplication
+  return projectWriteSchema.parse({ name: snapshot.project.name.trim() || '未命名画布', document: snapshot.project.document, drafts, schemaVersion: 1 })
 }
 const fingerprint = (snapshot: ProjectSnapshot) => JSON.stringify(inputOf(snapshot))
 export interface OpenProjectOptions { expectedUserId?: string; signal?: AbortSignal; onCommitStart?: () => void }

@@ -20,19 +20,21 @@ export function useCanvasVideoModels() {
   const mock = isCanvasMockGateway()
   const flags = useCapabilities()
   const query = useQuery({ queryKey: ['video-models', userId], queryFn: ({ signal }) => listVideoModels(signal), enabled: !mock, staleTime: 60_000 })
-  const models = useMemo(() => mock ? VIDEO_MODELS.map(model => ({ ...model, available: true, availableModes: videoModelModes(model) })) : query.data ?? [], [mock, query.data])
+  const models = useMemo<VideoModelProfile[]>(() => mock ? VIDEO_MODELS.map(model => ({ ...model, available: true, availableModes: videoModelModes(model) })) : query.data ?? [], [mock, query.data])
   const textModels = models.filter(model => videoModelAvailableForMode(model, 'text_to_video'))
   const imageModels = models.filter(model => videoModelAvailableForMode(model, 'image_to_video'))
   const textState = mock ? 'ready' : videoModelAvailability(flags.capabilities.textToVideo, flags.error, textModels, query.isPending, query.error && !query.data)
   const imageState = mock ? 'ready' : videoModelAvailability(flags.capabilities.imageToVideo, flags.error, imageModels, query.isPending, query.error && !query.data)
+  const replicationModel = models.find(model => videoModelAvailableForMode(model, 'video_replication') && model.replicationPricing)
+  const replicationReady = !!replicationModel
   const error = flags.error ?? (textState === 'error' || imageState === 'error' ? query.error : null)
   const loading = textState === 'loading' || imageState === 'loading'
   const ready = textState === 'ready'
   const imageReady = imageState === 'ready'
   useEffect(() => {
-    useCanvasVideoConfiguration.setState({ ready, imageReady, models, loading, ownerId: userId })
-    return () => useCanvasVideoConfiguration.setState({ ready: false, imageReady: false, loading: true, models: [] })
-  }, [ready, imageReady, loading, models, userId])
-  return { ready, imageReady, models, loading, error, textState, imageState,
+    useCanvasVideoConfiguration.setState({ ready, imageReady, replicationReady, models, loading, ownerId: userId })
+    return () => useCanvasVideoConfiguration.setState({ ready: false, imageReady: false, replicationReady: false, loading: true, models: [] })
+  }, [ready, imageReady, replicationReady, loading, models, userId])
+  return { ready, imageReady, replicationModel, models, loading, error, textState, imageState,
     reload: () => { void query.refetch(); void flags.refetch() } }
 }

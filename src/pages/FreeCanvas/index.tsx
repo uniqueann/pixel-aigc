@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams,useSearchParams } from 'react-router-dom'
 import CanvasTaskRecovery from '@/features/task-center/CanvasTaskRecovery'
@@ -9,7 +10,7 @@ import { useCloudStore } from '@/cloud/sync'
 import { useCanvasActionGate } from '@/layouts/canvasActionGate'
 import { flushProject, copyProjectLocally, hasUnfinishedGeneration } from '@/editor/persistence/projectPersistence'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
-import type { GenerationDraft } from '@/editor/persistence/types'
+import type { GenerationDraft, VideoReplicationDraft } from '@/editor/persistence/types'
 import { generationIdForTask } from '@/editor/adapters/taskAdapter'
 import { AddNodeCommand, CompositeCommand, RemoveNodeCommand, UpdateNodeCommand } from '@/editor/commands'
 import { useEditorStore } from '@/editor/store'
@@ -17,6 +18,9 @@ import FreeCanvasStage from '@/features/free-canvas/FreeCanvasStage'
 import DerivedGenerationPanel, {
   type DerivedGenerationMode,
 } from '@/features/free-canvas/generation/DerivedGenerationPanel'
+import VideoReplicationPanel from '@/features/free-canvas/generation/VideoReplicationPanel'
+import { inspectVideoReference, uploadVideoReference } from '@/services/api/videoReferences'
+import { videoReplicationCredits, videoReplicationDefaults, type VideoReplicationTaskParams } from '@shared/video-replication'
 import GenerationPanel from '@/features/free-canvas/generation/GenerationPanel'
 import { resolveSelectedImageSource } from '@/features/free-canvas/generation/derivedSource'
 import { isCanvasMockGateway, isFreeCanvasTextToImageEntryEnabled, isFreeCanvasVariationEntryEnabled } from '@/features/free-canvas/generation/availability'
@@ -31,7 +35,8 @@ import { useCanvasImages } from '@/features/free-canvas/images/useCanvasImages'
 import { useCanvasVideos } from '@/features/free-canvas/images/useCanvasVideos'
 import CanvasAssetPicker from '@/features/free-canvas/images/CanvasAssetPicker'
 import { importCanvasFile, importCanvasHistory, type CanvasImageImportContext } from '@/features/free-canvas/images/importImage'
-import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import { useUserStore } from '@/store/useUserStore'
+import { currentWorkstationHistoryOwner, isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import type { WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { matchImageModel } from '@shared/image-models'
@@ -42,6 +47,7 @@ import {
   buildTextToImageRequest,
   buildTextToVideoRequest,
   buildVariationRequest,
+  buildVideoReplicationRequest,
 } from '@/features/free-canvas/generation/requestBuilder'
 import {
   useFreeCanvasGenerationController,
@@ -51,7 +57,7 @@ import { boundsFromPlacement, calculateNodeBounds, NODE_CASCADE_OFFSET, offsetPl
 import { nextZIndex, reorderZIndex, type ZOrderAction } from '@/features/free-canvas/zOrder'
 import { buildPastedNodes, copyNodesToClipboard, readClipboard } from '@/features/free-canvas/clipboard'
 import type { FreeCanvasStageHandle, NodeTransformUpdate } from '@/features/free-canvas/types'
-import { CANVAS_MODES } from './modes'
+import { CANVAS_MODES, VIDEO_REPLICATION_MODE } from './modes'
 import { imageCreditAmount } from '@/features/credits/quotes'
 import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 import CanvasAddImageButton from './CanvasAddImageButton'
@@ -59,7 +65,7 @@ import CanvasEmptyState from '@/features/free-canvas/CanvasEmptyState'
 import CanvasNoticeBar, { type CanvasNotice } from '@/features/free-canvas/CanvasNoticeBar'
 import SelectionSummary from '@/features/free-canvas/SelectionSummary'
 import { imageFileError } from '@/services/api/upload'
-import type { Asset, EditorNode, PixelProject } from '@/editor/types'
+import type { Asset, EditorNode, ImageAsset, PixelProject, VideoAsset } from '@/editor/types'
 
 const EMPTY_ASSETS: Record<string, Asset> = {}
 
@@ -83,6 +89,11 @@ export default function FreeCanvas() {
   const configuration = useCanvasVariationModels()
   const textToImageConfiguration = useCanvasTextToImageModels()
   const videoConfiguration = useCanvasVideoModels()
+  const queryClient = useQueryClient()
+  const [referenceBusy, setReferenceBusy] = useState(false)
+  const [referenceError, setReferenceError] = useState<string>()
+  const referenceGate = useRef(false)
+  const [referenceClock, setReferenceClock] = useState(Date.now)
   const cloudProject = usePersistenceStore(state => state.cloud)
   const preferences = usePreferencesStore(state => state.preferences)
   const ownerId = currentWorkstationHistoryOwner()
@@ -94,6 +105,28 @@ export default function FreeCanvas() {
   const importAbort = useRef(new AbortController())
   const activeSlug = CANVAS_MODES.find((m) => m.slug === mode)?.slug === 'text-to-video' ? 'text-to-video' : 'text-to-image'
   const drafts = usePersistenceStore((state) => state.drafts)
+  const replicationTab = mode === VIDEO_REPLICATION_MODE.slug
+  const replicationPricing = videoConfiguration.replicationModel?.replicationPricing
+  const defaultReplication: VideoReplicationDraft = { ownerId, prompt: '', ratio: '9:16', durationSeconds: 5 }
+  const replication = drafts.videoReplication?.ownerId === ownerId ? drafts.videoReplication : defaultReplication
+  const referenceKey = replication.reference?.key
+  const referenceExpired = !!replication.reference && Date.parse(replication.reference.retentionExpiresAt) <= referenceClock
+  useEffect(() => {
+    if (!replicationTab || !referenceKey) return
+    const timer = window.setInterval(() => setReferenceClock(Date.now()), 15_000)
+    return () => window.clearInterval(timer)
+  }, [replicationTab, referenceKey])
+  const referenceQuery = useQuery({
+    queryKey: ['canvas-video-reference', ownerId, referenceKey],
+    queryFn: ({ signal }) => inspectVideoReference(referenceKey!, signal),
+    enabled: replicationTab && !!replicationPricing && !cloudProject && !!referenceKey
+      && !referenceExpired,
+    retry: false,
+    staleTime: 8 * 60_000,
+    refetchInterval: 8 * 60_000,
+  })
+  const balance = useUserStore(state => state.creditsLoaded ? state.credits : undefined)
+  const writable = usePersistenceStore(state => state.writable)
   const { prompt, presetKey, count, durationSeconds } = drafts[activeSlug]
   const derivedDraft = drafts.derived
   const videoDraft = drafts['text-to-video']
@@ -140,11 +173,35 @@ export default function FreeCanvas() {
   const setViewport = useEditorStore((state) => state.setViewport)
   const scene = project?.document.scenes.find((item) => item.id === activeSceneId)
   const generation = useFreeCanvasGenerationController(scene?.id,parseTaskRoute(routeParams.get('task'))?.sourceId)
+  const replicationTask = !!generation.task && 'mode' in generation.task.params && generation.task.params.mode === 'video_replication'
   const foreignSubmission = !!generation.pendingSubmission?.ownerId && generation.pendingSubmission.ownerId !== ownerId
   const taskResultCount = generation.task?.resultVideos?.length || generation.task?.resultImages?.length || generation.task?.resultUrls?.length || 0
   const previewAssetIds = Array.from({ length: taskResultCount }, (_, index) => resultAssetForTask(generation.task, index, project?.assets ?? EMPTY_ASSETS)?.id).filter((id): id is string => !!id)
-  const images = useCanvasImages(project?.assets ?? EMPTY_ASSETS, scene, derivedDraft?.sourceAssetId, previewAssetIds)
+  const images = useCanvasImages(project?.assets ?? EMPTY_ASSETS, scene, derivedDraft?.sourceAssetId,
+    replication.productAssetId ? [...previewAssetIds, replication.productAssetId] : previewAssetIds)
   const videos = useCanvasVideos(images.assets, scene)
+  const candidateProduct = replication.productAssetId ? images.assets[replication.productAssetId] : undefined
+  const product = candidateProduct?.type === 'image' ? candidateProduct : undefined
+  const validProduct = !!product && !product.missing && !product.loadError
+    && Math.min(product.width, product.height) >= 300 && Math.max(product.width, product.height) <= 6000
+    && product.width / product.height >= .4 && product.width / product.height <= 2.5
+  const replicationCredits = validProduct && !referenceExpired && referenceQuery.data && !referenceQuery.isError
+    ? videoReplicationCredits(replicationPricing, referenceQuery.data.durationSeconds, replication.durationSeconds)
+    : undefined
+  const selectedVideo = scene?.nodes.find(node => node.id === selectedNodeId && node.type === 'video')
+  const selectedVideoAsset = selectedVideo?.type === 'video' ? project?.assets[selectedVideo.assetId] : undefined
+  const selectedVideoGeneration = selectedVideoAsset?.generationId ? project?.generations[selectedVideoAsset.generationId] : undefined
+  const selectedVideoInput = selectedVideoGeneration?.input
+  const selectedReplication = selectedVideoInput && typeof selectedVideoInput === 'object'
+    && 'mode' in selectedVideoInput && selectedVideoInput.mode === 'video_replication'
+    ? selectedVideoInput as VideoReplicationTaskParams : undefined
+  const referenceLabel = usePersistenceStore(state => selectedVideoGeneration?.backendTaskId
+    ? Object.values(state.recoveries).find(record => record.backendTaskId === selectedVideoGeneration.backendTaskId)?.context.referenceLabel
+    : undefined)
+  const replicationInputs = selectedVideoGeneration?.inputAssetIds.map(id => project?.assets[id]) ?? []
+  const replicationSourceSummary = selectedReplication
+    ? `参考视频：${replicationInputs.find(asset => asset?.type === 'video')?.name ?? referenceLabel ?? '任务参考片'} · 商品图：${replicationInputs.find(asset => asset?.type === 'image')?.name ?? '原任务商品图'}`
+    : undefined
   const model = matchImageModel(configuration.models, derivedDraft?.modelProfileId)
     ?? configuration.models.find(item => item.defaultFor?.includes('variation')) ?? configuration.models[0]
   const requestedResolution = derivedDraft?.resolution && derivedDraft.resolution !== '720p' ? derivedDraft.resolution : preferences.image.resolution
@@ -214,11 +271,13 @@ export default function FreeCanvas() {
 
   useEffect(() => {
     const task = generation.task
-    if (task && generation.formLocked && !derivedDraft) {
-      const target = task.capability === Capability.TextToVideo ? 'text-to-video' : 'text-to-image'
-      if (activeSlug !== target) navigate(`/canvas/${target}`, { replace: true })
+    if (task && generation.formLocked) {
+      if (!replicationTask && derivedDraft) return
+      const target = replicationTask ? VIDEO_REPLICATION_MODE.slug : task.capability === Capability.TextToVideo ? 'text-to-video' : 'text-to-image'
+      const current = replicationTab ? VIDEO_REPLICATION_MODE.slug : activeSlug
+      if (current !== target) navigate(`/canvas/${target}${window.location.search}`, { replace: true })
     }
-  }, [activeSlug, derivedDraft, generation.formLocked, generation.task, navigate])
+  }, [activeSlug, replicationTab, replicationTask, derivedDraft, generation.formLocked, generation.task, navigate])
 
   /** 从系统拖入的图片：逐张串行导入，落点是鼠标位置，全部完成后一起选中。 */
   const handleFilesDropped = async (files: File[], center: { x: number; y: number }) => {
@@ -477,6 +536,89 @@ export default function FreeCanvas() {
     void flushProject().catch(() => undefined)
     message.success(`已移除 ${brokenNodes.length} 张损坏图片`)
   }, [images.brokenAssetIds, images.assets, message])
+
+  const updateReplication = (changes: Partial<VideoReplicationDraft>) => {
+    const state = usePersistenceStore.getState()
+    if (!state.writable || state.cloud || state.epoch !== epoch || !isCurrentWorkstationHistoryOwner(ownerId)) return
+    const current = state.drafts.videoReplication
+    state.setDrafts({ ...state.drafts, videoReplication: { ...(current?.ownerId === ownerId ? current : defaultReplication), ...changes } })
+  }
+
+  const openReplication = () => {
+    if (!replicationTab) navigate(`/canvas/${VIDEO_REPLICATION_MODE.slug}${window.location.search}`)
+  }
+
+  const selectReference = async (
+    source: File | { key: string; name: string; assetId?: string },
+    previous?: Pick<VideoReplicationDraft, 'prompt' | 'durationSeconds' | 'ratio' | 'productAssetId'>,
+  ) => {
+    if (!replicationPricing || cloudProject || !writable || generation.formLocked || referenceGate.current || !project || !scene) return
+    referenceGate.current = true
+    setReferenceBusy(true)
+    setReferenceError(undefined)
+    const signal = importAbort.current.signal
+    const isCurrent = () => !signal.aborted && isCurrentWorkstationHistoryOwner(ownerId)
+      && usePersistenceStore.getState().epoch === epoch && useEditorStore.getState().activeSceneId === scene.id
+    generation.dismissTask()
+    try {
+      const { url, ...reference } = source instanceof File
+        ? await uploadVideoReference(source, signal)
+        : await inspectVideoReference(source.key, signal)
+      if (!isCurrent()) return
+      queryClient.setQueryData(['canvas-video-reference', ownerId, reference.key], { ...reference, url })
+      updateReplication({ reference: { ...reference, name: source.name, ...(source instanceof File ? {} : { assetId: source.assetId }) },
+        ...(previous ?? videoReplicationDefaults(reference)) })
+      if (!replicationTab) {
+        await flushProject()
+        if (isCurrent()) openReplication()
+      }
+    } catch (error) {
+      if (isCurrent()) {
+        if (previous) updateReplication({ ...previous, reference: undefined })
+        const text = error instanceof Error ? error.message : '参考视频读取失败'
+        if (replicationTab) setReferenceError(text)
+        else message.error(text)
+      }
+    } finally {
+      referenceGate.current = false
+      setReferenceBusy(false)
+    }
+  }
+
+  const selectCanvasReference = (assetId: string) => {
+    const asset = project?.assets[assetId]
+    const key = asset?.type === 'video' ? asset.objectKey ?? asset.storage?.objectKey : undefined
+    if (!asset || !key) { message.info('这段视频不可用，请另选参考视频'); return }
+    void selectReference({ key, name: asset.name, assetId })
+  }
+
+  const handleVideoReferenceNode = (nodeId: string) => {
+    const node = scene?.nodes.find(item => item.id === nodeId)
+    if (node?.type === 'video') selectCanvasReference(node.assetId)
+  }
+
+  const reuseReplication = () => {
+    if (!selectedReplication) return
+    const reference = replicationInputs.find(asset => asset?.type === 'video')
+    const product = replicationInputs.find(asset => asset?.type === 'image')
+    void selectReference({ key: selectedReplication.referenceVideoKey, name: reference?.name ?? referenceLabel ?? '原任务参考片', assetId: reference?.id }, {
+      prompt: selectedReplication.prompt, ratio: selectedReplication.ratio, durationSeconds: selectedReplication.durationSeconds, productAssetId: product?.id,
+    })
+  }
+
+  const submitReplication = () => {
+    if (!replicationPricing || !replication.reference || !product || !replicationCredits || !scene
+      || !referenceQuery.data || referenceQuery.isError || generation.formLocked
+      || Date.parse(replication.reference.retentionExpiresAt) <= Date.now()) return
+    const request = buildVideoReplicationRequest(replication.reference.key, replication.prompt, replication.ratio,
+      replication.durationSeconds, replicationPricing.version)
+    const center = stageRef.current?.getViewportCenter() ?? { x: scene.width / 2, y: scene.height / 2 }
+    const referenceAssetId = replication.reference.assetId
+    const inputs = [product.id, ...(referenceAssetId && project?.assets[referenceAssetId] ? [referenceAssetId] : [])]
+    void generation.generate(request, center, { inputAssetIds: inputs, referenceLabel: replication.reference.name }).then(placements => {
+      if (placements?.length) stageRef.current?.revealBounds(placements.map(boundsFromPlacement))
+    })
+  }
 
   const handleGenerate = () => {
     if (activeSlug === 'text-to-video' && (!videoConfiguration.ready || !selectedVideoReady || cloudProject)) {
@@ -776,9 +918,13 @@ export default function FreeCanvas() {
         <Segmented
           // 能力不可用不再做成禁用页签（禁用态文字读不清，且点不进去看不到原因）：
           // 页签照常可切，落地后用 VideoAvailabilityNotice 说明原因并提供重试。
-          options={CANVAS_MODES.map((item) => ({ label: item.label, value: item.slug }))}
-          value={activeSlug}
-          onChange={(value) => navigate(`/canvas/${value}`)}
+          options={[...CANVAS_MODES, ...(replicationPricing || replicationTab ? [VIDEO_REPLICATION_MODE] : [])]
+            .map((item) => ({ label: item.label, value: item.slug }))}
+          value={replicationTab ? VIDEO_REPLICATION_MODE.slug : activeSlug}
+          onChange={(value) => {
+            if (replicationTab && !generation.formLocked) generation.dismissTask()
+            navigate(`/canvas/${value}`)
+          }}
         />
       </div>
       <div className="free-canvas-workspace">
@@ -809,7 +955,7 @@ export default function FreeCanvas() {
           onReorderSelection={handleReorderSelection}
           onFilesDropped={handleFilesDropped}
           onCanvasFocusChange={setCanvasFocused}
-          emptyState={<CanvasEmptyState
+          emptyState={!replicationTab && <CanvasEmptyState
             mode={activeSlug === 'text-to-video' ? 'video' : 'image'}
             onUsePrompt={handleUseExamplePrompt}
             onFocusPrompt={focusCanvasPrompt}
@@ -819,6 +965,9 @@ export default function FreeCanvas() {
           imageToVideoEnabled={videoConfiguration.imageReady}
           imageToVideoState={videoConfiguration.imageState}
           onNodeGenerationAction={handleNodeGenerationAction}
+          onUseVideoReference={replicationPricing && !cloudProject && writable ? handleVideoReferenceNode : undefined}
+          onReuseVideoReplication={replicationPricing && !cloudProject && writable && selectedReplication ? reuseReplication : undefined}
+          replicationSourceSummary={replicationSourceSummary}
           onAssetLoadError={handleAssetLoadError}
         >
           <CanvasAddImageButton
@@ -828,7 +977,20 @@ export default function FreeCanvas() {
             onPickAsset={() => setPickerOpen(true)}
           />
         </FreeCanvasStage>
-        {derivedContext ? (
+        {replicationTab ? (
+          <VideoReplicationPanel draft={replication} status={generation} available={!!replicationPricing} cloud={!!cloudProject}
+            locked={generation.formLocked || !writable} busy={referenceBusy || importing} error={referenceError}
+            preview={referenceQuery.isError ? undefined : referenceQuery.data?.url}
+            referenceExpired={referenceExpired} previewError={referenceQuery.error instanceof Error ? referenceQuery.error.message : undefined}
+            product={product} invalidProduct={!!product && !validProduct} credits={replicationCredits} balance={balance}
+            referenceChoices={Object.values(videos.assets).filter((asset): asset is VideoAsset => asset.type === 'video'
+              && Boolean(asset.objectKey ?? asset.storage?.objectKey) && (!asset.retentionExpiresAt || Date.parse(asset.retentionExpiresAt) > referenceClock))}
+            productChoices={Object.values(images.assets).filter((asset): asset is ImageAsset => asset.type === 'image')}
+            sourceSummary={replicationSourceSummary}
+            onChange={updateReplication} onSelectVideo={selectCanvasReference} onUploadVideo={file => { void selectReference(file) }}
+            onUploadImage={file => { void importPicture(file).then(node => { if (node) updateReplication({ productAssetId: node.assetId }) }) }}
+            onReload={videoConfiguration.reload} onGenerate={submitReplication} />
+        ) : derivedContext ? (
           <DerivedGenerationPanel
             mode={derivedContext.mode}
             sourceAsset={images.assets[derivedContext.source.asset.id] as typeof derivedContext.source.asset}
@@ -850,7 +1012,7 @@ export default function FreeCanvas() {
             onVideoResolutionChange={videoResolution => updateDerived({ videoResolution })}
             videoAvailability={videoConfiguration.imageState}
             onReloadModels={derivedContext.mode === 'variation' ? configuration.reload : videoConfiguration.reload}
-            task={generation.task}
+            task={replicationTask ? undefined : generation.task}
             submitting={generation.submitting}
             autoRetrying={generation.autoRetrying}
             active={generation.active}
@@ -916,7 +1078,7 @@ export default function FreeCanvas() {
             onVideoResolutionChange={videoResolution => updateDraft({ videoResolution })}
             videoAvailability={videoConfiguration.textState}
             onReloadModels={activeSlug === 'text-to-video' ? videoConfiguration.reload : textToImageConfiguration.reload}
-            task={generation.task}
+            task={replicationTask ? undefined : generation.task}
             submitting={generation.submitting}
             active={generation.active}
             formLocked={generation.formLocked}

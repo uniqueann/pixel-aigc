@@ -622,6 +622,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json(await handleModelRoute(user, method, path, body))
       return
     }
+    if (path[0] === 'video-references') {
+      const { handleVideoReferenceRoute } = await import('./video-jobs/reference-video.js')
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.status(200).json(await handleVideoReferenceRoute(user, method, path, body))
+      return
+    }
     if (path[0] === 'task-inputs') {
       if (path.length === 1) {
         res.status(200).json(await handleTaskInputs(user, method, body))

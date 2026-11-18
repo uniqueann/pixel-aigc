@@ -1,4 +1,6 @@
 import { useCallback } from 'react'
+import { VIDEO_REPLICATION_RATIOS } from '@shared/video-replication'
+import { inspectVideoReference } from '@/services/api/videoReferences'
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { flushProject } from '@/editor/persistence/projectPersistence'
@@ -14,7 +16,7 @@ import { applyRecoveredCanvasTask,type CanvasRecoveryContext } from './canvasRec
 import { assertRecoveryActor } from './recoveryMedia'
 import TaskRecoveryPanel,{type RecoveryActionContext} from './TaskRecoveryPanel'
 
-const tools=['text-to-image','variation','text-to-video','image-to-video'] as const
+const tools=['text-to-image','variation','text-to-video','image-to-video','video-replication'] as const
 export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(detail:TaskCenterDetail)=>void}) {
   const project=useEditorStore(state=>state.project),sceneId=useEditorStore(state=>state.activeSceneId)
   const epoch=usePersistenceStore(state=>state.epoch),writable=usePersistenceStore(state=>state.writable),phase=usePersistenceStore(state=>state.phase)
@@ -57,14 +59,36 @@ export default function CanvasTaskRecovery({onTaskObserved}:{onTaskObserved:(det
       if(origin?.entry!=='canvas'||origin.sceneId!==sceneId)throw new Error('请先进入原任务场景')
       const values=prepared.params
       if(typeof values.prompt!=='string'||typeof values.count!=='number')throw new Error('原生成参数不完整')
-      if(drafts['text-to-image'].prompt||drafts['text-to-video'].prompt||drafts.derived?.prompt){
+      if(canvasDraftDirty(drafts)){
         if(!await confirm('载入原参数将替换当前生成参数，是否继续？',true))return false
       }
       assertRecoveryActor(input.actor,input.signal)
       if(!usePersistenceStore.getState().writable||usePersistenceStore.getState().epoch!==epoch)throw new Error('项目编辑状态已变化')
       const state=usePersistenceStore.getState(),size=values.size as {width?:number;height?:number}|undefined
       const preset=typeof values.ratio==='string'?values.ratio:IMAGE_SIZE_PRESETS.find(preset=>preset.width===size?.width&&preset.height===size?.height)?.key
-      if(origin.tool==='variation'||origin.tool==='image-to-video') {
+      if(origin.tool==='video-replication'){
+        const ratio=VIDEO_REPLICATION_RATIOS.find(ratio=>ratio===values.ratio)
+        const durationSeconds=values.durationSeconds
+        if(origin.projectSource!=='local'||!ratio||typeof durationSeconds!=='number'||!Number.isInteger(durationSeconds)
+          ||durationSeconds<4||durationSeconds>15||typeof values.referenceVideoKey!=='string'||!prepared.source||!prepared.sourceBlob){
+          throw new Error('原复刻参数或商品图不可用')
+        }
+        const { key, width, height, durationSeconds: referenceDuration, retentionExpiresAt } =
+          await inspectVideoReference(values.referenceVideoKey,input.signal)
+        assertRecoveryActor(input.actor,input.signal)
+        const current=usePersistenceStore.getState()
+        if(!current.writable||current.epoch!==epoch||useEditorStore.getState().activeSceneId!==sceneId)throw new Error('项目编辑状态已变化')
+        const editor=useEditorStore.getState()
+        const product=prepared.source
+        const existing=Object.values(editor.project?.assets??{}).find(asset=>asset.type==='image'&&asset.objectKey===product.objectKey)
+        const source=existing?.type==='image'?existing:product
+        bindRuntimeImage(input.actor.owner,source,prepared.sourceBlob,runtime.current)
+        editor.registerAsset(source)
+        current.setDrafts({...current.drafts,derived:undefined,videoReplication:{
+          ownerId: input.actor.owner, productAssetId:source.id, prompt:values.prompt, ratio, durationSeconds,
+          reference:{ key,width,height,durationSeconds:referenceDuration,retentionExpiresAt,name:'原任务参考片' },
+        }})
+      } else if(origin.tool==='variation'||origin.tool==='image-to-video') {
         if(!prepared.source||!prepared.sourceBlob)throw new Error('原输入图片不可读取')
         const editor=useEditorStore.getState(),scene=editor.project!.document.scenes.find(scene=>scene.id===sceneId)!
         const existing=Object.values(editor.project!.assets).find(asset=>asset.type==='image'&&asset.objectKey===prepared.source!.objectKey)
