@@ -2,7 +2,7 @@ import { createFile, type Movie } from 'mp4box'
 import { VideoProviderError } from './types.js'
 
 /** 只解析元数据，不提取样本，也不启动转码进程。 */
-export function probeVideo(bytes: Uint8Array) {
+export function probeVideo(bytes: Uint8Array, options?: { reference?: boolean }) {
   if (bytes.length < 12 || Buffer.from(bytes.subarray(4, 8)).toString() !== 'ftyp') {
     throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频结果不是有效的 MP4 文件')
   }
@@ -38,7 +38,7 @@ export function probeVideo(bytes: Uint8Array) {
   const height = track?.video?.height ?? 0
   if (invalid || !hasMediaData || !info?.hasMoov || !track || !width || !height || !Number.isFinite(durationSeconds)
     || durationSeconds <= 0 || durationSeconds > 20 || !/^avc[13]\./.test(track.codec)
-    || (audio && !/^mp4a\.40\./.test(audio.codec))) {
+    || (audio && !options?.reference && !/^mp4a\.40\./.test(audio.codec))) {
     throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频文件不完整或编码暂不支持，积分将退回')
   }
   return { width, height, durationSeconds, sizeBytes: bytes.byteLength, hasAudio: !!audio, videoCodec: track.codec, audioCodec: audio?.codec }

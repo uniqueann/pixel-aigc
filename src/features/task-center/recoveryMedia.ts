@@ -53,7 +53,7 @@ export async function prepareRecoveryParameters(detail: TaskCenterDetail, actor:
   if (!detail.params) throw new Error('此任务未保存参数记录，可直接查看结果或作为新图片继续编辑')
   const params = {...detail.params}
   const prepared: PreparedRecoveryParameters = {params}
-  const needsSource = ['image_edit','variation'].includes(detail.task.capability) || (detail.task.capability === 'text_to_video' && params.mode === 'image_to_video')
+  const needsSource = ['image_edit','variation'].includes(detail.task.capability) || (detail.task.capability === 'text_to_video' && (params.mode === 'image_to_video' || params.mode === 'video_replication'))
   if (needsSource && typeof params.sourceImageKey !== 'string') throw new Error('原输入对象缺失，无法完整载入参数')
   for (const field of ['sourceImageKey','referenceImageKey'] as const) {
     if (!params[field]) continue

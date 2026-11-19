@@ -1,3 +1,4 @@
+import { VIDEO_REPLICATION_MODEL_ID, VIDEO_REPLICATION_SIZES, type VideoReplicationRatio, type VideoReplicationTaskParams } from '@shared/video-replication'
 import type { TaskOrigin } from '@shared/task-center'
 import {
   Capability,
@@ -17,6 +18,7 @@ export type CanvasGenerationTaskParams =
   | TextToVideoTaskParams
   | VariationTaskParams
   | ImageToVideoTaskParams
+  | VideoReplicationTaskParams
 
 export interface CanvasGenerationRequest {
   origin?: TaskOrigin
@@ -131,5 +133,13 @@ export function buildImageToVideoRequest(
     requestId: crypto.randomUUID(),
     ...(options ? { modelProfileId: options.model.id, priceVersion: options.model.pricing.version } : {}),
     params,
+  }
+}
+
+export function buildVideoReplicationRequest(referenceVideoKey: string, prompt: string, ratio: VideoReplicationRatio, durationSeconds: number, priceVersion: string): CanvasGenerationRequest {
+  return {
+    capability: Capability.TextToVideo, requestId: crypto.randomUUID(), priceVersion, modelProfileId: VIDEO_REPLICATION_MODEL_ID,
+    params: { mode: 'video_replication', referenceVideoKey, prompt: prompt.trim(), ratio, durationSeconds,
+      size: VIDEO_REPLICATION_SIZES[ratio], count: 1, resolution: '720p', generateAudio: false },
   }
 }

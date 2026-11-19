@@ -16,7 +16,7 @@ with images as (select * from aigc.image_jobs where user_id=$1::uuid and scope=$
    coalesce(i.identities,'[]'::jsonb) as result_identity,
    coalesce(j.origin->>'tool',case j.capability
     when 'variation' then 'variation' when 'text_to_image' then 'text-to-image'
-    when 'text_to_video' then case when j.params->>'mode'='image_to_video' then 'image-to-video' else 'text-to-video' end
+    when 'text_to_video' then case j.params->>'mode' when 'video_replication' then 'video-replication' when 'image_to_video' then 'image-to-video' else 'text-to-video' end
     when 'image_edit' then case
       when ((case when coalesce(j.params->>'referenceImageKey','')<>'' then 1 else 0 end)
         +(case when j.params->'relight' is not null and j.params->'relight'<>'null'::jsonb then 1 else 0 end)

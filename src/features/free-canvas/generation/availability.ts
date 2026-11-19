@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { authEnabled, cloudEnabled } from '@/cloud/client'
 import { useUserStore } from '@/store/useUserStore'
 import type { PublicImageModel } from '@/services/api/imageModels'
-import type { VideoModelProfile } from '@shared/video-models'
+import type { VideoMode, VideoModelProfile } from '@shared/video-models'
 
 interface CanvasImageConfiguration {
   ready: boolean; loading: boolean; models: PublicImageModel[]; error?: string
@@ -10,7 +10,7 @@ interface CanvasImageConfiguration {
 
 export const useCanvasVariationConfiguration = create<CanvasImageConfiguration>(() => ({ ready: false, loading: true, models: [] }))
 export const useCanvasTextToImageConfiguration = create<CanvasImageConfiguration>(() => ({ ready: false, loading: true, models: [] }))
-export const useCanvasVideoConfiguration = create<{ ready: boolean; imageReady: boolean; loading: boolean; models: VideoModelProfile[]; ownerId?: string | null }>(() => ({ ready: false, imageReady: false, loading: true, models: [] }))
+export const useCanvasVideoConfiguration = create<{ ready: boolean; imageReady: boolean; replicationReady?: boolean; loading: boolean; models: VideoModelProfile[]; ownerId?: string | null }>(() => ({ ready: false, imageReady: false, loading: true, models: [] }))
 
 interface VariationGateInput {
   generationMode?: string
@@ -42,9 +42,9 @@ export function isFreeCanvasTextToImageEntryEnabled(input?: VariationGateInput) 
 
 export const canSubmitFreeCanvasTextToImage = isFreeCanvasTextToImageEntryEnabled
 
-export function canSubmitFreeCanvasVideo(mode: 'text_to_video' | 'image_to_video' = 'text_to_video') {
+export function canSubmitFreeCanvasVideo(mode: VideoMode = 'text_to_video') {
   if (isCanvasMockGateway()) return true
   const config = useCanvasVideoConfiguration.getState()
   const owner = useUserStore.getState().userId
-  return authEnabled && !!owner && (config.ownerId === undefined || config.ownerId === owner) && (mode === 'image_to_video' ? config.imageReady : config.ready)
+  return authEnabled && !!owner && (config.ownerId === undefined || config.ownerId === owner) && (mode === 'video_replication' ? config.replicationReady === true : mode === 'image_to_video' ? config.imageReady : config.ready)
 }

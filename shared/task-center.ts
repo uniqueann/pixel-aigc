@@ -21,6 +21,7 @@ export const taskTools = [
   'text-to-image',
   'text-to-video',
   'image-to-video',
+  'video-replication',
   'email-assist',
   'ecommerce-suite',
 ] as const
@@ -40,6 +41,7 @@ export const taskToolLabels: Record<TaskTool, string> = {
   'text-to-image': '文生图',
   'text-to-video': '文生视频',
   'image-to-video': '图生视频',
+  'video-replication': '视频复刻',
   'email-assist': '邮件助手',
   'ecommerce-suite': '电商套图',
 }
@@ -72,6 +74,7 @@ export const taskOriginSchema = z.discriminatedUnion('entry', [
         'variation',
         'text-to-video',
         'image-to-video',
+        'video-replication',
       ]),
       projectId,
       sceneId: projectId,
@@ -101,7 +104,7 @@ export function validTaskOrigin(
     image_edit: ['smart-edit', 'relight', 'fusion', 'retouch', 'ecommerce-suite'],
     variation: ['variation'],
     text_to_image: ['text-to-image'],
-    text_to_video: ['text-to-video', 'image-to-video'],
+    text_to_video: ['text-to-video', 'image-to-video', 'video-replication'],
     email_assist: ['email-assist'],
     erase: ['remove'],
     repaint: ['repaint'],
@@ -112,7 +115,7 @@ export function validTaskOrigin(
     !!allowed[capability]?.includes(origin.tool) &&
     (capability !== 'text_to_video' ||
       origin.tool ===
-        (operation === 'image_to_video' ? 'image-to-video' : 'text-to-video'))
+        (operation === 'video_replication' ? 'video-replication' : operation === 'image_to_video' ? 'image-to-video' : 'text-to-video'))
   )
 }
 

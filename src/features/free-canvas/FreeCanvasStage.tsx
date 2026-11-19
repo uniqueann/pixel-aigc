@@ -467,6 +467,9 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   onDuplicateSelection,
   onReorderSelection,
   onNodeGenerationAction,
+  onUseVideoReference,
+  onReuseVideoReplication,
+  replicationSourceSummary,
   onAssetLoadError,
   onFilesDropped,
   onCanvasFocusChange,
@@ -1959,6 +1962,11 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         <span className="free-canvas-toolbar-divider" />
         {singleSelected?.type === 'video' && (
           <>
+            {onUseVideoReference && <Button type="text" icon={<VideoCameraAddOutlined />} disabled={generationActive}
+              onClick={() => onUseVideoReference(singleSelected.id)}>用作复刻参考</Button>}
+            {onReuseVideoReplication && <Tooltip title={replicationSourceSummary}>
+              <Button type="text" disabled={generationActive} onClick={onReuseVideoReplication}>沿用设置</Button>
+            </Tooltip>}
             <span className="free-canvas-toolbar-divider" />
             <Tooltip title={selectedVideo?.paused ? '播放视频' : '暂停视频'}>
               <Button

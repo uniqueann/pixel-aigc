@@ -1,9 +1,10 @@
+import type { VideoReplicationTaskParams } from '@shared/video-replication'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushProject } from '@/editor/persistence/projectPersistence'
 import { recoveryForTask, usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import type { GenerationContext, GenerationRecovery } from '@/editor/persistence/types'
 import { createTask, findTaskByRequest } from '@/services/api/task'
-import { taskInputKey } from '@/services/api/imageInput'
+import { imageObjectKey, taskInputKey } from '@/services/api/imageInput'
 import { currentWorkstationHistoryOwner, isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { useUserStore } from '@/store/useUserStore'
 import { generationIdForTask } from '@/editor/adapters/taskAdapter'
@@ -81,9 +82,9 @@ function isCanvasGenerationParams(
   capability: Capability,
 ): value is CanvasGenerationTaskParams {
   if (!value || typeof value !== 'object') return false
-  const params = value as Partial<
-    TextToImageTaskParams & TextToVideoTaskParams & VariationTaskParams & ImageToVideoTaskParams
-  >
+  const params = value as Partial<TextToImageTaskParams & VariationTaskParams> & {
+    durationSeconds?: number; mode?: string; referenceVideoKey?: string
+  }
   const commonValid = typeof params.count === 'number'
     && typeof params.size?.width === 'number'
     && typeof params.size.height === 'number'
@@ -94,6 +95,7 @@ function isCanvasGenerationParams(
   }
   if (capability === Capability.TextToVideo) {
     return typeof params.prompt === 'string'
+      && (params.mode !== 'video_replication' || typeof params.referenceVideoKey === 'string')
       && typeof params.durationSeconds === 'number'
       && (params.sourceImageUrl === undefined || typeof params.sourceImageUrl === 'string')
   }
@@ -347,13 +349,13 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
       return
     }
     if (initialRequest.capability === Capability.TextToVideo && !confirmedTask) {
-      const params = initialRequest.params as ImageToVideoTaskParams | TextToVideoTaskParams
-      if (!canSubmitFreeCanvasVideo(params.mode === 'image_to_video' ? 'image_to_video' : 'text_to_video')) {
+      const params = initialRequest.params as ImageToVideoTaskParams | TextToVideoTaskParams | VideoReplicationTaskParams
+      if (!canSubmitFreeCanvasVideo(params.mode ?? 'text_to_video')) {
         setSubmissionError('视频模型尚未就绪，请检查登录与模型配置'); return
       }
       if (usePersistenceStore.getState().cloud) { setSubmissionError('请先另存为本地副本，再生成视频'); return }
       if (!mockGateway) {
-        const mode = params.mode === 'image_to_video' ? 'image_to_video' : 'text_to_video'
+        const mode = params.mode ?? 'text_to_video'
         const model = useCanvasVideoConfiguration.getState().models.find(model => model.id === initialRequest.modelProfileId)
         if (!videoModelAvailableForMode(model, mode)) { setSubmissionError('原视频模型暂不可用，请手动选择其他模型后生成。'); return }
         if (!videoRetryParametersSupported(model, mode, params)) { setSubmissionError('H3 仅提供原生有声视频，请修改参数后重新生成'); return }
@@ -376,7 +378,8 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
       if (!confirmedTask && !request.origin) {
         const tool = request.capability === Capability.Variation ? 'variation'
           : request.capability === Capability.TextToVideo
-            ? ('mode' in request.params && request.params.mode === 'image_to_video' ? 'image-to-video' : 'text-to-video')
+            ? ('mode' in request.params && request.params.mode === 'video_replication' ? 'video-replication'
+              : 'mode' in request.params && request.params.mode === 'image_to_video' ? 'image-to-video' : 'text-to-video')
             : 'text-to-image'
         // 来源与原请求一起保存到现有恢复记录，提交和恢复使用相同参数。
         request = { ...request, origin: { entry: 'canvas', tool, projectId: projectId!, sceneId: sceneId!,
@@ -475,15 +478,17 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
         prepared = { ...initialRequest, params }
       }
       if (!mockGateway && initialRequest.capability === Capability.TextToVideo && !confirmedTask) {
-        const params = { ...initialRequest.params } as ImageToVideoTaskParams
-        if (params.mode === 'image_to_video' && (!params.sourceImageKey || freshVideoInput)) {
+        const params = { ...initialRequest.params } as ImageToVideoTaskParams | VideoReplicationTaskParams
+        if ((params.mode === 'image_to_video' || params.mode === 'video_replication') && (!params.sourceImageKey || freshVideoInput)) {
           const source = useEditorStore.getState().project?.assets[initialContext.inputAssetIds[0]]
           if (source?.type !== 'image') throw new Error('源图片不可用，请重新选择图片')
-          setPreparationPhase('正在准备并上传视频首帧…')
+          setPreparationPhase(params.mode === 'video_replication' ? '正在准备商品图…' : '正在准备并上传视频首帧…')
+          const refreshLocalInput = params.mode === 'video_replication' && source.url.startsWith('data:')
+            && imageObjectKey(source)?.startsWith('temporary/')
           params.sourceImageKey = await taskInputKey(source, '读取原图失败', { ownerId, signal: lifetimeAbortRef.current.signal,
-            ...(freshVideoInput ? { forceUpload: true } : {}) })
+            ...(freshVideoInput || refreshLocalInput ? { forceUpload: true } : {}) })
         }
-        delete params.sourceImageUrl
+        if ('sourceImageUrl' in params) delete params.sourceImageUrl
         prepared = { ...initialRequest, params }
       }
       if (!isCurrent()) return
@@ -691,7 +696,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
     }
   }, [displayedTask, removeNode, sceneId])
 
-  const generate = useCallback(async (request: CanvasGenerationRequest, center: CanvasPoint) => {
+  const generate = useCallback(async (request: CanvasGenerationRequest, center: CanvasPoint, inputs: Pick<GenerationContext, 'inputAssetIds' | 'referenceLabel'> = { inputAssetIds: [] }) => {
     cleanupFailedPlaceholders()
     const scene = readScene()
     const preferred = calculateGenerationPlacements(center, request.params.size, request.params.count)
@@ -702,7 +707,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
         { width: scene.width, height: scene.height },
       )
       : preferred
-    await submitRequest(request, placements)
+    await submitRequest(request, placements, [], { ...inputs, autoRetryRemaining: 0, automaticRetry: false })
     return placements
   }, [cleanupFailedPlaceholders, readScene, submitRequest])
 

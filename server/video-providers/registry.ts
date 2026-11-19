@@ -1,4 +1,5 @@
-import { VIDEO_MODELS, videoModel, videoModelModes, type VideoMode } from '../../shared/video-models.js'
+import { videoReplicationPricing } from '../video-jobs/replication-pricing.js'
+import { VIDEO_MODELS, VIDEO_REPLICATION_PROFILE, videoModel, videoModelModes, type VideoMode, type VideoModelProfile } from '../../shared/video-models.js'
 import { aiGatewayVideoProvider } from './ai-gateway/index.js'
 import { seedanceProvider } from './seedance/index.js'
 import { seedanceGenerationAvailable } from './seedance/config.js'
@@ -15,16 +16,22 @@ export function videoModelAvailable(id: string, mode: VideoMode, env = process.e
   if (profile.provider === 'seedance') return seedanceGenerationAvailable(env)
   return env.VIDEO_GENERATION_ENABLED === 'true' && env.AI_GATEWAY_VIDEO_ENABLED === 'true'
     && (mode !== 'image_to_video' || env.AI_GATEWAY_IMAGE_TO_VIDEO_ENABLED === 'true')
+    && (mode !== 'video_replication' || (env.VIDEO_REPLICATION_ENABLED === 'true' && !!videoReplicationPricing(env)))
     && Boolean(env.AI_GATEWAY_API_KEY?.trim() || env.VERCEL_OIDC_TOKEN?.trim() || env.VERCEL === '1')
     && ['AIGC_DATABASE_URL', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'VIDEO_CRON_SECRET'].every(key => !!env[key])
 }
 
 export function videoGenerationAvailable(mode: VideoMode = 'text_to_video', env = process.env) {
-  return VIDEO_MODELS.some(model => videoModelAvailable(model.id, mode, env))
+  return (mode === 'video_replication' ? [VIDEO_REPLICATION_PROFILE] : VIDEO_MODELS)
+    .some(model => videoModelAvailable(model.id, mode, env))
 }
 
-export function publicVideoModels(env = process.env) {
-  return VIDEO_MODELS.map(model => {
+export function publicVideoModels(env = process.env): VideoModelProfile[] {
+  const pricing = videoReplicationPricing(env)
+  const replica = pricing && videoModelAvailable(VIDEO_REPLICATION_PROFILE.id, 'video_replication', env)
+    ? [{ ...VIDEO_REPLICATION_PROFILE, replicationPricing: pricing, pricing: { ...VIDEO_REPLICATION_PROFILE.pricing, version: pricing.version } }]
+    : []
+  return [...VIDEO_MODELS, ...replica].map(model => {
     const availableModes = videoModelModes(model).filter(mode => videoModelAvailable(model.id, mode, env))
     const available = availableModes.length > 0
     return { ...model, availableModes, available, unavailableReason: available ? null : '平台暂未开放此模型或配置不完整' }

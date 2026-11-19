@@ -1,3 +1,4 @@
+import { VIDEO_REPLICATION_RATIOS } from '@shared/video-replication'
 import { assetPlaceholder } from '@/cloud/assets'
 import { deserializeCommand, type SerializedEditorCommand } from '@/editor/commands'
 import { MAX_PERSISTED_HISTORY } from '@/editor/store/historySlice'
@@ -150,6 +151,25 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
       if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
       if (draft.enableThinking !== undefined && typeof draft.enableThinking !== 'boolean') throw new Error('自动扩写设置无效')
     }
+    if (value.drafts.videoReplication !== undefined) {
+      const draft = value.drafts.videoReplication
+      object(draft); string(draft.ownerId)
+      if (typeof draft.prompt !== 'string' || !VIDEO_REPLICATION_RATIOS.some(ratio => ratio === draft.ratio)
+        || typeof draft.durationSeconds !== 'number' || !Number.isInteger(draft.durationSeconds)
+        || draft.durationSeconds < 4 || draft.durationSeconds > 15) throw new Error('视频复刻草稿无效')
+      if (draft.productAssetId !== undefined) string(draft.productAssetId)
+      if (draft.reference !== undefined) {
+        const reference = draft.reference
+        object(reference); string(reference.key); string(reference.name)
+        finite(reference.width, true); finite(reference.height, true)
+        if (typeof reference.durationSeconds !== 'number' || !Number.isFinite(reference.durationSeconds)
+          || reference.durationSeconds < 2 || reference.durationSeconds > 15
+          || typeof reference.retentionExpiresAt !== 'string' || !Number.isFinite(Date.parse(reference.retentionExpiresAt))) {
+          throw new Error('参考视频草稿无效')
+        }
+        if (reference.assetId !== undefined) string(reference.assetId)
+      }
+    }
     if (value.drafts.derived !== undefined) {
       const draft = value.drafts.derived
       object(draft)
@@ -185,11 +205,20 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
           if (!['1k', '2k', '4k'].includes(String(params.resolution))) throw new Error('真实裂变缺少有效分辨率')
         } else mediaUrl(params.sourceImageUrl)
         if (params.prompt !== undefined && typeof params.prompt !== 'string') throw new Error('裂变提示词无效')
-      } else if (typeof params.prompt !== 'string' || !params.prompt.trim()) throw new Error('任务恢复提示词无效')
-      if (record.request.capability === Capability.TextToVideo && (params.count !== 1 || (typeof params.durationSeconds !== 'number' || ![5, 10].includes(params.durationSeconds)))) throw new Error('视频任务参数无效')
+      } else if (typeof params.prompt !== 'string' || (params.mode !== 'video_replication' && !params.prompt.trim())) throw new Error('任务恢复提示词无效')
+      if (record.request.capability === Capability.TextToVideo) {
+        if (params.count !== 1 || typeof params.durationSeconds !== 'number') throw new Error('视频任务参数无效')
+        if (params.mode === 'video_replication') {
+          string(params.referenceVideoKey); string(params.sourceImageKey)
+          if (params.resolution !== '720p' || params.generateAudio !== false || !Number.isInteger(params.durationSeconds)
+            || params.durationSeconds < 4 || params.durationSeconds > 15
+            || !VIDEO_REPLICATION_RATIOS.some(ratio => ratio === params.ratio)) throw new Error('视频复刻任务参数无效')
+        } else if (![5, 10].includes(params.durationSeconds)) throw new Error('视频任务参数无效')
+      }
       if (params.sourceImageUrl !== undefined) mediaUrl(params.sourceImageUrl)
       if ((typeof record.context.autoRetryRemaining !== 'number' || ![0, 1].includes(record.context.autoRetryRemaining)) || typeof record.context.automaticRetry !== 'boolean' || typeof record.applied !== 'boolean') throw new Error('重试恢复状态无效')
       array(record.context.inputAssetIds)
+      if (record.context.referenceLabel !== undefined) string(record.context.referenceLabel)
       if (record.abandoned !== undefined && typeof record.abandoned !== 'boolean') throw new Error('恢复记录状态无效')
       if (record.backendTaskId !== undefined) string(record.backendTaskId)
       array(record.placements); array(record.replacedPlaceholderIds)
@@ -410,6 +439,7 @@ function compactSnapshot(snapshot: ProjectSnapshot) {
   }
   for (const command of [...undo, ...redo]) collectCommandRefs(command, keepAssets, keepGenerations, embedded)
   if (snapshot.drafts.derived) keepAssets.add(snapshot.drafts.derived.sourceAssetId)
+  if (snapshot.drafts.videoReplication?.productAssetId) keepAssets.add(snapshot.drafts.videoReplication.productAssetId)
   for (const [id, recovery] of Object.entries(snapshot.recoveries)) {
     if (recovery.abandoned || (recovery.backendTaskId && !project.generations[`generation:${recovery.backendTaskId}`])) {
       delete snapshot.recoveries[id]

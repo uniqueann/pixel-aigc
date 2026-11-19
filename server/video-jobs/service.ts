@@ -4,6 +4,9 @@ import sharp from 'sharp'
 import { z } from 'zod'
 import { VIDEO_PROMPT_MAX } from '../../shared/prompt-limits.js'
 import { SEEDANCE_VIDEO_MODEL, VIDEO_RATIOS, VIDEO_RESOLUTIONS, videoModel, videoModelModes, videoModelCredits, videoGenerateAudio, type VideoResult } from '../../shared/video-models.js'
+import { VIDEO_REPLICATION_RATIOS, VIDEO_REPLICATION_SIZES, videoReplicationCredits } from '../../shared/video-replication.js'
+import { resolveVideoReference } from './reference-video.js'
+import { videoReplicationPricing } from './replication-pricing.js'
 import type { authenticate } from '../auth.js'
 import { runtimeScope, withIdentity } from '../db.js'
 import { HttpError } from '../errors.js'
@@ -42,14 +45,27 @@ export const createVideoTaskSchema = z.object({
   priceVersion: z.string().min(1),
   params: z.discriminatedUnion('mode', [
     z.object({ ...common, mode: z.literal('text_to_video'), ratio: z.enum(VIDEO_RATIOS) }).strict(),
+    z.object({ ...common, mode: z.literal('video_replication'), ratio: z.enum(VIDEO_REPLICATION_RATIOS),
+      prompt: z.string().trim().max(VIDEO_PROMPT_MAX), durationSeconds: z.number().int().min(4).max(15),
+      resolution: z.literal('720p'), generateAudio: z.literal(false), referenceVideoKey: z.string().min(1).max(512),
+      sourceImageKey: z.string().min(1).max(512) }).strict(),
     z.object({ ...common, mode: z.literal('image_to_video'), ratio: z.literal('adaptive'),
       sourceImageKey: z.string().min(1).max(512), sourceImageUrl: z.string().max(4000).optional() }).strict(),
   ]),
 }).strict().superRefine((value,ctx) => {
   if (!validTaskOrigin(value.origin,value.capability,value.params.mode)) ctx.addIssue({ code: 'custom',message: '视频任务来源无效',path: ['origin'] })
   const profile = videoModel(value.modelProfileId)
-  if (!profile || !videoModelModes(profile).includes(value.params.mode)
-    || videoModelCredits(profile, value.params.resolution, value.params.durationSeconds) === undefined) {
+  const params = value.params
+  const replica = params.mode === 'video_replication'
+  if (replica) {
+    const expected = VIDEO_REPLICATION_SIZES[params.ratio]
+    if (value.origin?.entry !== 'canvas' || value.origin.projectSource !== 'local'
+      || params.size.width !== expected.width || params.size.height !== expected.height) {
+      ctx.addIssue({ code: 'custom', message: '视频复刻需要本地画布来源和正确的输出画幅', path: ['params'] })
+    }
+  }
+  if (!profile || !videoModelModes(profile).includes(params.mode)
+    || (!replica && videoModelCredits(profile, params.resolution, params.durationSeconds) === undefined)) {
     ctx.addIssue({ code: 'custom', message: '所选模型不支持此生成方式、分辨率或时长', path: ['params'] })
   }
 })
@@ -68,7 +84,21 @@ export function defaultVideoJobRuntime(): VideoJobRuntime {
     writeVideo: putObject, probe: probeVideo, callbackUrl: videoCallbackUrl }
 }
 
-interface PreparedVideoSource { url: string; width: number; height: number }
+interface PreparedVideoSource {
+  url: string
+  width: number
+  height: number
+  mimeType?: string
+  reference?: { url: string; durationSeconds: number }
+}
+
+function requireVideoPrice(parsed: VideoRequest) {
+  const replication = parsed.params.mode === 'video_replication'
+  const pricing = replication ? videoReplicationPricing() : undefined
+  const expected = replication ? pricing?.version : videoModel(parsed.modelProfileId)?.pricing.version
+  if (parsed.priceVersion !== expected) throw new HttpError(409, '视频价格已更新，请刷新配置后重新确认', 'VIDEO_PRICE_CHANGED')
+  return pricing
+}
 
 function providerFor(id: string, runtime: VideoJobRuntime) {
   return runtime.videoProvider.id === id ? runtime.videoProvider : videoProviderById(id)
@@ -80,7 +110,8 @@ export function videoFingerprint(parsed: VideoRequest, previousAudio?: boolean) 
   const values = parsed.params
   const params = { prompt: values.prompt, size: values.size, count: values.count, durationSeconds: values.durationSeconds,
     resolution: values.resolution, generateAudio: values.generateAudio ?? previousAudio ?? videoGenerateAudio(videoModel(parsed.modelProfileId)),
-    mode: values.mode, ratio: values.ratio, ...('sourceImageKey' in values ? { sourceImageKey: values.sourceImageKey } : {}) }
+    mode: values.mode, ratio: values.ratio, ...('sourceImageKey' in values ? { sourceImageKey: values.sourceImageKey } : {}),
+    ...(values.mode === 'video_replication' ? { referenceVideoKey: values.referenceVideoKey } : {}) }
   return createHash('sha256').update(JSON.stringify({ params, modelProfileId: parsed.modelProfileId, priceVersion: parsed.priceVersion })).digest('hex')
 }
 
@@ -107,13 +138,14 @@ export async function prepareVideoSource(userId: string, parsed: VideoRequest, r
   const metadata = await sharp(object.bytes, { limitInputPixels: 40_000_000 }).metadata().catch(() => undefined)
   const rotated = metadata?.orientation !== undefined && metadata.orientation >= 5
   const width = (rotated ? metadata?.height : metadata?.width) ?? 0, height = (rotated ? metadata?.width : metadata?.height) ?? 0
-  const h3 = videoModel(parsed.modelProfileId)?.provider === 'ai-gateway'
+  const h3 = parsed.params.mode === 'image_to_video' && videoModel(parsed.modelProfileId)?.provider === 'ai-gateway'
   const min = h3 ? 256 : 300, max = h3 ? 5760 : 6000
   if (!metadata || !['jpeg', 'png', 'webp'].includes(metadata.format ?? '') || (metadata.pages ?? 1) > 1
     || width < min || height < min || width > max || height > max || width / height < .4 || width / height > 2.5) {
     throw new HttpError(400, `请使用静态 JPEG、PNG 或 WebP 图片，每边 ${min}–${max} 像素，宽高比在 0.4–2.5 之间`, 'VIDEO_IMAGE_NOT_SUPPORTED')
   }
-  return { url: (await runtime.signRead(key, 7200)).url, width, height }
+  return { url: (await runtime.signRead(key, 7200)).url, width, height,
+    ...(parsed.params.mode === 'video_replication' ? { mimeType: `image/${metadata.format}` } : {}) }
 }
 
 export async function createVideoJobInStore(store: ImageJobStore, user: Pick<User, 'id'>, parsed: VideoRequest, runtime: VideoJobRuntime, source?: PreparedVideoSource) {
@@ -123,14 +155,16 @@ export async function createVideoJobInStore(store: ImageJobStore, user: Pick<Use
   if (!profile) throw new HttpError(400, '视频模型不存在', 'VIDEO_PARAMS_INVALID')
   validateNewAudio(parsed)
   if (profile.provider === 'ai-gateway' && parsed.params.mode === 'image_to_video' && !source) throw new HttpError(400, '视频首帧尚未校验', 'VIDEO_IMAGE_NOT_SUPPORTED')
-  if (parsed.priceVersion !== profile.pricing.version) throw new HttpError(409, '视频价格已更新，请刷新配置后重试', 'VIDEO_PRICE_CHANGED')
+  const pricing = requireVideoPrice(parsed)
   await store.expireUserOverdue(new Date(runtime.now()))
   if (await store.hourlyCount() >= VIDEO_HOURLY_LIMIT) throw new HttpError(429, '每小时最多创建 6 个视频任务，请稍后重试', 'RATE_LIMIT')
   if (await store.userActiveCount() >= VIDEO_USER_CONCURRENCY) throw new HttpError(429, '已有视频正在生成，请完成后再试', 'USER_CONCURRENCY')
   if (await store.globalActiveCount() >= VIDEO_GLOBAL_CONCURRENCY) throw new HttpError(429, '视频服务当前任务较多，请稍后重试', 'GLOBAL_CONCURRENCY')
   const params = { ...parsed.params, generateAudio: videoGenerateAudio(profile, parsed.params.generateAudio) }
   if ('sourceImageUrl' in params) delete params.sourceImageUrl
-  const amount = videoModelCredits(profile, params.resolution, params.durationSeconds)
+  const amount = params.mode === 'video_replication'
+    ? videoReplicationCredits(pricing, source?.reference?.durationSeconds ?? 0, params.durationSeconds)
+    : videoModelCredits(profile, params.resolution, params.durationSeconds)
   if (amount === undefined) throw new HttpError(400, '视频报价不可用', 'VIDEO_PARAMS_INVALID')
   const bundle = await reserveAndCreateJob(store, runtime.billing, user.id, {
     id: randomUUID(), requestId: parsed.requestId, fingerprint: videoFingerprint(parsed),
@@ -142,7 +176,8 @@ export async function createVideoJobInStore(store: ImageJobStore, user: Pick<Use
     creditsReserved: amount, billingState: 'reserved', deadlineAt: new Date(runtime.now() + VIDEO_DEADLINE_MS),
     nextPollAt: new Date(runtime.now() + 60_000),
   }, { capability: 'text_to_video', modelProfileId: parsed.modelProfileId, durationSeconds: params.durationSeconds,
-    resolution: params.resolution, generateAudio: params.generateAudio, priceVersion: parsed.priceVersion, unitPrice: amount })
+    resolution: params.resolution, generateAudio: params.generateAudio, priceVersion: parsed.priceVersion, unitPrice: amount,
+    ...(source?.reference ? { mode: params.mode, referenceDurationSeconds: source.reference.durationSeconds } : {}) })
   // 提交意图先落盘；进程中断后也不会再次创建上游任务。
   bundle.items[0] = await store.updateItem(bundle.job.id, 0, { status: 'submitted', attempts: 1 })
   return { bundle, created: true }
@@ -213,8 +248,11 @@ export async function submitVideoTask(user: User, body: unknown, runtime = defau
   const profile = videoModel(parsed.modelProfileId)!
   validateNewAudio(parsed)
   if (!videoModelAvailable(profile.id, parsed.params.mode)) throw new HttpError(503, '所选视频模型尚未开放或配置不完整', 'VIDEO_UNAVAILABLE')
-  if (parsed.priceVersion !== profile.pricing.version) throw new HttpError(409, '视频价格已更新，请刷新配置后重试', 'VIDEO_PRICE_CHANGED')
+  requireVideoPrice(parsed)
   const source = await prepareVideoSource(user.id, parsed, runtime)
+  if (source && parsed.params.mode === 'video_replication') {
+    source.reference = await resolveVideoReference(user, parsed.params.referenceVideoKey, 7200)
+  }
   const created = await withIdentity(user.id, user.email, async sql => {
     await requireActive(sql, user.id)
     await sql`select pg_advisory_xact_lock(91517003)`
@@ -226,8 +264,16 @@ export async function submitVideoTask(user: User, body: unknown, runtime = defau
   let operation: unknown
   let failure: VideoProviderError | undefined
   try {
-    const result = await providerFor(created.bundle.job.provider, runtime).submit({ model: profile.model, ...parsed.params,
-      generateAudio: videoGenerateAudio(profile, parsed.params.generateAudio), sourceImageUrl: source?.url,
+    const references = source?.reference
+    const prompt = references
+      ? ['以 [Image 1] 中的商品为唯一主体，保持其包装、轮廓、主色和可辨识标识。',
+        '借鉴 [Video 1] 的镜头顺序、运镜和节奏。画面使用新商品，避免原片商品、品牌标识、水印和字幕。输出无声。',
+        parsed.params.prompt ? `补充要求（优先保留商品外观）：${parsed.params.prompt}` : ''].filter(Boolean).join('\n')
+      : parsed.params.prompt
+    const result = await providerFor(created.bundle.job.provider, runtime).submit({ model: profile.model, ...parsed.params, prompt,
+      generateAudio: videoGenerateAudio(profile, parsed.params.generateAudio),
+      ...(references && source ? { referenceMedia: { videoUrl: references.url, productImageUrl: source.url, productImageMime: source.mimeType ?? 'image/jpeg' } }
+        : { sourceImageUrl: source?.url }),
       ...(profile.provider === 'seedance' ? { callbackUrl: runtime.callbackUrl(created.bundle.job.id, runtimeScope()) } : {}),
       idempotencyKey: createHash('sha256').update(`${runtimeScope()}:${user.id}:${parsed.requestId}`).digest('hex') },
     { fetch: runtime.fetch, now: runtime.now, sleep: runtime.sleep, log: runtime.log, requestId: parsed.requestId })
@@ -286,7 +332,13 @@ export async function collectVideoOutcome(
     const measured = runtime.probe(bytes)
     runtime.log({ stage: 'video-probe', jobId: job.id, ms: runtime.now() - probeStarted })
     if (measured.hasAudio !== (job.params.generateAudio === true)) throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频声音与所选配置不匹配，积分将退回')
-    if (job.provider === 'ai-gateway' && !validH3VideoShape(measured, job.params, providerParams.sourceDimensions)) {
+    const replicaRatio = VIDEO_REPLICATION_SIZES[job.params.ratio as keyof typeof VIDEO_REPLICATION_SIZES]
+    const invalidReplica = job.params.mode === 'video_replication' && (!replicaRatio
+      || Math.abs(measured.width / measured.height / (replicaRatio.width / replicaRatio.height) - 1) > .03
+      || Math.abs(measured.durationSeconds - Number(job.params.durationSeconds)) > .25
+      || Math.min(measured.width, measured.height) < 700)
+    if (invalidReplica || (job.provider === 'ai-gateway' && job.params.mode !== 'video_replication'
+      && !validH3VideoShape(measured, job.params, providerParams.sourceDimensions))) {
       throw new VideoProviderError('VIDEO_RESULT_INVALID', '视频尺寸或时长与所选配置不匹配，积分将退回')
     }
     const objectKey = `generated/${job.user_id}/video/${job.id}/0.mp4`
