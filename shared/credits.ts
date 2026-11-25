@@ -28,7 +28,12 @@ export function insufficientCreditsMessage(required: number, balance: number) {
 }
 
 export function creditToolName(params: unknown, capability?: string) {
-  if (capability === 'text_to_video') return params && typeof params === 'object' && 'mode' in params && params.mode === 'image_to_video' ? '图生视频' : '文生视频'
+  if (capability === 'text_to_video') {
+    const mode = params && typeof params === 'object' && 'mode' in params ? params.mode : undefined
+    if (mode === 'image_to_video') return '图生视频'
+    if (mode === 'video_replication') return '视频复刻'
+    return '文生视频'
+  }
   if (readRetouchDirections(params).length) return '精修'
   if (readRelight(params)) return '重新打光'
   if (readReferenceImageKey(params)) return '融合'
