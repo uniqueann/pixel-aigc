@@ -19,6 +19,29 @@ vi.mock('@/features/activation/client', () => ({
   syncActivation: vi.fn().mockResolvedValue(undefined),
   saveWelcomeState: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock('@/cloud/client', async () => {
+  const actual = await vi.importActual<typeof import('@/cloud/client')>('@/cloud/client')
+  return {
+    ...actual,
+    authEnabled: true,
+    cloudConfigurationError: undefined,
+    getCloudConfigurationError: () => undefined,
+    supabase: {
+      auth: {
+        verifyOtp: vi.fn(),
+        exchangeCodeForSession: vi.fn(),
+        resend: vi.fn(),
+        resetPasswordForEmail: vi.fn(),
+        signInWithPassword: vi.fn(),
+        signUp: vi.fn(),
+        getUser: vi.fn(),
+        updateUser: vi.fn(),
+        signOut: vi.fn(),
+        signInWithOAuth: vi.fn(),
+      },
+    },
+  }
+})
 vi.mock('@/services/api/credits', () => ({
   listCreditLedger: vi.fn().mockResolvedValue({
     balance: 120,
