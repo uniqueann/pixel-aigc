@@ -99,10 +99,11 @@ export function presentCreditLedgerRow(row: {
     }
   }
   const capability = readString(row.capability) ?? readString(meta.capability)
+  const params = row.params ?? (capability === 'text_to_video' && meta.mode === 'video_replication' ? meta : undefined)
   const title = capability === 'email_assist'
     ? `邮件${({ reply:'回复', summarize:'总结', polish:'润色', grammar:'语法修正' } as Record<string,string>)[String(meta.operation)] ?? '处理'} · ${EMAIL_MODELS.find(model => model.id === meta.modelProfileId)?.label ?? '历史模型'}`
     : readString(meta.tool) ? ({ erase:'消除',repaint:'重绘',outpaint:'扩图','bg-remove':'商品抠图' }[String(meta.tool)] ?? String(meta.tool)) : creditJobTitle({
-    params: row.params,
+    params,
     capability,
     resolution: readResolution(meta, row.provider_params),
     count: readCountFromRow(meta, row.requested_count, row.delta),

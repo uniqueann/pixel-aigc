@@ -21,10 +21,17 @@ describe('空白画布引导', () => {
     expect(onUsePrompt).toHaveBeenCalledWith(IMAGE_EXAMPLE_PROMPTS[0])
   })
 
-  it('视频模式给运动描述示例', () => {
-    render(<CanvasEmptyState mode="video" onUsePrompt={vi.fn()} onFocusPrompt={vi.fn()} onPickAsset={vi.fn()} />)
+  it('切到视频模式时显示成片引导，点击示例会填入运动描述', () => {
+    const onUsePrompt = vi.fn()
+    const props = { onUsePrompt, onFocusPrompt: vi.fn(), onPickAsset: vi.fn() }
+    const { rerender } = render(<CanvasEmptyState {...props} />)
+    rerender(<CanvasEmptyState {...props} mode="video" />)
+    expect(screen.getByRole('heading', { name: '写一句描述，就能生成第一条视频' })).toBeTruthy()
+    expect(screen.getByText('描述主体动作或镜头运动，成片会出现在当前视野中央。')).toBeTruthy()
     for (const prompt of VIDEO_EXAMPLE_PROMPTS) expect(screen.getByRole('button', { name: prompt })).toBeTruthy()
     expect(screen.queryByRole('button', { name: IMAGE_EXAMPLE_PROMPTS[0] })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: VIDEO_EXAMPLE_PROMPTS[0] }))
+    expect(onUsePrompt).toHaveBeenCalledWith(VIDEO_EXAMPLE_PROMPTS[0])
   })
 
   it('提供填写描述与添加图片两个入口', () => {

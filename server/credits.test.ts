@@ -37,6 +37,29 @@ describe('积分明细展示', () => {
     })
   })
 
+  it('视频复刻任务清理后，积分流水仍能显示任务名称和规格', () => {
+    const row = presentCreditLedgerRow({
+      id: '00000000-0000-4000-8000-000000000203',
+      kind: 'reserve',
+      delta: -80,
+      balance_after: 20,
+      charged: null,
+      reason: null,
+      created_at: '2026-11-19T01:00:00.000Z',
+      capability: null,
+      params: null,
+      requested_count: null,
+      provider_params: null,
+      meta: { capability: 'text_to_video', mode: 'video_replication', resolution: '720p', durationSeconds: 5, unitPrice: 80 },
+    })
+    expect(row).toMatchObject({
+      label: '提交预扣',
+      title: '视频复刻 720P 5秒',
+      summary: '视频复刻 720P 5秒',
+      delta: -80,
+    })
+  })
+
   it('免费抠图显示免费文案，不显示实扣 0', () => {
     const base = {
       id: '00000000-0000-4000-8000-000000000202',
