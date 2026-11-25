@@ -25,6 +25,7 @@
     "queryPending": "Still processing; please check again shortly",
     "queryRefunded": "Failed or timed out; credits refunded",
     "queryRecovered": "Result recovered (kept temporarily for 7 days)",
+    "queryExpired": "Result expired (kept temporarily for 7 days)",
     "queryFailed": "Failed to query result",
     "recoveredTitle": "Result recovered",
     "recoveredTip": "Temporarily kept for 7 days",

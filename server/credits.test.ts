@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { parseLedgerCursor, presentCreditLedgerRow } from './credits.js'
+import { SYNC_RESULT_RETENTION_MS } from '../shared/credits.js'
+import { parseLedgerCursor, presentCreditLedgerRow, presentLedgerGroup, type CreditLedgerGroupRow } from './credits.js'
 
 describe('积分明细展示', () => {
   it('分页游标必须是时间与流水 id', () => {
@@ -118,5 +119,64 @@ describe('积分明细展示', () => {
       provider_params: null,
     })
     expect(revoke.presentation).toEqual({ entryType: 'account', reasonCode: 'cash_refund_reclaim' })
+  })
+
+  it('仅对处理中或 7 天内已结算的同步工具记录下发 syncRequestId', () => {
+    const nowMs = Date.parse('2026-10-14T12:00:00.000Z')
+    const baseRow = (overrides: Partial<CreditLedgerGroupRow>): CreditLedgerGroupRow => ({
+      id: '00000000-0000-4000-8000-000000000301',
+      kind: 'settle',
+      delta: 0,
+      balance_after: 95,
+      charged: 5,
+      meta: { tool: 'erase' },
+      reason: null,
+      idempotency_key: null,
+      created_at: new Date(nowMs - 60_000).toISOString(),
+      capability: null,
+      params: null,
+      requested_count: null,
+      provider_params: null,
+      job_id: '00000000-0000-4000-8000-000000000401',
+      ...overrides,
+    })
+
+    const settledRecent = presentLedgerGroup([
+      baseRow({ id: '00000000-0000-4000-8000-000000000302', kind: 'settle', delta: 0, charged: 5, created_at: new Date(nowMs - SYNC_RESULT_RETENTION_MS + 1000).toISOString() }),
+      baseRow({ id: '00000000-0000-4000-8000-000000000301', kind: 'reserve', delta: -5, charged: null, created_at: new Date(nowMs - SYNC_RESULT_RETENTION_MS).toISOString() }),
+    ], nowMs)
+    expect(settledRecent?.syncRequestId).toBe('00000000-0000-4000-8000-000000000401')
+
+    const settledExpired = presentLedgerGroup([
+      baseRow({ id: '00000000-0000-4000-8000-000000000304', kind: 'settle', delta: 0, charged: 5, created_at: new Date(nowMs - SYNC_RESULT_RETENTION_MS).toISOString() }),
+      baseRow({ id: '00000000-0000-4000-8000-000000000303', kind: 'reserve', delta: -5, charged: null, created_at: new Date(nowMs - SYNC_RESULT_RETENTION_MS - 10_000).toISOString() }),
+    ], nowMs)
+    expect(settledExpired?.syncRequestId).toBeUndefined()
+
+    const reservedOld = presentLedgerGroup([
+      baseRow({ id: '00000000-0000-4000-8000-000000000305', kind: 'reserve', delta: -5, charged: null, created_at: new Date(nowMs - SYNC_RESULT_RETENTION_MS - 10_000).toISOString() }),
+    ], nowMs)
+    expect(reservedOld?.syncRequestId).toBe('00000000-0000-4000-8000-000000000401')
+
+    const refundedRecent = presentLedgerGroup([
+      baseRow({ id: '00000000-0000-4000-8000-000000000307', kind: 'refund', delta: 5, charged: 0, created_at: new Date(nowMs - 60_000).toISOString() }),
+      baseRow({ id: '00000000-0000-4000-8000-000000000306', kind: 'reserve', delta: -5, charged: null, created_at: new Date(nowMs - 120_000).toISOString() }),
+    ], nowMs)
+    expect(refundedRecent?.syncRequestId).toBeUndefined()
+
+    const freeSettledRecent = presentLedgerGroup([
+      baseRow({ kind: 'settle', delta: 0, charged: 0, meta: { tool: 'bg-remove', free: true, free_month: '2026-10' }, created_at: new Date(nowMs - 60_000).toISOString(), job_id: '00000000-0000-4000-8000-000000000402' }),
+    ], nowMs)
+    expect(freeSettledRecent?.syncRequestId).toBe('00000000-0000-4000-8000-000000000402')
+
+    const freeSettledExpired = presentLedgerGroup([
+      baseRow({ kind: 'settle', delta: 0, charged: 0, meta: { tool: 'bg-remove', free: true, free_month: '2026-10' }, created_at: new Date(nowMs - SYNC_RESULT_RETENTION_MS).toISOString(), job_id: '00000000-0000-4000-8000-000000000403' }),
+    ], nowMs)
+    expect(freeSettledExpired?.syncRequestId).toBeUndefined()
+
+    const freeRefundedRecent = presentLedgerGroup([
+      baseRow({ kind: 'refund', delta: 0, charged: 0, meta: { tool: 'bg-remove', free: true, free_month: '2026-10' }, created_at: new Date(nowMs - 60_000).toISOString(), job_id: '00000000-0000-4000-8000-000000000404' }),
+    ], nowMs)
+    expect(freeRefundedRecent?.syncRequestId).toBeUndefined()
   })
 })

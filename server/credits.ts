@@ -8,6 +8,7 @@ import {
   creditKindLabel,
   creditToolId,
   formatCreditDelta,
+  isSyncResultExpired,
   mergeCreditJobEntries,
   type CreditLedgerItem,
   type CreditLedgerPresentation,
@@ -228,7 +229,12 @@ function asLedgerSource(row: Record<string, unknown>) {
   }
 }
 
-function presentLedgerGroup(rows: ReturnType<typeof asLedgerSource>[]): CreditLedgerItem | undefined {
+export type CreditLedgerGroupRow = ReturnType<typeof asLedgerSource>
+
+export function presentLedgerGroup(
+  rows: CreditLedgerGroupRow[],
+  nowMs = Date.now(),
+): CreditLedgerItem | undefined {
   if (!rows.length) return undefined
   const presented = rows.map(row => presentCreditLedgerRow(row))
   if (rows.some(row => row.job_id)) {
@@ -243,7 +249,13 @@ function presentLedgerGroup(rows: ReturnType<typeof asLedgerSource>[]): CreditLe
       reason: item.reason,
       presentation: item.presentation,
     })))
-    if (rows[0].job_id && readMeta(rows[0].meta).tool) return {...merged,syncRequestId:rows[0].job_id}
+    const syncJobId = rows.find(row => row.job_id && readMeta(row.meta).tool)?.job_id
+    const status = merged.presentation?.status
+    const canRecoverSyncResult = Boolean(syncJobId) && (
+      status === 'reserved' ||
+      (status === 'settled' && !isSyncResultExpired(merged.createdAt, nowMs))
+    )
+    if (canRecoverSyncResult && syncJobId) return { ...merged, syncRequestId: syncJobId }
     return merged
   }
   return presented[0]
@@ -301,10 +313,11 @@ export async function listCreditLedger(sql: Transaction, cursor: string | null, 
     list.push(source)
     grouped.set(key, list)
   }
+  const nowMs = Date.now()
   const items = pageGroups.map(group => {
     const key = String(group.group_id)
     const members = grouped.get(key) ?? []
-    return presentLedgerGroup(members)
+    return presentLedgerGroup(members, nowMs)
   }).filter((item): item is CreditLedgerItem => Boolean(item))
   const last = items[items.length - 1]
   const [account] = await sql`select balance from aigc.credit_accounts`
