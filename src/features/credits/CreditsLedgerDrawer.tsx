@@ -155,7 +155,7 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
   const positive = item.delta > 0
   const owner = useUserStore(state => state.userId ?? state.account?.userId)
   const [recovering, setRecovering] = useState(false)
-  const [recovery, setRecovery] = useState<{ kind: 'reserved' | 'refunded' | 'recovered' | 'raw'; raw?: string }>()
+  const [recovery, setRecovery] = useState<{ kind: 'reserved' | 'refunded' | 'recovered' | 'expired' | 'raw'; raw?: string }>()
   const [resultUrl, setResultUrl] = useState<string>()
   const display = localizedPresentation(item)
 
@@ -166,6 +166,11 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
       .then(result => {
         const currentUserId = useUserStore.getState().userId ?? useUserStore.getState().account?.userId
         if (currentUserId !== owner) return
+        if (result.state === 'settled' && (result.resultExpired || !result.result?.url)) {
+          setResultUrl(undefined)
+          setRecovery({ kind: 'expired' })
+          return
+        }
         setResultUrl(result.result?.url)
         setRecovery({
           kind: result.state === 'reserved' ? 'reserved' : result.state === 'refunded' ? 'refunded' : 'recovered',
@@ -210,9 +215,11 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
       ? t('credits:drawer.queryPending')
       : recovery.kind === 'refunded'
         ? t('credits:drawer.queryRefunded')
-        : recovery.kind === 'recovered'
-          ? t('credits:drawer.queryRecovered')
-          : recovery.raw
+        : recovery.kind === 'expired'
+          ? t('credits:drawer.queryExpired')
+          : recovery.kind === 'recovered'
+            ? t('credits:drawer.queryRecovered')
+            : recovery.raw
     : undefined
 
   return (
@@ -223,7 +230,7 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
           {display.summary ? <span className="credits-ledger-summary">{display.summary}</span> : null}
         </div>
         {display.reason ? <small className="credits-ledger-reason">{display.reason}</small> : null}
-        {item.syncRequestId && owner ? (
+        {item.syncRequestId && owner && recovery?.kind !== 'expired' && recovery?.kind !== 'refunded' ? (
           <div className="credits-ledger-recovery-action">
             <Button
               size="small"

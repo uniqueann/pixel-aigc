@@ -4,6 +4,22 @@ import { readRetouchDirections } from './retouch.js'
 
 export const CREDIT_LEDGER_PAGE_SIZE = 20
 
+export const SYNC_RESULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+
+export function isSyncResultExpired(
+  settledAt: Date | string | number | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  if (settledAt == null) return true
+  const timestamp = typeof settledAt === 'number'
+    ? settledAt
+    : settledAt instanceof Date
+      ? settledAt.getTime()
+      : Date.parse(settledAt)
+  if (!Number.isFinite(timestamp)) return true
+  return nowMs - timestamp >= SYNC_RESULT_RETENTION_MS
+}
+
 export const CREDIT_KIND_LABELS = {
   grant: '赠送/充值',
   reserve: '提交预扣',

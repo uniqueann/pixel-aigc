@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { taskOriginSchema, validTaskOrigin } from '../shared/task-center.js'
 import { SYNC_PRICE_VERSION, type SyncCreditOperation, type SyncCreditQuote } from '../shared/billing.js'
-import { insufficientCreditsMessage } from '../shared/credits.js'
+import { insufficientCreditsMessage, isSyncResultExpired } from '../shared/credits.js'
 import { withIdentity } from './db.js'
 import { HttpError } from './errors.js'
-import { signRead } from './storage.js'
+import { headObject, signRead } from './storage.js'
 import { validateSuiteBridgeTask } from './ecommerce-suite/bridge-task.js'
 import { bindSuiteSyncInputs } from './ecommerce-suite/object-writes.js'
 
@@ -74,13 +74,26 @@ export async function getSyncCreditResult(user: BillingUser,id: string) {
   z.uuid().parse(id)
   const job = await withIdentity(user.id,user.email,async sql => {
     await sql`select aigc.expire_sync_credits()`
-    const [row] = await sql`select state,result,error_code from aigc.sync_credit_jobs where id=${id}`
+    const [row] = await sql`select state,result,error_code,updated_at from aigc.sync_credit_jobs where id=${id}`
     if (!row) throw new HttpError(404,'操作记录不存在','SYNC_REQUEST_NOT_FOUND')
     return row
   })
   if (job.state === 'settled') {
-    const result = await presentSavedResult(job.result)
-    return { state:'settled', result:{ objectKey:result.objectKey,mimeType:result.mimeType,bytes:result.bytes,...result.signed } }
+    const saved = job.result && typeof job.result === 'object' ? job.result as Record<string, unknown> : null
+    const objectKey = typeof saved?.objectKey === 'string' && saved.objectKey.trim() ? saved.objectKey.trim() : undefined
+    if (!saved || !objectKey || isSyncResultExpired(job.updated_at as Date | string | null | undefined)) {
+      return { state: 'settled' as const, resultExpired: true }
+    }
+    try {
+      await headObject(objectKey)
+    } catch (error) {
+      if (error instanceof HttpError && error.code === 'OBJECT_NOT_FOUND') {
+        return { state: 'settled' as const, resultExpired: true }
+      }
+      throw error
+    }
+    const result = await presentSavedResult(saved)
+    return { state: 'settled' as const, result: { objectKey: result.objectKey, mimeType: result.mimeType, bytes: result.bytes, ...result.signed } }
   }
   return { state:job.state,errorCode:job.error_code }
 }

@@ -47,5 +47,5 @@ export async function refreshBillingBalance(owner: string) {
   }
 }
 export async function recoverSyncResult(id: string,owner: string) {
-  return cloudRequest<{state:'reserved'|'settled'|'refunded';result?:SyncImageObjectResult;errorCode?:string}>(`/credits/sync/${id}`,'GET',undefined,{expectedUserId:owner})
+  return cloudRequest<{state:'reserved'|'settled'|'refunded';result?:SyncImageObjectResult;resultExpired?:boolean;errorCode?:string}>(`/credits/sync/${id}`,'GET',undefined,{expectedUserId:owner})
 }

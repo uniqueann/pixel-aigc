@@ -22,6 +22,7 @@ afterEach(() => cleanup())
 describe('积分明细抽屉', () => {
   beforeEach(() => {
     listCreditLedger.mockReset()
+    recoverSyncResult.mockReset()
     useUserStore.setState({
       credits: 4,
       account: {
@@ -166,6 +167,44 @@ describe('积分明细抽屉', () => {
     })
     render(<CreditsLedgerDrawer open initialTab="recharge" onClose={() => undefined} />)
     expect(await screen.findByRole('button', { name: '查看明细' })).toBeTruthy()
+  })
+
+  it('点击查询已有结果返回已过期时，展示过期提示并隐藏查询按钮', async () => {
+    recoverSyncResult.mockResolvedValueOnce({ state: 'settled', resultExpired: true })
+    listCreditLedger.mockResolvedValueOnce({
+      balance: 95,
+      nextCursor: null,
+      items: [{
+        id: '1', createdAt: '2026-10-14T08:00:00.000Z', kind: 'settle', label: '消除',
+        title: '消除', summary: '实扣 5', delta: -5, deltaText: '-5',
+        balanceAfter: 95, charged: 5, reason: null, syncRequestId: 'sync-req-expired',
+      }],
+    })
+    render(<CreditsLedgerDrawer open onClose={() => undefined} />)
+    const queryBtn = await screen.findByRole('button', { name: '查询已有结果' })
+    fireEvent.click(queryBtn)
+    expect(await screen.findByText('结果已过期（仅临时保留 7 天）')).toBeTruthy()
+    expect(screen.queryByText('结果已找回')).toBeNull()
+    expect(screen.queryByRole('img', { name: '生成结果预览' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '查询已有结果' })).toBeNull()
+  })
+
+  it('点击查询已有结果遇到临时错误时，展示错误提示并保留查询按钮以便重试', async () => {
+    recoverSyncResult.mockRejectedValueOnce(new Error('R2 查询超时'))
+    listCreditLedger.mockResolvedValueOnce({
+      balance: 95,
+      nextCursor: null,
+      items: [{
+        id: '1', createdAt: '2026-10-14T08:00:00.000Z', kind: 'settle', label: '消除',
+        title: '消除', summary: '实扣 5', delta: -5, deltaText: '-5',
+        balanceAfter: 95, charged: 5, reason: null, syncRequestId: 'sync-req-retry',
+      }],
+    })
+    render(<CreditsLedgerDrawer open onClose={() => undefined} />)
+    const queryBtn = await screen.findByRole('button', { name: '查询已有结果' })
+    fireEvent.click(queryBtn)
+    expect(await screen.findByText('R2 查询超时')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '查询已有结果' })).toBeTruthy()
   })
 })
 
