@@ -51,10 +51,13 @@ describe('邮箱链接回调', () => {
   it('验证失败后不再重试，并显示接口错误', async () => {
     resetAuthCallbackForTests()
     const { client, verifyOtp } = verifier()
-    verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: new Error('链接已过期') })
+    verifyOtp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: Object.assign(new Error('Token has expired or is invalid'), { code: 'otp_expired' }),
+    })
     const params = new URLSearchParams('token_hash=pkce_abc&type=email')
-    await expect(verifyEmailLink(client, params)).resolves.toEqual({ kind: 'error', message: '链接已过期' })
-    await expect(verifyEmailLink(client, params)).resolves.toEqual({ kind: 'error', message: '链接已过期' })
+    await expect(verifyEmailLink(client, params)).resolves.toEqual({ kind: 'error', message: '验证链接已过期，请重新申请。' })
+    await expect(verifyEmailLink(client, params)).resolves.toEqual({ kind: 'error', message: '验证链接已过期，请重新申请。' })
     expect(verifyOtp).toHaveBeenCalledTimes(1)
   })
 

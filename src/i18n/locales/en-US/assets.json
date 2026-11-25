@@ -1,0 +1,127 @@
+{
+  "title": "My Assets",
+  "loading": "Loading assets...",
+  "days": {
+    "today": "Today",
+    "yesterday": "Yesterday"
+  },
+  "filters": {
+    "ariaLabel": "Filter asset types",
+    "all": "All",
+    "images": "Images",
+    "videos": "Videos",
+    "email": "Email Assistant"
+  },
+  "view": {
+    "groupAria": "View mode",
+    "list": "List view",
+    "grid": "Grid view"
+  },
+  "search": {
+    "ariaLabel": "Search assets",
+    "placeholder": "Search prompts, tools, or email content",
+    "resultCount": "Found {{count}} asset(s)",
+    "empty": "No assets found matching \"{{query}}\"",
+    "clear": "Clear search"
+  },
+  "sort": {
+    "ariaLabel": "Sort order",
+    "newest": "Newest first",
+    "oldest": "Oldest first"
+  },
+  "actions": {
+    "reload": "Reload"
+  },
+  "selection": {
+    "select": "Select",
+    "deselect": "Deselect",
+    "barAria": "Batch actions",
+    "selectedCount": "{{count}} selected",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all"
+  },
+  "empty": {
+    "signInRequired": "Please sign in to view your asset history",
+    "email": "No email tasks yet",
+    "video": "No videos yet",
+    "all": "No assets yet. Completed images and videos will appear here.",
+    "openCanvas": "Open Canvas",
+    "goCreate": "Create"
+  },
+  "card": {
+    "selectAria": "Select {{name}}",
+    "deselectAria": "Deselect {{name}}",
+    "playVideoAria": "Play {{name}}",
+    "viewImageAria": "View {{name}} full size",
+    "playVideoTitle": "Play video",
+    "viewImageTitle": "View full size",
+    "viewEmailAria": "View email task: {{name}}",
+    "viewEmailTitle": "View email task",
+    "emailBatchUnsupported": "Batch actions are not supported for email tasks",
+    "downloading": "Downloading...",
+    "moreAria": "More actions: {{name}}",
+    "srName": " \"{{name}}\""
+  },
+  "video": {
+    "modelTitle": "{{model}} Video",
+    "defaultTitle": "Seedance Video",
+    "legacyModel": "Legacy model",
+    "subtitle": "{{duration}}s · {{width}}×{{height}} · Expires {{expiresAt}}",
+    "expiresAt": "Expires {{time}}",
+    "downloadFilename": "Seedance_{{seconds}}s.mp4"
+  },
+  "email": {
+    "title": "Email Assistant · {{operation}}",
+    "fallbackSubtitle": "Email task",
+    "loadMore": "Load more email tasks",
+    "loadedHint": "Loaded {{loaded}} of {{total}} email tasks"
+  },
+  "delete": {
+    "singleConfirmTitle": "Delete this asset?",
+    "singleConfirmContent": "\"{{name}}\" will be removed from local history. You can undo within 5 seconds.",
+    "batchConfirmTitle": "Delete {{count}} selected asset(s)?",
+    "batchConfirmContent": "Selected assets will be removed from local history. You can undo within 5 seconds.",
+    "singleAnnouncement": "Deleted \"{{name}}\", {{remaining}} remaining; undo available",
+    "singleDone": "Deleted \"{{name}}\"",
+    "batchAnnouncement": "Deleted {{count}} asset(s); undo available",
+    "batchDone": "Deleted {{count}} asset(s)",
+    "failedRetry": "Failed to delete; please retry",
+    "batchPartialFailed": "Failed to delete {{count}} item(s); please retry"
+  },
+  "undo": {
+    "singleAria": "Undo deleting \"{{name}}\"",
+    "batchAria": "Undo deleting {{count}} asset(s)",
+    "singleAnnouncement": "Restored \"{{name}}\"",
+    "singleSuccess": "Asset restored",
+    "batchRestored": "Restored {{count}} asset(s)",
+    "batchPartialRestored": "Restored {{count}}; remaining undo records were full or expired",
+    "expired": "Undo window has expired; assets cannot be restored"
+  },
+  "labels": {
+    "generationTask": "Generation task"
+  },
+  "taskStatus": {
+    "succeeded": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "queued": "Queued",
+    "processing": "In progress"
+  },
+  "errors": {
+    "loadFailed": "Failed to load assets; please reload",
+    "partialLoadFailed": "Failed to load {{count}} asset(s); please reload",
+    "emailLoadFailed": "Failed to load email tasks",
+    "downloadFailed": "Download failed: unable to read result file",
+    "restoreFailed": "Failed to restore",
+    "deleteFailed": "Failed to delete",
+    "accountNotReady": "Account is not ready yet; unable to read local history",
+    "hydrateAborted": "History sync cancelled",
+    "hydrateAccountSwitched": "Account switched; history sync stopped",
+    "videoSyncCancelled": "Video asset sync cancelled",
+    "missingHistoryOwner": "Missing owner account for local history",
+    "indexedDbUnsupported": "Local history is not supported in this browser; the current image was not saved",
+    "openHistoryFailed": "Unable to open local history",
+    "historyUpgradeBlocked": "Local history is upgrading; please close other tabs and try again",
+    "historyTxFailed": "Local history operation failed; the current image was not saved"
+  }
+}

@@ -1,24 +1,42 @@
+import { i18n } from '@/i18n'
 import { WORKSTATION_TOOLS } from '@/pages/ImageWorkstation/tools'
 import { TOOLBOX_TOOLS } from '@/pages/Toolbox/tools'
 import { CANVAS_MODES, VIDEO_REPLICATION_MODE } from '@/pages/FreeCanvas/modes'
 import { HELP_ARTICLES } from '@/pages/Help/articles'
 
-/** 顶层导航路径 -> 中文标题，供菜单选中态、面包屑、页面标题共用 */
-export const NAV_META: Record<string, string> = {
-  '/': '工作台首页',
-  '/email': '邮件助手',
-  '/ecommerce': '电商套图',
-  '/image-workstation': '图片工作站',
-  '/toolbox': '工具箱',
-  '/canvas': '自由画布',
-  '/assets': '我的资产',
-  '/help': '帮助中心',
+const NAV_ROUTE_KEYS = {
+  '/': 'nav:routes.home',
+  '/email': 'nav:routes.email',
+  '/ecommerce': 'nav:routes.ecommerce',
+  '/image-workstation': 'nav:routes.imageWorkstation',
+  '/toolbox': 'nav:routes.toolbox',
+  '/canvas': 'nav:routes.canvas',
+  '/assets': 'nav:routes.assets',
+  '/help': 'nav:routes.help',
+} as const
+
+export function getNavLabel(path: string): string {
+  const key = NAV_ROUTE_KEYS[path as keyof typeof NAV_ROUTE_KEYS]
+  return key ? i18n.t(key) : i18n.t('nav:routes.home')
 }
 
-/** 二级路由（子工具/子模式）slug -> 中文标签，聚合自各页面自己的配置，新增子工具时改那边即可，这里不用动 */
-export const SUB_ROUTE_LABELS: Record<string, Record<string, string>> = {
-  'image-workstation': Object.fromEntries(WORKSTATION_TOOLS.map((t) => [t.slug, t.label])),
-  toolbox: Object.fromEntries(TOOLBOX_TOOLS.map((t) => [t.slug, t.label])),
-  canvas: Object.fromEntries([...CANVAS_MODES, VIDEO_REPLICATION_MODE].map((mode) => [mode.slug, mode.label])),
-  help: Object.fromEntries(HELP_ARTICLES.map((a) => [a.slug, a.title])),
+const WORKSTATION_SLUGS = new Set(WORKSTATION_TOOLS.map(t => t.slug))
+const TOOLBOX_SLUGS = new Set(TOOLBOX_TOOLS.map(t => t.slug))
+const CANVAS_SLUGS = new Set([...CANVAS_MODES, VIDEO_REPLICATION_MODE].map(m => m.slug))
+const HELP_SLUGS = new Set(HELP_ARTICLES.map(a => a.slug))
+
+export function getSubRouteLabel(section: string, slug: string): string | undefined {
+  if (section === 'image-workstation' && WORKSTATION_SLUGS.has(slug)) {
+    return i18n.t(`workstation:tools.${slug}` as never)
+  }
+  if (section === 'toolbox' && TOOLBOX_SLUGS.has(slug)) {
+    return i18n.t(`toolbox:tools.${slug}` as never)
+  }
+  if (section === 'canvas' && CANVAS_SLUGS.has(slug)) {
+    return i18n.t(`canvas:modes.${slug}` as never)
+  }
+  if (section === 'help' && HELP_SLUGS.has(slug)) {
+    return i18n.t(`help:articles.${slug}` as never)
+  }
+  return undefined
 }

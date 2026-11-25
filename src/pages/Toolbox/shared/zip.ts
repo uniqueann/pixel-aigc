@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+import { formatMegabytes } from '@/i18n/format'
 import { MAX_ZIP_BYTES } from './inspect'
 
 export function downloadBlob(blob: Blob, filename: string) {
@@ -12,9 +14,9 @@ export function downloadBlob(blob: Blob, filename: string) {
 }
 
 export async function createResultZip(files: { name: string; blob: Blob }[]) {
-  if (!files.length) throw new Error('没有可打包的处理结果')
+  if (!files.length) throw new Error(i18n.t('toolbox:validation.zipEmpty'))
   if (files.reduce((sum, file) => sum + file.blob.size, 0) > MAX_ZIP_BYTES) {
-    throw new Error('结果超过 200 MB，请逐张下载')
+    throw new Error(i18n.t('toolbox:validation.zipTooLarge', { limit: formatMegabytes(MAX_ZIP_BYTES) }))
   }
   const { BlobReader, BlobWriter, ZipWriter } = await import('@zip.js/zip.js')
   const writer = new ZipWriter(new BlobWriter('application/zip'), { level: 0 })

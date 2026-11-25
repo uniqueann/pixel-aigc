@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { EditOutlined, EllipsisOutlined } from '@ant-design/icons'
 import { App, Dropdown, Tooltip } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { cloudEnabled } from '@/cloud/client'
 import { useCloudStore } from '@/cloud/sync'
 import { useEditorStore } from '@/editor/store'
@@ -16,6 +17,7 @@ import {
 } from './projectActions'
 
 export function CanvasProjectCrumb() {
+  const { t } = useTranslation('nav')
   const project = useEditorStore((state) => state.project)
   const status = usePersistenceStore((state) => state.status)
   const error = usePersistenceStore((state) => state.error)
@@ -23,7 +25,7 @@ export function CanvasProjectCrumb() {
   const cancelingRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const stored = project?.name ?? ''
-  const shown = stored.trim() ? stored : '未命名画布'
+  const shown = stored.trim() ? stored : t('projectHeader.untitledCanvas')
   const editing = !!project && session?.id === project.id
   const draft = editing ? session.draft : stored
   const copy = projectSaveStatusCopy(status)
@@ -59,20 +61,20 @@ export function CanvasProjectCrumb() {
     >
       <span className="project-save-status-icon" aria-hidden="true">{copy.icon}</span>
       <span className="project-save-status-full">
-        {status === 'saved' ? <><span className="project-save-mark">✓</span> 已保存</> : copy.full}
+        {status === 'saved' ? <><span className="project-save-mark">✓</span> {t('projectHeader.status.savedWord')}</> : copy.full}
       </span>
     </span>
   )
 
   return (
-    <nav className="canvas-header-crumb" aria-label="面包屑">
-      <span className="canvas-crumb-prefix">自由画布</span>
+    <nav className="canvas-header-crumb" aria-label={t('projectHeader.breadcrumbAria')}>
+      <span className="canvas-crumb-prefix">{t('projectHeader.canvasCrumb')}</span>
       <span className="canvas-crumb-sep" aria-hidden="true">/</span>
       {editing ? (
         <input
           ref={inputRef}
           className="canvas-project-name-input"
-          aria-label="项目名称"
+          aria-label={t('projectHeader.projectNameAria')}
           value={draft}
           maxLength={100}
           onChange={(event) => setSession((current) => current ? { ...current, draft: event.target.value } : current)}
@@ -91,7 +93,7 @@ export function CanvasProjectCrumb() {
           }}
         />
       ) : (
-        <button type="button" className="canvas-project-name" onClick={begin} disabled={!project} aria-label={`编辑项目名称 ${shown}`}>
+        <button type="button" className="canvas-project-name" onClick={begin} disabled={!project} aria-label={t('projectHeader.editProjectNameAria', { name: shown })}>
           <span className="canvas-project-name-text">{shown}</span>
           <EditOutlined className="canvas-project-name-icon" aria-hidden />
         </button>
@@ -111,6 +113,7 @@ function menuLabel(text: string, extra?: string) {
 }
 
 export function CanvasProjectMenu() {
+  const { t } = useTranslation(['nav', 'common'])
   const inputRef = useRef<HTMLInputElement>(null)
   const { modal, message } = App.useApp()
   const project = useEditorStore((state) => state.project)
@@ -122,7 +125,7 @@ export function CanvasProjectMenu() {
   const shortcut = projectSaveShortcutLabel()
 
   const run = async (action: () => unknown) => {
-    try { await action() } catch (err) { message.error(err instanceof Error ? err.message : '项目操作失败') }
+    try { await action() } catch (err) { message.error(err instanceof Error ? err.message : t('nav:projectHeader.operationFailed')) }
   }
 
   useEffect(() => {
@@ -133,12 +136,12 @@ export function CanvasProjectMenu() {
       if (active instanceof HTMLElement && active !== document.body) active.blur()
       if (usePersistenceStore.getState().phase !== 'ready' || !useEditorStore.getState().project) return
       void flushProject().catch((err: unknown) => {
-        message.error(err instanceof Error ? err.message : '项目操作失败')
+        message.error(err instanceof Error ? err.message : t('nav:projectHeader.operationFailed'))
       })
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [message])
+  }, [message, t])
 
   return (
     <>
@@ -151,31 +154,31 @@ export function CanvasProjectMenu() {
         menu={{
           selectable: false,
           items: [
-            { key: 'save', disabled: !ready, label: menuLabel('立即保存', shortcut) },
-            { key: 'export', disabled: !ready, label: '导出 JSON' },
-            { key: 'import', disabled: !ready || unavailable, label: '导入 JSON' },
+            { key: 'save', disabled: !ready, label: menuLabel(t('nav:projectHeader.saveNow'), shortcut) },
+            { key: 'export', disabled: !ready, label: t('nav:projectHeader.exportJson') },
+            { key: 'import', disabled: !ready || unavailable, label: t('nav:projectHeader.importJson') },
             { type: 'divider' },
-            { key: 'new', disabled: !ready || unavailable, label: '新建项目' },
+            { key: 'new', disabled: !ready || unavailable, label: t('nav:projectHeader.newProject') },
           ],
           onClick: ({ key }) => {
             if (key === 'save') void run(flushProject)
             if (key === 'export') void run(exportProject)
             if (key === 'import') inputRef.current?.click()
             if (key === 'new') modal.confirm({
-              title: '新建空白项目？',
-              content: '当前项目会保留本地存档；未同步的内容建议先导出 JSON。',
-              okText: '新建',
-              cancelText: '取消',
+              title: t('nav:projectHeader.newConfirmTitle'),
+              content: t('nav:projectHeader.newConfirmContent'),
+              okText: t('nav:projectHeader.newConfirmOk'),
+              cancelText: t('common:actions.cancel'),
               onOk: newProject,
             })
           },
         }}
       >
-        <button type="button" className="project-actions-trigger" aria-label="项目操作">
+        <button type="button" className="project-actions-trigger" aria-label={t('nav:projectHeader.actionsAria')}>
           <EllipsisOutlined />
         </button>
       </Dropdown>
-      <input ref={inputRef} type="file" accept="application/json,.json" aria-label="选择项目 JSON" hidden onChange={(event) => {
+      <input ref={inputRef} type="file" accept="application/json,.json" aria-label={t('nav:projectHeader.selectJsonAria')} hidden onChange={(event) => {
         const file = event.target.files?.[0]
         event.target.value = ''
         if (!file) return
@@ -187,10 +190,10 @@ export function CanvasProjectMenu() {
             for (const record of Object.values(snapshot.recoveries)) record.projectId = snapshot.project.id
           }
           modal.confirm({
-            title: `导入「${snapshot.project.name}」？`,
-            content: '将整体替换当前项目。如需保留，请先取消并导出当前项目。',
-            okText: '导入',
-            cancelText: '取消',
+            title: t('nav:projectHeader.importConfirmTitle', { name: snapshot.project.name }),
+            content: t('nav:projectHeader.importConfirmContent'),
+            okText: t('nav:projectHeader.importConfirmOk'),
+            cancelText: t('common:actions.cancel'),
             onOk: () => replaceSnapshot(snapshot),
           })
         })

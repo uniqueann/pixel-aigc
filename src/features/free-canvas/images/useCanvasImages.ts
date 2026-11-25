@@ -3,6 +3,7 @@ import { bindRuntimeImage, releaseRuntimeImageUser, setRuntimeImageUsers, withRu
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { currentWorkstationHistoryOwner, isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import { i18n } from '@/i18n'
 import { readOwnedImage, invalidateOwnedImage } from '@/services/api/ownedImages'
 import { runtimeImageBlob } from '@/services/api/imageRuntime'
 import { readResultImage } from '@/features/image-workstation/imageMetadata'
@@ -49,7 +50,16 @@ export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | un
         }).catch(error => {
           if (current()) {
             invalidateOwnedImage(ownerId, objectKey)
-            setErrors(previous => ({ ...previous, [id]: { scope, message: `“${asset.name}”读取失败：${error instanceof Error ? error.message : '请重试读取'}` } }))
+            setErrors(previous => ({
+              ...previous,
+              [id]: {
+                scope,
+                message: i18n.t('canvas:media.imageReadError', {
+                  name: asset.name,
+                  reason: error instanceof Error ? error.message : i18n.t('canvas:media.retryLoadHint'),
+                }),
+              },
+            }))
             setVersion(value => value + 1)
           }
         })
@@ -73,7 +83,7 @@ export function useCanvasImages(assets: Record<string, Asset>, scene: Scene | un
       .map(([id]) => id)
   }, [errors, scope, visibleIds])
   const error = useMemo(() => {
-    return Object.entries(errors).filter(([id, entry]) => visibleIds.has(id) && entry.scope === scope).map(([, entry]) => entry.message).join('；') || undefined
+    return Object.entries(errors).filter(([id, entry]) => visibleIds.has(id) && entry.scope === scope).map(([, entry]) => entry.message).join(i18n.t('canvas:common.semicolon')) || undefined
   }, [errors, scope, visibleIds])
   return { assets: renderAssets, error, brokenAssetIds, reload: () => { setAttempt(value => value + 1) } }
 }

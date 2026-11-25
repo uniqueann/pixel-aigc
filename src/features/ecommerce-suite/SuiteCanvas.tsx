@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { i18n } from '@/i18n'
 import type { SuiteAssetRef, SuiteComposition, SuiteLayer } from '@shared/ecommerce-suite'
 import { moveSuiteLayer } from '@shared/ecommerce-suite-annotations'
 import type { SuiteClient } from './api'
+import { formatSuiteError } from './i18n'
 import { backupAssetBlob } from './recoveryPackage'
 import { beginPreviewLoad, settlePreviewLoad, type PreviewLoadTokens } from './previewLoadToken'
 import { paintSuite, type SuiteLayerBox } from './render'
@@ -79,10 +82,11 @@ async function decodeSuiteBitmap(cache: Map<string, ImageBitmap>, identity: stri
 
 function DimensionHandles({ layer, width, height, onStart }: { layer: Extract<SuiteLayer, { type: 'dimension' }>; width: number; height: number;
   onStart: (event: React.PointerEvent<SVGCircleElement>, handle: 'start' | 'end' | 'label') => void }) {
+  const { t } = useTranslation('ecommerce')
   return <g>{(['start', 'end', 'label'] as const).map(handle => {
     const point = handle === 'label' ? layer.labelPosition : layer[handle]
     return <circle key={handle} cx={point.x * width} cy={point.y * height} r={Math.max(width / 70, 8)} fill="var(--color-surface)" stroke="var(--color-accent)" strokeWidth={width / 350}
-      role="button" tabIndex={0} aria-label={handle === 'start' ? '移动标注起点' : handle === 'end' ? '移动标注终点' : '移动规格标签'} onPointerDown={event => onStart(event, handle)} />
+      role="button" tabIndex={0} aria-label={handle === 'start' ? t('canvas.moveStartHandle') : handle === 'end' ? t('canvas.moveEndHandle') : t('canvas.moveLabelHandle')} onPointerDown={event => onStart(event, handle)} />
   })}</g>
 }
 
@@ -91,6 +95,7 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
   selectedId?: string; onSelect: (id: string) => void; onChange: (layers: SuiteLayer[]) => void; editable: boolean
   background?: string
 }) {
+  const { t } = useTranslation(['ecommerce', 'common'])
   const canvas = useRef<HTMLCanvasElement>(null)
   const [blobs, setBlobs] = useState(() => new Map<string, Blob>())
   const [frames, setFrames] = useState(() => new Map<string, PreviewFrame>())
@@ -151,7 +156,7 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
     }).catch(error => {
       if (loadTokens.current.tokens.get(identity) === token) inflight.current.delete(identity)
       if (!mounted.current || currentSignal.aborted || identityRef.current !== identity || loadTokens.current.tokens.get(identity) !== token) return
-      setFailure({ identity, message: error instanceof Error ? error.message : '图片不可用' })
+      setFailure({ identity, message: formatSuiteError(error, 'ecommerce:images.unavailable') })
     }).finally(() => { settlePreviewLoad(loadTokens.current, identity, token) })
   }, [assetIdentity, retry])
   useEffect(() => {
@@ -175,14 +180,14 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
         const snapshot = document.createElement('canvas')
         snapshot.width = buffer.width
         snapshot.height = buffer.height
-        if (!drawFrame(snapshot, buffer) || !drawFrame(canvas.current, snapshot)) throw new Error('当前浏览器不能创建画板')
+        if (!drawFrame(snapshot, buffer) || !drawFrame(canvas.current, snapshot)) throw new Error(i18n.t('ecommerce:render.errors.canvasUnavailable'))
         const paintedFrame = { key, canvas: snapshot, boxes: layout }
         setFrames(current => rememberFrame(current, identity, paintedFrame))
         setPainted({ identity, boxes: layout })
         setFailure(current => current?.identity === identity ? null : current)
       } catch (error) {
         if (disposed || generation !== paintGeneration.current || identityRef.current !== identity || abort.signal.aborted) return
-        setFailure({ identity, message: error instanceof Error ? error.message : '预览失败' })
+        setFailure({ identity, message: formatSuiteError(error, 'ecommerce:canvas.previewFailed') })
       } finally { buffer.width = 1; buffer.height = 1 }
     })()
     return () => { disposed = true; abort.abort() }
@@ -216,8 +221,8 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
   const overlay = useRef<SVGSVGElement>(null)
   return <div className="suite-canvas-wrap" style={{ maxWidth: Math.min(480, 480 * width / height) }}>
     <div className="suite-canvas" style={{ aspectRatio: `${width}/${height}` }} aria-busy={!showing}>
-      <canvas hidden={!showing} ref={canvas} aria-label="成品图层预览" />
-      <svg ref={overlay} viewBox={`0 0 ${width} ${height}`} aria-label="图层位置编辑" tabIndex={editable ? 0 : -1}
+      <canvas hidden={!showing} ref={canvas} aria-label={t('ecommerce:canvas.previewCanvasAria')} />
+      <svg ref={overlay} viewBox={`0 0 ${width} ${height}`} aria-label={t('ecommerce:canvas.overlayAria')} tabIndex={editable ? 0 : -1}
         onPointerMove={event => {
           const current = drag.current, bounds = overlay.current?.getBoundingClientRect()
           if (!current || !bounds || !editable) return
@@ -236,13 +241,13 @@ export default function SuiteCanvas({ asset, composition, client, signal, select
           if (!layer) return null
           return <rect key={box.id} x={box.x} y={box.y} width={Math.max(20, box.width)} height={Math.max(20, box.height)} fill="transparent"
             stroke={box.id === selectedId ? 'var(--color-accent)' : 'transparent'} strokeWidth={Math.max(width / 400, 1)} strokeDasharray={box.id === selectedId ? '8 5' : undefined}
-            role="button" aria-label={layer.type === 'text' ? `移动文字：${layer.text || '空文字'}` : '移动尺寸标注'} tabIndex={0}
+            role="button" aria-label={layer.type === 'text' ? t('ecommerce:canvas.moveTextAria', { text: layer.text || t('ecommerce:canvas.emptyText') }) : t('ecommerce:canvas.moveDimensionAria')} tabIndex={0}
             onFocus={() => onSelect(box.id)} onPointerDown={event => start(event, layer, 'body')} />
         })}
         {editable && selected?.type === 'dimension' && <DimensionHandles layer={selected} width={width} height={height} onStart={(event, handle) => start(event, selected, handle)} />}
       </svg>
     </div>
-    {error && <div role="alert">{error} <button type="button" onClick={retryRead}>重试读取</button></div>}
-    {overflow && <p role="alert" className="suite-layer-warning">文字或标注超出画板，请缩小字号或移动到画板内再导出。</p>}
+    {error && <div role="alert">{error} <button type="button" onClick={retryRead}>{t('common:actions.retryLoad')}</button></div>}
+    {overflow && <p role="alert" className="suite-layer-warning">{t('ecommerce:canvas.overflowWarning')}</p>}
   </div>
 }

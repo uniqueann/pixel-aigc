@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { rememberSavedProject } from '@/features/dashboard/recentWork'
 
 const DATABASE_NAME = 'pixel-aigc-projects'
@@ -11,8 +12,8 @@ function openDatabase(): Promise<IDBDatabase> {
         if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name)
       }
     }
-    request.onerror = () => reject(request.error ?? new Error('无法打开本地存储'))
-    request.onblocked = () => reject(new Error('本地存储正在升级，请关闭其他页面后重试'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('canvas:persistence.errors.openDbFailed')))
+    request.onblocked = () => reject(new Error(i18n.t('canvas:persistence.errors.dbBlocked')))
     request.onsuccess = () => resolve(request.result)
   })
 }
@@ -36,7 +37,7 @@ export async function databaseOperation<T>(
     transaction.onabort = transaction.onerror = () => {
       signal?.removeEventListener('abort', abort)
       db.close()
-      reject(signal?.aborted ? signal.reason : transaction.error ?? request?.error ?? new Error('本地存储操作失败'))
+      reject(signal?.aborted ? signal.reason : transaction.error ?? request?.error ?? new Error(i18n.t('canvas:persistence.errors.dbOperationFailed')))
     }
     try { request = operation(transaction.objectStore(store)) }
     catch (error) { signal?.removeEventListener('abort', abort); abort(); db.close(); reject(error) }

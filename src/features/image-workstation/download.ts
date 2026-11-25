@@ -1,4 +1,6 @@
 import { normalizeImageBlob } from '@shared/image-format'
+import { i18n } from '@/i18n'
+import zhWorkstation from '@/i18n/locales/zh-CN/workstation.json'
 import { downloadBlob } from '@/pages/Toolbox/shared/zip'
 import type { ImageAsset } from '@/editor/types'
 import { readOwnedImage } from '@/services/api/ownedImages'
@@ -18,7 +20,7 @@ export function extensionForMime(mimeType?: string) {
 
 /** 保留原名，按实际字节 MIME 换扩展名（mug.jpg + PNG → mug.png）。 */
 export function filenameWithMimeExtension(name: string, mimeType?: string) {
-  const trimmed = name.trim() || '图片'
+  const trimmed = name.trim() || i18n.t('workstation:files.defaultImageName')
   const base = trimmed.replace(/\.[^.]+$/, '') || trimmed
   return `${base}.${extensionForMime(mimeType)}`
 }
@@ -30,7 +32,7 @@ export function filenameForWorkstationResult(input: {
   mimeType?: string
   index?: number
 }) {
-  const safeLabel = input.toolLabel.replace(/[\\/:*?"<>|]+/g, '').trim() || '结果'
+  const safeLabel = input.toolLabel.replace(/[\\/:*?"<>|]+/g, '').trim() || i18n.t('workstation:files.defaultResultName')
   const suffix = input.index && input.index > 1 ? `_${input.index}` : ''
   return `${safeLabel}_${input.width}x${input.height}${suffix}.${extensionForMime(input.mimeType)}`
 }
@@ -38,9 +40,14 @@ export function filenameForWorkstationResult(input: {
 export function downloadFailureMessage(error: unknown) {
   const raw = error instanceof Error ? error.message.trim() : ''
   if (!raw || /failed to fetch|networkerror|load failed|err_failed/i.test(raw)) {
-    return '下载失败：无法读取结果图片'
+    return i18n.t('workstation:errors.downloadReadFailed')
   }
-  return raw.includes('下载失败') ? raw : `下载失败：${raw}`
+  const prefix = i18n.t('workstation:errors.downloadFailedPrefix')
+  const word = i18n.t('workstation:errors.downloadFailedWord')
+  if (raw.startsWith(prefix) || raw.includes(word) || raw.includes(zhWorkstation.errors.downloadFailedWord)) {
+    return raw
+  }
+  return `${prefix}${raw}`
 }
 
 function isInlineSource(source: string) {
@@ -52,18 +59,18 @@ function isInlineSource(source: string) {
 
 async function fetchSourceBlob(source: string, signal?: AbortSignal) {
   const response = await fetch(source, signal ? { signal } : undefined)
-  if (!response.ok) throw new Error('读取图片失败')
+  if (!response.ok) throw new Error(i18n.t('errors:client.imageReadFailed'))
   return response.blob()
 }
 
 export async function blobFromImageSource(source: Blob | string, objectKey?: string, options: { ownerId?: string; signal?: AbortSignal } = {}) {
-  if (options.signal?.aborted) throw new DOMException('读取已取消', 'AbortError')
+  if (options.signal?.aborted) throw new DOMException(i18n.t('errors:client.readCancelled'), 'AbortError')
   if (typeof source !== 'string') return source
   const runtime = runtimeImageBlob(source)
   if (runtime) return runtime
   if (objectKey) return readOwnedImage({ objectKey }, options)
   if (isInlineSource(source)) return fetchSourceBlob(source, options.signal)
-  throw new Error('读取图片失败')
+  throw new Error(i18n.t('errors:client.imageReadFailed'))
 }
 
 export async function downloadImageSource(source: Blob | string, filename: string, objectKey?: string) {
@@ -79,7 +86,7 @@ export async function downloadImageAsset(asset: ImageAsset, filename?: string) {
   await downloadImageSource(
     asset.url,
     filename ?? filenameForWorkstationResult({
-      toolLabel: asset.name || '结果',
+      toolLabel: asset.name || i18n.t('workstation:files.defaultResultName'),
       width: asset.width,
       height: asset.height,
       mimeType: asset.mimeType,

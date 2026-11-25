@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 export interface ContainRect {
   x: number
   y: number
@@ -89,7 +91,7 @@ export function outputNames(files: { name: string; mimeType: string; presetId: s
   const used = new Set<string>()
   return files.map(({ name, mimeType, presetId }) => {
     const extension = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg'
-    const base = (name.replace(/\.[^.]+$/, '').replace(/[\\/]/g, '_').split('').map(char => char.charCodeAt(0) < 32 ? '_' : char).join('').trim() || '图片') + `_${presetId}`
+    const base = (name.replace(/\.[^.]+$/, '').replace(/[\\/]/g, '_').split('').map(char => char.charCodeAt(0) < 32 ? '_' : char).join('').trim() || i18n.t('toolbox:shared.defaultImageName')) + `_${presetId}`
     let candidate = `${base}.${extension}`
     let index = 2
     while (used.has(candidate.toLowerCase())) candidate = `${base}_${index++}.${extension}`

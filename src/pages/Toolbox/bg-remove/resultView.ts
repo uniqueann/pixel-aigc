@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import type { BatchStatus } from './types'
 
 export type PreviewMode = 'result' | 'source'
@@ -24,19 +25,12 @@ export function previewSource(mode: PreviewMode, resultUrl: string | null, sourc
 }
 
 export function previewAlt(kind: PreviewKind, name: string) {
-  if (kind === 'source') return `${name} 原图`
-  if (kind === 'processing') return `${name} 原图，抠图处理中`
-  if (kind === 'failed') return `${name} 原图，未生成抠图结果`
-  if (kind === 'pending') return `${name} 原图，等待处理`
-  return `${name} 的抠图预览`
+  return i18n.t(`toolbox:bgRemove.previewAlt.${kind}`, { name })
 }
 
 export function previewMeta(kind: PreviewKind, backgroundMode: 'transparent' | 'color') {
-  if (kind === 'source') return '原图'
-  if (kind === 'processing') return '处理中'
-  if (kind === 'failed') return '未生成结果'
-  if (kind === 'pending') return '待处理'
-  return backgroundMode === 'transparent' ? '透明背景' : '纯色背景'
+  if (kind === 'result') return i18n.t(`toolbox:bgRemove.previewMeta.${backgroundMode}`)
+  return i18n.t(`toolbox:bgRemove.previewMeta.${kind}`)
 }
 
 /** 棋盘格只代表“已经生成的结果”，不能给源图或失败态套透明底。 */
@@ -45,8 +39,8 @@ export function showCheckerboard(kind: PreviewKind, backgroundMode: 'transparent
 }
 
 export function previewOverlay(kind: PreviewKind) {
-  if (kind === 'processing') return '正在抠图…'
-  if (kind === 'failed') return '未生成结果，当前为原图'
+  if (kind === 'processing') return i18n.t('toolbox:bgRemove.previewOverlay.processing')
+  if (kind === 'failed') return i18n.t('toolbox:bgRemove.previewOverlay.failed')
   return null
 }
 

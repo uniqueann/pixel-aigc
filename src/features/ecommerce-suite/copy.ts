@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { fetchOwnedObject } from '@/services/api/objects'
 import type { SuiteClient } from './api'
 import type { SuiteProjectConfig } from '@shared/ecommerce-suite'
@@ -12,15 +13,15 @@ export async function copySuite(client: SuiteClient, detail: SuiteProjectDetail,
   const blobs = new Map<string, Blob>()
   for (const id of used) {
     const asset = detail.assets.find(asset => asset.assetId === id)
-    if (!asset) throw new Error('原项目图片未保存，暂不能复制')
+    if (!asset) throw new Error(i18n.t('ecommerce:copy.missingAssetError'))
     client.assertCurrent()
     blobs.set(id, await readSuiteBlob(actor, detail.project.id, id) ?? await fetchOwnedObject(asset.objectKey))
   }
   client.assertCurrent()
-  const copied: SuiteProjectConfig = { ...config, title: `${config.title.slice(0, 90)} 副本`, baseAssetId: ids.get(config.baseAssetId)!,
+  const copied: SuiteProjectConfig = { ...config, title: i18n.t('ecommerce:copy.titleWithSuffix', { title: config.title.slice(0, 90) }), baseAssetId: ids.get(config.baseAssetId)!,
     slots: config.slots.map(slot => ({ ...slot, id: crypto.randomUUID(), referenceAssetIds: slot.referenceAssetIds.map(id => ids.get(id)!) })) }
   const initial = { ...copied, slots: copied.slots.map(slot => ({ ...slot, referenceAssetIds: [] })) }
   const project = await client.create(crypto.randomUUID(), initial)
-  for (const id of used) await client.upload(project.id, ids.get(id)!, blobs.get(id)!, '复制商品图片')
+  for (const id of used) await client.upload(project.id, ids.get(id)!, blobs.get(id)!, i18n.t('ecommerce:copy.uploadName'))
   return client.update(project.id, project.revision, copied)
 }

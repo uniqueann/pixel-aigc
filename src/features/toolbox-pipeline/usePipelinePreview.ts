@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import { i18n } from '@/i18n'
 import { AspectRatioRenderer } from '@/pages/Toolbox/aspect-ratio/renderer'
 import { WatermarkRenderer } from '@/pages/Toolbox/watermark/renderer'
 import { DEFAULT_WATERMARK_SETTINGS } from '@/pages/Toolbox/watermark/types'
@@ -42,7 +43,7 @@ export function usePipelinePreview(item: PipelineItem | undefined, settings: Pip
         url = URL.createObjectURL(result.blob)
         setPreview({ token, url, loading: false })
       }).catch(error => {
-        if (!cancelled) setPreview({ token, loading: false, error: error instanceof Error ? error.message : '预览失败' })
+        if (!cancelled) setPreview({ token, loading: false, error: error instanceof Error ? error.message : i18n.t('toolbox:pipeline.previewFailed') })
       }).finally(() => { ratio.dispose(); watermark.dispose() })
     }, 180)
     return () => { cancelled = true; window.clearTimeout(timer); ratio.dispose(); watermark.dispose(); if (url) URL.revokeObjectURL(url) }

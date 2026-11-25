@@ -1,7 +1,9 @@
 import { Select } from 'antd'
 import type { CSSProperties, ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { imageModelHint, imageModelVendor, isImageModelVendor, sameImageModelProfile, type ImageModelHintScope, type ImageModelVendor } from '@shared/image-models'
 import { emailModelVendor } from '@shared/email-models'
+import { translateModelHint } from '@/i18n/modelLabels'
 import ModelVendorMark from './ModelVendorMark'
 
 export interface ModelChoiceOption {
@@ -62,6 +64,7 @@ export default function ModelChoice({
   selectStyle,
   hintScope = 'text_to_image',
 }: Props) {
+  useTranslation('workstation')
   const matched = models.find(item => sameImageModelProfile(item.id, value))
   const selected = matched ?? models[0]
   const named = Boolean(className || label)
@@ -83,7 +86,7 @@ export default function ModelChoice({
       options={models.map(item => ({
         value: item.id,
         title: item.label,
-        hint: item.hint ?? imageModelHint(item, hintScope),
+        hint: translateModelHint(item.hint ?? imageModelHint(item, hintScope)),
         disabled: item.disabled,
         label: choiceLabel(item),
       }))}

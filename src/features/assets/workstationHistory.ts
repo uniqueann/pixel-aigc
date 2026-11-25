@@ -1,4 +1,5 @@
 import { detectImageMime, readBlobBytes } from '@shared/image-format'
+import { i18n } from '@/i18n'
 import { Capability } from '@/types'
 
 const DATABASE_NAME = 'pixel-aigc-history-v2'
@@ -49,8 +50,8 @@ interface TrashedResult {
 }
 
 function requireOwner(ownerId: string) {
-  if (!ownerId.trim()) throw new Error('缺少历史记录所属账号')
-  if (typeof indexedDB === 'undefined') throw new Error('浏览器不支持本地历史，当前图片尚未保存')
+  if (!ownerId.trim()) throw new Error(i18n.t('assets:errors.missingHistoryOwner'))
+  if (typeof indexedDB === 'undefined') throw new Error(i18n.t('assets:errors.indexedDbUnsupported'))
 }
 function metadata(stored: StoredOriginal): WorkstationHistoryMetadata & { ownerId: string } {
   const { result: _blob, resultBytes: _bytes, ...fields } = stored
@@ -85,8 +86,8 @@ export function openHistoryDatabase(): Promise<IDBDatabase> {
         cursor.result.continue()
       }
     }
-    request.onerror = () => reject(request.error ?? new Error('无法打开本地历史'))
-    request.onblocked = () => { blocked = true; reject(new Error('本地历史正在升级，请关闭其他页面后重试')) }
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('assets:errors.openHistoryFailed')))
+    request.onblocked = () => { blocked = true; reject(new Error(i18n.t('assets:errors.historyUpgradeBlocked'))) }
     request.onsuccess = () => {
       if (blocked) { request.result.close(); return }
       // 若升级曾被其他标签阻塞且本次调用已失败，仍及时释放后来打开的连接。
@@ -103,7 +104,7 @@ async function transaction<T>(names: string[], mode: IDBTransactionMode, operati
     let operationError: unknown
     const fail = (error: unknown) => { operationError = error; tx.abort() }
     tx.oncomplete = () => { db.close(); resolve(value) }
-    tx.onabort = tx.onerror = () => { db.close(); reject(operationError ?? tx.error ?? new Error('本地历史操作失败，当前图片尚未保存')) }
+    tx.onabort = tx.onerror = () => { db.close(); reject(operationError ?? tx.error ?? new Error(i18n.t('assets:errors.historyTxFailed'))) }
     try { operation(tx, result => { value = result }, fail) } catch (error) { tx.abort(); db.close(); reject(error) }
   })
 }
@@ -298,7 +299,7 @@ export async function recordWorkstationHistory(ownerId: string, record: Workstat
       existing.onsuccess = () => write(existing.result?.id ?? record.id)
     } else write(record.id)
   })
-  console.debug('[图片历史]', { operation: 'save', elapsedMs: Math.round(performance.now() - started), bytes: record.result.size })
+  console.debug('[image-history]', { operation: 'save', elapsedMs: Math.round(performance.now() - started), bytes: record.result.size })
   changed(ownerId)
   if (saved) enqueueThumbnail(ownerId, savedId, undefined, record)
 }

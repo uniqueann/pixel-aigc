@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { useLocaleStore } from '@/i18n/store'
 import Help from '@/pages/Help'
 import { HELP_ARTICLES } from '@/pages/Help/articles'
 import { useThemeStore } from '@/store/useThemeStore'
@@ -29,9 +30,14 @@ function renderHelp(path: string) {
 }
 
 describe('帮助中心', () => {
-  afterEach(() => {
+  afterEach(async () => {
     cleanup()
     useThemeStore.getState().setMode('system')
+    await useLocaleStore.getState().setLocale('zh-CN')
+  })
+
+  afterAll(async () => {
+    await useLocaleStore.getState().setLocale('zh-CN')
   })
 
   it('左侧目录列出全部文章', () => {
@@ -109,5 +115,15 @@ describe('帮助中心', () => {
     expect(css).toContain('var(--color-surface)')
     expect(css).toContain('var(--color-text-primary)')
     expect(css).toContain('var(--color-border)')
+  })
+
+  it('switches sidebar and lazy-loaded markdown body to English when locale is en-US', async () => {
+    await useLocaleStore.getState().setLocale('en-US')
+    renderHelp('/help/credits')
+    expect(screen.getByRole('menuitem', { name: 'Quick Start' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Credits & Billing' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Credits & Billing Guide' })).toBeTruthy()
+    expect(screen.getByText(/only successful outputs are settled/i)).toBeTruthy()
+    expect(document.body.textContent ?? '').not.toMatch(/[\u4e00-\u9fff]/)
   })
 })

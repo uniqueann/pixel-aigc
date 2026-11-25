@@ -1,4 +1,5 @@
 import { useRef, useState, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Input, Modal } from 'antd'
 import { hexForColorInput, normalizeHex } from './color'
 
@@ -6,13 +7,6 @@ export interface ColorPreset {
   label: string
   value: string
 }
-
-const DEFAULT_COLOR_PRESETS: readonly ColorPreset[] = [
-  { label: '白色', value: '#FFFFFF' },
-  { label: '黑色', value: '#000000' },
-  { label: '品牌绿', value: '#21CFA0' },
-  { label: '浅灰', value: '#F5F5F5' },
-] as const
 
 interface Props {
   open: boolean
@@ -35,6 +29,7 @@ interface BodyProps extends Required<Pick<Props, 'value' | 'onClose' | 'onApply'
 // 表单单独拆成子组件：Modal 的 destroyOnHidden 会在关闭后卸载它，
 // 下次打开自然回到当前生效颜色，不需要 effect 或 key 重挂载 Modal。
 function ColorDialogBody({ value, firstPresetRef, onClose, onApply, presetsLabel, presets, idPrefix }: BodyProps) {
+  const { t } = useTranslation(['toolbox', 'common'])
   const [draft, setDraft] = useState(() => hexForColorInput(value))
   const [hexInput, setHexInput] = useState(() => hexForColorInput(value))
   const [error, setError] = useState<string | null>(null)
@@ -52,7 +47,7 @@ function ColorDialogBody({ value, firstPresetRef, onClose, onApply, presetsLabel
   function commitHex() {
     const normalized = normalizeHex(hexInput)
     if (!normalized) {
-      setError('请输入 #RGB 或 #RRGGBB 格式的颜色值')
+      setError(t('colorDialog.invalidHex'))
       return
     }
     setDraft(normalized)
@@ -63,7 +58,7 @@ function ColorDialogBody({ value, firstPresetRef, onClose, onApply, presetsLabel
   function apply() {
     const normalized = normalizeHex(hexInput)
     if (!normalized) {
-      setError('请输入 #RGB 或 #RRGGBB 格式的颜色值')
+      setError(t('colorDialog.invalidHex'))
       return
     }
     onApply(normalized)
@@ -94,7 +89,7 @@ function ColorDialogBody({ value, firstPresetRef, onClose, onApply, presetsLabel
         })}
       </div>
       <div className="bg-color-field">
-        <label htmlFor={`${idPrefix}-custom`}>自定义颜色</label>
+        <label htmlFor={`${idPrefix}-custom`}>{t('colorDialog.customColor')}</label>
         <input
           id={`${idPrefix}-custom`}
           type="color"
@@ -103,7 +98,7 @@ function ColorDialogBody({ value, firstPresetRef, onClose, onApply, presetsLabel
         />
       </div>
       <div className="bg-color-field">
-        <label htmlFor={`${idPrefix}-hex`}>十六进制颜色值</label>
+        <label htmlFor={`${idPrefix}-hex`}>{t('colorDialog.hexValue')}</label>
         <Input
           id={`${idPrefix}-hex`}
           value={hexInput}
@@ -117,8 +112,8 @@ function ColorDialogBody({ value, firstPresetRef, onClose, onApply, presetsLabel
         {error && <p id={hexErrorId} className="bg-color-error" role="alert">{error}</p>}
       </div>
       <div className="bg-color-dialog-actions">
-        <Button onClick={onClose}>取消</Button>
-        <Button type="primary" onClick={apply} disabled={Boolean(error)}>应用颜色</Button>
+        <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
+        <Button type="primary" onClick={apply} disabled={Boolean(error)}>{t('colorDialog.apply')}</Button>
       </div>
     </div>
   )
@@ -129,17 +124,26 @@ export default function ColorDialog({
   value,
   onClose,
   onApply,
-  title = '背景颜色',
-  presetsLabel = '常用背景色',
-  presets = DEFAULT_COLOR_PRESETS,
+  title,
+  presetsLabel,
+  presets,
   idPrefix = 'bg-color',
 }: Props) {
+  const { t } = useTranslation('toolbox')
   const firstPresetRef = useRef<HTMLButtonElement>(null)
+  const resolvedTitle = title ?? t('colorDialog.defaultTitle')
+  const resolvedPresetsLabel = presetsLabel ?? t('colorDialog.defaultPresetsLabel')
+  const resolvedPresets: readonly ColorPreset[] = presets ?? [
+    { label: t('colors.white'), value: '#FFFFFF' },
+    { label: t('colors.black'), value: '#000000' },
+    { label: t('colors.brandGreen'), value: '#21CFA0' },
+    { label: t('colors.lightGray'), value: '#F5F5F5' },
+  ]
 
   return (
     <Modal
       open={open}
-      title={title}
+      title={resolvedTitle}
       footer={null}
       centered
       width={380}
@@ -154,8 +158,8 @@ export default function ColorDialog({
         firstPresetRef={firstPresetRef}
         onClose={onClose}
         onApply={onApply}
-        presetsLabel={presetsLabel}
-        presets={presets}
+        presetsLabel={resolvedPresetsLabel}
+        presets={resolvedPresets}
         idPrefix={idPrefix}
       />
     </Modal>

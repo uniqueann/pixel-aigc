@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ProductSilhouette } from './exampleArt'
 
 /**
@@ -9,23 +10,24 @@ import { ProductSilhouette } from './exampleArt'
  * 三帧里场景物件的站位固定，才能读出它始终留在背景、没有被画进商品。
  */
 export default function FusionExample() {
+  const { t } = useTranslation('workstation')
   return (
     <details className="tool-example concept-example fusion-example" open>
-      <summary>示例</summary>
+      <summary>{t('examples.summary')}</summary>
       <div className="tool-example-row">
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="商品示意：单独给出的商品图，形状颜色纹理保持不变">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.fusion.productAria')}>
               <Backdrop />
               <ProductSilhouette fill="var(--color-surface)" />
               <FidelityFrame />
             </svg>
           </div>
-          <figcaption>商品</figcaption>
+          <figcaption>{t('examples.fusion.productCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="场景示意：虚线框标出场景图只提供背景，场景里的物件不会画进商品">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.fusion.sceneAria')}>
               <Backdrop />
               <SceneBackdrop />
               <Floor />
@@ -33,11 +35,11 @@ export default function FusionExample() {
               <SceneFrame />
             </svg>
           </div>
-          <figcaption>场景</figcaption>
+          <figcaption>{t('examples.fusion.sceneCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="合成示意：商品原样放进新场景，场景里的物件只留在背景">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.fusion.compositeAria')}>
               <Backdrop />
               <SceneBackdrop />
               <Floor />
@@ -46,11 +48,11 @@ export default function FusionExample() {
               <KeptBadge />
             </svg>
           </div>
-          <figcaption>合成</figcaption>
+          <figcaption>{t('examples.fusion.compositeCaption')}</figcaption>
         </figure>
       </div>
       <p className="concept-example-note">
-        实线框 = 商品原样保留；虚线框 = 场景图只提供背景，场景里的物件不会画进商品。
+        {t('examples.fusion.note')}
       </p>
     </details>
   )

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, App, Button, Modal, Steps } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { CloudError } from '@/cloud/client'
+import { formatMegabytes } from '@/i18n/format'
 import type { SuiteActor } from '@shared/ecommerce-suite'
 import { suiteProjectConfigSchema } from '@shared/ecommerce-suite'
 import { normalizeImageBlob } from '@shared/image-format'
@@ -10,9 +12,13 @@ import type { SuiteClient } from './api'
 import { newSuiteConfig } from './config'
 import { createSuiteProject } from './createProject'
 import { readSuiteCreation, saveSuiteCreation } from './backup'
+import { formatSuiteError } from './i18n'
 import ProductFields from './ProductFields'
 
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
 export default function CreateSuite({ actor, client, onClose, onCreated }: { actor: SuiteActor; client: SuiteClient; onClose: () => void; onCreated: (id: string) => void }) {
+  const { t } = useTranslation('ecommerce')
   const { message } = App.useApp()
   const [config, setConfig] = useState(newSuiteConfig)
   const [image, setImage] = useState<Blob>()
@@ -36,15 +42,15 @@ export default function CreateSuite({ actor, client, onClose, onCreated }: { act
   }, [image, step])
   const choose = async (blob: Blob) => {
     try {
-      if (blob.size > 20 * 1024 * 1024) throw new Error('图片大小不能超过 20 MiB')
+      if (blob.size > MAX_UPLOAD_BYTES) throw new Error(t('create.errors.imageTooLarge', { mb: formatMegabytes(MAX_UPLOAD_BYTES) }))
       const normalized = await normalizeImageBlob(blob)
       client.assertCurrent(); if (alive.current) { setImage(normalized); setError('') }
-    } catch (error) { if (alive.current) setError(error instanceof Error ? error.message : '图片不可用') }
+    } catch (error) { if (alive.current) setError(formatSuiteError(error, 'ecommerce:create.errors.imageUnavailable')) }
   }
   const create = async () => {
     setBusy(true); setError('')
     try {
-      if (!image) throw new Error('请先上传商品主体照片')
+      if (!image) throw new Error(t('create.errors.uploadBaseFirst'))
       const validated = suiteProjectConfigSchema.parse(config)
       // 本机草稿只用于中断后找回；写入失败不能阻断云端创建。
       await saveSuiteCreation(actor, { requestId: requestId.current, config: validated, image }).catch(() => undefined)
@@ -53,42 +59,42 @@ export default function CreateSuite({ actor, client, onClose, onCreated }: { act
         await saveSuiteCreation(actor, { requestId: next, config: validated, image }).catch(() => undefined)
       })
       requestId.current = created.requestId
-      if (created.recovered) message.info('上次创建请求已完成，已打开原项目；本次资料修改可在工作台继续')
+      if (created.recovered) message.info(t('create.recoveredNotice'))
       // 底图编号在创建时预留，服务器不允许同一编号覆盖成另一张图。若项目已存有上次的底图
       // （响应丢失后换图重试），保留原图并继续进入工作台，不能把已成功的创建当成失败。
-      const stored = await client.upload(created.project.id, created.project.config.baseAssetId, image, '商品主体图')
+      const stored = await client.upload(created.project.id, created.project.config.baseAssetId, image, t('upload.baseAssetName'))
         .then(() => true, error => {
           if (error instanceof CloudError && error.code === 'SUITE_REQUEST_CONFLICT') return false
           throw error
         })
-      if (!stored) message.warning('原项目已保留上次的商品主体图，本次选择的图片未上传；进入工作台后可替换主体图')
+      if (!stored) message.warning(t('create.keptExistingBaseWarning'))
       client.assertCurrent()
       await saveSuiteCreation(actor, undefined).catch(() => undefined)
       if (alive.current) onCreated(created.project.id)
-    } catch (error) { if (alive.current) setError(error instanceof Error ? error.message : '保存失败，资料已保留') }
+    } catch (error) { if (alive.current) setError(formatSuiteError(error, 'ecommerce:create.errors.saveFailed')) }
     finally { if (alive.current) setBusy(false) }
   }
-  return <Modal open title="新建电商套图" width={780} onCancel={busy ? undefined : onClose} maskClosable={false} footer={<div className="suite-actions">
-    {step > 0 && <Button disabled={busy} onClick={() => setStep(0)}>上一步</Button>}
-    {step === 0 ? <Button type="primary" disabled={!image} onClick={() => setStep(1)}>下一步：设置商品信息</Button>
-      : <Button type="primary" loading={busy} onClick={() => { void create() }}>创建并进入工作台</Button>}
+  return <Modal open title={t('create.title')} width={780} onCancel={busy ? undefined : onClose} maskClosable={false} footer={<div className="suite-actions">
+    {step > 0 && <Button disabled={busy} onClick={() => setStep(0)}>{t('create.prevStep')}</Button>}
+    {step === 0 ? <Button type="primary" disabled={!image} onClick={() => setStep(1)}>{t('create.nextStep')}</Button>
+      : <Button type="primary" loading={busy} onClick={() => { void create() }}>{t('create.submitButton')}</Button>}
   </div>}>
-    <Steps size="small" current={step} items={[{ title: '上传商品图' }, { title: '商品信息与规格' }]} />
+    <Steps size="small" current={step} items={[{ title: t('create.steps.upload') }, { title: t('create.steps.fields') }]} />
     {error && <Alert showIcon type="error" message={error} />}
     {step === 0 ? <div className="suite-create-image">
-      <p>请上传一张清晰的商品主体照片（白底图或实拍图均可）。</p>
-      {image && <img ref={img} alt="待保存的商品主体照片" />}
-      <label className="suite-file-button">选择本地图片<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void choose(file); event.target.value = '' }} /></label>
-      <Button disabled={busy} onClick={() => setPicker(true)}>从我的资产选择</Button>
-      <p className="suite-muted">支持 JPG、PNG、WebP 格式，最大 20 MB。创建项目暂不消耗积分。</p>
+      <p>{t('create.uploadPrompt')}</p>
+      {image && <img ref={img} alt={t('create.imagePreviewAlt')} />}
+      <label className="suite-file-button">{t('create.chooseLocalImage')}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void choose(file); event.target.value = '' }} /></label>
+      <Button disabled={busy} onClick={() => setPicker(true)}>{t('create.chooseFromAssets')}</Button>
+      <p className="suite-muted">{t('create.formatHint', { mb: formatMegabytes(MAX_UPLOAD_BYTES) })}</p>
     </div> : <ProductFields value={config} onChange={setConfig} creating disabled={busy} />}
-    {picker && <CanvasAssetPicker ownerId={actor.userId} targetLabel="套图" busy={busy} onClose={() => setPicker(false)} onSelect={async record => {
+    {picker && <CanvasAssetPicker ownerId={actor.userId} targetLabel={t('create.pickerTargetLabel')} busy={busy} onClose={() => setPicker(false)} onSelect={async record => {
       try {
-        if (record.runtimeScope !== actor.runtimeScope) throw new Error('该图片来源环境与当前项目不一致，请下载后作为本地图片上传')
+        if (record.runtimeScope !== actor.runtimeScope) throw new Error(t('create.errors.scopeMismatch'))
         setBusy(true)
         const blob = await readOwnedImage({ objectKey: record.objectKey, historyId: record.id }, { ownerId: actor.userId })
         client.assertCurrent(); await choose(blob); if (alive.current) setPicker(false)
-      } catch (error) { if (alive.current) setError(error instanceof Error ? error.message : '资产读取失败') }
+      } catch (error) { if (alive.current) setError(formatSuiteError(error, 'ecommerce:create.errors.assetLoadFailed')) }
       finally { if (alive.current) setBusy(false) }
     }} />}
   </Modal>

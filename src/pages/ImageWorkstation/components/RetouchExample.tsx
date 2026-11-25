@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ProductSilhouette } from './exampleArt'
 
 /**
@@ -5,13 +6,14 @@ import { ProductSilhouette } from './exampleArt'
  * 与智能编辑、重新打光共用同一套虚线框与图注语法，不伪造生成结果。
  */
 export default function RetouchExample() {
+  const { t } = useTranslation('workstation')
   return (
     <details className="tool-example concept-example retouch-example" open>
-      <summary>示例</summary>
+      <summary>{t('examples.summary')}</summary>
       <div className="tool-example-row">
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="原图示意：商品表面有灰尘和暗部">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.retouch.sourceAria')}>
               <rect
                 x="10"
                 y="12"
@@ -36,11 +38,11 @@ export default function RetouchExample() {
               />
             </svg>
           </div>
-          <figcaption>原图</figcaption>
+          <figcaption>{t('examples.retouch.sourceCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="精修后示意：灰尘去掉，暗部提亮">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.retouch.retouchedAria')}>
               <rect
                 x="10"
                 y="12"
@@ -74,11 +76,11 @@ export default function RetouchExample() {
               />
             </svg>
           </div>
-          <figcaption>精修后</figcaption>
+          <figcaption>{t('examples.retouch.retouchedCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="文字与颜色保持不变示意">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.retouch.lockedAria')}>
               <rect
                 x="10"
                 y="12"
@@ -119,10 +121,10 @@ export default function RetouchExample() {
               />
             </svg>
           </div>
-          <figcaption>文字与颜色不变</figcaption>
+          <figcaption>{t('examples.retouch.lockedCaption')}</figcaption>
         </figure>
       </div>
-      <p className="concept-example-note">只处理灰尘、暗部和已有边缘；文字、Logo 与商品颜色保持不变。</p>
+      <p className="concept-example-note">{t('examples.retouch.note')}</p>
     </details>
   )
 }

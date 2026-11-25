@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { useEditorStore } from '@/editor/store'
 
 export type ProjectSaveStatus = 'saved' | 'dirty' | 'saving' | 'error'
@@ -27,10 +28,10 @@ export function isProjectSaveShortcut(event: {
 /** 宽屏完整文案；窄屏只保留 icon。失败详情仍走现有 error 字段。 */
 export function projectSaveStatusCopy(status: ProjectSaveStatus) {
   return {
-    saved: { full: '✓ 已保存', icon: '✓' },
-    dirty: { full: '未保存', icon: '●' },
-    saving: { full: '保存中…', icon: '…' },
-    error: { full: '保存失败', icon: '!' },
+    saved: { full: i18n.t('nav:projectHeader.status.saved'), icon: '✓' },
+    dirty: { full: i18n.t('nav:projectHeader.status.dirty'), icon: '●' },
+    saving: { full: i18n.t('nav:projectHeader.status.saving'), icon: '…' },
+    error: { full: i18n.t('nav:projectHeader.status.error'), icon: '!' },
   }[status]
 }
 

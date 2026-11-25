@@ -1,5 +1,6 @@
 import { EMAIL_LANGUAGES } from '@shared/email-models'
 import { databaseOperation } from '@/editor/persistence/database'
+import { i18n } from '@/i18n'
 import {
   Capability,
   type EmailAssistTaskParams,
@@ -39,7 +40,7 @@ export async function createMockTask<TParams>(payload: CreateTaskPayload<TParams
 
 export async function getMockTask(taskId: string): Promise<GenerationTask<unknown>> {
   const record = await readRecord(taskId)
-  if (!record) throw new Error('模拟任务不存在，请重新查询或放弃此任务')
+  if (!record) throw new Error(i18n.t('errors:client.mockTaskNotFound'))
   if (['succeeded', 'failed', 'cancelled'].includes(record.task.status)) return record.task
 
   record.pollCount += 1
@@ -106,7 +107,7 @@ async function createMockResult(task: GenerationTask<unknown>): Promise<Pick<Gen
     const params = task.params as unknown as VariationTaskParams
     return {
       resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockImage({
-        prompt: params.prompt || '图片裂变',
+        prompt: params.prompt || i18n.t('common:mock.variation'),
         size: params.size,
         count: params.count,
       }, index)),
@@ -130,7 +131,7 @@ async function createMockResult(task: GenerationTask<unknown>): Promise<Pick<Gen
 
   if (task.capability === Capability.Outpaint) {
     const params = task.params as unknown as OutpaintTaskParams
-    return { resultUrls: [createMockImage({ prompt: '扩图', size: params.targetSize, count: 1 }, 0)] }
+    return { resultUrls: [createMockImage({ prompt: i18n.t('common:mock.outpaint'), size: params.targetSize, count: 1 }, 0)] }
   }
 
   if (task.params && typeof task.params === 'object') {
@@ -139,7 +140,7 @@ async function createMockResult(task: GenerationTask<unknown>): Promise<Pick<Gen
     const height = Number(params.size?.height)
     return {
       resultUrls: Array.from({ length: readCount(params) }, (_, index) => createMockImage({
-        prompt: `${task.capability} 模拟结果`,
+        prompt: i18n.t('common:mock.capabilityResult', { capability: task.capability }),
         size: {
           width: Number.isFinite(width) && width > 0 ? width : 1024,
           height: Number.isFinite(height) && height > 0 ? height : 1024,
@@ -180,7 +181,7 @@ function createMockEditedImage(params: ImageEditTaskParams, index: number) {
   const sourceHeight = params.keepSourceSize ? params.sourceHeight : undefined
   const width = sourceWidth ?? params.size?.width ?? longEdge
   const height = sourceHeight ?? params.size?.height ?? Math.round(longEdge * 0.75)
-  const prompt = escapeSvgText((params.prompt ?? '').trim().slice(0, 42) || '智能编辑')
+  const prompt = escapeSvgText((params.prompt ?? '').trim().slice(0, 42) || i18n.t('common:mock.smartEdit'))
   const hue = (index * 62 + 142) % 360
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -193,7 +194,7 @@ function createMockEditedImage(params: ImageEditTaskParams, index: number) {
       <rect width="${width}" height="${height}" fill="url(#bg)"/>
       <rect x="${width * 0.12}" y="${height * 0.12}" width="${width * 0.76}" height="${height * 0.76}" rx="${Math.min(width, height) * 0.06}" fill="#fff" opacity=".12"/>
       <text x="${width / 2}" y="${height / 2}" text-anchor="middle" font-family="sans-serif" font-size="${Math.max(24, Math.min(width, height) * 0.055)}" fill="#fff">${prompt}</text>
-      <text x="${width / 2}" y="${height / 2 + Math.max(42, Math.min(width, height) * 0.08)}" text-anchor="middle" font-family="sans-serif" font-size="${Math.max(16, Math.min(width, height) * 0.025)}" fill="#fff" opacity=".72">智能编辑候选 ${index + 1}</text>
+      <text x="${width / 2}" y="${height / 2 + Math.max(42, Math.min(width, height) * 0.08)}" text-anchor="middle" font-family="sans-serif" font-size="${Math.max(16, Math.min(width, height) * 0.025)}" fill="#fff" opacity=".72">${escapeSvgText(i18n.t('common:mock.smartEditCandidate', { index: index + 1 }))}</text>
     </svg>
   `
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
@@ -202,15 +203,17 @@ function createMockEditedImage(params: ImageEditTaskParams, index: number) {
 function createMockEmail(params: EmailAssistTaskParams) {
   const source = params.sourceText.trim().replace(/\s+/g, ' ').slice(0, 96)
   const instruction = params.instruction?.trim()
-  const operationLabels = {
-    summarize: '邮件摘要',
-    reply: '建议回复',
-    polish: '润色结果',
-    grammar: '语法检查结果',
-  }
-  const languageLabel = EMAIL_LANGUAGES.find(item => item.value === params.language)?.label ?? params.language
-  const guidance = instruction ? `\n\n已结合编写指导：${instruction}` : ''
-  return `${operationLabels[params.operation]}（${languageLabel}）\n\n${source}${source.length >= 96 ? '…' : ''}${guidance}`
+  const languageLabel = i18n.t(`email:languages.${params.language}` as never, {
+    defaultValue: EMAIL_LANGUAGES.find(item => item.value === params.language)?.label ?? params.language,
+  })
+  const guidance = instruction ? i18n.t('common:mock.emailGuidance', { instruction }) : ''
+  return i18n.t('common:mock.emailResult', {
+    operation: i18n.t(`common:mock.emailOps.${params.operation}` as never),
+    language: languageLabel,
+    source,
+    ellipsis: source.length >= 96 ? '…' : '',
+    guidance,
+  })
 }
 
 function escapeSvgText(value: string) {

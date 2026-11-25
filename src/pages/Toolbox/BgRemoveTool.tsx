@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { App, Button, Progress, Radio, Segmented, Spin, Tooltip } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
+import { i18n } from '@/i18n'
+import { activeLocale, formatMegabytes } from '@/i18n/format'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import CapabilityStatus from '@/components/CapabilityStatus'
 import { useUserStore } from '@/store/useUserStore'
@@ -27,19 +30,19 @@ import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettl
 import { bgRemoveBatchQuote } from '@/features/credits/batchQuotes'
 import { useBillingCatalog } from '@/features/credits/useBillingCatalog'
 import { creditQuoteBlocked } from '@/features/credits/quotes'
-import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { imageCreditBlocksSubmit, insufficientCreditsReason } from '@/features/credits/imageCredits'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 import { syncCreditPrice } from '@shared/billing'
 import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
 import { useTaskDraftGuard } from '@/features/task-center/useTaskDraftGuard'
-import { assertRecoveryActor,persistRecoveredResult } from '@/features/task-center/recoveryMedia'
+import { assertRecoveryActor, persistRecoveredResult } from '@/features/task-center/recoveryMedia'
 import type { RecoveryActionContext } from '@/features/task-center/TaskRecoveryPanel'
 
 type ResultView = 'single' | 'grid'
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : '操作失败'
+  return error instanceof Error ? error.message : i18n.t('toolbox:errors.operationFailed')
 }
 
 function composeSucceededMattes(
@@ -53,6 +56,7 @@ function composeSucceededMattes(
 }
 
 export default function BgRemoveTool() {
+  const { t } = useTranslation(['toolbox', 'common', 'errors'])
   const navigate = useNavigate()
   const { message, modal } = App.useApp()
   const userId = useUserStore(state => state.userId)
@@ -115,7 +119,11 @@ export default function BgRemoveTool() {
     failedCount: failed.length,
     processing,
   })
-  useTaskDraftGuard({dirty:items.some(item=>item.status==='pending'||item.status==='failed'),reason:'当前队列中有未处理或未保存的图片，离开后将清空列表，是否继续？',blocked:adding||packaging?'正在读取或打包图片，请完成后再切换':undefined})
+  useTaskDraftGuard({
+    dirty: items.some(item => item.status === 'pending' || item.status === 'failed'),
+    reason: t('bgRemove.draftGuardReason'),
+    blocked: adding || packaging ? t('bgRemove.draftGuardBlocked') : undefined,
+  })
   const quoteFor = (ids?: string[]) => bgRemoveBatchQuote(items, billing.data, { ids, mock: mockGateway, loading: billing.isPending && billing.fetchStatus === 'fetching' })
   const generateQuote = quoteFor()
   const creditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: generateQuote, balance: knownBalance })
@@ -211,7 +219,7 @@ export default function BgRemoveTool() {
           error => { if (mountedRef.current) message.error(errorMessage(error)) },
         )
       } catch (error) {
-        if (active) message.warning(`恢复上次抠图结果失败：${errorMessage(error)}`)
+        if (active) message.warning(i18n.t('toolbox:bgRemove.restoreWarning', { error: errorMessage(error) }))
       }
       bootDoneRef.current = true
     }
@@ -271,7 +279,7 @@ export default function BgRemoveTool() {
     }
   }
 
-  function addFile(file: File,recovery?:RecoveryActionContext) {
+  function addFile(file: File, recovery?: RecoveryActionContext) {
     if (processingRef.current) return
     const queuedBytes = itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + pendingBytesRef.current
     const blocked = queueLimitMessage(file, itemsRef.current.length + addingCountRef.current, queuedBytes)
@@ -283,7 +291,7 @@ export default function BgRemoveTool() {
       if (scopeRef.current !== scope) return
       const inspected = await inspectImage(file)
       if (!mountedRef.current || scopeRef.current !== scope) return
-      if(recovery)assertRecoveryActor(recovery.actor,recovery.signal)
+      if (recovery) assertRecoveryActor(recovery.actor, recovery.signal)
       const item: BatchImage = {
         id: crypto.randomUUID(), file, sourceMime: inspected.mimeType,
         sourceUrl: URL.createObjectURL(file), width: inspected.width, height: inspected.height, status: 'pending',
@@ -295,7 +303,9 @@ export default function BgRemoveTool() {
         setPreviewMode('result')
       }
     }).catch(error => {
-      if (mountedRef.current && scopeRef.current === scope) message.error(`${file.name}：${errorMessage(error)}`)
+      if (mountedRef.current && scopeRef.current === scope) {
+        message.error(t('shared.fileErrorPrefix', { name: file.name, error: errorMessage(error) }))
+      }
     }).finally(() => {
       addingCountRef.current -= 1
       pendingBytesRef.current -= file.size
@@ -321,10 +331,10 @@ export default function BgRemoveTool() {
   function clearFiles() {
     if (processingRef.current) return
     modal.confirm({
-      title: '清空所有图片？',
-      content: '当前队列、抠图结果和未保存的修改都会被清空，且无法撤销。',
-      okText: '清空',
-      cancelText: '取消',
+      title: t('bgRemove.clearTitle'),
+      content: t('bgRemove.clearContent'),
+      okText: t('shared.clearConfirmOk'),
+      cancelText: t('common:actions.cancel'),
       okButtonProps: { danger: true },
       onOk: () => {
         for (const item of itemsRef.current) URL.revokeObjectURL(item.sourceUrl)
@@ -357,12 +367,12 @@ export default function BgRemoveTool() {
 
   async function processImages(onlyIds?: string[]) {
     if (creditQuoteBlocked(quoteFor(onlyIds))) {
-      message.warning('报价暂不可用，请重新加载')
+      message.warning(t('bgRemove.quoteUnavailableWarning'))
       return
     }
     if (needsRemoval(onlyIds) && !serviceReady) {
-      message.warning(serviceReady === false ? '智能抠图服务正在升级维护中，暂时不可用。'
-        : capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
+      message.warning(serviceReady === false ? t('bgRemove.serviceMaintenance')
+        : capabilityError ? t('errors:generic.configLoadFailed') : t('common:status.loadingConfig'))
       return
     }
     if (processingRef.current || addingCountRef.current) return
@@ -453,21 +463,21 @@ export default function BgRemoveTool() {
   const canOpenResult = Boolean(selected?.output) && kind === 'result'
   const overlay = kind ? previewOverlay(kind) : null
   const downloadActionLabel = downloadable.length > 0 && failed.length > 0
-    ? `下载 ${downloadable.length} 张结果`
-    : '打包下载'
+    ? t('shared.downloadCount', { count: downloadable.length })
+    : t('shared.downloadZip')
   const galleryById = new Map(galleryProps.items.map(item => [item.id, item]))
   const batchSummary = items.length > 0
-    ? `成功 ${completed.length} · 失败 ${failed.length} · 可下载 ${downloadable.length}`
-    : '等待图片'
+    ? t('shared.batchSummary', { succeeded: completed.length, failed: failed.length, downloadable: downloadable.length })
+    : t('shared.waitingImages')
 
   return (
     <div className="toolbox-watermark toolbox-sticky-preview">
-      <h1 className="sr-only">智能抠图</h1>
-      <TaskRecoveryPanel tools={['bg-remove']} blockedReason={busy?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async (result,image,detail,context)=>{
-        assertRecoveryActor(context.actor,context.signal)
-        await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)
-        assertRecoveryActor(context.actor,context.signal)
-        await addFile(new File([image.blob],`已有抠图-${detail.task.sourceId}.png`,{type:image.mimeType}),context)
+      <h1 className="sr-only">{t('tools.bg-remove')}</h1>
+      <TaskRecoveryPanel tools={['bg-remove']} blockedReason={busy ? t('shared.queueBusyBlocked') : undefined} onUseImage={async (result, image, detail, context) => {
+        assertRecoveryActor(context.actor, context.signal)
+        await persistRecoveredResult(detail, result, context.actor, context.signal, image.blob)
+        assertRecoveryActor(context.actor, context.signal)
+        await addFile(new File([image.blob], t('bgRemove.recoveredFileName', { sourceId: detail.task.sourceId }), { type: image.mimeType }), context)
       }}/>
       <ToolboxImageCard
         items={items.map(item => ({ id: item.id, name: item.file.name, url: item.sourceUrl, status: item.status, error: item.error }))}
@@ -477,17 +487,17 @@ export default function BgRemoveTool() {
         onSelect={selectImage}
         onRemove={removeFile}
         onClear={clearFiles}
-        processingHint="智能抠图会上传图片处理"
+        processingHint={t('bgRemove.processingHint')}
       />
       <div className="toolbox-watermark-main">
-        <section ref={previewPanelRef} className={`toolbox-preview-panel${selected ? ' has-image' : ''}`} aria-label="抠图预览">
+        <section ref={previewPanelRef} className={`toolbox-preview-panel${selected ? ' has-image' : ''}`} aria-label={t('bgRemove.previewAria')}>
           <div className="toolbox-section-heading">
             <div className="toolbox-preview-title">
-              <strong>抠图预览</strong>
+              <strong>{t('bgRemove.previewTitle')}</strong>
               <span className="toolbox-preview-meta">
                 {resultView === 'grid'
-                  ? `结果网格 · ${batchSummary}`
-                  : selected ? `${selected.file.name} · ${selected.width} × ${selected.height} · ${previewMeta(kind ?? 'pending', backgroundMode)}` : '等待图片'}
+                  ? `${t('shared.resultGrid')} · ${batchSummary}`
+                  : selected ? `${selected.file.name} · ${selected.width} × ${selected.height} · ${previewMeta(kind ?? 'pending', backgroundMode)}` : t('shared.waitingImages')}
               </span>
             </div>
             {selected && (
@@ -495,23 +505,29 @@ export default function BgRemoveTool() {
                 {items.length > 0 && (
                   <Segmented
                     size="small"
-                    aria-label="结果视图"
+                    aria-label={t('shared.resultViewAria')}
                     value={resultView}
-                    options={[{ label: '单张', value: 'single' }, { label: '结果网格', value: 'grid' }]}
+                    options={[
+                      { label: t('shared.singleView'), value: 'single' },
+                      { label: t('shared.resultGrid'), value: 'grid' },
+                    ]}
                     onChange={value => setResultView(value === 'grid' ? 'grid' : 'single')}
                   />
                 )}
                 {selected.output && resultView === 'single' ? (
                   <Segmented
                     size="small"
-                    aria-label="预览对照"
+                    aria-label={t('shared.compareViewAria')}
                     value={previewMode}
-                    options={[{ label: '结果', value: 'result' }, { label: '对比原图', value: 'source' }]}
+                    options={[
+                      { label: t('shared.resultOption'), value: 'result' },
+                      { label: t('shared.compareSourceOption'), value: 'source' },
+                    ]}
                     onChange={value => setPreviewMode(value === 'source' ? 'source' : 'result')}
                   />
                 ) : null}
                 {canRefineEdge(selected) && (
-                  <Button size="small" type="link" disabled={busy} onClick={() => refineEdge(selected.id)}>修边缘</Button>
+                  <Button size="small" type="link" disabled={busy} onClick={() => refineEdge(selected.id)}>{t('bgRemove.refineEdge')}</Button>
                 )}
                 <PreviewResultActions
                   status={selected.status}
@@ -533,7 +549,7 @@ export default function BgRemoveTool() {
               filter={resultFilter}
               onFilterChange={setResultFilter}
               onSelect={selectImage}
-              ariaLabel="抠图结果网格"
+              ariaLabel={t('bgRemove.gridAria')}
               checkerboard={backgroundMode === 'transparent'}
             />
           ) : (
@@ -546,7 +562,7 @@ export default function BgRemoveTool() {
                     alt={previewAlt(kind ?? 'pending', selected.file.name)}
                     tabIndex={canOpenResult ? 0 : undefined}
                     role={canOpenResult ? 'button' : undefined}
-                    aria-label={canOpenResult ? '打开抠图结果大图' : undefined}
+                    aria-label={canOpenResult ? t('bgRemove.openFullAria') : undefined}
                     onClick={canOpenResult ? () => openAt(selected.id) : undefined}
                     onKeyDown={canOpenResult ? event => {
                       if (event.key !== 'Enter' && event.key !== ' ') return
@@ -562,34 +578,37 @@ export default function BgRemoveTool() {
                     </div>
                   )}
                 </>
-              ) : <p>添加图片后，这里会显示抠图结果</p>}
+              ) : <p>{t('bgRemove.emptyStage')}</p>}
             </div>
           )}
           <PreviewItemNotice error={selected?.error} />
           <p className="toolbox-hint">
-            {resultView === 'grid' ? '点击任意结果查看单张大图。' : ''}
-            预览图为压缩显示（最长边不超过 {PREVIEW_MAX_DIMENSION}px）。切换输出背景仅在本地合成，不消耗积分。
+            {resultView === 'grid' ? `${t('shared.gridClickHint')}${activeLocale() === 'en-US' ? ' ' : ''}` : ''}
+            {t('bgRemove.previewHint', { px: PREVIEW_MAX_DIMENSION })}
           </p>
         </section>
-        <section className="toolbox-settings-panel" aria-label="抠图设置">
-          <div className="toolbox-section-heading"><div><strong>抠图设置</strong><span>一次设置，应用到整批</span></div></div>
-          <span id="bg-output-label" className="toolbox-field-label">输出背景</span>
+        <section className="toolbox-settings-panel" aria-label={t('bgRemove.settingsAria')}>
+          <div className="toolbox-section-heading"><div><strong>{t('bgRemove.settingsTitle')}</strong><span>{t('shared.applyToBatch')}</span></div></div>
+          <span id="bg-output-label" className="toolbox-field-label">{t('bgRemove.outputBackground')}</span>
           <div className="toolbox-output-options" role="radiogroup" aria-labelledby="bg-output-label">
             <Radio.Group
               value={backgroundMode}
               disabled={controlsLocked}
               onChange={event => void updateBackground(event.target.value === 'transparent' ? 'transparent' : lastColorRef.current)}
-              options={[{ label: '透明 PNG', value: 'transparent' }, { label: '纯色', value: 'color' }]}
+              options={[
+                { label: t('bgRemove.transparentPng'), value: 'transparent' },
+                { label: t('bgRemove.solidColor'), value: 'color' },
+              ]}
               optionType="button"
             />
           </div>
           {backgroundMode === 'color' && (
             <div className="toolbox-field-row">
-              <span>背景颜色</span>
+              <span>{t('bgRemove.backgroundColor')}</span>
               <button
                 type="button"
                 className="toolbox-color-trigger"
-                aria-label={`背景颜色，当前 ${settings.background.toUpperCase()}`}
+                aria-label={t('bgRemove.backgroundColorAria', { color: settings.background.toUpperCase() })}
                 aria-haspopup="dialog"
                 aria-expanded={colorDialogOpen}
                 disabled={controlsLocked}
@@ -600,20 +619,24 @@ export default function BgRemoveTool() {
               </button>
             </div>
           )}
-          <p className="toolbox-hint">透明背景导出为 PNG；纯色背景导出为 JPEG。切换背景不重复消耗积分。</p>
+          <p className="toolbox-hint">{t('bgRemove.outputFormatHint')}</p>
           <CapabilityStatus ready={serviceReady} error={capabilityError}
-            unavailableMessage="智能抠图服务正在升级维护中，暂时不可用。"
+            unavailableMessage={t('bgRemove.serviceMaintenance')}
             onRetry={() => void refetchCapabilities()} />
           <CreditQuoteNotice quote={generateQuote} onRetry={() => void billing.refetch()} />
           <CreditBalanceNotice quote={generateQuote} />
-          {billing.data && <p className="toolbox-hint">本月还可免费抠图 {billing.data.freeBgRemoveRemaining} 张，超出后每张 {syncCreditPrice('bg-remove')} 积分。</p>}
+          {billing.data && (
+            <p className="toolbox-hint">
+              {t('bgRemove.freeQuotaHint', { remaining: billing.data.freeBgRemoveRemaining, price: syncCreditPrice('bg-remove') })}
+            </p>
+          )}
           <CreditSettlementHint quote={generateQuote} />
         </section>
       </div>
       <ResultGallery
         {...galleryProps}
-        downloadLabel="下载结果大图"
-        downloadTooltip="下载抠图结果"
+        downloadLabel={t('bgRemove.downloadFull')}
+        downloadTooltip={t('bgRemove.downloadTooltip')}
         checkerboard={backgroundMode === 'transparent'}
         onDownload={item => downloadOne(item.id)}
       />
@@ -626,23 +649,23 @@ export default function BgRemoveTool() {
       <div className="toolbox-watermark-footer">
         <div className="toolbox-progress" role="status" aria-live="polite">
           <span>{statusText}</span>
-          {processing && <Progress size="small" aria-label="处理进度" percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
-          {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
+          {processing && <Progress size="small" aria-label={t('shared.progressAria')} percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
+          {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">{t('shared.zipLimitWarning', { limit: formatMegabytes(MAX_ZIP_BYTES) })}</span>}
         </div>
         <div className="toolbox-footer-actions">
           <Button type={mode === 'download' ? 'primary' : 'default'} icon={<DownloadOutlined />} disabled={!downloadable.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>{downloadActionLabel}</Button>
-          {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>查看结果</Button>}
+          {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>{t('shared.viewResults')}</Button>}
           {mode === 'retry' && (
             <>
-              <CreditActionButton type="primary" quote={quoteFor(failed.map(item => item.id))} disabled={busy || creditBlocked || (needsRemoval(failed.map(item => item.id)) && !serviceReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>
-              {hasPending && <CreditActionButton quote={generateQuote} disabled={creditBlocked || (needsRemoval() && !serviceReady) || busy} onClick={() => void processImages()}>继续处理剩余</CreditActionButton>}
+              <CreditActionButton type="primary" quote={quoteFor(failed.map(item => item.id))} disabled={busy || creditBlocked || (needsRemoval(failed.map(item => item.id)) && !serviceReady)} onClick={() => void processImages(failed.map(item => item.id))}>{t('shared.retryFailed')}</CreditActionButton>
+              {hasPending && <CreditActionButton quote={generateQuote} disabled={creditBlocked || (needsRemoval() && !serviceReady) || busy} onClick={() => void processImages()}>{t('shared.continueRemaining')}</CreditActionButton>}
             </>
           )}
-          {mode === 'cancel' && <Button danger onClick={cancelProcessing}>取消处理</Button>}
+          {mode === 'cancel' && <Button danger onClick={cancelProcessing}>{t('shared.cancelProcessing')}</Button>}
           {(mode === 'process' || mode === 'empty') && (
-            <Tooltip title={creditBlocked ? INSUFFICIENT_CREDITS_REASON : mode === 'empty' ? '请先添加图片' : needsRemoval() && !serviceReady ? '智能抠图服务暂不可用' : undefined}>
+            <Tooltip title={creditBlocked ? insufficientCreditsReason() : mode === 'empty' ? t('shared.addImagesFirst') : needsRemoval() && !serviceReady ? t('bgRemove.serviceUnavailableShort') : undefined}>
               <span>
-                <CreditActionButton quote={generateQuote} type="primary" disabled={creditBlocked || (needsRemoval() && !serviceReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
+                <CreditActionButton quote={generateQuote} type="primary" disabled={creditBlocked || (needsRemoval() && !serviceReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>{t('shared.startProcessing')}</CreditActionButton>
               </span>
             </Tooltip>
           )}

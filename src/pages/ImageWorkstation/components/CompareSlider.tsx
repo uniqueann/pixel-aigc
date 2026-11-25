@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { comparePositionFromClientX } from '../utils/compareSlider'
 
 interface Size {
@@ -23,6 +24,7 @@ const clampPosition = (value: number) => Math.min(MAX_POSITION, Math.max(MIN_POS
 
 /** 精修结果的原图/结果同屏对比；分割线支持拖动、点击、键盘与双击复位。 */
 export default function CompareSlider({ beforeSrc, afterSrc, beforeSize, afterSize }: Props) {
+  const { t } = useTranslation(['workstation', 'common'])
   const [position, setPosition] = useState(DEFAULT_POSITION)
   const positionRef = useRef(DEFAULT_POSITION)
   const [actualSize, setActualSize] = useState(false)
@@ -128,7 +130,7 @@ export default function CompareSlider({ beforeSrc, afterSrc, beforeSize, afterSi
           <div className="workstation-compare-layer is-after">
             <img
               src={afterSrc}
-              alt="当前编辑效果"
+              alt={t('compare.afterAlt')}
               draggable={false}
               onLoad={(event) => {
                 const { naturalWidth, naturalHeight } = event.currentTarget
@@ -151,25 +153,28 @@ export default function CompareSlider({ beforeSrc, afterSrc, beforeSize, afterSi
             style={{ left: `${position}%` }}
             role="slider"
             tabIndex={0}
-            aria-label="对比原图与结果"
+            aria-label={t('compare.sliderAria')}
             aria-orientation="horizontal"
             aria-valuemin={MIN_POSITION}
             aria-valuemax={MAX_POSITION}
             aria-valuenow={Math.round(position)}
-            aria-valuetext={`原图 ${Math.round(position)}%，精修后 ${Math.round(MAX_POSITION - position)}%`}
+            aria-valuetext={t('compare.valueText', {
+              before: Math.round(position),
+              after: Math.round(MAX_POSITION - position),
+            })}
             onKeyDown={onKeyDown}
           >
             <span className="workstation-compare-handle" aria-hidden="true" />
           </div>
-          <span className="workstation-compare-label is-before">原图</span>
-          <span className="workstation-compare-label is-after">精修后</span>
+          <span className="workstation-compare-label is-before">{t('common:preview.originalShort')}</span>
+          <span className="workstation-compare-label is-after">{t('compare.afterLabel')}</span>
         </div>
       </div>
       <button
         type="button"
         className="workstation-compare-zoom"
         aria-pressed={actualSize}
-        title={actualSize ? '适应画布' : '按实际像素查看（1:1）'}
+        title={actualSize ? t('compare.fitCanvas') : t('compare.actualSize')}
         disabled={!actualAvailable}
         onClick={() => setActualSize((value) => !value)}
       >

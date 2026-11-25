@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Segmented } from 'antd'
 import type { PreviewItem } from '@/components/PreviewGallery'
 import { resultStatusLabel, type ResultStatus } from './resultStatus'
@@ -37,8 +38,10 @@ export default function ResultGrid({
   ariaLabel,
   checkerboard = false,
   compact = false,
-  emptyLabel = '没有符合筛选的结果',
+  emptyLabel,
 }: Props) {
+  const { t } = useTranslation('toolbox')
+  const resolvedEmptyLabel = emptyLabel ?? t('resultGrid.empty')
   const completed = items.filter(item => item.status === 'succeeded').length
   const failed = items.filter(item => item.status === 'failed').length
   const visible = items.filter(item => {
@@ -52,34 +55,35 @@ export default function ResultGrid({
       <div className="toolbox-result-grid-toolbar">
         <Segmented
           size="small"
-          aria-label="筛选结果"
+          aria-label={t('resultGrid.filterAria')}
           value={filter}
           options={[
-            { label: '全部', value: 'all' },
-            { label: `成功 ${completed}`, value: 'succeeded' },
-            { label: `失败 ${failed}`, value: 'failed' },
+            { label: t('resultGrid.filterAll'), value: 'all' },
+            { label: t('resultGrid.filterSucceeded', { count: completed }), value: 'succeeded' },
+            { label: t('resultGrid.filterFailed', { count: failed }), value: 'failed' },
           ]}
           onChange={value => onFilterChange(value === 'succeeded' || value === 'failed' ? value : 'all')}
         />
       </div>
       {visible.length === 0 ? (
-        <p className="toolbox-result-grid-empty">{emptyLabel}</p>
+        <p className="toolbox-result-grid-empty">{resolvedEmptyLabel}</p>
       ) : (
         <div className="toolbox-result-grid-items">
           {visible.map(item => {
             const result = results.get(item.id)
+            const statusText = resultStatusLabel(item.status)
             return (
               <button
                 key={item.id}
                 type="button"
                 className={`toolbox-result-tile${item.id === selectedId ? ' is-selected' : ''}`}
                 aria-pressed={item.id === selectedId}
-                aria-label={`${item.name}，${resultStatusLabel(item.status)}${result ? '，查看结果' : ''}`}
+                aria-label={result ? t('resultGrid.tileAriaWithResult', { name: item.name, status: statusText }) : t('resultGrid.tileAria', { name: item.name, status: statusText })}
                 onClick={() => onSelect(item.id)}
               >
                 <span className={`toolbox-result-thumb${result && checkerboard ? ' is-transparent' : ''}`}>
                   <img src={result?.fullSrc ?? item.sourceUrl} alt="" />
-                  <span className={`toolbox-result-badge is-${item.status}`}>{resultStatusLabel(item.status)}</span>
+                  <span className={`toolbox-result-badge is-${item.status}`}>{statusText}</span>
                 </span>
                 <span className="toolbox-result-name">{item.name}</span>
               </button>

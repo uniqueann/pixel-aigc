@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { authorizeSyncQuote } from './billing'
 import { postBilledSyncImage } from './billed-sync'
 import type { ImageResultReadOptions } from './image-transfer'
@@ -15,8 +16,8 @@ export type { PixelPadding }
 
 /** 按原图和四边留白提交扩图，返回原图尺寸加留白的 JPEG。 */
 export async function requestOutpaint(image: Blob | null, mimeType: string, padding: PixelPadding, sourceObjectKey?: string, resultOptions: ImageResultReadOptions = {}) {
-  if (padding.left + padding.right + padding.top + padding.bottom <= 0) throw new Error('没有需要扩展的边缘')
-  if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')
+  if (padding.left + padding.right + padding.top + padding.bottom <= 0) throw new Error(i18n.t('errors:client.outpaintNoPadding'))
+  if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error(i18n.t('errors:generic.singleImageTooLarge'))
   const prepareStarted = performance.now()
   if (image && !sourceObjectKey) image = await normalizeImageBlob(image)
   let size=resultOptions.sourceSize
@@ -39,5 +40,5 @@ export async function requestOutpaint(image: Blob | null, mimeType: string, padd
   body.clientTimingMs = clientTiming(prepareStarted, uploadMs)
   resultOptions.onTaskIdentity?.(quote.requestId)
   const response = await postBilledSyncImage('outpaint', body, quote,resultOptions.signal)
-  return readImageResult(response, '扩图', resultOptions)
+  return readImageResult(response, i18n.t('credits:syncTools.outpaint'), resultOptions)
 }

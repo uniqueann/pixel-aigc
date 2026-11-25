@@ -1,14 +1,20 @@
+import { useTranslation } from 'react-i18next'
 import ModelChoice from '@/components/ModelChoice'
 import { emailModelHint } from '@shared/email-models'
+import { translateApiError } from '@/i18n/apiErrors'
+import { translateModelHint } from '@/i18n/modelLabels'
 import type { EmailModelConfiguration } from './useEmailModelConfiguration'
 
 export default function EmailModelChoice({ configuration, value, language, disabled, onChange }: {
   configuration: EmailModelConfiguration; value?: string; language?: string; disabled?: boolean; onChange: (id: string) => void
 }) {
-  return <ModelChoice ariaLabel="本次使用的模型" value={value} disabled={disabled || configuration.loading || Boolean(configuration.error)}
-    loading={configuration.loading} placeholder="选择平台模型" onChange={onChange} selectStyle={{ width: '100%', maxWidth: 320 }}
+  const { t } = useTranslation('email')
+  return <ModelChoice ariaLabel={t('modelChoice.ariaLabel')} value={value} disabled={disabled || configuration.loading || Boolean(configuration.error)}
+    loading={configuration.loading} placeholder={t('modelChoice.placeholder')} onChange={onChange} selectStyle={{ width: '100%', maxWidth: 320 }}
     models={configuration.profiles.map(model => ({ id: model.id,
-      label: `${model.label} · ${model.credits} 积分`, disabled: !model.available,
-      hint: model.available ? emailModelHint(model.id, language) : model.unavailableReason ?? '暂不可用',
+      label: t('modelChoice.creditsLabel', { label: model.label, credits: model.credits }), disabled: !model.available,
+      hint: model.available
+        ? translateModelHint(emailModelHint(model.id, language))
+        : translateApiError({ message: model.unavailableReason ?? undefined, fallback: t('modelChoice.unavailable') }),
     }))} />
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { i18n } from '@/i18n'
 import { createImageAsset } from '@/editor/services/assetService'
 import type { ImageAsset } from '@/editor/types'
 import { currentWorkstationHistoryOwner, isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
@@ -93,7 +94,7 @@ export function useFusionImageSelection(tool: string) {
       return asset
     } catch (error) {
       if (!current()) throw fusionAbortError()
-      setErrors(previous => ({ ...previous, [role]: error instanceof Error ? error.message : '图片上传失败' }))
+      setErrors(previous => ({ ...previous, [role]: error instanceof Error ? error.message : i18n.t('workstation:errors.imageUploadFailed') }))
       throw error
     } finally { if (current()) setLoading(previous => ({ ...previous, [role]: false })) }
   }, [rememberScene])

@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { billingExplanationCopy } from './billingCopy'
 
 export default function BillingExplanation({
@@ -8,6 +9,7 @@ export default function BillingExplanation({
   freeBgRemoveRemaining: number
   freeBgRemoveMonth: string
 }) {
+  const { t } = useTranslation('credits')
   const [open, setOpen] = useState(false)
   const panelId = useId()
   const buttonId = useId()
@@ -24,7 +26,7 @@ export default function BillingExplanation({
       >
         <span className="billing-explanation-summary">{copy.summary}</span>
         <span className="billing-explanation-action">
-          {open ? '收起计费明细' : '查看计费明细'}
+          {open ? t('explanation.collapse') : t('explanation.expand')}
           <span aria-hidden="true" className={open ? 'billing-explanation-chevron is-open' : 'billing-explanation-chevron'} />
         </span>
       </button>

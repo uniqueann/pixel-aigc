@@ -1,12 +1,11 @@
 import { useRef, type KeyboardEvent } from 'react'
 import { ArrowUpOutlined } from '@ant-design/icons'
-import {
-  RELIGHT_DIRECTION_HINTS,
-  RELIGHT_DIRECTION_LABELS,
-  RELIGHT_QUALITY_LABELS,
-  RELIGHT_TEMPERATURE_LABELS,
-  type RelightDirection,
-  type RelightOptions,
+import { useTranslation } from 'react-i18next'
+import type {
+  RelightDirection,
+  RelightOptions,
+  RelightQuality,
+  RelightTemperature,
 } from '@shared/relight'
 
 interface Props {
@@ -15,9 +14,46 @@ interface Props {
   onChange: (value: RelightOptions) => void
 }
 
+const DIRECTION_LABEL_KEYS = {
+  left: 'relight.directions.left',
+  right: 'relight.directions.right',
+  top: 'relight.directions.top',
+  bottom: 'relight.directions.bottom',
+  front: 'relight.directions.front',
+  back: 'relight.directions.back',
+  'top-left': 'relight.directions.top-left',
+  'top-right': 'relight.directions.top-right',
+  'bottom-left': 'relight.directions.bottom-left',
+  'bottom-right': 'relight.directions.bottom-right',
+} as const satisfies Record<RelightDirection, string>
+
+const DIRECTION_HINT_KEYS = {
+  top: 'relight.directionHints.top',
+  left: 'relight.directionHints.left',
+  right: 'relight.directionHints.right',
+  front: 'relight.directionHints.front',
+  bottom: 'relight.directionHints.bottom',
+  back: 'relight.directionHints.back',
+  'top-left': 'relight.directionHints.top-left',
+  'top-right': 'relight.directionHints.top-right',
+  'bottom-left': 'relight.directionHints.bottom-left',
+  'bottom-right': 'relight.directionHints.bottom-right',
+} as const satisfies Record<RelightDirection, string>
+
+const QUALITY_LABEL_KEYS = {
+  soft: 'relight.qualities.soft',
+  hard: 'relight.qualities.hard',
+} as const satisfies Record<RelightQuality, string>
+
+const TEMPERATURE_LABEL_KEYS = {
+  warm: 'relight.temperatures.warm',
+  neutral: 'relight.temperatures.neutral',
+  cool: 'relight.temperatures.cool',
+} as const satisfies Record<RelightTemperature, string>
+
 interface CompassCell {
   id: RelightDirection
-  label: string
+  labelKey: (typeof DIRECTION_LABEL_KEYS)[RelightDirection]
   row: number
   col: number
   /** 箭头指向商品中心；顶部为 0°，顺时针。 */
@@ -25,32 +61,33 @@ interface CompassCell {
 }
 
 interface RelightPreset {
-  label: string
+  id: string
+  labelKey: 'relight.presets.studioSoft' | 'relight.presets.sunsetWarm' | 'relight.presets.coolRim'
   value: Pick<RelightOptions, 'direction' | 'quality' | 'temperature'>
 }
 
 /** 三个常用起点，避免用户在 10×2×3 的组合里从零开始。 */
 const PRESETS: RelightPreset[] = [
-  { label: '棚拍柔光', value: { direction: 'front', quality: 'soft', temperature: 'neutral' } },
-  { label: '日落暖光', value: { direction: 'bottom-left', quality: 'soft', temperature: 'warm' } },
-  { label: '冷调轮廓光', value: { direction: 'back', quality: 'hard', temperature: 'cool' } },
+  { id: 'studio-soft', labelKey: 'relight.presets.studioSoft', value: { direction: 'front', quality: 'soft', temperature: 'neutral' } },
+  { id: 'sunset-warm', labelKey: 'relight.presets.sunsetWarm', value: { direction: 'bottom-left', quality: 'soft', temperature: 'warm' } },
+  { id: 'cool-rim', labelKey: 'relight.presets.coolRim', value: { direction: 'back', quality: 'hard', temperature: 'cool' } },
 ]
 
 /** 八个平面方位；中心留给商品图形，正面/逆光由下方深度行表达。 */
 const CELLS: CompassCell[] = [
-  { id: 'top-left', label: '左上', row: 0, col: 0, rotate: 135 },
-  { id: 'top', label: '顶部', row: 0, col: 1, rotate: 180 },
-  { id: 'top-right', label: '右上', row: 0, col: 2, rotate: 225 },
-  { id: 'left', label: '左侧', row: 1, col: 0, rotate: 90 },
-  { id: 'right', label: '右侧', row: 1, col: 2, rotate: 270 },
-  { id: 'bottom-left', label: '左下', row: 2, col: 0, rotate: 45 },
-  { id: 'bottom', label: '底部', row: 2, col: 1, rotate: 0 },
-  { id: 'bottom-right', label: '右下', row: 2, col: 2, rotate: 315 },
+  { id: 'top-left', labelKey: DIRECTION_LABEL_KEYS['top-left'], row: 0, col: 0, rotate: 135 },
+  { id: 'top', labelKey: DIRECTION_LABEL_KEYS.top, row: 0, col: 1, rotate: 180 },
+  { id: 'top-right', labelKey: DIRECTION_LABEL_KEYS['top-right'], row: 0, col: 2, rotate: 225 },
+  { id: 'left', labelKey: DIRECTION_LABEL_KEYS.left, row: 1, col: 0, rotate: 90 },
+  { id: 'right', labelKey: DIRECTION_LABEL_KEYS.right, row: 1, col: 2, rotate: 270 },
+  { id: 'bottom-left', labelKey: DIRECTION_LABEL_KEYS['bottom-left'], row: 2, col: 0, rotate: 45 },
+  { id: 'bottom', labelKey: DIRECTION_LABEL_KEYS.bottom, row: 2, col: 1, rotate: 0 },
+  { id: 'bottom-right', labelKey: DIRECTION_LABEL_KEYS['bottom-right'], row: 2, col: 2, rotate: 315 },
 ]
 
 const DEPTH_OPTIONS = [
-  { id: 'front', label: '正面光' },
-  { id: 'back', label: '逆光' },
+  { id: 'front', labelKey: DIRECTION_LABEL_KEYS.front },
+  { id: 'back', labelKey: DIRECTION_LABEL_KEYS.back },
 ] as const
 
 function ProductGlyph() {
@@ -65,6 +102,7 @@ function ProductGlyph() {
 
 /** 空间化光线方向：商品在中心，八个平面方位环绕，正面/逆光在同一 radiogroup 的深度行。 */
 export default function RelightCompass({ value, disabled = false, onChange }: Props) {
+  const { t } = useTranslation('workstation')
   const isBack = value.direction === 'back'
   const cellRefs = useRef(new Map<RelightDirection, HTMLButtonElement>())
 
@@ -123,39 +161,45 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
     }
   }
 
-  const summary = `主光：${RELIGHT_DIRECTION_LABELS[value.direction]} · ${RELIGHT_QUALITY_LABELS[value.quality]} · ${RELIGHT_TEMPERATURE_LABELS[value.temperature]}`
+  const summary = t('relight.compass.summary', {
+    direction: t(DIRECTION_LABEL_KEYS[value.direction]),
+    quality: t(QUALITY_LABEL_KEYS[value.quality]),
+    temperature: t(TEMPERATURE_LABEL_KEYS[value.temperature]),
+  })
+  const directionHint = t(DIRECTION_HINT_KEYS[value.direction])
   const hint = isBack
-    ? `${RELIGHT_DIRECTION_HINTS.back} 点任一平面方向可切回平面光。`
-    : RELIGHT_DIRECTION_HINTS[value.direction]
+    ? t('relight.compass.backHint', { hint: directionHint })
+    : directionHint
 
   return (
     <div className={`relight-compass${isBack ? ' is-back' : ''}`}>
       <div className="relight-compass-head">
-        <span className="relight-compass-label">光线方向</span>
+        <span className="relight-compass-label">{t('relight.compass.label')}</span>
         <span className="relight-compass-summary">{summary}</span>
       </div>
-      <div className="relight-presets" role="group" aria-label="光线预设">
+      <div className="relight-presets" role="group" aria-label={t('relight.compass.presetsAria')}>
         {PRESETS.map(preset => {
           const active = value.direction === preset.value.direction
             && value.quality === preset.value.quality
             && value.temperature === preset.value.temperature
           return (
             <button
-              key={preset.label}
+              key={preset.id}
               type="button"
               aria-pressed={active}
               disabled={disabled}
               onClick={() => onChange({ ...value, ...preset.value })}
             >
-              {preset.label}
+              {t(preset.labelKey)}
             </button>
           )
         })}
       </div>
-      <div className="relight-compass-pad" role="radiogroup" aria-label="光线方向">
+      <div className="relight-compass-pad" role="radiogroup" aria-label={t('relight.compass.directionAria')}>
         <div className="relight-compass-grid">
           {CELLS.map(cell => {
             const selected = value.direction === cell.id
+            const label = t(cell.labelKey)
             return (
               <button
                 key={cell.id}
@@ -167,7 +211,10 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
                 role="radio"
                 className="relight-compass-cell"
                 style={{ gridRow: cell.row + 1, gridColumn: cell.col + 1 }}
-                aria-label={`${cell.label}光：${RELIGHT_DIRECTION_HINTS[cell.id]}`}
+                aria-label={t('relight.compass.cellAria', {
+                  label,
+                  hint: t(DIRECTION_HINT_KEYS[cell.id]),
+                })}
                 aria-checked={selected}
                 tabIndex={disabled ? -1 : selected ? 0 : -1}
                 disabled={disabled}
@@ -175,18 +222,19 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
                 onKeyDown={event => onCellKeyDown(event, cell)}
               >
                 <ArrowUpOutlined rotate={cell.rotate} aria-hidden="true" />
-                <span>{cell.label}</span>
+                <span>{label}</span>
               </button>
             )
           })}
           <div className="relight-compass-center" style={{ gridRow: 2, gridColumn: 2 }} aria-hidden="true">
             <ProductGlyph />
-            <span>商品</span>
+            <span>{t('relight.compass.product')}</span>
           </div>
         </div>
         <div className="relight-depth">
           {DEPTH_OPTIONS.map(option => {
             const selected = value.direction === option.id
+            const label = t(option.labelKey)
             return (
               <button
                 key={option.id}
@@ -196,21 +244,24 @@ export default function RelightCompass({ value, disabled = false, onChange }: Pr
                 }}
                 type="button"
                 role="radio"
-                aria-label={`${option.label}：${RELIGHT_DIRECTION_HINTS[option.id]}`}
+                aria-label={t('relight.compass.depthAria', {
+                  label,
+                  hint: t(DIRECTION_HINT_KEYS[option.id]),
+                })}
                 aria-checked={selected}
                 tabIndex={disabled ? -1 : selected ? 0 : -1}
                 disabled={disabled}
                 onClick={() => select(option.id)}
                 onKeyDown={event => onDepthKeyDown(event, option.id)}
               >
-                {option.label}
+                {label}
               </button>
             )
           })}
         </div>
       </div>
       <p className="relight-compass-hint">{hint}</p>
-      <p className="sr-only" aria-live="polite">{summary}。{hint}</p>
+      <p className="sr-only" aria-live="polite">{t('relight.compass.srAnnouncement', { summary, hint })}</p>
     </div>
   )
 }

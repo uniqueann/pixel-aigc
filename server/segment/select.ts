@@ -175,7 +175,7 @@ async function loadGoods(
     }
   }
   if (!input.image?.length) throw new HttpError(400, '缺少图片', 'SMART_SELECT_IMAGE_REQUIRED')
-  if (input.image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+  if (input.image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB', 'IMAGE_TOO_LARGE')
   const cached = measureDetectionSync(log, 'cacheLookup', () => readCached(digestKey('image', input.image!)))
   if (cached) { log?.({ cacheSource: 'image-cache' }); return { ...cached, cacheSource: 'image-cache' } }
   if (!provider) throw new HttpError(503, '智能选区尚未配置', 'SMART_SELECT_UNCONFIGURED')

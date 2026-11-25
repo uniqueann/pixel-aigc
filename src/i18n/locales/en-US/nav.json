@@ -1,0 +1,73 @@
+{
+  "routes": {
+    "home": "Home",
+    "email": "Email Assistant",
+    "ecommerce": "E-commerce Suite",
+    "imageWorkstation": "Image Studio",
+    "toolbox": "Toolbox",
+    "canvas": "Free Canvas",
+    "assets": "My Assets",
+    "help": "Help Center"
+  },
+  "badges": {
+    "new": "NEW"
+  },
+  "sidebar": {
+    "skipToMain": "Skip to main content",
+    "backToHome": "Back to Home",
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "resize": "Resize sidebar",
+    "widthPixels": "{{width}} px",
+    "personalAccount": "Personal Account",
+    "localMode": "Local Mode",
+    "brandLabel": "Pixel AIGC"
+  },
+  "accountMenu": {
+    "triggerAria": "Account & Settings",
+    "personalization": "Personalization",
+    "settings": "Settings",
+    "help": "Help & Support",
+    "logout": "Sign out",
+    "logoutPending": "Sign out is not wired yet",
+    "comingSoon": "This feature will be available in a future update",
+    "localUser": "Local User"
+  },
+  "header": {
+    "creditsAria": "Credit balance {{credits}}",
+    "creditsLabel": "Credits {{credits}}",
+    "creditOrderPaid": "Top-up credits added to your account",
+    "creditOrderPending": "Payment confirmation may take a moment; check Credit History for status"
+  },
+  "logoutWarnings": {
+    "localSaveIncomplete": "Local project save has not finished; please check this account's local backup later",
+    "cloudSyncIncomplete": "Cloud sync may still be in progress; local backup stays on this account"
+  },
+  "projectHeader": {
+    "breadcrumbAria": "Breadcrumb",
+    "canvasCrumb": "Free Canvas",
+    "untitledCanvas": "Untitled Canvas",
+    "projectNameAria": "Project name",
+    "editProjectNameAria": "Edit project name {{name}}",
+    "actionsAria": "Project actions",
+    "selectJsonAria": "Select project JSON",
+    "saveNow": "Save now",
+    "exportJson": "Export JSON",
+    "importJson": "Import JSON",
+    "newProject": "New project",
+    "newConfirmTitle": "Create a blank project?",
+    "newConfirmContent": "Your current project remains saved locally. Export JSON first if unsynced changes matter.",
+    "newConfirmOk": "Create",
+    "importConfirmTitle": "Import \"{{name}}\"?",
+    "importConfirmContent": "This will replace the current project. Cancel and export first if you want to keep it.",
+    "importConfirmOk": "Import",
+    "operationFailed": "Project action failed",
+    "status": {
+      "saved": "✓ Saved",
+      "savedWord": "Saved",
+      "dirty": "Unsaved",
+      "saving": "Saving...",
+      "error": "Save failed"
+    }
+  }
+}

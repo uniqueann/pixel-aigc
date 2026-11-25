@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { isPreferencePage } from '@shared/preferences'
 import { normalizeToolHref, readRecentWork, recentWorkKey, rememberSavedProject, rememberTool, seedRecentTool } from './recentWork'
 import { resumeProjects } from './projects'
-import { QUICK_START_GROUPS } from './catalog'
+import { getQuickStartGroups } from './catalog'
 
 beforeEach(() => localStorage.clear())
 
@@ -47,9 +47,10 @@ describe('首页最近工作摘要', () => {
   })
 
   it('四个场景共十九个独立入口，含完整邮件操作及流水线', () => {
-    const groups = QUICK_START_GROUPS.map(group => group.entries.length)
+    const quickStartGroups = getQuickStartGroups()
+    const groups = quickStartGroups.map(group => group.entries.length)
     expect(groups).toEqual([9, 3, 2, 5])
-    const hrefs = QUICK_START_GROUPS.flatMap(group => group.entries.map(entry => entry.href))
+    const hrefs = quickStartGroups.flatMap(group => group.entries.map(entry => entry.href))
     expect(new Set(hrefs).size).toBe(19)
     expect(hrefs).toContain('/email?mode=single&operation=grammar')
     expect(hrefs).toContain('/toolbox/pipeline')

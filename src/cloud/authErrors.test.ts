@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { authErrorMessage } from './authErrors'
+import { authErrorMessage, LocalAuthError } from './authErrors'
 
 describe('authErrorMessage', () => {
   it('按错误码映射常见登录错误', () => {
@@ -11,9 +11,11 @@ describe('authErrorMessage', () => {
     expect(authErrorMessage(new Error('Invalid login credentials'), '兜底文案')).toContain('邮箱或密码不正确')
   })
 
-  it('保留项目自己抛出的中文校验信息', () => {
-    expect(authErrorMessage(new Error('恢复会话已失效，请重新申请密码重置邮件'), '兜底文案'))
+  it('通过 LocalAuthError 错误码映射本地校验错误', () => {
+    expect(authErrorMessage(new LocalAuthError('recovery_session_expired', 'raw'), '兜底文案'))
       .toBe('恢复会话已失效，请重新申请密码重置邮件')
+    expect(authErrorMessage(new LocalAuthError('custom_local_code', '本地校验提示'), '兜底文案'))
+      .toBe('本地校验提示')
   })
 
   it('未知错误返回操作兜底，并把原始错误留在控制台', () => {

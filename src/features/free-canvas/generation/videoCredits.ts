@@ -1,4 +1,5 @@
 import { videoModelCredits, type VideoModelProfile, type VideoResolution } from '@shared/video-models'
+import { i18n } from '@/i18n'
 
 function quotedCredits(credits: number | undefined): number | undefined {
   return typeof credits === 'number' && Number.isFinite(credits) && credits >= 0 ? credits : undefined
@@ -13,15 +14,15 @@ export function videoCreditsForDuration(model: (Pick<VideoModelProfile, 'pricing
 }
 
 export function videoCreditEstimateText(credits: number | undefined, mockGateway: boolean) {
-  if (mockGateway) return '模拟生成，不消耗积分'
+  if (mockGateway) return i18n.t('canvas:video.credits.mock')
   const quote = quotedCredits(credits)
-  return quote === undefined ? '积分预估暂不可用' : `预计消耗 ${quote} 积分`
+  return quote === undefined ? i18n.t('canvas:video.credits.unavailable') : i18n.t('canvas:video.credits.estimate', { credits: quote })
 }
 
 export function videoCreditShortfallText(credits: number | undefined, balance: number, mockGateway: boolean) {
   const quote = quotedCredits(credits)
   if (mockGateway || quote === undefined || balance >= quote) return null
-  return `积分不足，需要 ${quote} 积分，当前 ${balance}`
+  return i18n.t('canvas:video.credits.insufficient', { required: quote, balance })
 }
 
 /** 真实模式下没有报价，或余额低于所选时长报价时，不能提交。声音不影响报价。 */

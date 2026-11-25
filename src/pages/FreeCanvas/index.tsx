@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams,useSearchParams } from 'react-router-dom'
 import CanvasTaskRecovery from '@/features/task-center/CanvasTaskRecovery'
 import { parseTaskRoute } from '@/features/task-center/route'
@@ -57,7 +58,8 @@ import { boundsFromPlacement, calculateNodeBounds, NODE_CASCADE_OFFSET, offsetPl
 import { nextZIndex, reorderZIndex, type ZOrderAction } from '@/features/free-canvas/zOrder'
 import { buildPastedNodes, copyNodesToClipboard, readClipboard } from '@/features/free-canvas/clipboard'
 import type { FreeCanvasStageHandle, NodeTransformUpdate } from '@/features/free-canvas/types'
-import { CANVAS_MODES, VIDEO_REPLICATION_MODE } from './modes'
+import { CANVAS_MODES, VIDEO_REPLICATION_MODE, canvasModeLabel } from './modes'
+import { i18n } from '@/i18n'
 import { imageCreditAmount } from '@/features/credits/quotes'
 import { capabilityAvailabilityLabel } from '@/components/capabilityAvailability'
 import CanvasAddImageButton from './CanvasAddImageButton'
@@ -82,6 +84,7 @@ function isTerminalGeneration(node: EditorNode, project: PixelProject | null | u
 }
 
 export default function FreeCanvas() {
+  const { t } = useTranslation('canvas')
   const { mode } = useParams<{ mode: string }>()
   const [routeParams]=useSearchParams()
   const navigate = useNavigate()
@@ -200,7 +203,10 @@ export default function FreeCanvas() {
     : undefined)
   const replicationInputs = selectedVideoGeneration?.inputAssetIds.map(id => project?.assets[id]) ?? []
   const replicationSourceSummary = selectedReplication
-    ? `参考视频：${replicationInputs.find(asset => asset?.type === 'video')?.name ?? referenceLabel ?? '任务参考片'} · 商品图：${replicationInputs.find(asset => asset?.type === 'image')?.name ?? '原任务商品图'}`
+    ? t('replication.sourceSummary', {
+      reference: replicationInputs.find(asset => asset?.type === 'video')?.name ?? referenceLabel ?? t('replication.defaultReferenceName'),
+      product: replicationInputs.find(asset => asset?.type === 'image')?.name ?? t('replication.defaultProductName'),
+    })
     : undefined
   const model = matchImageModel(configuration.models, derivedDraft?.modelProfileId)
     ?? configuration.models.find(item => item.defaultFor?.includes('variation')) ?? configuration.models[0]
@@ -256,7 +262,7 @@ export default function FreeCanvas() {
       }
       return context.signal.aborted ? undefined : imported.node
     } catch (error) {
-      if (!context.signal.aborted) message.error(error instanceof Error ? error.message : '图片添加失败')
+      if (!context.signal.aborted) message.error(error instanceof Error ? error.message : t('errors.addImageFailed'))
       return undefined
     } finally {
       importGate.current = false
@@ -289,7 +295,7 @@ export default function FreeCanvas() {
       else accepted.push(file)
     }
     if (!accepted.length) {
-      message.warning('仅支持 PNG/JPG/WebP 图片')
+      message.warning(t('errors.supportedImageTypes'))
       return
     }
     const importedNodes: EditorNode[] = []
@@ -301,7 +307,7 @@ export default function FreeCanvas() {
       selectNodes(importedNodes.map((node) => node.id))
       stageRef.current?.revealBounds(importedNodes.map((node) => calculateNodeBounds(node)))
     }
-    if (rejected) message.warning(`已添加 ${importedNodes.length} 张，${rejected} 个文件格式不支持`)
+    if (rejected) message.warning(t('errors.partialImportUnsupported', { added: importedNodes.length, rejected }))
   }
 
   // 方向键微调：按下时直接改坐标（实时反馈），停顿 400ms 或失焦时提交为一条撤销记录。
@@ -465,10 +471,10 @@ export default function FreeCanvas() {
     if (!nodes.length) return
     const copied = copyNodesToClipboard(project.id, nodes)
     if (!copied) {
-      message.warning('生成中的占位框不能复制')
+      message.warning(i18n.t('canvas:errors.cannotCopyActivePlaceholder'))
       return
     }
-    message.success({ content: `已复制 ${copied} 项`, duration: 1.2 })
+    message.success({ content: i18n.t('canvas:page.copiedItems', { count: copied }), duration: 1.2 })
   }, [message])
 
   const handlePaste = useCallback(() => {
@@ -478,7 +484,7 @@ export default function FreeCanvas() {
     if (!project || !currentScene) return
     const clipboard = readClipboard(project.id)
     if (!clipboard) {
-      message.info('剪贴板里没有可粘贴的画布内容')
+      message.info(i18n.t('canvas:page.clipboardEmpty'))
       return
     }
     const nodes = buildPastedNodes({ scene: currentScene, clipboard, pointer: stageRef.current?.getPointerCanvasPoint() })
@@ -534,7 +540,7 @@ export default function FreeCanvas() {
     }
 
     void flushProject().catch(() => undefined)
-    message.success(`已移除 ${brokenNodes.length} 张损坏图片`)
+    message.success(i18n.t('canvas:page.removedBrokenImages', { count: brokenNodes.length }))
   }, [images.brokenAssetIds, images.assets, message])
 
   const updateReplication = (changes: Partial<VideoReplicationDraft>) => {
@@ -575,7 +581,7 @@ export default function FreeCanvas() {
     } catch (error) {
       if (isCurrent()) {
         if (previous) updateReplication({ ...previous, reference: undefined })
-        const text = error instanceof Error ? error.message : '参考视频读取失败'
+        const text = error instanceof Error ? error.message : t('errors.readReferenceFailed')
         if (replicationTab) setReferenceError(text)
         else message.error(text)
       }
@@ -588,7 +594,7 @@ export default function FreeCanvas() {
   const selectCanvasReference = (assetId: string) => {
     const asset = project?.assets[assetId]
     const key = asset?.type === 'video' ? asset.objectKey ?? asset.storage?.objectKey : undefined
-    if (!asset || !key) { message.info('这段视频不可用，请另选参考视频'); return }
+    if (!asset || !key) { message.info(t('errors.referenceUnavailable')); return }
     void selectReference({ key, name: asset.name, assetId })
   }
 
@@ -601,7 +607,7 @@ export default function FreeCanvas() {
     if (!selectedReplication) return
     const reference = replicationInputs.find(asset => asset?.type === 'video')
     const product = replicationInputs.find(asset => asset?.type === 'image')
-    void selectReference({ key: selectedReplication.referenceVideoKey, name: reference?.name ?? referenceLabel ?? '原任务参考片', assetId: reference?.id }, {
+    void selectReference({ key: selectedReplication.referenceVideoKey, name: reference?.name ?? referenceLabel ?? t('replication.defaultOriginalReferenceName'), assetId: reference?.id }, {
       prompt: selectedReplication.prompt, ratio: selectedReplication.ratio, durationSeconds: selectedReplication.durationSeconds, productAssetId: product?.id,
     })
   }
@@ -622,22 +628,22 @@ export default function FreeCanvas() {
 
   const handleGenerate = () => {
     if (activeSlug === 'text-to-video' && (!videoConfiguration.ready || !selectedVideoReady || cloudProject)) {
-      message.warning(!videoConfiguration.ready ? `视频生成${capabilityAvailabilityLabel(videoConfiguration.textState)}`
-        : !selectedVideoReady ? '原视频模型暂不可用，请手动选择其他模型后生成。' : '请先另存为本地副本，再生成视频')
+      message.warning(!videoConfiguration.ready ? t('stage.imageActions.videoUnavailable', { status: capabilityAvailabilityLabel(videoConfiguration.textState) })
+        : !selectedVideoReady ? t('video.settings.modelUnavailableNotice') : t('generation.saveLocalCopyForVideo'))
       return
     }
     if (activeSlug === 'text-to-image' && !textToImageEntryEnabled) {
-      message.warning('请先确认登录与文生图模型配置')
+      message.warning(t('errors.checkTextToImageConfig'))
       return
     }
     const promptMaxLength = textToImageParameters.model?.ui.promptMaxLength
     if (activeSlug === 'text-to-image' && promptMaxLength && prompt.trim().length > promptMaxLength) {
-      message.warning(`画面描述最多 ${promptMaxLength} 个字符`)
+      message.warning(t('errors.promptMaxLength', { max: promptMaxLength }))
       return
     }
     const preset = IMAGE_SIZE_PRESETS.find((item) => item.key === presetKey) ?? IMAGE_SIZE_PRESETS[0]
     if (activeSlug === 'text-to-video' && videoModel?.ratios?.length && !videoModel.ratios.some((ratio) => ratio === preset.key)) {
-      message.warning('当前视频模型不支持该比例，请重新选择画面比例')
+      message.warning(t('errors.unsupportedVideoRatio'))
       return
     }
     const center = stageRef.current?.getViewportCenter() ?? {
@@ -663,17 +669,17 @@ export default function FreeCanvas() {
         if (!placements?.length) return
         stageRef.current?.revealBounds(placements.map(boundsFromPlacement))
       })
-    } catch (error) { message.error(error instanceof Error ? error.message : '生成参数无效') }
+    } catch (error) { message.error(error instanceof Error ? error.message : t('errors.invalidGenerationParams')) }
   }
 
   const variationModelId = model?.id
   const handleNodeGenerationAction = (action: DerivedGenerationMode, nodeId: string) => {
     if (action === 'image-to-video' && !videoConfiguration.imageReady) {
-      message.warning(`视频生成${capabilityAvailabilityLabel(videoConfiguration.imageState)}`)
+      message.warning(t('stage.imageActions.videoUnavailable', { status: capabilityAvailabilityLabel(videoConfiguration.imageState) }))
       return
     }
     if (action === 'variation' && !isFreeCanvasVariationEntryEnabled() && !configuration.loading) {
-      message.warning('请先确认登录与裂变模型配置')
+      message.warning(t('errors.checkVariationConfig'))
       return
     }
     const state = useEditorStore.getState()
@@ -681,7 +687,7 @@ export default function FreeCanvas() {
     const node = currentScene?.nodes.find((item) => item.id === nodeId)
     const asset = node?.type === 'image' ? state.project?.assets[node.assetId] : undefined
     if (!node || node.type !== 'image' || !asset || asset.type !== 'image') {
-      message.error({ content: '源图片不可用，无法发起派生生成', duration: 4 })
+      message.error({ content: t('errors.sourceImageCannotDerive'), duration: 4 })
       return
     }
     generation.dismissTask()
@@ -705,12 +711,12 @@ export default function FreeCanvas() {
     const source = selected ?? derivedContext?.source
     if (!derivedContext || !source) return
     if (derivedContext.mode === 'image-to-video' && (!videoConfiguration.imageReady || !selectedImageVideoReady || cloudProject)) {
-      message.warning(!videoConfiguration.imageReady ? `视频生成${capabilityAvailabilityLabel(videoConfiguration.imageState)}`
-        : !selectedImageVideoReady ? '原视频模型暂不可用，请手动选择其他模型后生成。' : '请先另存为本地副本，再生成视频')
+      message.warning(!videoConfiguration.imageReady ? t('stage.imageActions.videoUnavailable', { status: capabilityAvailabilityLabel(videoConfiguration.imageState) })
+        : !selectedImageVideoReady ? t('video.settings.modelUnavailableNotice') : t('generation.saveLocalCopyForVideo'))
       return
     }
     if (derivedContext.mode === 'variation' && (!variationEntryEnabled || (!mockGateway && estimatedCredits === undefined))) {
-      message.warning('请先确认登录与裂变模型配置')
+      message.warning(t('errors.checkVariationConfig'))
       return
     }
     try {
@@ -723,7 +729,7 @@ export default function FreeCanvas() {
         if (!placements?.length) return
         stageRef.current?.revealBounds([calculateNodeBounds(source.node), ...placements.map(boundsFromPlacement)])
       })
-    } catch (error) { message.error(error instanceof Error ? error.message : '生成参数无效') }
+    } catch (error) { message.error(error instanceof Error ? error.message : t('errors.invalidGenerationParams')) }
   }
 
   const handleCloseDerived = () => {
@@ -741,7 +747,7 @@ export default function FreeCanvas() {
   const deletableSelection = pendingPlaceholders.length === 0
   const duplicableSelection = deletableSelection && selectedNodes.some((node) => node.type === 'image' || node.type === 'video')
   const selectionBlockedReason = pendingPlaceholders.length
-    ? `含 ${pendingPlaceholders.length} 个生成中的占位框，完成或放弃后才能批量操作`
+    ? t('page.selectionBlockedReason', { count: pendingPlaceholders.length })
     : undefined
 
   const reloadModelConfiguration = () => {
@@ -756,13 +762,13 @@ export default function FreeCanvas() {
     notices.push({
       key: 'pending-submission',
       level: 'warning',
-      message: foreignSubmission ? '此任务属于其他账号' : '生成请求等待恢复',
+      message: foreignSubmission ? t('notices.foreignSubmissionTitle') : t('notices.pendingSubmissionTitle'),
       description: foreignSubmission
-        ? '当前账号无法续接此任务。放弃等待可清理本地占位，继续编辑画布。'
-        : '继续操作会使用原幂等键确认同一次请求，避免重复生成；放弃后将清理本地等待状态。',
+        ? t('notices.foreignSubmissionDesc')
+        : t('notices.pendingSubmissionDesc'),
       actions: [
-        ...(!foreignSubmission ? [{ key: 'resume', label: '继续原请求', onClick: () => { void generation.resumeSubmission() } }] : []),
-        { key: 'abandon', label: '放弃等待', onClick: generation.abandonSubmission },
+        ...(!foreignSubmission ? [{ key: 'resume', label: t('notices.resumeRequest'), onClick: () => { void generation.resumeSubmission() } }] : []),
+        { key: 'abandon', label: t('notices.abandonWait'), onClick: generation.abandonSubmission },
       ],
     })
   }
@@ -770,20 +776,20 @@ export default function FreeCanvas() {
     notices.push({
       key: 'poll-error',
       level: 'warning',
-      message: '原任务暂时无法查询',
+      message: t('notices.pollErrorTitle'),
       description: generation.pollError.message,
-      actions: [{ key: 'modify', label: '放弃占位并修改参数', onClick: generation.modifyParameters }],
+      actions: [{ key: 'modify', label: t('notices.abandonAndModify'), onClick: generation.modifyParameters }],
     })
   }
   if (images.error) {
     notices.push({
       key: 'images-error',
       level: 'warning',
-      message: '画布图片读取失败',
+      message: t('notices.imagesErrorTitle'),
       description: images.error,
       actions: [
-        { key: 'reload', label: '重新加载', onClick: images.reload },
-        { key: 'clean', label: '清理损坏图片', onClick: handleRemoveBrokenImages, danger: true },
+        { key: 'reload', label: t('notices.reload'), onClick: images.reload },
+        { key: 'clean', label: t('notices.cleanBrokenImages'), onClick: handleRemoveBrokenImages, danger: true },
       ],
     })
   }
@@ -791,35 +797,35 @@ export default function FreeCanvas() {
     notices.push({
       key: 'videos-error',
       level: 'warning',
-      message: '画布视频读取失败',
+      message: t('notices.videosErrorTitle'),
       description: videos.error,
-      actions: [{ key: 'reload', label: '重试读取视频', onClick: videos.reload }],
+      actions: [{ key: 'reload', label: t('notices.retryLoadVideos'), onClick: videos.reload }],
     })
   }
   if (configuration.error || textToImageConfiguration.error) {
     const detail = [
-      configuration.error ? `裂变：${configuration.error}` : '',
-      textToImageConfiguration.error ? `文生图：${textToImageConfiguration.error}` : '',
-    ].filter(Boolean).join('；')
+      configuration.error ? t('notices.variationErrorPrefix', { error: configuration.error }) : '',
+      textToImageConfiguration.error ? t('notices.textToImageErrorPrefix', { error: textToImageConfiguration.error }) : '',
+    ].filter(Boolean).join(t('common.semicolon'))
     notices.push({
       key: 'model-config',
       level: 'warning',
-      message: '模型配置读取失败',
+      message: t('notices.modelConfigTitle'),
       description: detail,
-      actions: [{ key: 'reload', label: '重新读取', onClick: reloadModelConfiguration }],
+      actions: [{ key: 'reload', label: t('notices.reloadModelConfig'), onClick: reloadModelConfiguration }],
     })
   }
   if (cloudProject && ((activeSlug === 'text-to-video' && videoConfiguration.ready) || (derivedContext?.mode === 'image-to-video' && videoConfiguration.imageReady))) {
     notices.push({
       key: 'cloud-video',
       level: 'info',
-      message: '视频画布暂时仅支持本地保存',
-      description: '另存为本地副本后即可生成视频，原云端项目继续保留。',
+      message: t('notices.cloudVideoTitle'),
+      description: t('notices.cloudVideoDesc'),
       actions: [{
         key: 'copy-local',
-        label: '另存为本地副本',
+        label: t('notices.saveLocalCopy'),
         disabled: generation.formLocked,
-        onClick: () => { void copyProjectLocally().catch(error => message.error(error instanceof Error ? error.message : '另存失败')) },
+        onClick: () => { void copyProjectLocally().catch(error => message.error(error instanceof Error ? error.message : t('errors.saveLocalCopyFailed'))) },
       }],
     })
   }
@@ -901,7 +907,7 @@ export default function FreeCanvas() {
   }, [])
 
   if (!project || !scene) {
-    return <div className="free-canvas-loading">正在准备自由画布…</div>
+    return <div className="free-canvas-loading">{t('page.loading')}</div>
   }
 
   return (
@@ -909,7 +915,7 @@ export default function FreeCanvas() {
       <CanvasTaskRecovery onTaskObserved={generation.observeRecoveredTask}/>
       <CloudToolbar disabled={actionsBlocked || cloudBusy || hasUnfinishedGeneration()} onUploadImage={() => fileInput.current?.click()} />
       {pickerOpen && <CanvasAssetPicker key={ownerId} ownerId={ownerId} busy={importing} onSelect={async (record) => { await importPicture(record) }} onClose={() => { if (!importing) setPickerOpen(false) }} />}
-      <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="上传图片到画布" onChange={event => {
+      <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label={t('page.uploadInputAria')} onChange={event => {
         const file = event.target.files?.[0]; event.target.value = ''
         if (file) void importPicture(file)
       }} />
@@ -919,7 +925,7 @@ export default function FreeCanvas() {
           // 能力不可用不再做成禁用页签（禁用态文字读不清，且点不进去看不到原因）：
           // 页签照常可切，落地后用 VideoAvailabilityNotice 说明原因并提供重试。
           options={[...CANVAS_MODES, ...(replicationPricing || replicationTab ? [VIDEO_REPLICATION_MODE] : [])]
-            .map((item) => ({ label: item.label, value: item.slug }))}
+            .map((item) => ({ label: canvasModeLabel(item.slug), value: item.slug }))}
           value={replicationTab ? VIDEO_REPLICATION_MODE.slug : activeSlug}
           onChange={(value) => {
             if (replicationTab && !generation.formLocked) generation.dismissTask()

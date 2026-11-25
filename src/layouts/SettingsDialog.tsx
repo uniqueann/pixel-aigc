@@ -1,21 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
-import { App, Button, Input, Menu, Modal, Segmented, Space, Switch } from 'antd'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { App, Button, Input, Menu, Modal, Segmented, Select, Space, Switch } from 'antd'
 import { DesktopOutlined, MoonOutlined, SunOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { cloudRequest } from '@/cloud/client'
 import ModelSettingsPanel from '@/features/model-settings/ModelSettingsPanel'
 import PersonalizationPanel from '@/features/preferences/PersonalizationPanel'
 import PreferencesSyncAlert from '@/features/preferences/PreferencesSyncAlert'
 import { usePreferencesStore } from '@/features/preferences/store'
+import { useLocaleStore } from '@/i18n/store'
+import type { Locale } from '@/i18n/types'
 import { useUserStore } from '@/store/useUserStore'
 import { useThemeStore, type ThemeMode } from '@/store/useThemeStore'
 import { saveWelcomeState } from '@/features/activation/client'
-
-const SETTINGS_ITEMS = [
-  { key: 'general', label: '通用' },
-  { key: 'personalization', label: '个性化' },
-  { key: 'data', label: '数据控制' },
-  { key: 'account', label: '账号' },
-]
 
 const SETTINGS_MODAL_WIDTH = 'min(760px, calc(100vw - 24px))'
 
@@ -32,12 +28,20 @@ export default function SettingsDialog({
   onClose: () => void
   onSectionChange: (section: string) => void
 }) {
+  const { t } = useTranslation('settings')
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const settingsItems = useMemo(() => [
+    { key: 'general', label: t('tabs.general') },
+    { key: 'personalization', label: t('tabs.personalization') },
+    { key: 'data', label: t('tabs.data') },
+    { key: 'account', label: t('tabs.account') },
+  ], [t])
 
   useEffect(() => {
     if (!open) return
     const selected = menuRef.current?.querySelector<HTMLElement>('.ant-menu-item-selected')
-    selected?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
+    selected?.scrollIntoView?.({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
   }, [open, section, narrow])
 
   return (
@@ -46,7 +50,7 @@ export default function SettingsDialog({
       onCancel={onClose}
       footer={null}
       width={SETTINGS_MODAL_WIDTH}
-      title="设置"
+      title={t('title')}
       centered
       className="settings-modal"
       wrapClassName="settings-modal-wrap"
@@ -59,7 +63,7 @@ export default function SettingsDialog({
           <Menu
             mode="inline"
             selectedKeys={[section]}
-            items={SETTINGS_ITEMS}
+            items={settingsItems}
             onClick={({ key }) => {
               onSectionChange(key)
               if (key === 'personalization') void usePreferencesStore.getState().refresh()
@@ -76,38 +80,68 @@ export default function SettingsDialog({
 }
 
 function SettingsContent({ section }: { section: string }) {
+  const { t } = useTranslation('settings')
   if (section === 'models' || section === 'personalization') return <><PersonalizationPanel /><ModelSettingsPanel /></>
   if (section === 'data') {
     return (
-      <SettingsPanel title="数据控制" description="管理项目数据与产品改进选项。">
+      <SettingsPanel title={t('data.title')} description={t('data.description')}>
         <UsageDataSetting />
       </SettingsPanel>
     )
   }
   if (section === 'account') return <AccountSettings />
   return (
-    <SettingsPanel title="通用" description="调整界面显示和常用体验。">
+    <SettingsPanel title={t('general.title')} description={t('general.description')}>
       <AppearanceSetting />
-      <SettingRow label="语言" detail="界面显示语言"><span>简体中文</span></SettingRow>
+      <LanguageSetting />
     </SettingsPanel>
   )
 }
 
+function LanguageSetting() {
+  const { t } = useTranslation('settings')
+  const locale = useLocaleStore(state => state.locale)
+  const setLocale = useLocaleStore(state => state.setLocale)
+  const [switching, setSwitching] = useState(false)
+
+  return (
+    <SettingRow label={t('general.languageLabel')} detail={t('general.languageDetail')}>
+      <Select<Locale>
+        aria-label={t('general.languageSelectAria')}
+        value={locale}
+        loading={switching}
+        disabled={switching}
+        style={{ minWidth: 132 }}
+        onChange={async val => {
+          setSwitching(true)
+          try { await setLocale(val) } finally { setSwitching(false) }
+        }}
+        options={[
+          { value: 'zh-CN', label: '简体中文' },
+          { value: 'en-US', label: 'English' },
+        ]}
+      />
+    </SettingRow>
+  )
+}
+
 function AppearanceSetting() {
+  const { t } = useTranslation('settings')
   const mode = useThemeStore(state => state.mode)
   const resolvedTheme = useThemeStore(state => state.resolvedTheme)
   const setMode = useThemeStore(state => state.setMode)
 
+  const resolvedLabel = resolvedTheme === 'dark' ? t('general.modes.dark') : t('general.modes.light')
   const detailText = mode === 'system'
-    ? `跟随系统设置（当前为${resolvedTheme === 'dark' ? '深色' : '浅色'}模式）`
+    ? t('general.appearanceSystemDetail', { mode: resolvedLabel })
     : mode === 'dark'
-      ? '始终使用深色外观'
-      : '始终使用浅色外观'
+      ? t('general.appearanceDarkDetail')
+      : t('general.appearanceLightDetail')
 
   return (
-    <SettingRow label="外观" detail={detailText}>
+    <SettingRow label={t('general.appearanceLabel')} detail={detailText}>
       <Segmented<ThemeMode>
-        aria-label="选择外观模式"
+        aria-label={t('general.appearanceAria')}
         value={mode}
         onChange={val => setMode(val)}
         options={[
@@ -116,7 +150,7 @@ function AppearanceSetting() {
             label: (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <SunOutlined />
-                <span>浅色</span>
+                <span>{t('general.modes.light')}</span>
               </span>
             ),
           },
@@ -125,7 +159,7 @@ function AppearanceSetting() {
             label: (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <MoonOutlined />
-                <span>深色</span>
+                <span>{t('general.modes.dark')}</span>
               </span>
             ),
           },
@@ -134,7 +168,7 @@ function AppearanceSetting() {
             label: (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <DesktopOutlined />
-                <span>跟随系统</span>
+                <span>{t('general.modes.system')}</span>
               </span>
             ),
           },
@@ -145,49 +179,51 @@ function AppearanceSetting() {
 }
 
 function UsageDataSetting() {
+  const { t } = useTranslation('settings')
   const account = useUserStore(state => state.account)
   const [saving, setSaving] = useState(false)
   const { message } = App.useApp()
-  return <SettingRow label="使用数据与产品改进" detail="仅统计功能使用频次以改进产品体验，绝不收集您的图片、邮件及提示词内容">
-    <Switch aria-label="允许记录使用事件" checked={account?.welcome?.analyticsEnabled ?? true}
+  return <SettingRow label={t('data.analyticsLabel')} detail={t('data.analyticsDetail')}>
+    <Switch aria-label={t('data.analyticsAria')} checked={account?.welcome?.analyticsEnabled ?? true}
       disabled={!account?.welcome || saving} loading={saving} onChange={async enabled => {
         if (!account) return
         setSaving(true)
         try { await saveWelcomeState(account.userId, { analyticsEnabled: enabled }) }
-        catch { message.error('使用数据设置保存失败，请重试') }
+        catch { message.error(t('data.analyticsSaveFailed')) }
         finally { setSaving(false) }
       }} />
   </SettingRow>
 }
 
 function AccountSettings() {
+  const { t } = useTranslation(['settings', 'common'])
   const account = useUserStore((state) => state.account)
   const [displayName, setDisplayName] = useState(account?.displayName ?? '')
   const [workspaceName, setWorkspaceName] = useState(account?.workspace.name ?? '')
   const [busy, setBusy] = useState(false)
   const { message } = App.useApp()
-  if (!account) return <SettingsPanel title="账号" description="当前为本地模式，未连接账号。" />
+  if (!account) return <SettingsPanel title={t('settings:account.title')} description={t('settings:account.localDescription')} />
   const save = async (path: string, body: unknown) => {
     setBusy(true)
     try {
       const next = await cloudRequest<import('@/store/useUserStore').AccountContext>(path, 'PATCH', body)
       useUserStore.getState().setAccount(next)
-      message.success('已保存')
-    } catch (error) { message.error(error instanceof Error ? error.message : '保存失败') }
+      message.success(t('common:actions.saved'))
+    } catch (error) { message.error(error instanceof Error ? error.message : t('settings:account.saveFailed')) }
     finally { setBusy(false) }
   }
   return (
-    <SettingsPanel title="账号" description="管理 Pixel AIGC 的个人资料与工作空间。">
-      <SettingRow label="昵称" detail="仅在 Pixel AIGC 显示">
-        <Space.Compact><Input maxLength={80} value={displayName} onChange={event => setDisplayName(event.target.value)} /><Button disabled={busy || !displayName.trim()} onClick={() => void save('/me', { displayName })}>保存</Button></Space.Compact>
+    <SettingsPanel title={t('settings:account.title')} description={t('settings:account.description')}>
+      <SettingRow label={t('settings:account.displayNameLabel')} detail={t('settings:account.displayNameDetail')}>
+        <Space.Compact><Input maxLength={80} value={displayName} onChange={event => setDisplayName(event.target.value)} /><Button disabled={busy || !displayName.trim()} onClick={() => void save('/me', { displayName })}>{t('common:actions.save')}</Button></Space.Compact>
       </SettingRow>
-      <SettingRow label="个人空间" detail="默认工作空间">
-        <Space.Compact><Input maxLength={80} value={workspaceName} onChange={event => setWorkspaceName(event.target.value)} /><Button disabled={busy || !workspaceName.trim()} onClick={() => void save(`/workspaces/${account.workspace.id}`, { name: workspaceName })}>保存</Button></Space.Compact>
+      <SettingRow label={t('settings:account.workspaceLabel')} detail={t('settings:account.workspaceDetail')}>
+        <Space.Compact><Input maxLength={80} value={workspaceName} onChange={event => setWorkspaceName(event.target.value)} /><Button disabled={busy || !workspaceName.trim()} onClick={() => void save(`/workspaces/${account.workspace.id}`, { name: workspaceName })}>{t('common:actions.save')}</Button></Space.Compact>
       </SettingRow>
-      <SettingRow label="邮箱" detail={account.emailVerified ? '已验证' : '未验证'}><span>{account.email}</span></SettingRow>
-      <SettingRow label="登录方式" detail="已绑定登录方式"><span>{account.providers.map(p => p === 'google' ? 'Google' : p === 'email' ? '邮箱密码' : p).join('、')}</span></SettingRow>
-      <SettingRow label="账号安全" detail="修改密码将同步影响关联的 ContentUp、EDM 服务登录">
-        {account.providers.includes('email') ? <Button onClick={() => window.location.assign('/forgot-password')}>重置密码</Button> : <span>请在 Google 账号中管理登录安全</span>}
+      <SettingRow label={t('settings:account.emailLabel')} detail={account.emailVerified ? t('settings:account.emailVerified') : t('settings:account.emailUnverified')}><span>{account.email}</span></SettingRow>
+      <SettingRow label={t('settings:account.providersLabel')} detail={t('settings:account.providersDetail')}><span>{account.providers.map(p => p === 'google' ? t('settings:account.providerNames.google') : p === 'email' ? t('settings:account.providerNames.email') : p).join(t('settings:account.providerSeparator'))}</span></SettingRow>
+      <SettingRow label={t('settings:account.securityLabel')} detail={t('settings:account.securityDetail')}>
+        {account.providers.includes('email') ? <Button onClick={() => window.location.assign('/forgot-password')}>{t('settings:account.resetPassword')}</Button> : <span>{t('settings:account.googleSecurityHint')}</span>}
       </SettingRow>
     </SettingsPanel>
   )

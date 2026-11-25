@@ -13,7 +13,7 @@ import { HttpError } from './errors.js'
  */
 export async function readRequestBody(req: VercelRequest, maxBytes: number) {
   if (req.rawBody !== undefined) {
-    if (Buffer.byteLength(req.rawBody) > maxBytes) throw new HttpError(413, '请求内容过大')
+    if (Buffer.byteLength(req.rawBody) > maxBytes) throw new HttpError(413, '请求内容过大', 'REQUEST_TOO_LARGE')
     if (req.body === undefined) req.body = req.rawBody || undefined
     return
   }
@@ -28,7 +28,7 @@ export async function readRequestBody(req: VercelRequest, maxBytes: number) {
     req.rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : req.body
     req.body = req.rawBody || undefined
   }
-  if (req.rawBody !== undefined && Buffer.byteLength(req.rawBody) > maxBytes) throw new HttpError(413, '请求内容过大')
+  if (req.rawBody !== undefined && Buffer.byteLength(req.rawBody) > maxBytes) throw new HttpError(413, '请求内容过大', 'REQUEST_TOO_LARGE')
 }
 
 function isReadableRequest(req: VercelRequest): req is VercelRequest & IncomingMessage {
@@ -51,7 +51,7 @@ function takeBuffered(req: IncomingMessage, maxBytes: number) {
     if (chunk == null) break
     const bytes = toBuffer(chunk)
     length += bytes.length
-    if (length > maxBytes) throw new HttpError(413, '请求内容过大')
+    if (length > maxBytes) throw new HttpError(413, '请求内容过大', 'REQUEST_TOO_LARGE')
     chunks.push(bytes)
   }
   return chunks
@@ -75,7 +75,7 @@ function readRemaining(req: IncomingMessage, maxBytes: number, already: number) 
       const bytes = toBuffer(chunk)
       length += bytes.length
       if (length > maxBytes) {
-        finish(new HttpError(413, '请求内容过大'))
+        finish(new HttpError(413, '请求内容过大', 'REQUEST_TOO_LARGE'))
         return
       }
       chunks.push(bytes)

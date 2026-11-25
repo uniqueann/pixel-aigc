@@ -1,9 +1,10 @@
+import { i18n } from '@/i18n'
 import type { WorkstationContext, WorkstationGenerationRequest } from '../../types'
 import { Capability, type OutpaintTaskParams } from '@/types'
 
 export function buildOutpaintRequest(context: WorkstationContext): WorkstationGenerationRequest {
   if (!context.maskUrl || !context.targetSize || !context.originOffset) {
-    throw new Error('扩图画布尚未准备好')
+    throw new Error(i18n.t('workstation:errors.outpaintCanvasNotReady'))
   }
   const params: OutpaintTaskParams = {
     sourceImageUrl: context.sourceAsset.url,

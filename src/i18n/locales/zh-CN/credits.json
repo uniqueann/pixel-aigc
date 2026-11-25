@@ -1,0 +1,228 @@
+{
+  "drawer": {
+    "title": "购买积分 · 余额 {{balance}}",
+    "availableBalance": "可用积分余额",
+    "unit": "分",
+    "viewLedger": "查看明细",
+    "rechargeNow": "立即充值",
+    "tabs": {
+      "ledger": "积分明细",
+      "recharge": "充值与套餐"
+    },
+    "filters": {
+      "all": "全部",
+      "expense": "消耗扣费",
+      "income": "充值赠送",
+      "refund": "失败退款"
+    },
+    "loading": "正在加载积分流水…",
+    "loadFailed": "积分明细加载失败",
+    "emptyAll": "还没有积分流水",
+    "emptyFiltered": "暂无该分类的明细记录",
+    "endOfList": "已经到底了",
+    "balanceAfter": "余额 {{balance}}",
+    "queryResult": "查询已有结果",
+    "queryPending": "仍在处理中，稍后可再次查询",
+    "queryRefunded": "已失败或超时，积分已退回",
+    "queryRecovered": "结果已找回，临时保留 7 天",
+    "queryFailed": "结果查询失败",
+    "recoveredTitle": "结果已找回",
+    "recoveredTip": "临时保留 7 天",
+    "resultPreviewAlt": "生成结果预览",
+    "openResultImage": "打开结果图片 ↗"
+  },
+  "ledger": {
+    "kinds": {
+      "grant": "赠送/充值",
+      "reserve": "提交预扣",
+      "settleRefund": "结算退回",
+      "settle": "结算",
+      "refund": "失败/超时退款",
+      "adjust": "管理员调整"
+    },
+    "freeBgRemove": {
+      "label": "免费抠图",
+      "refundedSummary": "免费额度已退回",
+      "usedSummary": "本月免费额度",
+      "deltaText": "免费"
+    },
+    "status": {
+      "reserved": "处理中 预扣",
+      "refunded": "失败/超时已退款",
+      "settledWithRefund": "实扣 {{charged}}, 已退回 {{refunded}}",
+      "settled": "实扣 {{charged}}"
+    },
+    "email": {
+      "title": "邮件{{operation}} · {{model}}",
+      "ops": {
+        "reply": "回复",
+        "summarize": "总结",
+        "polish": "润色",
+        "grammar": "语法修正",
+        "default": "处理"
+      },
+      "legacyModel": "历史模型"
+    },
+    "jobTitleWithSpec": "{{tool}} {{spec}}",
+    "videoTitle": "{{tool}}{{resolution}}{{duration}}",
+    "durationSeconds": "{{seconds}}秒",
+    "tools": {
+      "image-to-video": "图生视频",
+      "video-replication": "视频复刻",
+      "text-to-video": "文生视频",
+      "retouch": "精修",
+      "relight": "重新打光",
+      "fusion": "融合",
+      "variation": "裂变",
+      "smart-edit": "智能编辑"
+    }
+  },
+  "packs": {
+    "starter": "体验包",
+    "standard": "常用包",
+    "studio": "工作室包"
+  },
+  "syncTools": {
+    "erase": "消除",
+    "repaint": "重绘",
+    "outpaint": "扩图",
+    "bg-remove": "商品抠图"
+  },
+  "recharge": {
+    "signInFirst": "请先登录再购买积分",
+    "intro": "按需购买，永久有效。新用户注册即赠 30 积分。",
+    "loadingPacks": "正在加载充值套餐…",
+    "loadFailed": "充值信息加载失败",
+    "orderCheckFailed": "订单查询失败",
+    "checkoutPending": "支付链接尚未确认，请在充值订单中查询状态",
+    "orderCreateFailed": "充值订单创建失败",
+    "currencyLabel": "支付币种：{{currency}}",
+    "currencies": {
+      "USD": "美元（USD）",
+      "CNY": "人民币（CNY）"
+    },
+    "paymentMethodAria": "付款方式",
+    "paymentMethodLabel": "付款方式：{{provider}}",
+    "paymentsClosed": "充值尚未开放，当前可使用已有积分",
+    "paymentBlocked": "账户存在待核对的支付记录，请联系支持",
+    "refundPolicy": "现金退款仅支持未消费的充值积分，审核通过后原路退回；赠送积分不支持折现。生成失败系统秒级退积分。",
+    "ordersTitle": "充值订单",
+    "estimatedPrefix": "预计 ",
+    "orderLine": "{{prefix}}{{price}} · {{credits}} 分 · {{status}}",
+    "orderExpiredTag": "已超时",
+    "orderDiscountMeta": "原价 {{originalPrice}} · 折扣代码 {{code}}",
+    "checkOrder": "查询到账",
+    "continuePay": "继续支付",
+    "dismissOrder": "放弃",
+    "refundSubmitted": "退款申请已提交",
+    "requestRefund": "申请退款",
+    "hideDismissed": "收起已忽略订单 ▴",
+    "showDismissed": "已忽略 {{count}} 笔未完成订单 ▾",
+    "restoreOrder": "恢复显示",
+    "refundModalTitle": "申请现金退款",
+    "refundModalOk": "提交人工审核",
+    "refundModalNote": "申请提交后由人工核对未使用积分和可退金额，审核通过后原路退款。",
+    "refundModalFailed": "退款申请失败",
+    "refundReasonAria": "退款原因",
+    "refundReasonPlaceholder": "请填写退款原因",
+    "orderStatus": {
+      "pending": "等待支付确认",
+      "paid": "已到账",
+      "failed": "支付失败",
+      "refunded": "已退款",
+      "review": "待人工核对"
+    }
+  },
+  "discount": {
+    "formatError": "折扣代码仅支持 1–14 位字母或数字",
+    "formatInvalid": "折扣代码格式无效：仅支持 1-14 位大写字母或数字。",
+    "channelChanged": "付款方式已更换，请重新验证。",
+    "savings": "已享 {{percent}}% 优惠，实付金额以结算收银台为准。",
+    "enterCode": "请输入折扣代码。",
+    "catalogUpdated": "充值信息已更新，请重新验证折扣代码",
+    "notApplicable": "此折扣代码不适用于当前套餐",
+    "verifyUnavailable": "暂时无法验证这个折扣代码，请稍后重试。",
+    "verifyFirst": "请先点击验证。",
+    "purchaseFailed": "充值失败，请重新验证优惠",
+    "hasPromoPrompt": "有优惠码吗？",
+    "usePromo": "使用优惠码",
+    "promoAria": "折扣代码",
+    "promoPlaceholder": "折扣代码",
+    "verifyButton": "验证",
+    "packTitle": "{{name}} · {{credits}} 积分",
+    "estimatedPrice": "预计 {{price}}",
+    "discountPercent": "优惠 {{percent}}%",
+    "providerUnsupported": "此套餐暂不支持 {{provider}}",
+    "providerSwitchHint": "，可切换付款方式",
+    "buyOriginal": "按原价购买",
+    "buy": "购买"
+  },
+  "quotes": {
+    "loading": "报价加载中",
+    "unavailable": "报价暂不可用",
+    "mock": "模拟，不扣积分",
+    "estimatedFree": "预计免费",
+    "free": "免费",
+    "credits": "{{credits}} 积分",
+    "maxCredits": "最多 {{credits}} 积分",
+    "unavailableNotice": "报价暂不可用，请重新加载。",
+    "reloadQuote": "重新加载报价",
+    "settlementHint": "仅按成功张数扣费，失败自动退还积分。",
+    "reconfirmHint": "提交时会重新确认费用。",
+    "insufficientBalance": "积分不足（本次{{maxWord}}需 {{required}} 积分，当前可用 {{balance}} 积分）。",
+    "insufficientShort": "积分不足",
+    "maxWord": "最多",
+    "goRecharge": "去充值"
+  },
+  "spendGate": {
+    "title": "确认{{tool}}费用",
+    "ok": "确认并处理",
+    "outpaintRange": "扩图按实际轮次收取 5／10 积分，本次最多预扣 10 积分。",
+    "fixedAmount": "本次使用 {{required}} 积分。",
+    "balanceNote": "当前余额 {{balance}} 积分。成功后结算，失败或超时自动退回。"
+  },
+  "rulesNotice": {
+    "gift": "新账号赠送的 {{credits}} 积分已到账；",
+    "body": "{{gift}}生成时先预扣积分，只按成功张数结算，失败或超时自动退回。"
+  },
+  "explanation": {
+    "summary": "按功能扣分，{{tool}}本月还可免费 {{remaining}} 张",
+    "expand": "查看计费明细",
+    "collapse": "收起计费明细",
+    "monthYear": "{{year}}年{{month}}月",
+    "slash": "／",
+    "comma": "、",
+    "sentenceComma": "，",
+    "semicolon": "；",
+    "period": "。",
+    "colon": "：",
+    "groups": {
+      "generation": "生成类",
+      "edit": "编辑类",
+      "toolbox": "抠图与工具",
+      "refund": "预扣与退还"
+    },
+    "resolutionCredits": "{{resolutions}} 分别扣 {{credits}} 分",
+    "modelResolutionGroup": "{{labels}}：{{phrase}}",
+    "downgrade4k": "当前比例不支持 4K 时改为按 2K 生成，并按 2K 的 {{credits}} 分扣。",
+    "unitPerImage": "每张",
+    "unitPerRequest": "按次",
+    "generationLead": "{{names}}按输出分辨率{{unit}}计费，{{priceText}}。提交时按请求张数预扣，成功后只结算成功的张数，未成功的张数退回。{{downgrades}}",
+    "videoDurationPart": "{{duration}} 秒 {{credits}} 分",
+    "videoResolutionParts": "{{resolution}}：{{parts}}",
+    "videoItem": "{{modes}}（{{model}}）按条计费：{{prices}}。",
+    "videoAudioNote": "是否生成声音不改变价格，实际可用模型以页面开放状态为准。",
+    "editSamePrice": "{{erase}}、{{repaint}}每次 {{credits}} 分。",
+    "editDiffPrice": "{{erase}}每次 {{eraseCredits}} 分。{{repaint}}每次 {{repaintCredits}} 分。",
+    "outpaintItem": "{{outpaint}}按扩图范围计费：1 轮 {{onePass}} 分，{{maxPasses}} 轮 {{maxCredits}} 分。每边一轮最多扩到原图该边的 {{maxScale}} 倍；超出单轮范围时继续扩展，最多 {{maxPasses}} 轮。先按最高 {{maxCredits}} 分预扣，实际轮次更少时自动退回差额。",
+    "mattingCombinedName": "{{billed}}（工具箱里的{{toolbox}}）",
+    "mattingWhenMonth": "{{month}}还可免费 {{remaining}} 张",
+    "mattingWhenCurrent": "本月还可免费 {{remaining}} 张",
+    "mattingItem": "{{name}}每月免费 {{monthlyFree}} 张（每月 1 日刷新）。{{when}}。正在处理的免费请求占用额度，失败或超时自动释放。超出免费额度后每张 {{price}} 分。",
+    "emailModelCredit": "{{model}} 每次成功 {{credits}} 积分",
+    "freeToolsItem": "{{subject}}、{{smartSelect}}不单独扣分。{{letterbox}}、{{watermark}}和{{localTemplate}}在本机处理，不扣积分。{{crop}}（含{{pipeline}}里的裁剪）在本机渲染，不扣积分，但主体识别可能上传缩略图。转比例里的{{outpaintStrategy}}会上传图片生成背景，按{{outpaint}}计费。{{email}}使用平台模型：{{emailModels}}，失败返还。",
+    "refundImage": "图片任务失败或超时会退回预扣积分；成功后只结算成功张数的费用。超时未完成的任务不再计入扣费。",
+    "refundVideo": "视频任务失败或超时会退回预扣积分。超时未完成的任务不再计入扣费。",
+    "refundSync": "{{tools}}失败或超时会退回已扣积分；超时后的任务需重新提交。免费的{{bgRemove}}失败或超时会释放本月占用的免费额度。"
+  }
+}

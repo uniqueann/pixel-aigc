@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useEditorStore } from '@/editor/store'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import { i18n } from '@/i18n'
 import { readOwnedVideoUrl } from '@/services/api/ownedVideos'
 import { useUserStore } from '@/store/useUserStore'
 import type { Asset, Scene } from '@/editor/types'
@@ -31,9 +32,9 @@ export function useCanvasVideos(assets: Record<string, Asset>, scene?: Scene) {
         const errors: string[] = []
         results.forEach(result => {
           if (result.status === 'fulfilled') urls[result.value.id] = result.value
-          else errors.push(result.reason instanceof Error ? result.reason.message : '视频读取失败')
+          else errors.push(result.reason instanceof Error ? result.reason.message : i18n.t('canvas:media.videoReadFailed'))
         })
-        setState({ scope, checkedAt: Date.now(), urls, error: errors.length ? [...new Set(errors)].join('；') : undefined })
+        setState({ scope, checkedAt: Date.now(), urls, error: errors.length ? [...new Set(errors)].join(i18n.t('canvas:common.semicolon')) : undefined })
         if (Object.keys(urls).length) {
           const next = Math.min(...Object.values(urls).map(signed => signed.expiresAt ?? Infinity),
             ...references.map(reference => reference.retentionExpiresAt ? new Date(reference.retentionExpiresAt).getTime() : Infinity))

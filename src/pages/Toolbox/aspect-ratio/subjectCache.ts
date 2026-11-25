@@ -1,5 +1,7 @@
+import { i18n } from '@/i18n'
 import type { BatchImage, SubjectDetection } from './types'
 import { detectImageSubject } from './subjectClient'
+import { SUBJECT_DETECTION_LABEL } from './subjectLabels'
 import { checkDetectionSignal } from '@/services/api/detectionTiming'
 
 type Image = Pick<BatchImage, 'file' | 'width' | 'height'>
@@ -16,7 +18,7 @@ export const SUBJECT_CACHE_MS = 30 * 60_000
 export const SUBJECT_EMPTY_CACHE_MS = 5 * 60_000
 const CACHE_LIMIT = 20
 const DETECTION_VERSION = 1
-const cancelled = () => new DOMException('检测已取消', 'AbortError')
+const cancelled = () => new DOMException(i18n.t('toolbox:errors.detectionCancelled'), 'AbortError')
 const copy = (value: SubjectDetection): SubjectDetection => ({ box: value.box ? { ...value.box } : null })
 
 /** 当前页面只保留主体框；File 身份使用弱引用，不缓存图片副本。 */
@@ -48,7 +50,7 @@ export class SubjectDetectionCache {
     if (entry?.value && Date.now() >= entry.expiresAt!) { this.entries.delete(key); entry = undefined }
     if (entry?.value) {
       this.entries.delete(key); this.entries.set(key, entry)
-      console.debug('[主体检测]', { source: 'cache', outcome: 'success', requestCount: 0, requestBytes: 0, elapsedMs: Math.round(performance.now() - started) })
+      console.debug(`[${SUBJECT_DETECTION_LABEL}]`, { source: 'cache', outcome: 'success', requestCount: 0, requestBytes: 0, elapsedMs: Math.round(performance.now() - started) })
       return Promise.resolve(copy(entry.value))
     }
     const merged = !!entry
@@ -83,7 +85,7 @@ export class SubjectDetectionCache {
       const finish = (error?: unknown, value?: SubjectDetection) => {
         if (finished) return
         finished = true
-        if (merged || error) console.debug('[主体检测]', { source: merged ? 'inflight' : 'preparation', outcome: error ? (current.controller.signal.aborted || options.signal?.aborted ? 'cancelled' : 'failed') : 'success', requestCount: 0, requestBytes: 0, elapsedMs: Math.round(performance.now() - started) })
+        if (merged || error) console.debug(`[${SUBJECT_DETECTION_LABEL}]`, { source: merged ? 'inflight' : 'preparation', outcome: error ? (current.controller.signal.aborted || options.signal?.aborted ? 'cancelled' : 'failed') : 'success', requestCount: 0, requestBytes: 0, elapsedMs: Math.round(performance.now() - started) })
         options.signal?.removeEventListener('abort', abort)
         current.controller.signal.removeEventListener('abort', invalidate)
         current.users--

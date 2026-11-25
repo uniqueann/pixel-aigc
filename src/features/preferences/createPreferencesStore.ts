@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { i18n } from '@/i18n'
 import {
   applyPreferencesPatch, COUNT_TOOLS, defaultPreferences, normalizePreferences, preferencesPatchSchema,
   type CountTool, type ImageMemory, type ImageMemoryTool, type PersonalizationPreferences, type PreferencesPatch, type PreferencesResponse,
@@ -59,7 +60,7 @@ export function createPreferencesStore(dependencies: Dependencies) {
     const localSaved = () => {
       pending = []; resetPending = false
       const saved = cache()
-      set({ status: saved ? 'local' : 'error', error: saved ? null : '当前浏览器无法保存偏好，刷新后可能丢失，请检查浏览器存储设置' })
+      set({ status: saved ? 'local' : 'error', error: saved ? null : i18n.t('settings:personalization.syncErrors.browserStorageUnavailable') })
     }
     const pull = async (expectedEpoch: number) => {
       const expectedRevision = revision
@@ -108,7 +109,7 @@ export function createPreferencesStore(dependencies: Dependencies) {
             if (expectedEpoch !== epoch) return
             if (!useRemote) localSaved()
           } catch (error) {
-            if (expectedEpoch === epoch) set({ status: 'error', error: `读取个性化设置失败，已使用本机偏好：${preferenceUserMessage(error)}` })
+            if (expectedEpoch === epoch) set({ status: 'error', error: i18n.t('settings:personalization.syncErrors.loadFailed', { reason: preferenceUserMessage(error) }) })
           } finally {
             if (expectedEpoch === epoch) {
               set({ ready: true })
@@ -212,7 +213,7 @@ export function createPreferencesStore(dependencies: Dependencies) {
             if (!resetPending) pending = [...flight, ...pending]
             resetPending = resetPending || flightReset
             flight = []; flightReset = false
-            set({ status: 'error', error: `个性化设置尚未同步：${preferenceUserMessage(error)}` }); cache()
+            set({ status: 'error', error: i18n.t('settings:personalization.syncErrors.notSynced', { reason: preferenceUserMessage(error) }) }); cache()
           } finally { if (expectedEpoch === epoch) running = undefined }
         })()
         return running
@@ -223,7 +224,7 @@ export function createPreferencesStore(dependencies: Dependencies) {
         if (pending.length || resetPending || running) return
         const expectedEpoch = epoch
         try { await pull(expectedEpoch) }
-        catch (error) { if (expectedEpoch === epoch) set({ status: 'error', error: `刷新个性化设置失败：${preferenceUserMessage(error)}` }) }
+        catch (error) { if (expectedEpoch === epoch) set({ status: 'error', error: i18n.t('settings:personalization.syncErrors.refreshFailed', { reason: preferenceUserMessage(error) }) }) }
       },
       async retry() {
         if (!remote) { localSaved(); return }

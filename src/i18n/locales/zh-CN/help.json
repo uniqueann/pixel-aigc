@@ -1,0 +1,20 @@
+{
+  "groups": {
+    "quickstart": "快速上手",
+    "guides": "使用指南",
+    "billing": "费用与账号",
+    "more": "更多"
+  },
+  "articles": {
+    "quickstart": "快速上手",
+    "credits": "积分与计费说明",
+    "ecommerce-suite": "电商套图使用指南",
+    "bg-remove": "智能抠图使用指南",
+    "workstation": "图片工作站总览",
+    "toolbox": "工具箱使用指南",
+    "canvas": "自由画布使用指南",
+    "email-assistant": "邮件助手与积分计费",
+    "faq": "常见问题",
+    "contact": "联系支持"
+  }
+}

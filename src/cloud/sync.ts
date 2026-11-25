@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { i18n } from '@/i18n'
 import { projectWriteSchema, type CloudProject, type ProjectWrite } from '../../shared/cloud'
 import { authEnabled, cloudEnabled, CloudError, cloudRequest } from './client'
 import { accessAssets, assetPlaceholder, hydrateAssets, uploadCloudImage } from './assets'
@@ -11,13 +12,17 @@ import { persistenceScope, readSavedProjectSnapshot, saveConflictSnapshot } from
 import { useUserStore } from '@/store/useUserStore'
 import type { ProjectSnapshot } from '@/editor/persistence/types'
 
-export const useCloudStore = create<{ busy: boolean; interacting: boolean; error?: string; status: string }>(() => ({ interacting: false, busy: false, status: '尚未同步' }))
+export const useCloudStore = create<{ busy: boolean; interacting: boolean; error?: string; status: string }>(() => ({
+  interacting: false,
+  busy: false,
+  status: i18n.t('auth:cloudSync.notSynced'),
+}))
 let running: Promise<void> | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 function inputOf(snapshot: ProjectSnapshot): ProjectWrite {
   const drafts = { ...snapshot.drafts }
   delete drafts.videoReplication
-  return projectWriteSchema.parse({ name: snapshot.project.name.trim() || '未命名画布', document: snapshot.project.document, drafts, schemaVersion: 1 })
+  return projectWriteSchema.parse({ name: snapshot.project.name.trim() || i18n.t('nav:projectHeader.untitledCanvas'), document: snapshot.project.document, drafts, schemaVersion: 1 })
 }
 const fingerprint = (snapshot: ProjectSnapshot) => JSON.stringify(inputOf(snapshot))
 export interface OpenProjectOptions { expectedUserId?: string; signal?: AbortSignal; onCommitStart?: () => void }
@@ -29,16 +34,16 @@ async function openProject(id: string, source: 'local' | 'cloud', options?: Open
     options?.signal?.throwIfAborted()
     const projectOwner = usePersistenceStore.getState().ownerId
     if (persistenceScope() !== ownerId || (projectOwner !== undefined && projectOwner !== ownerId)
-      || (authEnabled && useUserStore.getState().userId !== ownerId)) throw new Error('账号已切换，已取消项目打开')
+      || (authEnabled && useUserStore.getState().userId !== ownerId)) throw new Error(i18n.t('auth:cloudSync.accountSwitchedOpen'))
   }
   const current = () => useEditorStore.getState().project ? JSON.stringify(persistableSnapshot(currentSnapshot())) : undefined
   check()
-  if (useCloudStore.getState().busy) throw new Error('请等待当前同步完成')
-  if (!usePersistenceStore.getState().writable) throw new Error('请先取得项目编辑权')
+  if (useCloudStore.getState().busy) throw new Error(i18n.t('auth:cloudSync.waitForSync'))
+  if (!usePersistenceStore.getState().writable) throw new Error(i18n.t('auth:cloudSync.needEditAccess'))
   useCloudStore.setState({ busy: true })
   clearTimeout(timer)
   try {
-    if (hasUnfinishedGeneration()) throw new Error('请先处理未完成的任务')
+    if (hasUnfinishedGeneration()) throw new Error(i18n.t('auth:cloudSync.unfinishedTasks'))
     await flushProject()
     check()
     const before = current()
@@ -47,13 +52,13 @@ async function openProject(id: string, source: 'local' | 'cloud', options?: Open
     if (source === 'local') {
       const raw = await readSavedProjectSnapshot(id, ownerId)
       check()
-      if (!raw) throw new Error('本机存档不存在，请返回首页重新选择')
+      if (!raw) throw new Error(i18n.t('auth:cloudSync.localSnapshotMissing'))
       snapshot = parseSnapshot(raw)
-      if (snapshot.project.id !== id) throw new Error('本机存档与项目编号不一致')
+      if (snapshot.project.id !== id) throw new Error(i18n.t('auth:cloudSync.localSnapshotMismatch'))
     } else {
       const remote = await cloudRequest<CloudProject>(`/projects/${encodeURIComponent(id)}`, 'GET', undefined, requestOptions)
       check()
-      if (remote.id !== id) throw new Error('云端项目与项目编号不一致')
+      if (remote.id !== id) throw new Error(i18n.t('auth:cloudSync.cloudProjectMismatch'))
       snapshot = {
         schemaVersion: 1, cloud: { revision: remote.revision, pending: false }, drafts: remote.drafts, recoveries: {},
         project: { id: remote.id, name: remote.name, document: remote.document, createdAt: remote.createdAt, updatedAt: remote.updatedAt, generations: {},
@@ -62,10 +67,10 @@ async function openProject(id: string, source: 'local' | 'cloud', options?: Open
     }
     const hydrated = await hydrateAssets(snapshot, requestOptions)
     check()
-    if (current() !== before) throw new Error('读取期间本地内容发生变化，请先保存后重新打开')
+    if (current() !== before) throw new Error(i18n.t('auth:cloudSync.changedDuringLoad'))
     options?.onCommitStart?.()
     await replaceSnapshot(hydrated, { signal: options?.signal, expectedScope: ownerId })
-    useCloudStore.setState({ error: undefined, status: source === 'cloud' ? '云端已保存' : '已恢复本机存档' })
+    useCloudStore.setState({ error: undefined, status: source === 'cloud' ? i18n.t('auth:cloudSync.cloudSaved') : i18n.t('auth:cloudSync.localRestored') })
   } finally { useCloudStore.setState({ busy: false }) }
 }
 export const openCloudProject = (id: string, options?: OpenProjectOptions) => openProject(id, 'cloud', options)
@@ -80,8 +85,8 @@ async function createRemote(snapshot: ProjectSnapshot) {
 }
 async function syncOnce() {
   if (!cloudEnabled || !useEditorStore.getState().project) return
-  if (usePersistenceStore.getState().cloud?.conflict) throw new Error('请先处理云端版本冲突')
-  if (hasUnfinishedGeneration()) throw new Error('请先处理本地未完成任务')
+  if (usePersistenceStore.getState().cloud?.conflict) throw new Error(i18n.t('auth:cloudSync.resolveConflictFirst'))
+  if (hasUnfinishedGeneration()) throw new Error(i18n.t('auth:cloudSync.finishLocalTasksFirst'))
   const snapshot = currentSnapshot(), id = snapshot.project.id
   let revision = snapshot.cloud?.revision
   if (!revision) {
@@ -95,14 +100,14 @@ async function syncOnce() {
   for (const asset of Object.values(snapshot.project.assets)) {
     if (!referenced.has(asset.id)) continue
     if (asset.storage?.projectId === id) continue
-    if (asset.type !== 'image') throw new Error(`「${asset.name}」暂不支持云端迁移，请保留本地备份`)
+    if (asset.type !== 'image') throw new Error(i18n.t('auth:cloudSync.assetNotSupportedCloud', { name: asset.name }))
     try {
       const sourceUrl = asset.storage ? (await accessAssets(asset.storage.projectId, [asset.id]))[0].url : asset.url
       const blob = asset.objectKey
         ? await blobFromImageSource(sourceUrl, asset.objectKey)
         : await (async () => {
           const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(30000) })
-          if (!response.ok) throw new Error('读取失败')
+          if (!response.ok) throw new Error(i18n.t('auth:cloudSync.readFailed'))
           return response.blob()
         })()
       const file = new File([blob], asset.name, { type: blob.type || asset.mimeType })
@@ -111,13 +116,16 @@ async function syncOnce() {
       const updated = { ...asset, ...uploaded, url: access.url, accessExpiresAt: access.expiresAt, missing: false,
         source: asset.source,
         storage: { provider: 'r2' as const, objectKey: uploaded.objectKey, projectId: id } }
-      if (useEditorStore.getState().project?.id !== id) throw new Error('项目已切换')
+      if (useEditorStore.getState().project?.id !== id) throw new Error(i18n.t('auth:cloudSync.projectSwitched'))
       useEditorStore.getState().registerAsset(updated)
       await flushProject()
     } catch (error) {
       const live = useEditorStore.getState().project?.assets[asset.id]
       if (live && !live.storage) useEditorStore.getState().registerAsset({ ...live, missing: true })
-      const failure = new Error(`「${asset.name}」上传失败，可重试或重新选择文件：${error instanceof Error ? error.message : '素材不可用'}`)
+      const failure = new Error(i18n.t('auth:cloudSync.uploadFailed', {
+        name: asset.name,
+        reason: error instanceof Error ? error.message : i18n.t('auth:cloudSync.assetUnavailable'),
+      }))
       Object.defineProperty(failure, 'cause', { value: error })
       throw failure
     }
@@ -126,41 +134,44 @@ async function syncOnce() {
   const current = currentSnapshot()
   const input = inputOf(current)
   if (input.document.scenes.some(scene => scene.nodes.some(node => node.type === 'generation')))
-    throw new Error('请先处理生成任务占位，再同步项目')
+    throw new Error(i18n.t('auth:cloudSync.finishLocalTasksFirst'))
   const sentFingerprint = fingerprint(current)
   try {
     const response = await cloudRequest<{ revision: number }>(`/projects/${encodeURIComponent(id)}`, 'PUT', { ...input, baseRevision: revision })
     usePersistenceStore.setState({ cloud: { revision: response.revision, pending: fingerprint(currentSnapshot()) !== sentFingerprint } })
-    useCloudStore.setState({ error: undefined, status: '云端已保存' })
+    useCloudStore.setState({ error: undefined, status: i18n.t('auth:cloudSync.cloudSaved') })
     await flushProject()
   } catch (error) {
     if (error instanceof CloudError && error.status === 409) {
       await saveConflictSnapshot(persistableSnapshot(currentSnapshot()))
       usePersistenceStore.setState({ cloud: { revision, pending: true, conflict: true } })
       await flushProject()
-      useCloudStore.setState({ status: '版本冲突' })
+      useCloudStore.setState({ status: i18n.t('auth:cloudToolbar.conflict') })
     }
     throw error
   }
 }
 export function syncProject(): Promise<void> {
   if (running) return running
-  if (useCloudStore.getState().busy) return Promise.reject(new Error('请等待项目读取完成'))
+  if (useCloudStore.getState().busy) return Promise.reject(new Error(i18n.t('auth:cloudSync.waitForSync')))
   clearTimeout(timer)
-  useCloudStore.setState({ busy: true, status: '云端同步中…', error: undefined })
+  useCloudStore.setState({ busy: true, status: i18n.t('auth:cloudSync.syncing'), error: undefined })
   running = syncOnce().catch(error => {
-    useCloudStore.setState({ error: error instanceof Error ? error.message : '云端同步失败', status: usePersistenceStore.getState().cloud?.conflict ? '版本冲突' : '云端未保存' })
+    useCloudStore.setState({
+      error: error instanceof Error ? error.message : i18n.t('auth:cloudSync.syncFailed'),
+      status: usePersistenceStore.getState().cloud?.conflict ? i18n.t('auth:cloudToolbar.conflict') : i18n.t('auth:cloudSync.notSynced'),
+    })
     throw error
   }).finally(() => { running = undefined; useCloudStore.setState({ busy: false }) })
   return running
 }
 export async function forkLocalProject() {
-  if (useCloudStore.getState().busy) throw new Error('请等待同步完成')
+  if (useCloudStore.getState().busy) throw new Error(i18n.t('auth:cloudSync.waitForSync'))
   const original = currentSnapshot()
   await saveConflictSnapshot(persistableSnapshot(original))
   const copy = await hydrateAssets(original)
   copy.project.id = crypto.randomUUID()
-  copy.project.name = `${copy.project.name.slice(0,80)}（副本）`
+  copy.project.name = `${copy.project.name.slice(0, 80)}${i18n.t('common:actions.copySuffix')}`
   copy.cloud = undefined
   // 源项目私有素材通过当前用户的短期地址复制到新项目，不跨项目共享对象。
   copy.recoveries = Object.fromEntries(Object.entries(copy.recoveries).map(([key, record]) => [key, { ...record, projectId: copy.project.id }]))

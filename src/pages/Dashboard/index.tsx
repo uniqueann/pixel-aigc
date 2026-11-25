@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useUserStore } from '@/store/useUserStore'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import ContinueWork from '@/features/dashboard/ContinueWork'
@@ -16,9 +17,10 @@ function DashboardForOwner({ ownerId }: { ownerId: string }) {
 }
 
 export default function Dashboard() {
+  const { t } = useTranslation('common')
   useUserStore(state => state.userId)
   let ownerId: string
   try { ownerId = currentWorkstationHistoryOwner() }
-  catch { return <p role="status">正在准备账号…</p> }
+  catch { return <p role="status">{t('status.preparingAccount')}</p> }
   return <DashboardForOwner key={ownerId} ownerId={ownerId} />
 }

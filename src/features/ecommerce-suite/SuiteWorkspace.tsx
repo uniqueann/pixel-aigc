@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, App, Button, Dropdown, Modal, Select, Spin, Tabs, Tag } from 'antd'
 import { ArrowLeftOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { SuiteActor, SuiteBridge } from '@shared/ecommerce-suite'
 import { suiteMainLocked } from '@shared/ecommerce-suite-annotations'
@@ -10,6 +11,7 @@ import type { SuiteClient } from './api'
 import { listArchivedSuiteDrafts, saveSuiteBlob } from './backup'
 import { copySuite } from './copy'
 import { suiteFilename } from './config'
+import { formatSuiteError, suitePlatformLabel, suiteSlotLabel, suiteWorkstationToolLabel } from './i18n'
 import { useSuiteWorkspace } from './useSuiteWorkspace'
 import SuiteImage from './SuiteImage'
 import GenerationPanel from './GenerationPanel'
@@ -26,6 +28,7 @@ import { encodeSuiteImage } from './render'
 import ExportPanel from './ExportPanel'
 
 export default function SuiteWorkspace({ id, actor, client, signal }: { id: string; actor: SuiteActor; client: SuiteClient; signal: AbortSignal }) {
+  const { t } = useTranslation(['ecommerce', 'common'])
   const [params, setParams] = useSearchParams()
   const requestedBatch = params.get('batch')
   const focusedBatchId = requestedBatch && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedBatch) ? requestedBatch : undefined
@@ -43,13 +46,13 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
   const [bridgeMode, setBridgeMode] = useState<'base' | 'composite'>('base')
   const [original, setOriginal] = useState(false)
   const [actionError, setActionError] = useState('')
-  const reportError = useCallback((error: unknown) => { if (!signal.aborted) setActionError(error instanceof Error ? error.message : '操作失败') }, [signal])
+  const reportError = useCallback((error: unknown) => { if (!signal.aborted) setActionError(formatSuiteError(error, 'ecommerce:errors.actionFailed')) }, [signal])
   const { previewRef, footerRef, sticky } = useStickyPreview(Boolean(workspace.detail))
   const data = workspace.detail, config = workspace.editor.config
   const slotEditor = useSuiteSlotEditor(data, client, signal, workspace.offline)
   const draftStates = [...slotEditor.records.values()]
-  const saveLabel = draftStates.some(record => record.error) ? '部分槽位草稿未同步，本机副本已保留'
-    : draftStates.some(record => record.dirty) ? '槽位草稿待同步' : workspace.saveState
+  const saveLabel = draftStates.some(record => record.error) ? t('ecommerce:workspace.saveStates.slotDraftsError')
+    : draftStates.some(record => record.dirty) ? t('ecommerce:workspace.saveStates.slotDraftsDirty') : workspace.saveState
   const selectedId = workspace.editor.selectedSlotId
   const slot = config?.slots.find(slot => slot.id === selectedId) ?? config?.slots[0]
   const head = data?.project.slotHeads.find(head => head.slotId === slot?.id)
@@ -70,7 +73,8 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
   useEffect(() => {
     if (focusedBatchId && focusedBatchPresent) document.getElementById(`batch-${focusedBatchId}`)?.scrollIntoView({ block: 'nearest' })
   }, [focusedBatchId, focusedBatchPresent])
-  if (!data || !config || !slot) return <div className="suite-loading">{workspace.error ? <Alert type="error" message={workspace.error} action={<Button onClick={() => { void workspace.load().catch(reportError) }}>重试读取</Button>} /> : <div><Spin /><p role="status">正在恢复项目与原任务身份</p></div>}</div>
+  if (!data || !config || !slot) return <div className="suite-loading">{workspace.error ? <Alert type="error" message={workspace.error} action={<Button onClick={() => { void workspace.load().catch(reportError) }}>{t('common:actions.retryLoad')}</Button>} /> : <div><Spin /><p role="status">{t('ecommerce:workspace.loadingStatus')}</p></div>}</div>
+  const slotDisplayName = suiteSlotLabel(slot)
   const selectSlot = (slotId: string) => {
     workspace.store.getState().selectSlot(slotId)
     const next = new URLSearchParams(params); next.set('slot', slotId); setParams(next, { replace: true })
@@ -80,7 +84,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
     await workspace.flush()
     const reserved = base && !data.assets.some(asset => asset.assetId === config.baseAssetId)
     const uploaded = await uploadSuiteAsset(client, data.project.id, reserved ? config.baseAssetId : crypto.randomUUID(),
-      blob, base ? '商品主体图' : '槽位参考图', reserved)
+      blob, base ? t('ecommerce:upload.baseAssetName') : t('ecommerce:upload.referenceAssetName'), reserved)
     await saveSuiteBlob(actor, data.project.id, uploaded.assetId, blob).catch(() => undefined)
     const current = workspace.store.getState().config!
     workspace.edit(base ? { ...current, baseAssetId: uploaded.assetId } : { ...current, slots: current.slots.map(item => item.id === slot.id ? { ...item, referenceAssetIds: [uploaded.assetId] } : item) })
@@ -89,7 +93,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
   const flushEditing = async () => { await workspace.flush(); await slotEditor.flushAll() }
   const saveComposition = async () => {
     await flushEditing()
-    if (staleDraft) throw new Error('来源版本已改变，请先处理保留的图层草稿')
+    if (staleDraft) throw new Error(t('ecommerce:workspace.errors.staleDraftConflict'))
     const saved = await slotEditor.saveVersion(slot.id)
     await workspace.load()
     return saved
@@ -101,7 +105,7 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       if (current) await slotEditor.saveVersion(id)
     }
     const saved = await workspace.load()
-    if (!saved) throw new Error('项目已变化，请重新读取后导出')
+    if (!saved) throw new Error(t('ecommerce:workspace.errors.projectChangedBeforeExport'))
     return saved
   }
   const openBridge = async () => {
@@ -112,15 +116,15 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
     if (bridgeMode === 'composite') {
       const source = current.assets.find(item => item.assetId === saved.assetId)!
       const blob = await encodeSuiteImage(await backupAssetBlob(actor, source, signal), saved.composition, 'png', mainLocked ? '#ffffff' : undefined)
-      compositeAssetId = (await client.upload(id, crypto.randomUUID(), blob, '已确认烘焙图层的工作站输入')).assetId
+      compositeAssetId = (await client.upload(id, crypto.randomUUID(), blob, t('ecommerce:bridge.compositeAssetName'))).assetId
     }
     const bridge = await client.createBridge(id, { slotId: slot.id, sourceVersionId: saved.id, expectedHeadRevision: head.headRevision,
       tool: bridgeTool, inputMode: bridgeMode, ...(compositeAssetId ? { compositeAssetId } : {}) })
     client.assertCurrent(); navigate(`/image-workstation/${bridge.tool}?bridgeId=${bridge.id}`)
   }
   const backupMenuItems = [
-      { key: 'backup', label: '更新本地数据备份', onClick: () => { void workspace.run(async () => { await flushEditing(); return workspace.completeBackup() }).then(() => message.success('历史版本与图片已完整备份')).catch(reportError) } },
-      { key: 'export', label: '导出项目恢复包 (ZIP)', onClick: () => { void workspace.run(async () => { await flushEditing(); const zip = await exportSuiteRecovery(client, id, actor, signal); downloadBlob(zip, `${suiteFilename(config.title, '恢复包', 1, { width: 1, height: 1 }, 'image/png').replace(/\.png$/, '')}.zip`) }).catch(reportError) } },
+      { key: 'backup', label: t('ecommerce:workspace.backupMenu.updateLocal'), onClick: () => { void workspace.run(async () => { await flushEditing(); return workspace.completeBackup() }).then(() => message.success(t('ecommerce:workspace.backupMenu.backupSuccess'))).catch(reportError) } },
+      { key: 'export', label: t('ecommerce:workspace.backupMenu.exportRecovery'), onClick: () => { void workspace.run(async () => { await flushEditing(); const zip = await exportSuiteRecovery(client, id, actor, signal); downloadBlob(zip, `${suiteFilename(config.title, t('ecommerce:backup.recoveryFilenameSuffix'), 1, { width: 1, height: 1 }, 'image/png').replace(/\.png$/, '')}.zip`) }).catch(reportError) } },
     ]
     return <div className="suite-workspace">
       <div className="suite-page-heading">
@@ -129,51 +133,51 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
             type="text"
             icon={<ArrowLeftOutlined />}
             className="suite-back-btn"
-            title="返回项目列表"
-            aria-label="返回项目列表"
+            title={t('ecommerce:list.backToList')}
+            aria-label={t('ecommerce:list.backToList')}
             onClick={() => { void workspace.run(async () => { await flushEditing(); navigate('/ecommerce') }).catch(reportError) }}
           >
-            返回
+            {t('ecommerce:workspace.backShort')}
           </Button>
           <span className="suite-heading-divider" aria-hidden="true" />
           <h2 className="suite-project-title" title={config.title}>{config.title}</h2>
-          <Tag className="suite-platform-tag">{config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'}</Tag>
+          <Tag className="suite-platform-tag">{suitePlatformLabel(config.platform)}</Tag>
           <span className="suite-heading-status" title={saveLabel}>{saveLabel}</span>
         </div>
-        <div className="suite-actions"><Button type="primary" disabled={blocked || active} onClick={() => { setRetrySelection(undefined); setPlanOpen(true) }}>整套批量生成</Button><Button onClick={() => setProductOpen(true)}>商品信息与规格</Button>
+        <div className="suite-actions"><Button type="primary" disabled={blocked || active} onClick={() => { setRetrySelection(undefined); setPlanOpen(true) }}>{t('ecommerce:workspace.batchGenerateButton')}</Button><Button onClick={() => setProductOpen(true)}>{t('ecommerce:workspace.productFieldsButton')}</Button>
           <Dropdown menu={{ items: backupMenuItems }} disabled={workspace.busy}>
-            <Button>备份与恢复 ▾</Button>
+            <Button>{t('ecommerce:workspace.backupButton')}</Button>
           </Dropdown>
         </div>
       </div>
       {(workspace.error || actionError) && <Alert showIcon type="warning" message={actionError || workspace.error} />}
-      {workspace.offline && <Alert type="warning" showIcon message="正在使用本地备份，可继续编辑；联网并保存成功后才能生成。" action={<Button onClick={() => { void workspace.run(workspace.reloadCloud).catch(reportError) }}>重新连接云端</Button>} />}
-      {workspace.conflict && <Alert type="warning" showIcon message="云端配置已更新，本机副本已保留。" action={<div className="suite-actions">
-        <Button onClick={() => { void workspace.run(() => workspace.reloadCloud(true)).catch(reportError) }}>读取云端</Button>
-        <Button onClick={() => { void workspace.run(async () => { const copy = await copySuite(client, data, config); navigate(`/ecommerce/${copy.id}`) }).catch(reportError) }}>另存为新项目</Button>
+      {workspace.offline && <Alert type="warning" showIcon message={t('ecommerce:workspace.offlineBanner')} action={<Button onClick={() => { void workspace.run(workspace.reloadCloud).catch(reportError) }}>{t('ecommerce:workspace.reconnectButton')}</Button>} />}
+      {workspace.conflict && <Alert type="warning" showIcon message={t('ecommerce:workspace.conflictBanner')} action={<div className="suite-actions">
+        <Button onClick={() => { void workspace.run(() => workspace.reloadCloud(true)).catch(reportError) }}>{t('ecommerce:workspace.loadCloudButton')}</Button>
+        <Button onClick={() => { void workspace.run(async () => { const copy = await copySuite(client, data, config); navigate(`/ecommerce/${copy.id}`) }).catch(reportError) }}>{t('ecommerce:workspace.saveAsNewProjectButton')}</Button>
       </div>} />}
-      {workspace.pending && <Alert type="warning" showIcon message="提交结果待确认，保留原编号，不重复生成。" description={`原请求：${workspace.pending.requestId}`} action={<div className="suite-actions">
-        <Button loading={workspace.busy} onClick={() => { void workspace.run(workspace.recoverPending).catch(reportError) }}>查询原批次</Button>
+      {workspace.pending && <Alert type="warning" showIcon message={t('ecommerce:workspace.pendingBanner')} description={t('ecommerce:workspace.pendingRequestDesc', { requestId: workspace.pending.requestId })} action={<div className="suite-actions">
+        <Button loading={workspace.busy} onClick={() => { void workspace.run(workspace.recoverPending).catch(reportError) }}>{t('ecommerce:workspace.queryOriginalBatch')}</Button>
         <Button danger disabled={workspace.busy} onClick={() => modal.confirm({
-          title: '放弃原请求编号？',
-          content: '仅在确认任务中心没有新任务、积分未被扣费后放弃。放弃后需要重新确认费用再提交；若原请求其实已被服务器接收，可能重复生成并扣费。',
-          okText: '确认放弃', okButtonProps: { danger: true }, cancelText: '保留原编号',
+          title: t('ecommerce:workspace.abandonConfirmTitle'),
+          content: t('ecommerce:workspace.abandonConfirmContent'),
+          okText: t('ecommerce:workspace.abandonConfirmOk'), okButtonProps: { danger: true }, cancelText: t('ecommerce:workspace.abandonConfirmCancel'),
           onOk: () => workspace.run(workspace.abandonPending).then(result => {
-            if (result === 'abandoned') message.warning('已放弃原编号，请重新确认费用后提交')
-            else if (result === 'recovered') message.success('原批次已找回，已清除待确认编号')
+            if (result === 'abandoned') message.warning(t('ecommerce:workspace.abandonedWarning'))
+            else if (result === 'recovered') message.success(t('ecommerce:workspace.recoveredSuccess'))
           }).catch(reportError),
-        })}>放弃原编号</Button>
+        })}>{t('ecommerce:workspace.abandonPendingButton')}</Button>
       </div>} />}
       <div className="suite-body">
         <div ref={previewRef} className={`suite-preview${sticky ? ' suite-preview-sticky' : ''}`}>
-          <div className="suite-preview-heading"><strong>{slot.name}</strong><div className="suite-actions">
-            <Button size="small" onClick={() => setOriginal(value => !value)}>{original ? '查看当前成品' : '对照商品原图'}</Button>
-            <Button size="small" disabled={!version || blocked} onClick={() => setBridgeOpen(true)}>工作站精修</Button>
+          <div className="suite-preview-heading"><strong>{slotDisplayName}</strong><div className="suite-actions">
+            <Button size="small" onClick={() => setOriginal(value => !value)}>{original ? t('ecommerce:workspace.viewCurrentVersion') : t('ecommerce:workspace.compareOriginal')}</Button>
+            <Button size="small" disabled={!version || blocked} onClick={() => setBridgeOpen(true)}>{t('ecommerce:workspace.workstationRetouch')}</Button>
           </div></div>
           <div className="suite-stage">{asset && composition && !original ? <SuiteCanvas asset={asset} composition={composition} client={client} signal={signal}
             selectedId={selectedLayerId} onSelect={setSelectedLayerId} background={mainLocked ? '#ffffff' : 'transparent'} editable={tab === 'layers' && !workspace.busy && !mainLocked && !staleDraft}
-            onChange={layers => slotEditor.edit(slot.id, { layers })} /> : <SuiteImage asset={asset} client={client} offline={workspace.offline} alt={original ? '商品原图' : `${slot.name}当前版本`} />}</div>
-          <div className="suite-slot-strip" aria-label="套图槽位">{config.slots.map(item => {
+            onChange={layers => slotEditor.edit(slot.id, { layers })} /> : <SuiteImage asset={asset} client={client} offline={workspace.offline} alt={original ? t('ecommerce:workspace.originalImageAlt') : t('ecommerce:workspace.currentVersionAlt', { name: slotDisplayName })} />}</div>
+          <div className="suite-slot-strip" aria-label={t('ecommerce:workspace.slotStripAria')}>{config.slots.map(item => {
             const slotHead = data.project.slotHeads.find(head => head.slotId === item.id)
             const current = data.versions.find(version => version.id === slotHead?.activeVersionId)
             const thumbnail = data.assets.find(asset => asset.assetId === current?.assetId)
@@ -182,51 +186,59 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
             const isRunning = Boolean(operation && !operation.terminalState)
             const isFailed = Boolean(operation?.terminalState && !current)
             const dotColor = isDone ? '#21cfa0' : isRunning ? '#eab308' : isFailed ? '#ef4444' : '#cbd5e1'
-            const state = !item.enabled ? '已跳过' : current ? '已生成' : operation?.phase === 'stopped' ? '已停止' : operation?.phase === 'blocked' ? '待重新确认' : isRunning ? '生成中' : operation?.appliedVersionIds.length ? '有新版本' : isFailed ? '失败' : '未生成'
-            return <button type="button" key={item.id} aria-pressed={item.id === slot.id} aria-label={`${item.name}，${state}`} onClick={() => selectSlot(item.id)}>
+            const state = !item.enabled ? t('ecommerce:workspace.slotStates.skipped')
+              : current ? t('ecommerce:workspace.slotStates.generated')
+                : operation?.phase === 'stopped' ? t('ecommerce:workspace.slotStates.stopped')
+                  : operation?.phase === 'blocked' ? t('ecommerce:workspace.slotStates.blocked')
+                    : isRunning ? t('ecommerce:workspace.slotStates.running')
+                      : operation?.appliedVersionIds.length ? t('ecommerce:workspace.slotStates.newVersion')
+                        : isFailed ? t('ecommerce:workspace.slotStates.failed')
+                          : t('ecommerce:workspace.slotStates.notGenerated')
+            const itemName = suiteSlotLabel(item)
+            return <button type="button" key={item.id} aria-pressed={item.id === slot.id} aria-label={t('ecommerce:workspace.slotButtonAria', { name: itemName, state })} onClick={() => selectSlot(item.id)}>
               <span className="suite-thumbnail" style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', top: 5, right: 5, width: 8, height: 8, borderRadius: '50%', background: dotColor, zIndex: 2 }} />
-                {thumbnail ? <SuiteImage asset={thumbnail} client={client} offline={workspace.offline} variant="thumbnail" alt={item.name} /> : <span>{item.order + 1}</span>}
-              </span><strong>{item.name}</strong><small>{state}</small>
+                {thumbnail ? <SuiteImage asset={thumbnail} client={client} offline={workspace.offline} variant="thumbnail" alt={itemName} /> : <span>{item.order + 1}</span>}
+              </span><strong>{itemName}</strong><small>{state}</small>
             </button>
           })}</div>
-        <p className="suite-muted">{workspace.backupState}。单图与成品包共用固定字体和完整图层，导出前检查实际文件。</p>
+        <p className="suite-muted">{t('ecommerce:workspace.backupFootnote', { status: workspace.backupState })}</p>
       </div>
       <section className="suite-settings">
         <Tabs activeKey={tab} onChange={setTab} items={[
-          { key: 'generate', label: '重生成', children: <GenerationPanel key={slot.id} project={data.project} slot={slot} draft={layerDraft}
+          { key: 'generate', label: t('ecommerce:workspace.tabs.generate'), children: <GenerationPanel key={slot.id} project={data.project} slot={slot} draft={layerDraft}
             client={client} blocked={blocked || active} flush={flushEditing} onSubmit={quote => workspace.run(() => workspace.submit(quote)).then(() => undefined)} onEdit={patch => slotEditor.edit(slot.id, patch)} flushDraft={() => slotEditor.flushSlot(slot.id)} onError={reportError} /> },
-          { key: 'layers', label: '文字与标注', children: <LayerPanel draft={layerDraft?.value} composition={composition} config={config} selectedId={selectedLayerId}
+          { key: 'layers', label: t('ecommerce:workspace.tabs.layers'), children: <LayerPanel draft={layerDraft?.value} composition={composition} config={config} selectedId={selectedLayerId}
             locked={mainLocked} disabled={workspace.busy} error={layerDraft?.error} stale={staleDraft} onSelect={setSelectedLayerId} onEdit={patch => slotEditor.edit(slot.id, patch)}
             onSave={() => { void workspace.run(saveComposition).catch(reportError) }} onReset={() => { if (version) void workspace.run(() => slotEditor.reset(slot.id, version)).catch(reportError) }}
             onReadCloud={() => { void workspace.run(() => slotEditor.readCloud(slot.id)).catch(reportError) }}
-            onDownloadArchives={() => { void workspace.run(async () => { const saved = await listArchivedSuiteDrafts(actor,id,slot.id); client.assertCurrent(); downloadBlob(new Blob([JSON.stringify(saved,null,2)],{type:'application/json'}),'套图归档草稿.json') }).catch(reportError) }} /> },
-          { key: 'versions', label: '版本', children: <VersionPanel key={slot.id} client={client} project={data.project} slotId={slot.id} versions={data.versions} disabled={blocked}
+            onDownloadArchives={() => { void workspace.run(async () => { const saved = await listArchivedSuiteDrafts(actor,id,slot.id); client.assertCurrent(); downloadBlob(new Blob([JSON.stringify(saved,null,2)],{type:'application/json'}),t('ecommerce:layers.archiveFilename')) }).catch(reportError) }} /> },
+          { key: 'versions', label: t('ecommerce:workspace.tabs.versions'), children: <VersionPanel key={slot.id} client={client} project={data.project} slotId={slot.id} versions={data.versions} disabled={blocked}
             onError={reportError} onSelect={async selected => { await workspace.run(async () => { await flushEditing();
               await client.select(id, slot.id, selected.id, data.project.slotHeads.find(head => head.slotId === slot.id)!.headRevision); await slotEditor.reset(slot.id, selected); await workspace.load() }) }} /> },
         ]} />
-        {tab === 'generate' && slot.kind !== 'main' && <div className="suite-upload-controls"><strong>{slot.kind === 'size' ? '已标注尺寸成品（选填；无图时在原图添加尺寸线）' : slot.kind === 'detail' ? '真实细节照片' : '场景参考图（选填）'}</strong>
-          <label className="suite-file-button">上传{slot.kind === 'detail' ? '细节照片' : '参考图'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, false)).catch(reportError) }} /></label>
-          {slot.referenceAssetIds.length > 0 && <><Tag>已保存 {slot.referenceAssetIds.length} 张</Tag><Button size="small" disabled={blocked || active} onClick={() => workspace.edit({ ...config, slots: config.slots.map(item => item.id === slot.id ? { ...item, referenceAssetIds: [] } : item) })}>移除引用</Button></>}
+        {tab === 'generate' && slot.kind !== 'main' && <div className="suite-upload-controls"><strong>{slot.kind === 'size' ? t('ecommerce:workspace.refHeadingSize') : slot.kind === 'detail' ? t('ecommerce:workspace.refHeadingDetail') : t('ecommerce:workspace.refHeadingScene')}</strong>
+          <label className="suite-file-button">{slot.kind === 'detail' ? t('ecommerce:workspace.uploadDetailButton') : t('ecommerce:workspace.uploadRefButton')}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, false)).catch(reportError) }} /></label>
+          {slot.referenceAssetIds.length > 0 && <><Tag>{t('ecommerce:workspace.savedRefsTag', { count: slot.referenceAssetIds.length })}</Tag><Button size="small" disabled={blocked || active} onClick={() => workspace.edit({ ...config, slots: config.slots.map(item => item.id === slot.id ? { ...item, referenceAssetIds: [] } : item) })}>{t('ecommerce:workspace.removeRefsButton')}</Button></>}
         </div>}
         {(() => {
           const operation = data.operations.filter(op => op.slotId === slot.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]
           const isRunning = Boolean(operation && !operation.terminalState)
           if (isRunning) {
-            return <Alert style={{ marginTop: 14 }} type="info" showIcon message="该槽位正在后台生成中，完成后将自动刷新结果..." />
+            return <Alert style={{ marginTop: 14 }} type="info" showIcon message={t('ecommerce:workspace.slotRunningAlert')} />
           }
           if (tab !== 'versions' && operation?.appliedVersionIds.some(id => id !== head?.activeVersionId)) {
-            return <Alert style={{ marginTop: 14 }} type="success" showIcon message="该槽位已有新生成的版本" action={<Button size="small" onClick={() => setTab('versions')}>查看备选</Button>} />
+            return <Alert style={{ marginTop: 14 }} type="success" showIcon message={t('ecommerce:workspace.slotNewVersionAlert')} action={<Button size="small" onClick={() => setTab('versions')}>{t('ecommerce:workspace.viewAlternativesButton')}</Button>} />
           }
           return null
         })()}
       </section>
     </div>
-    <div ref={footerRef} className="suite-footer"><span>{data.project.slotHeads.filter(head => head.activeVersionId && config.slots.some(slot => slot.id === head.slotId && slot.enabled)).length} / {config.slots.filter(slot => slot.enabled).length} 个槽位已完成出图</span>
-      <span className="suite-footer-status">{active ? '⚡ 后台正在批量出图中，可自由切换槽位查看' : workspace.busy ? '正在同步数据...' : workspace.offline ? '离线：修改仅保存在本机' : '✓ 修改已实时自动暂存'}</span>
+    <div ref={footerRef} className="suite-footer"><span>{t('ecommerce:workspace.footerSlotProgress', { ready: data.project.slotHeads.filter(head => head.activeVersionId && config.slots.some(slot => slot.id === head.slotId && slot.enabled)).length, total: config.slots.filter(slot => slot.enabled).length })}</span>
+      <span className="suite-footer-status">{active ? t('ecommerce:workspace.footerStatusActive') : workspace.busy ? t('ecommerce:workspace.footerStatusBusy') : workspace.offline ? t('ecommerce:workspace.footerStatusOffline') : t('ecommerce:workspace.footerStatusAutoSaved')}</span>
       <div className="suite-actions">
-        <Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).then(() => message.success(workspace.offline ? '已保存到本机，联网后请再次同步' : '修改已成功同步至云端')).catch(reportError) }}>立即同步</Button>
-        <Button type="primary" disabled={blocked} onClick={() => setExportSelection({})}>合规预检与批量导出</Button>
+        <Button disabled={workspace.busy || workspace.conflict} onClick={() => { void workspace.run(flushEditing).then(() => message.success(workspace.offline ? t('ecommerce:workspace.syncOfflineSuccess') : t('ecommerce:workspace.syncOnlineSuccess'))).catch(reportError) }}>{t('ecommerce:workspace.syncNowButton')}</Button>
+        <Button type="primary" disabled={blocked} onClick={() => setExportSelection({})}>{t('ecommerce:workspace.exportButton')}</Button>
       </div></div>
     {exportSelection && <ExportPanel actor={actor} data={data} client={client} signal={signal} initialSlotId={exportSelection.slotId}
       liveKey={JSON.stringify([config, data.project.slotHeads, [...slotEditor.records].map(([id, record]) => [id, record.value])])}
@@ -235,16 +247,16 @@ export default function SuiteWorkspace({ id, actor, client, signal }: { id: stri
       onRetry={selection => { setRetrySelection(selection); setPlanOpen(true) }} />
     {planOpen && <BatchPlanPanel data={data} client={client} retry={retrySelection} blocked={blocked} flush={flushEditing}
       onSubmit={quote => workspace.run(() => workspace.submit(quote)).then(() => undefined)} onClose={() => setPlanOpen(false)} onError={reportError} />}
-    <Modal title="进入图片工作站精修" open={bridgeOpen} onCancel={() => setBridgeOpen(false)}
-      footer={<Button type="primary" disabled={blocked || !version} loading={workspace.busy} onClick={() => { void workspace.run(openBridge).catch(reportError) }}>进入工作站</Button>}>
-      <div className="suite-product-fields"><label>编辑工具<Select value={bridgeTool} onChange={setBridgeTool} options={[{ value: 'repaint', label: '重绘' }, { value: 'smart-edit', label: '智能编辑' }, { value: 'retouch', label: '精修' }, { value: 'relight', label: '重新打光' }]} /></label>
-      <label>传入内容<Select value={bridgeMode} onChange={setBridgeMode} options={[{ value: 'base', label: '底图（推荐，文字标注仍可在套图中随时修改）' }, { value: 'composite', label: '合并图（文字与标注合并为一张图）' }]} /></label></div>
-      <p className="suite-muted">{bridgeMode === 'base' ? '独立文字标注保留在套图中，从工作站回填新版本后仍可自由编辑。' : '文字与标注将合并进图片中作为整体进行精修。'}</p>
-      <p className="suite-muted">工作站中编辑完成后，可一键回填生成新版本，回填不额外扣费。</p>
+    <Modal title={t('ecommerce:workspace.bridgeModal.title')} open={bridgeOpen} onCancel={() => setBridgeOpen(false)}
+      footer={<Button type="primary" disabled={blocked || !version} loading={workspace.busy} onClick={() => { void workspace.run(openBridge).catch(reportError) }}>{t('ecommerce:workspace.bridgeModal.submitButton')}</Button>}>
+      <div className="suite-product-fields"><label>{t('ecommerce:workspace.bridgeModal.toolLabel')}<Select value={bridgeTool} onChange={setBridgeTool} options={(['repaint', 'smart-edit', 'retouch', 'relight'] as const).map(value => ({ value, label: suiteWorkstationToolLabel(value) }))} /></label>
+      <label>{t('ecommerce:workspace.bridgeModal.modeLabel')}<Select value={bridgeMode} onChange={setBridgeMode} options={[{ value: 'base', label: t('ecommerce:workspace.bridgeModal.modeBase') }, { value: 'composite', label: t('ecommerce:workspace.bridgeModal.modeComposite') }]} /></label></div>
+      <p className="suite-muted">{bridgeMode === 'base' ? t('ecommerce:workspace.bridgeModal.modeBaseHint') : t('ecommerce:workspace.bridgeModal.modeCompositeHint')}</p>
+      <p className="suite-muted">{t('ecommerce:workspace.bridgeModal.returnHint')}</p>
     </Modal>
-    <Modal title="商品信息与规格" open={productOpen} onCancel={() => setProductOpen(false)} width={740} footer={<Button type="primary" loading={workspace.busy} onClick={() => { void workspace.run(async () => { await workspace.flush(); setProductOpen(false) }).then(() => { if (workspace.offline) message.warning('资料已保存到本机，联网后需点击“立即同步”') }).catch(reportError) }}>保存资料</Button>}>
+    <Modal title={t('ecommerce:workspace.productModal.title')} open={productOpen} onCancel={() => setProductOpen(false)} width={740} footer={<Button type="primary" loading={workspace.busy} onClick={() => { void workspace.run(async () => { await workspace.flush(); setProductOpen(false) }).then(() => { if (workspace.offline) message.warning(t('ecommerce:workspace.productModal.offlineSavedWarning')) }).catch(reportError) }}>{t('ecommerce:workspace.productModal.saveButton')}</Button>}>
       <ProductFields value={config} onChange={workspace.edit} disabled={workspace.busy} />
-      <label className="suite-file-button">{data.assets.some(asset => asset.assetId === config.baseAssetId) ? '更换商品主体图' : '完成商品主体图上传'}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, true)).catch(reportError) }} /></label>
+      <label className="suite-file-button">{data.assets.some(asset => asset.assetId === config.baseAssetId) ? t('ecommerce:workspace.productModal.replaceBaseButton') : t('ecommerce:workspace.productModal.uploadBaseButton')}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={blocked || active} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void workspace.run(() => upload(file, true)).catch(reportError) }} /></label>
     </Modal>
   </div>
 }

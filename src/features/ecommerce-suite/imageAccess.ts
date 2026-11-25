@@ -1,4 +1,5 @@
 import { CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { useUserStore } from '@/store/useUserStore'
 import type { SuiteClient } from './api'
 
@@ -20,7 +21,7 @@ const fresh = (entry: AccessEntry) => entry.expiresAt - Date.now() > SUITE_IMAGE
 export function clearSuiteImageAccess() {
   cache.clear()
   inflight.clear()
-  for (const bucket of buckets.values()) for (const waiter of bucket.waiters) waiter.reject(new Error('图片授权已失效'))
+  for (const bucket of buckets.values()) for (const waiter of bucket.waiters) waiter.reject(new Error(i18n.t('ecommerce:images.accessExpired')))
   buckets.clear()
 }
 
@@ -38,7 +39,7 @@ async function flush(bucketKey: string) {
     const result = await bucket.client.access(bucket.projectId, ids, bucket.variant)
     for (const waiter of waiters) {
       const item = result.items.find(entry => entry.assetId === waiter.assetId)
-      if (!item) { waiter.reject(new Error('图片不可用')); continue }
+      if (!item) { waiter.reject(new Error(i18n.t('ecommerce:images.unavailable'))); continue }
       const served = item.served ?? bucket.variant
       const expiresAt = bucket.variant === 'thumbnail' && served !== 'thumbnail'
         ? Math.min(item.expiresAt, Date.now() + THUMBNAIL_FALLBACK_TTL_MS) : item.expiresAt
@@ -52,7 +53,7 @@ async function flush(bucketKey: string) {
         const result = await bucket.client.access(bucket.projectId, ids, 'original')
         for (const waiter of waiters) {
           const item = result.items.find(entry => entry.assetId === waiter.assetId)
-          if (!item) { waiter.reject(new Error('图片不可用')); continue }
+          if (!item) { waiter.reject(new Error(i18n.t('ecommerce:images.unavailable'))); continue }
           const entry = { url: item.url, expiresAt: Math.min(item.expiresAt, Date.now() + THUMBNAIL_FALLBACK_TTL_MS) }
           cache.set(cacheKey(bucket.projectId, waiter.assetId, bucket.variant), entry)
           waiter.resolve(entry)

@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 export type CapabilityAvailability = 'ready' | 'loading' | 'error' | 'soon'
 
 /** 只有服务端确认关闭才展示即将上线，初次加载与请求失败单独呈现。 */
@@ -8,5 +10,10 @@ export function capabilityAvailability(ready: boolean | undefined, error?: unkno
 }
 
 export function capabilityAvailabilityLabel(state: CapabilityAvailability): string {
-  return { ready: '', loading: '加载中…', error: '加载失败', soon: '即将上线' }[state]
+  return {
+    ready: '',
+    loading: i18n.t('common:status.loading'),
+    error: i18n.t('common:status.loadFailed'),
+    soon: i18n.t('common:status.comingSoon'),
+  }[state]
 }

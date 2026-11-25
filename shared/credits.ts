@@ -27,20 +27,36 @@ export function insufficientCreditsMessage(required: number, balance: number) {
   return `积分余额不足：本次需要 ${required} 积分，当前余额 ${balance}`
 }
 
-export function creditToolName(params: unknown, capability?: string) {
+export function creditToolId(params: unknown, capability?: string) {
   if (capability === 'text_to_video') {
     const mode = params && typeof params === 'object' && 'mode' in params ? params.mode : undefined
-    if (mode === 'image_to_video') return '图生视频'
-    if (mode === 'video_replication') return '视频复刻'
-    return '文生视频'
+    if (mode === 'image_to_video') return 'image-to-video'
+    if (mode === 'video_replication') return 'video-replication'
+    return 'text-to-video'
   }
-  if (readRetouchDirections(params).length) return '精修'
-  if (readRelight(params)) return '重新打光'
-  if (readReferenceImageKey(params)) return '融合'
-  if (capability === 'variation') return '裂变'
-  if (capability === 'image_edit') return '智能编辑'
-  if (capability === 'fusion') return '融合'
-  return ''
+  if (readRetouchDirections(params).length) return 'retouch'
+  if (readRelight(params)) return 'relight'
+  if (readReferenceImageKey(params)) return 'fusion'
+  if (capability === 'variation') return 'variation'
+  if (capability === 'image_edit') return 'smart-edit'
+  if (capability === 'fusion') return 'fusion'
+  return undefined
+}
+
+const CREDIT_TOOL_LABELS: Record<string, string> = {
+  'image-to-video': '图生视频',
+  'video-replication': '视频复刻',
+  'text-to-video': '文生视频',
+  retouch: '精修',
+  relight: '重新打光',
+  fusion: '融合',
+  variation: '裂变',
+  'smart-edit': '智能编辑',
+}
+
+export function creditToolName(params: unknown, capability?: string) {
+  const id = creditToolId(params, capability)
+  return id ? CREDIT_TOOL_LABELS[id] ?? '' : ''
 }
 
 export function creditJobSpec(resolution?: string, count?: number) {
@@ -71,6 +87,26 @@ export function formatCreditDelta(delta: number) {
   return String(delta)
 }
 
+export type CreditLedgerReasonCode =
+  | 'initial_grant'
+  | 'top_up'
+  | 'cash_refund_reclaim'
+  | 'admin_adjust'
+
+export interface CreditLedgerPresentation {
+  entryType: 'free_bg_remove' | 'email_assist' | 'sync_tool' | 'image_job' | 'account'
+  status?: 'reserved' | 'settled' | 'refunded'
+  tool?: string
+  capability?: string
+  operation?: string
+  modelProfileId?: string
+  resolution?: string
+  count?: number
+  durationSeconds?: number
+  refunded?: number
+  reasonCode?: CreditLedgerReasonCode
+}
+
 export interface CreditLedgerItem {
   syncRequestId?: string
   id: string
@@ -84,6 +120,7 @@ export interface CreditLedgerItem {
   balanceAfter: number
   charged: number | null
   reason: string | null
+  presentation?: CreditLedgerPresentation
 }
 
 export interface CreditLedgerEntry {
@@ -95,6 +132,7 @@ export interface CreditLedgerEntry {
   createdAt: string
   title: string
   reason: string | null
+  presentation?: CreditLedgerPresentation
 }
 
 function sortLedgerNewestFirst(left: CreditLedgerEntry, right: CreditLedgerEntry) {
@@ -110,15 +148,15 @@ export function creditJobGroupStatus(entries: readonly CreditLedgerEntry[]) {
   const charged = settle?.charged ?? refund?.charged ?? null
   const refunded = settle ? Math.max(0, settle.delta) : refund ? Math.max(0, refund.delta) : 0
   if (!settle && !refund) {
-    return { kind: 'reserve', summary: '处理中 预扣', charged: null as number | null }
+    return { kind: 'reserve', summary: '处理中 预扣', charged: null as number | null, status: 'reserved' as const, refunded: 0 }
   }
   if (refund || charged === 0) {
-    return { kind: 'refund', summary: '失败/超时已退款', charged: charged ?? 0 }
+    return { kind: 'refund', summary: '失败/超时已退款', charged: charged ?? 0, status: 'refunded' as const, refunded }
   }
   if (refunded > 0 && charged != null && charged > 0) {
-    return { kind: 'settle', summary: `实扣 ${charged}, 已退回 ${refunded}`, charged }
+    return { kind: 'settle', summary: `实扣 ${charged}, 已退回 ${refunded}`, charged, status: 'settled' as const, refunded }
   }
-  return { kind: 'settle', summary: `实扣 ${charged ?? reserved}`, charged: charged ?? reserved }
+  return { kind: 'settle', summary: `实扣 ${charged ?? reserved}`, charged: charged ?? reserved, status: 'settled' as const, refunded: 0 }
 }
 
 /** 同一 job 的预扣/结算/退款收成一行；余额取该任务最后一条流水。 */
@@ -126,7 +164,10 @@ export function mergeCreditJobEntries(entries: readonly CreditLedgerEntry[]): Cr
   const ordered = [...entries].sort(sortLedgerNewestFirst)
   const newest = ordered[0]
   const oldest = ordered[ordered.length - 1]
-  if (ordered.some(item => item.title === '免费抠图') && !ordered.some(item => item.kind === 'reserve')) {
+  const basePresentation = ordered.find(item =>
+    item.presentation?.tool || item.presentation?.capability || item.presentation?.operation || item.presentation?.resolution,
+  )?.presentation ?? oldest.presentation ?? newest.presentation
+  if (ordered.some(item => item.presentation?.entryType === 'free_bg_remove' || item.title === '免费抠图') && !ordered.some(item => item.kind === 'reserve')) {
     const failed = ordered.some(item => item.kind === 'refund')
     return {
       id: newest.id,
@@ -140,11 +181,24 @@ export function mergeCreditJobEntries(entries: readonly CreditLedgerEntry[]): Cr
       balanceAfter: newest.balanceAfter,
       charged: 0,
       reason: oldest.reason,
+      presentation: {
+        entryType: 'free_bg_remove',
+        tool: 'bg-remove',
+        status: failed ? 'refunded' : 'settled',
+        ...(basePresentation?.reasonCode ? { reasonCode: basePresentation.reasonCode } : {}),
+      },
     }
   }
   const title = ordered.map(item => item.title).filter(Boolean).sort((left, right) => right.length - left.length)[0] ?? ''
   const net = ordered.reduce((sum, item) => sum + item.delta, 0)
   const status = creditJobGroupStatus(ordered)
+  const presentation: CreditLedgerPresentation | undefined = basePresentation
+    ? {
+        ...basePresentation,
+        status: status.status,
+        ...(status.refunded > 0 ? { refunded: status.refunded } : {}),
+      }
+    : undefined
   return {
     id: newest.id,
     createdAt: newest.createdAt,
@@ -157,5 +211,6 @@ export function mergeCreditJobEntries(entries: readonly CreditLedgerEntry[]): Cr
     balanceAfter: newest.balanceAfter,
     charged: status.charged,
     reason: oldest.reason,
+    ...(presentation ? { presentation } : {}),
   }
 }

@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+import zhErrors from '@/i18n/locales/zh-CN/errors.json'
 import {
   binaryMaskToRgba,
   mapOverlayMaskToImage,
@@ -5,8 +7,8 @@ import {
   thresholdPaintedOverlay,
 } from '../../../../shared/erase'
 
-export const EMPTY_ERASE_MASK_MESSAGE = '请先涂抹要消除的区域'
-export const EMPTY_REPAINT_MASK_MESSAGE = '请先涂抹要重绘的区域'
+export const EMPTY_ERASE_MASK_MESSAGE = zhErrors.client.eraseEmptyMask
+export const EMPTY_REPAINT_MASK_MESSAGE = zhErrors.client.repaintEmptyMask
 /** 排除误触的一两个像素，要求至少有一小段笔划。 */
 export const MIN_MASK_PIXELS = 32
 
@@ -30,14 +32,19 @@ export function overlayHasPaint(canvas: HTMLCanvasElement | null, minPixels = MI
 }
 
 export function emptyMaskMessage(mode?: 'remove' | 'repaint') {
-  return mode === 'repaint' ? EMPTY_REPAINT_MASK_MESSAGE : EMPTY_ERASE_MASK_MESSAGE
+  return mode === 'repaint'
+    ? i18n.t('errors:client.repaintEmptyMask')
+    : i18n.t('errors:client.eraseEmptyMask')
 }
 
 export function remapMaskExportError(error: unknown, mode?: 'remove' | 'repaint') {
-  if (error instanceof Error && error.message === EMPTY_ERASE_MASK_MESSAGE) {
+  if (
+    error instanceof Error
+    && (error.message === EMPTY_ERASE_MASK_MESSAGE || error.message === i18n.t('errors:client.eraseEmptyMask'))
+  ) {
     return new Error(emptyMaskMessage(mode))
   }
-  return error instanceof Error ? error : new Error('蒙版导出失败')
+  return error instanceof Error ? error : new Error(i18n.t('workstation:errors.maskExportFailed'))
 }
 
 export interface MaskExportResult {
@@ -61,12 +68,12 @@ export function exportPaintedMask(maskCanvasEl: HTMLCanvasElement): MaskExportRe
   const outputContext = outputCanvas.getContext('2d')
 
   if (!sourceContext || !outputContext) {
-    throw new Error('当前浏览器不支持画布蒙版导出')
+    throw new Error(i18n.t('workstation:errors.canvasMaskUnsupported'))
   }
 
   const sourcePixels = sourceContext.getImageData(0, 0, width, height)
   const overlay = thresholdPaintedOverlay(sourcePixels.data, width, height)
-  if (!maskHasEraseRegion(overlay, undefined, MIN_MASK_PIXELS)) throw new Error(EMPTY_ERASE_MASK_MESSAGE)
+  if (!maskHasEraseRegion(overlay, undefined, MIN_MASK_PIXELS)) throw new Error(emptyMaskMessage('remove'))
   const outputPixels = outputContext.createImageData(width, height)
 
   for (let index = 0; index < overlay.length; index += 1) {
@@ -93,18 +100,18 @@ export function exportEraseMask(
   const width = maskCanvasEl.width
   const height = maskCanvasEl.height
   const sourceContext = maskCanvasEl.getContext('2d')
-  if (!sourceContext) throw new Error('当前浏览器不支持画布蒙版导出')
-  if (imageNaturalSize.width < 1 || imageNaturalSize.height < 1) throw new Error('无法读取原图尺寸')
+  if (!sourceContext) throw new Error(i18n.t('workstation:errors.canvasMaskUnsupported'))
+  if (imageNaturalSize.width < 1 || imageNaturalSize.height < 1) throw new Error(i18n.t('workstation:errors.sourceSizeUnreadable'))
   const sourcePixels = sourceContext.getImageData(0, 0, width, height)
   const overlay = thresholdPaintedOverlay(sourcePixels.data, width, height)
-  if (!maskHasEraseRegion(overlay, undefined, MIN_MASK_PIXELS)) throw new Error(EMPTY_ERASE_MASK_MESSAGE)
+  if (!maskHasEraseRegion(overlay, undefined, MIN_MASK_PIXELS)) throw new Error(emptyMaskMessage('remove'))
   const mapped = mapOverlayMaskToImage(overlay, width, height, imageNaturalSize.width, imageNaturalSize.height)
-  if (!maskHasEraseRegion(mapped, undefined, MIN_MASK_PIXELS)) throw new Error(EMPTY_ERASE_MASK_MESSAGE)
+  if (!maskHasEraseRegion(mapped, undefined, MIN_MASK_PIXELS)) throw new Error(emptyMaskMessage('remove'))
   const outputCanvas = document.createElement('canvas')
   outputCanvas.width = imageNaturalSize.width
   outputCanvas.height = imageNaturalSize.height
   const outputContext = outputCanvas.getContext('2d')
-  if (!outputContext) throw new Error('当前浏览器不支持画布蒙版导出')
+  if (!outputContext) throw new Error(i18n.t('workstation:errors.canvasMaskUnsupported'))
   const outputPixels = outputContext.createImageData(imageNaturalSize.width, imageNaturalSize.height)
   outputPixels.data.set(binaryMaskToRgba(mapped))
   outputContext.putImageData(outputPixels, 0, 0)
@@ -127,7 +134,7 @@ export function computeOutpaintMask(
   const context = canvas.getContext('2d')
 
   if (!context) {
-    throw new Error('当前浏览器不支持画布蒙版导出')
+    throw new Error(i18n.t('workstation:errors.canvasMaskUnsupported'))
   }
 
   context.fillStyle = '#ffffff'

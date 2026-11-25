@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useStore } from 'zustand'
 import { defaultImageModel, publicImageModel } from '@shared/image-models'
+import { i18n } from '@/i18n'
 import { loadCapabilityFlags } from '@/services/api/capabilities'
 import { listImageModels } from '@/services/api/imageModels'
 import { isCanvasMockGateway, useCanvasTextToImageConfiguration, useCanvasVariationConfiguration } from './availability'
@@ -26,7 +27,7 @@ function useCanvasImageModels(operation: 'variation' | 'text_to_image') {
       const enabled = operation === 'variation' ? flags.variation : flags.textToImage
       if (isCurrent()) configurationStore.setState({ models: available, loading: false, ready: !!enabled && available.length > 0 })
     } catch (error) {
-      if (isCurrent()) configurationStore.setState({ loading: false, ready: false, models: [], error: error instanceof Error ? error.message : '模型配置读取失败' })
+      if (isCurrent()) configurationStore.setState({ loading: false, ready: false, models: [], error: error instanceof Error ? error.message : i18n.t('canvas:errors.modelConfigLoadFailed') })
     }
   }, [configurationStore, operation, userId])
   useEffect(() => {

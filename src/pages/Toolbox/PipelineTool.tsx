@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { App, Button, Progress, Radio, Segmented, Spin, Switch, Tooltip } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import { i18n } from '@/i18n'
+import { formatMegabytes } from '@/i18n/format'
 import { useUserStore } from '@/store/useUserStore'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import { usePipelineStore } from '@/features/toolbox-pipeline/store'
@@ -20,6 +23,7 @@ import AspectRatioSettingsPanel from './shared/AspectRatioSettingsPanel'
 import WatermarkSettingsPanel from './shared/WatermarkSettingsPanel'
 import PresetControls from './shared/PresetControls'
 import { inspectImage, inspectLogo, queueLimitMessage, MAX_ZIP_BYTES } from './shared/inspect'
+import { getPlatformPresetLabel } from './shared/presetLabels'
 import { hasWatermark } from './watermark/validation'
 import * as ratioPresets from './aspect-ratio/presets'
 import * as watermarkPresets from './watermark/presets'
@@ -31,7 +35,7 @@ const ratioApi = { list: ratioPresets.listPresets, save: ratioPresets.savePreset
 const watermarkApi = { list: watermarkPresets.listPresets, save: watermarkPresets.savePreset, remove: watermarkPresets.deletePreset }
 const allowedStrategies: FitStrategy[] = ['letterbox', 'crop']
 const acceptsRatio = (settings: AspectRatioSettings) => settings.strategy !== 'outpaint'
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : '操作失败'
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : i18n.t('toolbox:errors.operationFailed')
 
 interface SettingsSnapshot {
   items: PipelineItem[]
@@ -41,6 +45,7 @@ interface SettingsSnapshot {
 }
 
 export default function PipelineTool() {
+  const { t } = useTranslation(['toolbox', 'common'])
   const { message, modal } = App.useApp()
   const state = usePipelineStore()
   const ownerId = useUserStore(user => user.userId ?? 'local')
@@ -74,6 +79,7 @@ export default function PipelineTool() {
   const finalGallery = useBlobPreviewGallery(gallerySources)
   const ratioGallery = useBlobPreviewGallery(ratioSources)
   const preset = PLATFORM_SIZE_PRESETS.find(preset => preset.id === settings.aspectRatio.selectedPresetId)!
+  const presetLabel = getPlatformPresetLabel(preset.id, preset.label)
   const outputBytes = completed.reduce((sum, item) => sum + (item.output?.blob.size ?? 0), 0)
   const watermarkValid = !settings.watermarkEnabled || hasWatermark(settings.watermark)
   const degradeLabel = unavailableCropSummary(completed.map(item => item.cropFocus))
@@ -86,27 +92,33 @@ export default function PipelineTool() {
   const shownUrl = failedSelected && selected
     ? urls.get(selected.file)
     : preview?.url ?? (shownArtifact ? urls.get(shownArtifact.blob) : undefined) ?? (selected ? urls.get(selected.file) : undefined)
-  const stageLabel = stage === 'original' ? '原图' : stage === 'ratio' ? '转比例结果' : '最终效果'
+  const stageLabel = stage === 'original' ? t('pipeline.stages.original') : stage === 'ratio' ? t('pipeline.stages.ratio') : t('pipeline.stages.final')
   const stageMime = stage === 'original'
     ? selected?.sourceMime
     : stage === 'ratio'
       ? selected?.intermediate?.mimeType ?? (settings.aspectRatio.strategy === 'letterbox' && settings.aspectRatio.background === 'transparent' ? 'image/png' : 'image/jpeg')
       : selected ? finalMime(selected, settings) : undefined
   const shownFromSource = Boolean(selected) && (failedSelected || (!shownArtifact && !preview?.url))
-  const previewAltText = selected ? `${selected.file.name} 的${shownFromSource ? '原图' : stageLabel}` : ''
+  const previewAltText = selected
+    ? (shownFromSource
+      ? t('pipeline.previewAltSource', { name: selected.file.name })
+      : t('pipeline.previewAltStage', { name: selected.file.name, stage: stageLabel }))
+    : ''
   const checkerboard = settings.aspectRatio.strategy === 'letterbox' && settings.aspectRatio.background === 'transparent'
   const canOpenResult = Boolean(selected && shownArtifact && !failedSelected && !processingSelected)
   const activeGallery = stage === 'ratio' ? ratioGallery : stage === 'final' ? finalGallery : null
   const gridById = new Map(activeGallery?.galleryProps.items.map(item => [item.id, item]) ?? [])
   const previewMetaText = resultView === 'grid'
-    ? `结果网格 · ${stageLabel} · 成功 ${completed.length} · 失败 ${failed.length}`
+    ? t('pipeline.gridMeta', { stage: stageLabel, succeeded: completed.length, failed: failed.length })
     : selected
       ? `${selected.file.name} · ${shownSize.width} × ${shownSize.height}${stageMime ? ` · ${stageMime === 'image/png' ? 'PNG' : 'JPEG'}` : ''}`
-      : `${preset.label} · ${shownSize.width} × ${shownSize.height}`
+      : `${presetLabel} · ${shownSize.width} × ${shownSize.height}`
   const statusText = progressLabel({ itemCount: items.length, completedCount: completed.length, failedCount: failed.length, processing })
     + (degradeLabel ? ` · ${degradeLabel}` : '')
-    + (paused ? ' · 已暂停' : '')
-  const downloadActionLabel = completed.length > 0 && failed.length > 0 ? `下载 ${completed.length} 张结果` : '打包下载'
+    + (paused ? t('pipeline.pausedSuffix') : '')
+  const downloadActionLabel = completed.length > 0 && failed.length > 0
+    ? t('shared.downloadCount', { count: completed.length })
+    : t('shared.downloadZip')
   // 失败项全部恢复后按“全部”展示，避免网格停在空结果；派生值不触发额外渲染。
   const shownResultFilter: ResultFilter = resultFilter === 'failed' && failed.length === 0 ? 'all' : resultFilter
 
@@ -229,7 +241,9 @@ export default function PipelineTool() {
       next.add({ id: crypto.randomUUID(), file, sourceMime: inspected.mimeType, width: inspected.width,
         height: inspected.height, ratioStatus: 'pending', watermarkStatus: 'pending' })
     }).catch(error => {
-      if (mounted.current && usePipelineStore.getState().ownerId === owner) message.error(`${file.name}：${errorMessage(error)}`)
+      if (mounted.current && usePipelineStore.getState().ownerId === owner) {
+        message.error(t('shared.fileErrorPrefix', { name: file.name, error: errorMessage(error) }))
+      }
     }).finally(() => {
       pending.current.count--; pending.current.bytes -= file.size
       if (mounted.current && pending.current.count === 0) setAdding(false)
@@ -279,8 +293,8 @@ export default function PipelineTool() {
       duration: 5,
       content: (
         <span>
-          已移除 1 张图片
-          <Button type="link" size="small" autoInsertSpace={false} className="toolbox-undo-button" onClick={undoRemove}>撤销</Button>
+          {t('pipeline.removedOne')}
+          <Button type="link" size="small" autoInsertSpace={false} className="toolbox-undo-button" onClick={undoRemove}>{t('common:actions.undo')}</Button>
         </span>
       ),
     })
@@ -289,10 +303,10 @@ export default function PipelineTool() {
   function requestClear() {
     if (busy) return
     modal.confirm({
-      title: '清空全部图片？',
-      content: '队列和已生成的结果都会被移除，此操作不可撤销。',
-      okText: '清空',
-      cancelText: '取消',
+      title: t('shared.clearConfirmTitle'),
+      content: t('pipeline.clearContent'),
+      okText: t('shared.clearConfirmOk'),
+      cancelText: t('common:actions.cancel'),
       okButtonProps: { danger: true },
       autoFocusButton: 'cancel',
       onOk: () => {
@@ -324,9 +338,9 @@ export default function PipelineTool() {
   }
 
   return <div className="toolbox-watermark toolbox-pipeline toolbox-sticky-preview">
-    <h1 className="sr-only">流水线</h1>
+    <h1 className="sr-only">{t('tools.pipeline')}</h1>
     <div className="toolbox-pipeline-lead">
-      <div className="toolbox-section-heading"><div><strong>转比例 → 加水印</strong><span>一次设置，自动处理整批图片</span></div></div>
+      <div className="toolbox-section-heading"><div><strong>{t('pipeline.leadTitle')}</strong><span>{t('pipeline.leadSubtitle')}</span></div></div>
       <ToolboxImageCard
         items={items.map(item => {
           const artifact = item.output ?? item.intermediate
@@ -345,23 +359,26 @@ export default function PipelineTool() {
         onSelect={state.select}
         onRemove={removeFile}
         onClear={requestClear}
-        processingHint={settings.aspectRatio.strategy === 'crop' ? '主体识别可能上传缩略图，水印在本机处理' : '转比例与水印在本机处理'}
+        processingHint={settings.aspectRatio.strategy === 'crop' ? t('pipeline.hintCrop') : t('pipeline.hintLocal')}
       />
     </div>
     <div className="toolbox-watermark-main">
-      <section ref={previewPanelRef} className={`toolbox-preview-panel${items.length > 0 ? ' has-image' : ''}${resultView === 'grid' ? ' is-grid' : ''}`} aria-label="流水线预览">
+      <section ref={previewPanelRef} className={`toolbox-preview-panel${items.length > 0 ? ' has-image' : ''}${resultView === 'grid' ? ' is-grid' : ''}`} aria-label={t('pipeline.previewAria')}>
         <div className="toolbox-section-heading">
           <div className="toolbox-preview-title">
-            <strong>效果预览</strong>
+            <strong>{t('pipeline.previewTitle')}</strong>
             <span className="toolbox-preview-meta">{previewMetaText}</span>
           </div>
           <div className="toolbox-preview-actions">
             {items.length > 0 && (
               <Segmented
                 size="small"
-                aria-label="结果视图"
+                aria-label={t('shared.resultViewAria')}
                 value={resultView}
-                options={[{ label: '单张', value: 'single' }, { label: '结果网格', value: 'grid' }]}
+                options={[
+                  { label: t('shared.singleView'), value: 'single' },
+                  { label: t('shared.resultGrid'), value: 'grid' },
+                ]}
                 onChange={value => { setResultView(value === 'grid' ? 'grid' : 'single'); setResultFilter('all') }}
               />
             )}
@@ -377,9 +394,13 @@ export default function PipelineTool() {
             )}
           </div>
         </div>
-        <div className="toolbox-stage-switch" role="radiogroup" aria-label="预览阶段">
+        <div className="toolbox-stage-switch" role="radiogroup" aria-label={t('pipeline.stageAria')}>
           <Radio.Group value={stage} onChange={event => setStage(event.target.value)} optionType="button" buttonStyle="solid"
-            options={[{ label: '原图', value: 'original' }, { label: '转比例', value: 'ratio' }, { label: '最终效果', value: 'final' }]} />
+            options={[
+              { label: t('pipeline.stages.original'), value: 'original' },
+              { label: t('pipeline.stages.ratioTab'), value: 'ratio' },
+              { label: t('pipeline.stages.final'), value: 'final' },
+            ]} />
         </div>
         {resultView === 'single' && selected && (
           <PreviewItemNotice
@@ -396,7 +417,7 @@ export default function PipelineTool() {
             filter={shownResultFilter}
             onFilterChange={setResultFilter}
             onSelect={id => { state.select(id); setResultView('single') }}
-            ariaLabel="流水线结果网格"
+            ariaLabel={t('pipeline.gridAria')}
             checkerboard={checkerboard}
             compact={items.length <= 4}
           />
@@ -409,7 +430,7 @@ export default function PipelineTool() {
                   alt={previewAltText}
                   tabIndex={canOpenResult ? 0 : undefined}
                   role={canOpenResult ? 'button' : undefined}
-                  aria-label={canOpenResult ? `打开${stageLabel}大图` : undefined}
+                  aria-label={canOpenResult ? t('pipeline.openStageAria', { stage: stageLabel }) : undefined}
                   onClick={canOpenResult ? () => activeGallery?.openAt(selected.id) : undefined}
                   onKeyDown={canOpenResult ? event => {
                     if (event.key !== 'Enter' && event.key !== ' ') return
@@ -420,38 +441,38 @@ export default function PipelineTool() {
                 />
                 {failedSelected && (
                   <div className="toolbox-preview-state is-failed">
-                    <span>{selected.failedStep === 'watermark' ? '加水印失败，可重试' : '转比例失败，可重试'}</span>
+                    <span>{selected.failedStep === 'watermark' ? t('pipeline.queue.watermarkFailed') : t('pipeline.queue.ratioFailed')}</span>
                   </div>
                 )}
                 {processingSelected && !failedSelected && (
                   <div className="toolbox-preview-state is-processing" role="status">
                     <Spin size="small" />
-                    <span>正在处理…</span>
+                    <span>{t('pipeline.processingOverlay')}</span>
                   </div>
                 )}
               </>
-            ) : <p>{selected ? '正在准备预览…' : '先添加图片，再配置转比例和水印'}</p>}
+            ) : <p>{selected ? t('pipeline.preparingPreview') : t('pipeline.emptyStage')}</p>}
           </div>
         )}
-        {preview?.loading && <p className="toolbox-hint" role="status">正在更新预览…</p>}
-        {preview?.error && <p className="toolbox-preview-error">预览失败：{preview.error}</p>}
-        {resultView === 'grid' && <p className="toolbox-hint">点击任意结果查看单张大图。</p>}
-        <p className="toolbox-hint toolbox-preview-spec">预览最长边不超过 800 px，成品按平台精确尺寸导出。切页会暂停，返回后可继续；刷新或关闭后需重新上传。</p>
-        {settings.aspectRatio.strategy === 'crop' && !selected?.intermediate && <p className="toolbox-hint">预览按九宫格展示；处理时识别主体，实际裁剪位置可能调整。</p>}
-        {!watermarkValid && <p className="toolbox-hint toolbox-warning">请先填写水印文字或选择 Logo，也可以关闭水印。</p>}
-        {runState === 'paused' && <p className="toolbox-hint" role="status">{stopping ? '正在暂停处理…' : '已暂停，成功步骤已保留，可继续处理。'}</p>}
+        {preview?.loading && <p className="toolbox-hint" role="status">{t('shared.updatingPreview')}</p>}
+        {preview?.error && <p className="toolbox-preview-error">{t('shared.previewError', { error: preview.error })}</p>}
+        {resultView === 'grid' && <p className="toolbox-hint">{t('shared.gridClickHint')}</p>}
+        <p className="toolbox-hint toolbox-preview-spec">{t('pipeline.specHint')}</p>
+        {settings.aspectRatio.strategy === 'crop' && !selected?.intermediate && <p className="toolbox-hint">{t('pipeline.cropPreviewHint')}</p>}
+        {!watermarkValid && <p className="toolbox-hint toolbox-warning">{t('pipeline.watermarkInvalidHint')}</p>}
+        {runState === 'paused' && <p className="toolbox-hint" role="status">{stopping ? t('pipeline.pausingStatus') : t('pipeline.pausedStatus')}</p>}
       </section>
       <div className="toolbox-pipeline-settings">
         <AspectRatioSettingsPanel settings={settings.aspectRatio} disabled={busy} onChange={updateRatio} allowedStrategies={allowedStrategies}
           templates={<PresetControls key={ownerId} scope={ownerId} settings={settings.aspectRatio as AspectRatioSettings} api={ratioApi} disabled={busy} onApply={updateRatio} accepts={acceptsRatio} />} />
-        <div className="toolbox-pipeline-watermark-toggle"><strong>加水印</strong><Switch checked={settings.watermarkEnabled} disabled={busy} aria-label="启用水印" onChange={enableWatermark} /></div>
+        <div className="toolbox-pipeline-watermark-toggle"><strong>{t('tools.watermark')}</strong><Switch checked={settings.watermarkEnabled} disabled={busy} aria-label={t('pipeline.watermarkToggleAria')} onChange={enableWatermark} /></div>
         {settings.watermarkEnabled && <WatermarkSettingsPanel settings={settings.watermark} disabled={busy} onChange={updateWatermark} onLogo={chooseLogo}
           templates={<PresetControls key={ownerId} scope={ownerId} settings={settings.watermark} api={watermarkApi} disabled={busy} onApply={updateWatermark} validate={() => hasWatermark(settings.watermark)} />} />}
       </div>
     </div>
-    <ResultGallery {...finalGallery.galleryProps} downloadLabel="下载流水线成品" downloadTooltip="下载最终效果" resultLabel="最终效果"
+    <ResultGallery {...finalGallery.galleryProps} downloadLabel={t('pipeline.downloadFinalLabel')} downloadTooltip={t('pipeline.downloadFinalTooltip')} resultLabel={t('pipeline.stages.final')}
       checkerboard={checkerboard} onDownload={item => downloadOne(item.id)} />
-    <ResultGallery {...ratioGallery.galleryProps} downloadLabel="下载转比例结果" downloadTooltip="下载转比例结果" resultLabel="转比例结果"
+    <ResultGallery {...ratioGallery.galleryProps} downloadLabel={t('pipeline.downloadRatioLabel')} downloadTooltip={t('pipeline.downloadRatioTooltip')} resultLabel={t('pipeline.stages.ratio')}
       checkerboard={checkerboard} onDownload={item => {
         const intermediate = items.find(candidate => candidate.id === item.id)?.intermediate
         if (!intermediate) return
@@ -461,34 +482,34 @@ export default function PipelineTool() {
         } catch (error) { message.error(errorMessage(error)) }
       }} />
     <div className="toolbox-watermark-footer">
-      {degradeLabel && <p className="toolbox-crop-notice toolbox-crop-warning" role="status">{degradeLabel}。可在对应图片上单独重试。</p>}
-      {missedSubjectCount > 0 && <p className="toolbox-crop-notice toolbox-crop-warning" role="status">{missedSubjectCount} 张没识别到商品，已按当前九宫格裁剪。</p>}
+      {degradeLabel && <p className="toolbox-crop-notice toolbox-crop-warning" role="status">{t('pipeline.degradeRetryHint', { summary: degradeLabel })}</p>}
+      {missedSubjectCount > 0 && <p className="toolbox-crop-notice toolbox-crop-warning" role="status">{t('pipeline.missedSubjectBanner', { count: missedSubjectCount })}</p>}
       <div className="toolbox-progress" role="status" aria-live="polite">
         <span>{statusText}</span>
-        {processing && <Progress size="small" aria-label="处理进度" percent={Math.max(donePercent, 8)} showInfo={false} />}
-        {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
+        {processing && <Progress size="small" aria-label={t('shared.progressAria')} percent={Math.max(donePercent, 8)} showInfo={false} />}
+        {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">{t('shared.zipLimitWarning', { limit: formatMegabytes(MAX_ZIP_BYTES) })}</span>}
         {settingsNotice && (
           <span className="toolbox-undo-notice">
-            设置已更改，已清除 {settingsNotice.count} 张已完成结果
-            <Button type="link" size="small" autoInsertSpace={false} className="toolbox-undo-button" onClick={undoSettingsChange}>撤销</Button>
+            {t('shared.settingsClearedNotice', { count: settingsNotice.count })}
+            <Button type="link" size="small" autoInsertSpace={false} className="toolbox-undo-button" onClick={undoSettingsChange}>{t('common:actions.undo')}</Button>
           </span>
         )}
       </div>
       <div className="toolbox-footer-actions">
         <Button type={mode === 'download' ? 'primary' : 'default'} icon={<DownloadOutlined />} disabled={!completed.length || busy || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>{downloadActionLabel}</Button>
-        {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>查看结果</Button>}
+        {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>{t('shared.viewResults')}</Button>}
         {mode === 'retry' && (
           <>
-            <Button type="primary" disabled={busy || !watermarkValid} onClick={() => void process(failed.map(item => item.id))}>重试失败项</Button>
-            {pendingItems.length > 0 && <Button disabled={busy || !watermarkValid} onClick={() => void process(pendingItems.map(item => item.id))}>继续处理剩余</Button>}
-            <Button type="link" className="toolbox-view-result" onClick={showFailed}>查看失败项</Button>
+            <Button type="primary" disabled={busy || !watermarkValid} onClick={() => void process(failed.map(item => item.id))}>{t('shared.retryFailed')}</Button>
+            {pendingItems.length > 0 && <Button disabled={busy || !watermarkValid} onClick={() => void process(pendingItems.map(item => item.id))}>{t('shared.continueRemaining')}</Button>}
+            <Button type="link" className="toolbox-view-result" onClick={showFailed}>{t('pipeline.showFailed')}</Button>
           </>
         )}
-        {mode === 'cancel' && <Button onClick={pausePipeline}>暂停处理</Button>}
+        {mode === 'cancel' && <Button onClick={pausePipeline}>{t('pipeline.pauseProcessing')}</Button>}
         {(mode === 'process' || mode === 'empty') && (
-          <Tooltip title={!watermarkValid ? '请先填写水印文字或选择 Logo' : mode === 'empty' ? '请先添加图片' : undefined}>
+          <Tooltip title={!watermarkValid ? t('pipeline.watermarkRequired') : mode === 'empty' ? t('shared.addImagesFirst') : undefined}>
             <span>
-              <Button type="primary" disabled={busy || !watermarkValid || !items.some(item => itemStatus(item) !== 'succeeded')} onClick={() => void process()}>{paused ? '继续处理' : '开始处理'}</Button>
+              <Button type="primary" disabled={busy || !watermarkValid || !items.some(item => itemStatus(item) !== 'succeeded')} onClick={() => void process()}>{paused ? t('pipeline.resumeProcessing') : t('shared.startProcessing')}</Button>
             </span>
           </Tooltip>
         )}

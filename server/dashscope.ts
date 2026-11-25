@@ -245,7 +245,7 @@ export async function encodeJpegForDashScope(
     quality -= 10
     encoded = await sharp(image, { failOn: 'none' }).rotate().resize(width, height, { fit: 'fill' }).jpeg({ quality }).toBuffer()
   }
-  if (encoded.length > 10_000_000) throw new HttpError(413, limitMessage)
+  if (encoded.length > 10_000_000) throw new HttpError(413, limitMessage, 'IMAGE_COMPRESSED_TOO_LARGE')
   return encoded
 }
 

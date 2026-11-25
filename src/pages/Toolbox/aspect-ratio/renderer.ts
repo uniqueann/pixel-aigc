@@ -1,8 +1,22 @@
+import { i18n } from '@/i18n'
 import { drawFittedImage } from './draw'
 import { outputMime, outputSize } from './geometry'
 import { JPEG_QUALITY, type RenderRequest, type RenderResult } from './types'
 
 interface WorkerResponse { id: number; result?: RenderResult; error?: string }
+
+function translateWorkerError(error?: string): string {
+  switch (error) {
+    case 'OUTPAINT_UNAVAILABLE_WORKER': return i18n.t('toolbox:errors.outpaintUnavailableWorker')
+    case 'CANVAS_CONTEXT_FAILED': return i18n.t('toolbox:errors.canvasContext')
+    case 'PROCESS_FAILED':
+    case undefined:
+    case '':
+      return i18n.t('toolbox:errors.processFailed')
+    default:
+      return error
+  }
+}
 
 async function readSource(blob: Blob): Promise<(CanvasImageSource & { width: number; height: number }) & { close?: () => void }> {
   if (typeof createImageBitmap === 'function') return createImageBitmap(blob, { imageOrientation: 'from-image' })
@@ -11,7 +25,7 @@ async function readSource(blob: Blob): Promise<(CanvasImageSource & { width: num
     return await new Promise<HTMLImageElement>((resolve, reject) => {
       const image = new Image()
       image.onload = () => resolve(image)
-      image.onerror = () => reject(new Error('无法解码图片'))
+      image.onerror = () => reject(new Error(i18n.t('toolbox:errors.decodeFailed')))
       image.src = url
     })
   } finally {
@@ -20,7 +34,7 @@ async function readSource(blob: Blob): Promise<(CanvasImageSource & { width: num
 }
 
 async function renderOnMainThread(request: RenderRequest): Promise<RenderResult> {
-  if (request.settings.strategy === 'outpaint') throw new Error('智能扩展将在后续版本开放')
+  if (request.settings.strategy === 'outpaint') throw new Error(i18n.t('toolbox:errors.outpaintUnavailableWorker'))
   const source = await readSource(request.file)
   let canvas: HTMLCanvasElement | undefined
   try {
@@ -29,11 +43,11 @@ async function renderOnMainThread(request: RenderRequest): Promise<RenderResult>
     canvas.width = size.width
     canvas.height = size.height
     const context = canvas.getContext('2d')
-    if (!context) throw new Error('无法创建图片处理画布')
+    if (!context) throw new Error(i18n.t('toolbox:errors.canvasContext'))
     drawFittedImage(context, source, source.width, source.height, size.width, size.height, request.settings)
     const mimeType = request.outputMime ?? outputMime(request.settings.strategy, request.settings.background)
     const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas!.toBlob(value => value ? resolve(value) : reject(new Error('图片编码失败')), mimeType, JPEG_QUALITY)
+      canvas!.toBlob(value => value ? resolve(value) : reject(new Error(i18n.t('toolbox:errors.encodeFailed'))), mimeType, JPEG_QUALITY)
     })
     return { blob, mimeType: blob.type || mimeType, width: size.width, height: size.height }
   } finally {
@@ -57,12 +71,12 @@ export class AspectRatioRenderer {
         if (!pending) return
         this.pending.delete(event.data.id)
         if (event.data.result) pending.resolve(event.data.result)
-        else pending.reject(new Error(event.data.error || '图片处理失败'))
+        else pending.reject(new Error(translateWorkerError(event.data.error)))
       }
       this.worker.onerror = () => {
         this.worker?.terminate()
         this.worker = null
-        for (const pending of this.pending.values()) pending.reject(new Error('后台画布不可用'))
+        for (const pending of this.pending.values()) pending.reject(new Error(i18n.t('toolbox:errors.workerUnavailable')))
         this.pending.clear()
       }
     } catch {
@@ -71,7 +85,7 @@ export class AspectRatioRenderer {
   }
 
   async render(request: RenderRequest): Promise<RenderResult> {
-    if (this.disposed) throw new Error('处理已取消')
+    if (this.disposed) throw new Error(i18n.t('toolbox:errors.processingCancelled'))
     if (!this.worker) return renderOnMainThread(request)
     return new Promise<RenderResult>((resolve, reject) => {
       const id = ++this.nextId
@@ -87,7 +101,7 @@ export class AspectRatioRenderer {
     this.disposed = true
     this.worker?.terminate()
     this.worker = null
-    for (const pending of this.pending.values()) pending.reject(new Error('处理已取消'))
+    for (const pending of this.pending.values()) pending.reject(new Error(i18n.t('toolbox:errors.processingCancelled')))
     this.pending.clear()
   }
 }

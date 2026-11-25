@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { App, Button, Input, Progress, Segmented, Select } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
+import { i18n } from '@/i18n'
+import { activeLocale, formatMegabytes } from '@/i18n/format'
 import { useUserStore } from '@/store/useUserStore'
 import { useBlobPreviewGallery } from '@/components/useBlobPreviewGallery'
 import WatermarkSettingsPanel from './shared/WatermarkSettingsPanel'
@@ -16,16 +19,13 @@ import { watermarkPreviewAlt, watermarkPreviewMeta, watermarkPreviewSource, type
 import { loadWatermarkSession, saveWatermarkSession } from './watermark/session'
 import { footerMode, progressLabel } from './shared/resultProgress'
 import { datedDownloadName } from './shared/dateStamp'
-import { LOCAL_TEMPLATE_LABEL } from './shared/presetLabels'
 import { inspectImage, inspectLogo, MAX_ZIP_BYTES, queueLimitMessage, hasWatermark } from './watermark/validation'
 import { usePreferencesStore } from '@/features/preferences/store'
 import { initialWatermarkSettings, watermarkMemory } from '@/features/preferences/toolParameters'
 
-
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : '操作失败'
+  return error instanceof Error ? error.message : i18n.t('toolbox:errors.operationFailed')
 }
-
 
 interface PreviewState {
   imageId: string
@@ -44,6 +44,7 @@ interface SettingsSnapshot {
 type ResultView = 'single' | 'grid'
 
 export default function WatermarkTool() {
+  const { t } = useTranslation(['toolbox', 'common'])
   const { message, modal } = App.useApp()
   const scope = useUserStore(state => state.userId ?? 'local')
   const [restoredSession] = useState(() => loadWatermarkSession(scope))
@@ -106,15 +107,15 @@ export default function WatermarkTool() {
   const previewMetaText = hasResult ? watermarkPreviewMeta({ mode: previewMode, hasResult }) : null
   const canOpenResult = Boolean(selected?.output && selectedResult) && previewMode === 'result' && resultView === 'single'
   const batchSummary = items.length > 0
-    ? `成功 ${completed.length} · 失败 ${failed.length} · 可下载 ${completed.length}`
-    : '等待图片'
+    ? t('shared.batchSummary', { succeeded: completed.length, failed: failed.length, downloadable: completed.length })
+    : t('shared.waitingImages')
   const allDone = items.length > 0 && completed.length === items.length
   const hasPending = items.some(item => item.status === 'pending')
   const mode = footerMode({ processing, itemCount: items.length, allDone, failedCount: failed.length })
   const statusText = progressLabel({ itemCount: items.length, completedCount: completed.length, failedCount: failed.length, processing })
   const downloadActionLabel = completed.length > 0 && failed.length > 0
-    ? `下载 ${completed.length} 张结果`
-    : '打包下载'
+    ? t('shared.downloadCount', { count: completed.length })
+    : t('shared.downloadZip')
 
   function commitItems(next: BatchImage[]) {
     if (!mountedRef.current) return
@@ -152,7 +153,7 @@ export default function WatermarkTool() {
     let active = true
     void listPresets(scope).then(records => {
       if (active) setPresets(records)
-    }).catch(error => { if (active) message.warning(`读取本机模板失败：${errorMessage(error)}`) })
+    }).catch(error => { if (active) message.warning(i18n.t('toolbox:presets.readFailed', { error: errorMessage(error) })) })
     return () => { active = false }
   }, [scope, message])
 
@@ -240,7 +241,7 @@ export default function WatermarkTool() {
       commitItems([...itemsRef.current, item])
       setSelectedId(current => current ?? item.id)
     }).catch(error => {
-      if (mountedRef.current) message.error(`${file.name}：${errorMessage(error)}`)
+      if (mountedRef.current) message.error(t('shared.fileErrorPrefix', { name: file.name, error: errorMessage(error) }))
     }).finally(() => {
       addingCountRef.current -= 1
       pendingBytesRef.current -= file.size
@@ -308,10 +309,10 @@ export default function WatermarkTool() {
     if (processingRef.current || !itemsRef.current.length) return
     const count = itemsRef.current.length
     modal.confirm({
-      title: '清空全部图片？',
-      content: `将移除 ${count} 张图片及其已完成结果，此操作不可撤销。`,
-      okText: '清空',
-      cancelText: '取消',
+      title: t('shared.clearConfirmTitle'),
+      content: t('shared.clearConfirmContent', { count }),
+      okText: t('shared.clearConfirmOk'),
+      cancelText: t('common:actions.cancel'),
       okButtonProps: { danger: true },
       autoFocusButton: 'cancel',
       onOk: clearFiles,
@@ -337,7 +338,7 @@ export default function WatermarkTool() {
         shouldStop: () => cancelledRef.current || !mountedRef.current,
       })
       if (mountedRef.current && !cancelledRef.current && itemsRef.current.some(item => item.status === 'succeeded' && item.outputMime !== item.sourceMime)) {
-        message.warning('当前浏览器不支持部分原格式编码，相关图片已按实际格式导出')
+        message.warning(t('watermark.fallbackFormatWarning'))
       }
     } finally {
       processingRef.current = false
@@ -390,15 +391,15 @@ export default function WatermarkTool() {
 
   async function saveCurrentPreset() {
     const name = presetName.trim()
-    if (!name) { message.warning('请先输入模板名称'); return }
-    if (!hasWatermark(settings)) { message.warning('请先设置水印内容'); return }
-    if (presets.some(preset => preset.name === name)) { message.warning('模板名称已存在'); return }
+    if (!name) { message.warning(t('presets.enterName')); return }
+    if (!hasWatermark(settings)) { message.warning(t('presets.enterWatermarkFirst')); return }
+    if (presets.some(preset => preset.name === name)) { message.warning(t('presets.duplicateName')); return }
     try {
       const preset = await savePreset(scope, name, settings)
       setPresets(current => [preset, ...current])
       setSelectedPresetId(preset.id)
       setPresetName('')
-      message.success('模板已保存在本机')
+      message.success(t('presets.savedLocal'))
     } catch (error) { message.error(errorMessage(error)) }
   }
 
@@ -413,10 +414,10 @@ export default function WatermarkTool() {
     const preset = presets.find(item => item.id === selectedPresetId)
     if (!preset) return
     modal.confirm({
-      title: '删除本机模板？',
-      content: `“${preset.name}”将从本机删除，无法恢复。`,
-      okText: '删除',
-      cancelText: '取消',
+      title: t('presets.deleteTitle'),
+      content: t('presets.deleteContent', { name: preset.name }),
+      okText: t('common:actions.delete'),
+      cancelText: t('common:actions.cancel'),
       okButtonProps: { danger: true },
       autoFocusButton: 'cancel',
       onOk: () => removePreset(preset.id),
@@ -428,7 +429,7 @@ export default function WatermarkTool() {
       await deletePreset(id)
       setPresets(current => current.filter(item => item.id !== id))
       setSelectedPresetId(current => current === id ? null : current)
-      message.success('模板已删除')
+      message.success(t('presets.deleted'))
     } catch (error) { message.error(errorMessage(error)) }
   }
 
@@ -444,35 +445,41 @@ export default function WatermarkTool() {
         onClear={requestClearFiles}
       />
       <div className="toolbox-watermark-main">
-        <section ref={previewPanelRef} className={`toolbox-preview-panel${selected ? ' has-image' : ''}`} aria-label="水印预览">
+        <section ref={previewPanelRef} className={`toolbox-preview-panel${selected ? ' has-image' : ''}`} aria-label={t('watermark.previewAria')}>
           <div className="toolbox-section-heading">
             <div className="toolbox-preview-title">
-              <strong>水印预览</strong>
+              <strong>{t('watermark.previewTitle')}</strong>
               <span className="toolbox-preview-meta">
                 {resultView === 'grid'
-                  ? `结果网格 · ${batchSummary}`
+                  ? `${t('shared.resultGrid')} · ${batchSummary}`
                   : selected
                     ? `${selected.file.name} · ${selected.width} × ${selected.height}${previewMetaText ? ` · ${previewMetaText}` : ''}`
-                    : '等待图片'}
+                    : t('shared.waitingImages')}
               </span>
             </div>
             <div className="toolbox-preview-actions" onPointerDownCapture={rememberPreviewScroll} onFocusCapture={restorePreviewScroll}>
-              {currentPreview?.loading && <span role="status" aria-live="polite">正在更新预览…</span>}
+              {currentPreview?.loading && <span role="status" aria-live="polite">{t('shared.updatingPreview')}</span>}
               {selected && (
                 <>
                   <Segmented
                     size="small"
-                    aria-label="结果视图"
+                    aria-label={t('shared.resultViewAria')}
                     value={resultView}
-                    options={[{ label: '单张', value: 'single' }, { label: '结果网格', value: 'grid' }]}
+                    options={[
+                      { label: t('shared.singleView'), value: 'single' },
+                      { label: t('shared.resultGrid'), value: 'grid' },
+                    ]}
                     onChange={value => setResultView(value === 'grid' ? 'grid' : 'single')}
                   />
                   {hasResult && resultView === 'single' && (
                     <Segmented
                       size="small"
-                      aria-label="预览对照"
+                      aria-label={t('shared.compareViewAria')}
                       value={previewMode}
-                      options={[{ label: '结果', value: 'result' }, { label: '对比原图', value: 'source' }]}
+                      options={[
+                        { label: t('shared.resultOption'), value: 'result' },
+                        { label: t('shared.compareSourceOption'), value: 'source' },
+                      ]}
                       onChange={value => setPreviewMode(value === 'source' ? 'source' : 'result')}
                     />
                   )}
@@ -495,7 +502,7 @@ export default function WatermarkTool() {
               filter={resultFilter}
               onFilterChange={setResultFilter}
               onSelect={selectImage}
-              ariaLabel="水印结果网格"
+              ariaLabel={t('watermark.gridAria')}
               compact
             />
           ) : (
@@ -505,7 +512,7 @@ export default function WatermarkTool() {
                   <button
                     type="button"
                     className="toolbox-preview-open"
-                    aria-label={`查看 ${selected.file.name} 的水印结果大图`}
+                    aria-label={t('watermark.openFullAria', { name: selected.file.name })}
                     onClick={() => openAt(selected.id)}
                   >
                     <img src={previewSrc ?? selected.sourceUrl} alt={previewAltText} />
@@ -513,29 +520,29 @@ export default function WatermarkTool() {
                 ) : (
                   <img src={previewSrc ?? selected.sourceUrl} alt={previewAltText} />
                 )
-              ) : <p>先添加图片，再设置水印</p>}
+              ) : <p>{t('watermark.emptyStage')}</p>}
             </div>
           )}
-          {currentPreview?.error && <div className="toolbox-preview-error">预览失败：{currentPreview.error}</div>}
+          {currentPreview?.error && <div className="toolbox-preview-error">{t('shared.previewError', { error: currentPreview.error })}</div>}
           <PreviewItemNotice error={selected?.error} />
           <p className="toolbox-hint">
-            {resultView === 'grid' ? '点击任意结果查看单张大图。' : ''}
-            预览使用缩略尺寸；导出按原图像素处理。图片不会上传到服务器。
+            {resultView === 'grid' ? `${t('shared.gridClickHint')}${activeLocale() === 'en-US' ? ' ' : ''}` : ''}
+            {t('watermark.previewHint')}
           </p>
         </section>
 
         <WatermarkSettingsPanel settings={settings} disabled={controlsLocked} onChange={updateSettings} onLogo={chooseLogo}
           templates={
           <div className="toolbox-presets">
-            <label className="toolbox-field-label" id="watermark-template-label" htmlFor="watermark-template-select">{LOCAL_TEMPLATE_LABEL}</label>
+            <label className="toolbox-field-label" id="watermark-template-label" htmlFor="watermark-template-select">{t('aspectRatio.localTemplate')}</label>
             <div className="toolbox-preset-row">
-              <Select id="watermark-template-select" aria-labelledby="watermark-template-label" placeholder="选择已保存模板" value={selectedPresetId} disabled={controlsLocked} options={presets.map(preset => ({ value: preset.id, label: preset.name }))} onChange={choosePreset} allowClear onClear={() => setSelectedPresetId(null)} />
-              <Button disabled={!selectedPresetId || controlsLocked} onClick={requestRemovePreset}>删除</Button>
+              <Select id="watermark-template-select" aria-labelledby="watermark-template-label" placeholder={t('presets.selectPlaceholder')} value={selectedPresetId} disabled={controlsLocked} options={presets.map(preset => ({ value: preset.id, label: preset.name }))} onChange={choosePreset} allowClear onClear={() => setSelectedPresetId(null)} />
+              <Button disabled={!selectedPresetId || controlsLocked} onClick={requestRemovePreset}>{t('common:actions.delete')}</Button>
             </div>
-            <label className="toolbox-field-label" htmlFor="watermark-preset-name">新模板名称</label>
+            <label className="toolbox-field-label" htmlFor="watermark-preset-name">{t('presets.newNameLabel')}</label>
             <div className="toolbox-preset-row">
-              <Input id="watermark-preset-name" value={presetName} maxLength={40} disabled={controlsLocked} placeholder="例如：右下角版权" onChange={event => setPresetName(event.target.value)} onPressEnter={() => void saveCurrentPreset()} />
-              <Button icon={<SaveOutlined />} disabled={controlsLocked} onClick={() => void saveCurrentPreset()}>保存</Button>
+              <Input id="watermark-preset-name" value={presetName} maxLength={40} disabled={controlsLocked} placeholder={t('watermark.presetPlaceholder')} onChange={event => setPresetName(event.target.value)} onPressEnter={() => void saveCurrentPreset()} />
+              <Button icon={<SaveOutlined />} disabled={controlsLocked} onClick={() => void saveCurrentPreset()}>{t('common:actions.save')}</Button>
             </div>
           </div>
           }
@@ -544,36 +551,36 @@ export default function WatermarkTool() {
 
       <ResultGallery
         {...galleryProps}
-        resultLabel="水印结果"
-        downloadLabel="下载水印结果"
-        downloadTooltip="下载水印结果"
+        resultLabel={t('watermark.resultLabel')}
+        downloadLabel={t('watermark.downloadLabel')}
+        downloadTooltip={t('watermark.downloadTooltip')}
         onDownload={item => downloadOne(item.id)}
       />
 
       <div className="toolbox-watermark-footer">
         <div className="toolbox-progress" role="status" aria-live="polite" aria-atomic="true">
           <span>{statusText}</span>
-          {processing && <Progress size="small" aria-label="处理进度" percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
-          {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
+          {processing && <Progress size="small" aria-label={t('shared.progressAria')} percent={items.length ? Math.round(completed.length / items.length * 100) : 0} showInfo={false} />}
+          {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">{t('shared.zipLimitWarning', { limit: formatMegabytes(MAX_ZIP_BYTES) })}</span>}
           {settingsNotice && (
             <span className="toolbox-undo-notice">
-              设置已更改，已清除 {settingsNotice.count} 张已完成结果
-              <Button type="link" size="small" autoInsertSpace={false} className="toolbox-undo-button" onClick={undoSettingsChange}>撤销</Button>
+              {t('shared.settingsClearedNotice', { count: settingsNotice.count })}
+              <Button type="link" size="small" autoInsertSpace={false} className="toolbox-undo-button" onClick={undoSettingsChange}>{t('common:actions.undo')}</Button>
             </span>
           )}
         </div>
         <div className="toolbox-footer-actions">
           <Button type={mode === 'download' ? 'primary' : 'default'} icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>{downloadActionLabel}</Button>
-          {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>查看结果</Button>}
+          {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>{t('shared.viewResults')}</Button>}
           {mode === 'retry' && (
             <>
-              <Button type="primary" disabled={busy || !hasWatermark(settings)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</Button>
-              {hasPending && <Button disabled={busy || !hasWatermark(settings)} onClick={() => void processImages()}>继续处理剩余</Button>}
+              <Button type="primary" disabled={busy || !hasWatermark(settings)} onClick={() => void processImages(failed.map(item => item.id))}>{t('shared.retryFailed')}</Button>
+              {hasPending && <Button disabled={busy || !hasWatermark(settings)} onClick={() => void processImages()}>{t('shared.continueRemaining')}</Button>}
             </>
           )}
-          {mode === 'cancel' && <Button danger onClick={cancelProcessing}>取消处理</Button>}
+          {mode === 'cancel' && <Button danger onClick={cancelProcessing}>{t('shared.cancelProcessing')}</Button>}
           {(mode === 'process' || mode === 'empty') && (
-            <Button type="primary" disabled={!items.some(item => item.status !== 'succeeded') || !hasWatermark(settings) || busy} onClick={() => void processImages()}>开始处理</Button>
+            <Button type="primary" disabled={!items.some(item => item.status !== 'succeeded') || !hasWatermark(settings) || busy} onClick={() => void processImages()}>{t('shared.startProcessing')}</Button>
           )}
         </div>
       </div>

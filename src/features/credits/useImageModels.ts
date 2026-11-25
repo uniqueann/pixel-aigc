@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { useQuery } from '@tanstack/react-query'
 import { IMAGE_MODEL_PROFILES, publicImageModel } from '@shared/image-models'
 import type { ImageOperation } from '@shared/image-generation'
@@ -16,7 +17,7 @@ export function useImageModels(operation: ImageOperation) {
     queryFn: async ({ signal }) => {
       const models = await listImageModels(operation, signal)
       signal.throwIfAborted()
-      if (useUserStore.getState().userId !== owner) throw new DOMException('账号已切换', 'AbortError')
+      if (useUserStore.getState().userId !== owner) throw new DOMException(i18n.t('common:taskPolling.accountSwitched'), 'AbortError')
       return models
     },
     enabled: !mock,

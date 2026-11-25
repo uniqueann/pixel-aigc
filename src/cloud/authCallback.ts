@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { i18n } from '@/i18n'
 import { authErrorMessage } from './authErrors'
 
 // 只接受邮件链接会用到的 type。SDK 的 EmailOtpType 还放行任意字符串，不能直接交给 verifyOtp。
@@ -9,8 +10,6 @@ export type EmailLinkOutcome =
   | { kind: 'recovery'; userId: string }
   | { kind: 'continue' }
   | { kind: 'error'; message: string }
-
-const invalidLink = '登录链接无效或已过期，请重新申请'
 
 export function isEmailLinkType(value: string | null): value is EmailLinkType {
   return value !== null && (emailLinkTypes as readonly string[]).includes(value)
@@ -41,7 +40,9 @@ export function exchangeCodeOnce<T>(start: () => Promise<T>): Promise<T> {
 export function verifyEmailLink(client: EmailLinkVerifier, params: URLSearchParams): Promise<EmailLinkOutcome> {
   const tokenHash = params.get('token_hash')
   const type = params.get('type')
-  if (!tokenHash || !isEmailLinkType(type)) return Promise.resolve({ kind: 'error', message: invalidLink })
+  if (!tokenHash || !isEmailLinkType(type)) {
+    return Promise.resolve({ kind: 'error', message: i18n.t('auth:errors.invalid_auth_link') })
+  }
   if (!emailLinkVerification) {
     const verifiedType = type
     emailLinkVerification = Promise.resolve()
@@ -53,7 +54,7 @@ export function verifyEmailLink(client: EmailLinkVerifier, params: URLSearchPara
       })
       .catch((err: unknown) => ({
         kind: 'error' as const,
-        message: authErrorMessage(err, '登录链接无效，请重试'),
+        message: authErrorMessage(err, i18n.t('auth:pages.fallbacks.linkInvalid')),
       }))
   }
   return emailLinkVerification

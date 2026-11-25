@@ -1,7 +1,9 @@
-import { useCallback,useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { UNSAFE_LocationContext,useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { UNSAFE_LocationContext, useNavigate, useParams } from 'react-router-dom'
 import { DownloadOutlined, EyeInvisibleOutlined, EyeOutlined } from '@ant-design/icons'
 import { App, Button, Tooltip } from 'antd'
+import { useTranslation } from 'react-i18next'
+import { translateApiError } from '@/i18n/apiErrors'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import ToolSwitcher from '@/components/ToolSwitcher'
@@ -16,19 +18,20 @@ import { useImageWorkstationController } from '@/features/image-workstation/hook
 import { useFusionImageSelection } from '@/features/image-workstation/hooks/useFusionImageSelection'
 import { isPreparationCancelled } from '@/features/image-workstation/fusionInputs'
 import {
-  COMING_SOON_SUBMIT_MESSAGE,
-  FUSION_INPUTS_REQUIRED_REASON,
   WORKSTATION_TOOLS,
+  comingSoonSubmitMessage,
+  fusionInputsRequiredReason,
   getWorkstationTool,
   isWorkstationToolReady,
   workstationDisplaysSourcePreview,
+  workstationToolLabel,
 } from '@/features/image-workstation/tools/registry'
 import { presetForHandoff, setOutpaintHandoff, takeOutpaintHandoff } from '@/pages/Toolbox/aspect-ratio/handoff'
 import { renderRefinedMatte } from '@/pages/Toolbox/bg-remove/edgeRefine'
 import { clearEdgeRefineHandoff, setEdgeRefineHandoff, setEdgeRefineResult, takeEdgeRefineHandoff, type EdgeRefineHandoff } from '@/pages/Toolbox/bg-remove/session'
 import { liveCapabilityReady } from '@/services/api/task'
 import { canonicalizeImageModelProfileId, defaultImageModel } from '@shared/image-models'
-import { normalizeRetouchDirections, retouchDirectionLabel } from '@shared/retouch'
+import { normalizeRetouchDirections, type RetouchDirection } from '@shared/retouch'
 import { paddingAround, planBailianOutpaint, validateOutpaintOutputSize } from '@shared/outpaint'
 import { imageFileError, uploadImage } from '@/services/api/upload'
 import { Capability } from '@/types'
@@ -49,15 +52,15 @@ import RetouchExample from './components/RetouchExample'
 import InpaintExample from './components/InpaintExample'
 import FusionExample from './components/FusionExample'
 import OutpaintExample from './components/OutpaintExample'
-import { TASK_RUNNING_REASON, UNAVAILABLE_SERVICE_MESSAGES, workstationGenerateBlockReason } from './utils/generateGate'
-import { taskFailureText } from '@/features/generation/providerErrorCopy'
-import { freeOutpaintGeometry, outpaintHasWork, presetOutpaintGeometry } from './utils/outpaintGeometry'
+import { taskRunningReason, unavailableServiceMessage, workstationGenerateBlockReason } from './utils/generateGate'
+import { EMPTY_ERASE_MASK_MESSAGE, EMPTY_REPAINT_MASK_MESSAGE, emptyMaskMessage } from './utils/maskExport'
+import { freeOutpaintGeometry, outpaintHasWork, presetOutpaintGeometry, translateSharedOutpaintError } from './utils/outpaintGeometry'
 import { outpaintTargetParameters } from './utils/outpaintTarget'
 import { useWorkstationParameters } from '@/features/preferences/useWorkstationParameters'
 import { effectiveImageParameters } from '@/features/preferences/toolParameters'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, creditQuoteBlocked, creditQuoteLabel, imageCreditAmount, outpaintCreditAmount, positiveQuoteCount } from '@/features/credits/quotes'
-import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { imageCreditBlocksSubmit, insufficientCreditsReason } from '@/features/credits/imageCredits'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { useImageModels } from '@/features/credits/useImageModels'
 import { workstationRequestQuote } from '@/features/image-workstation/creditQuote'
@@ -77,15 +80,64 @@ import { assertRecoveryActor,persistRecoveredResult,recoveredResultId,readRecove
 import { bindRuntimeImage,releaseRuntimeImageUser,setRuntimeImageUsers,withRuntimeImage } from '@/editor/runtimeImages'
 import {taskIsActive,type TaskTool,type TaskCenterMedia,type TaskCenterDetail,type TaskCenterSummary} from '@shared/task-center'
 import {
-  RELIGHT_DIRECTION_LABELS,
-  RELIGHT_QUALITY_LABELS,
-  RELIGHT_TEMPERATURE_LABELS,
   readRelight,
+  type RelightDirection,
+  type RelightQuality,
+  type RelightTemperature,
 } from '@shared/relight'
 import { readKeepSourceSize, readRetouchDirections } from '@shared/retouch'
 import WorkstationBridge, { type WorkstationSuiteBinding } from '@/features/ecommerce-suite/WorkstationBridge'
 import type { SuiteActor } from '@shared/ecommerce-suite'
 import type { SuiteBridgeDetail } from '@shared/ecommerce-suite-runtime'
+
+const RETOUCH_DIRECTION_LABEL_KEYS = {
+  blemish: 'retouch.directions.blemish.label',
+  brighten: 'retouch.directions.brighten.label',
+  sharpen: 'retouch.directions.sharpen.label',
+  texture: 'retouch.directions.texture.label',
+} as const satisfies Record<RetouchDirection, string>
+
+const RELIGHT_DIRECTION_LABEL_KEYS = {
+  left: 'relight.directions.left',
+  right: 'relight.directions.right',
+  top: 'relight.directions.top',
+  bottom: 'relight.directions.bottom',
+  front: 'relight.directions.front',
+  back: 'relight.directions.back',
+  'top-left': 'relight.directions.top-left',
+  'top-right': 'relight.directions.top-right',
+  'bottom-left': 'relight.directions.bottom-left',
+  'bottom-right': 'relight.directions.bottom-right',
+} as const satisfies Record<RelightDirection, string>
+
+const RELIGHT_QUALITY_LABEL_KEYS = {
+  soft: 'relight.qualities.soft',
+  hard: 'relight.qualities.hard',
+} as const satisfies Record<RelightQuality, string>
+
+const RELIGHT_TEMPERATURE_LABEL_KEYS = {
+  warm: 'relight.temperatures.warm',
+  neutral: 'relight.temperatures.neutral',
+  cool: 'relight.temperatures.cool',
+} as const satisfies Record<RelightTemperature, string>
+
+function readableErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback
+  const apiError = error as Error & {
+    code?: string
+    status?: number
+    requestId?: string
+    extra?: Record<string, unknown>
+  }
+  return translateApiError({
+    code: typeof apiError.code === 'string' ? apiError.code : undefined,
+    status: typeof apiError.status === 'number' ? apiError.status : undefined,
+    requestId: typeof apiError.requestId === 'string' ? apiError.requestId : undefined,
+    extra: apiError.extra && typeof apiError.extra === 'object' ? apiError.extra : undefined,
+    message: error.message,
+    fallback,
+  })
+}
 
 const VARIATION_PROMPT_DRAFT_KEY = 'pixel-aigc:variation-prompt-draft'
 
@@ -108,6 +160,7 @@ function writeVariationPromptDraft(value: string) {
 }
 
 export default function ImageWorkstation() {
+  const { t } = useTranslation(['workstation', 'common', 'errors'])
   const { tool } = useParams<{ tool: string }>()
   const navigate = useNavigate()
   const location=useContext(UNSAFE_LocationContext)
@@ -154,6 +207,7 @@ export default function ImageWorkstation() {
   const [lastVariationPrompt, setLastVariationPrompt] = useState(readVariationPromptDraft)
   const edgeRefineFinishedRef = useRef(false)
   const activeTool = getWorkstationTool(tool)
+  const activeToolLabel = workstationToolLabel(activeTool.slug)
   const currentActor=currentTaskActor()
   const recoveringActive=account?.features?.taskCenter&&observedTask?.owner===currentActor?.owner&&observedTask?.scope===currentActor?.scope&&observedTask?.task.tool===activeTool.slug
     &&observedTask.task.taskKey===new URLSearchParams(location?.location.search).get('task')&&taskIsActive(observedTask.task)
@@ -186,7 +240,9 @@ export default function ImageWorkstation() {
     return () => window.clearTimeout(timer)
   }, [variationPrompt, variationTool])
   const retouchTool = activeTool.slug === 'retouch'
-  const retouchDirectionSummary = normalizeRetouchDirections(retouchDirections).map(retouchDirectionLabel).join('、')
+  const retouchDirectionSummary = normalizeRetouchDirections(retouchDirections)
+    .map(direction => t(RETOUCH_DIRECTION_LABEL_KEYS[direction]))
+    .join(t('common.listSeparator'))
   const fusionTool = activeTool.slug === 'fusion'
   const relightTool = activeTool.slug === 'relight'
   const smartEditTool = activeTool.slug === 'smart-edit'
@@ -239,15 +295,15 @@ export default function ImageWorkstation() {
     if (controller.resultReadError) return
     if (controller.outputAssets.length > 0) {
       notification.success({
-        message: '任务已完成',
+        message: t('common:taskPolling.succeededTitle'),
         description: activeTool.slug === 'retouch'
-          ? `已生成 ${controller.outputAssets.length} 个结果，原图已保留，可对比后下载或继续精修。`
+          ? t('notifications.retouchSucceeded', { count: controller.outputAssets.length })
           : activeTool.slug === 'repaint'
-            ? `已生成 ${controller.outputAssets.length} 个结果，原图与蒙版已保留，可调整描述再生成一版。`
-            : `已生成 ${controller.outputAssets.length} 个结果，可在预览区查看。`,
+            ? t('notifications.repaintSucceeded', { count: controller.outputAssets.length })
+            : t('notifications.genericSucceeded', { count: controller.outputAssets.length }),
       })
     }
-  }, [activeTool.slug, controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification])
+  }, [activeTool.slug, controller.activeTask, controller.readingResults, controller.resultReadError, controller.outputAssets.length, taskCenterEnabled, notification, t])
   // 重试读取期间由 readingResults 保持按钮反馈；重试仍失败时给出「仍无法读取」的结论。
   const handleRetryRead = async () => {
     setRetryReadFailedTaskId(undefined)
@@ -262,22 +318,22 @@ export default function ImageWorkstation() {
     ? outputPreview(activeModel, controller.inputAsset ? { width: controller.inputAsset.width, height: controller.inputAsset.height } : undefined, effectiveParameters.resolution)
     : undefined
   // 融合是双图输入，输入图以商品图为准；缺失时按槽位给出下一步，而不是笼统的「等待上传」。
-  const fusionInputHint = !fusionTool ? undefined : !fusionProduct ? '请上传商品图' : !fusionReference ? '请上传场景图' : undefined
+  const fusionInputHint = !fusionTool ? undefined : !fusionProduct ? t('fusion.uploadProductHint') : !fusionReference ? t('fusion.uploadReferenceHint') : undefined
   const previewSource = fusionTool ? fusionProduct : controller.inputAsset
-  const sourceMeta = fusionInputHint ?? (previewSource ? `${previewSource.width}×${previewSource.height}` : '等待上传')
+  const sourceMeta = fusionInputHint ?? (previewSource ? `${previewSource.width}×${previewSource.height}` : t('preview.waitingUpload'))
   const previewMeta = controller.readingResults
-    ? '正在读取结果'
+    ? t('preview.readingResults')
     : controller.active || controller.submitting
-      ? '正在生成'
+      ? t('preview.generating')
       : controller.outputAssets.length > 0
-        ? `已生成 ${controller.outputAssets.length} 张`
+        ? t('preview.generatedCount', { count: controller.outputAssets.length })
         : sourceMeta
   // 无结果时脚注给出下一步；读取中/读取失败时隐藏，避免描述不存在的「效果」。
   const previewFootnote = relightTool
     ? controller.readingResults || controller.resultReadError
       ? null
       : controller.outputAssets.length === 0
-        ? '调整右侧参数后生成，结果会显示在这里'
+        ? t('canvas.footnotes.adjustAndGenerate')
         : undefined
     : undefined
   const previewHasImage = Boolean(fusionTool ? fusionProduct : showSourcePreview ? controller.inputAsset : undefined)
@@ -302,8 +358,8 @@ export default function ImageWorkstation() {
   const inpaintProcessingLabel = !controller.resultReadError
     && (controller.active || controller.submitting || controller.readingResults)
     ? controller.readingResults
-      ? '正在读取结果，请稍候'
-      : `正在${activeTool.label}，完成后会显示效果`
+      ? t('preview.readingResultsWait')
+      : t('preview.inpaintProcessing', { tool: activeToolLabel })
     : undefined
   const selectedPreset = PLATFORM_SIZE_PRESETS.find((preset) => preset.platform === presetPlatform)
   const presetTargetSize = useMemo(() => outpaintMode === 'preset' && selectedPreset
@@ -315,12 +371,19 @@ export default function ImageWorkstation() {
     if (controller.protocolError) return undefined
     if (task.status === 'succeeded') {
       if (controller.outputAssets.length === 0) return undefined
-      return `已生成 ${controller.outputAssets.length} 个图片结果`
+      return t('tasks.succeededCount', { count: controller.outputAssets.length })
     }
-    if (task.status === 'cancelled') return '可调整参数后重新生成'
-    if (task.status === 'failed') return taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
-    return '正在处理中，请稍候...'
-  }, [controller.activeTask, controller.outputAssets.length, controller.protocolError])
+    if (task.status === 'cancelled') return t('tasks.cancelledHint')
+    if (task.status === 'failed') {
+      if (task.errorCode === 'PROVIDER_FORBIDDEN') return t('errors.providerForbidden')
+      return translateApiError({
+        code: task.errorCode,
+        message: task.errorMessage,
+        fallback: t('tasks.failedFallback'),
+      })
+    }
+    return t('tasks.processingWait')
+  }, [controller.activeTask, controller.outputAssets.length, controller.protocolError, t])
   // 精修保留原图后，选中结果只影响预览；其他工具仍以「当前输入正好是结果」为准。
   const selectedResult = retouchTool
     ? controller.outputAssets.find((asset) => asset.id === retouchPreviewId)
@@ -338,7 +401,7 @@ export default function ImageWorkstation() {
       originalSrc: source?.type === 'image' ? source.url : undefined,
       objectKey: asset.objectKey ?? asset.storage?.objectKey,
       title: asset.name,
-      meta: { tool: activeTool.label, resolution: `${asset.width}×${asset.height}` },
+      meta: { tool: activeToolLabel, resolution: `${asset.width}×${asset.height}` },
     }
   })
   const sourcePreviewItem: PreviewItem | undefined = sourceAsset && !resultPreviewItems.some(item => item.id === sourceAsset.id)
@@ -347,7 +410,7 @@ export default function ImageWorkstation() {
       thumbSrc: sourceAsset.url,
       fullSrc: sourceAsset.url,
       objectKey: sourceAsset.objectKey ?? sourceAsset.storage?.objectKey,
-      title: sourceAsset.name || '原图',
+      title: sourceAsset.name || t('common:preview.originalShort'),
     }
     : undefined
   /** 融合输入图也进画廊，点击槽位可直接放大并和结果来回切换。 */
@@ -357,8 +420,8 @@ export default function ImageWorkstation() {
       thumbSrc: asset.url,
       fullSrc: asset.url,
       objectKey: asset.objectKey ?? asset.storage?.objectKey,
-      title: asset.name || (index === 0 ? '商品图' : '场景图'),
-      meta: { tool: activeTool.label, resolution: `${asset.width}×${asset.height}` },
+      title: asset.name || t(index === 0 ? 'fusion.productSlot' : 'fusion.referenceSlot'),
+      meta: { tool: activeToolLabel, resolution: `${asset.width}×${asset.height}` },
     }] : [])
     : []
   const previewItems = [...fusionInputPreviewItems, ...(sourcePreviewItem ? [sourcePreviewItem] : []), ...resultPreviewItems]
@@ -382,8 +445,8 @@ export default function ImageWorkstation() {
   const recoveryTool=activeTool.slug as TaskTool
   const isDraftDirty = Boolean(activePrompt.trim() || hasMaskPaint)
   const confirmRecovery = useTaskDraftGuard({ dirty: isDraftDirty,
-    reason:'当前包含未保存的提示词或涂抹蒙版，切换后将放弃草稿，是否继续？',
-    blocked:uploading || fusionLoading ? '正在读取输入图片，请完成后再切换' : undefined })
+    reason: t('recovery.unsavedDraftConfirm'),
+    blocked: uploading || fusionLoading ? t('recovery.readingInputsBlocked') : undefined })
   const handleFusionUpload = async (slot: 'product' | 'reference', file: File) => {
     const invalid = imageFileError(file)
     if (invalid) { message.error(invalid); return }
@@ -391,7 +454,7 @@ export default function ImageWorkstation() {
     controller.modifyParameters()
     try {
       await fusionSelection.load(slot, file)
-      message.success(slot === 'product' ? '商品图已载入' : '场景图已载入')
+      message.success(t(slot === 'product' ? 'fusion.productLoaded' : 'fusion.referenceLoaded'))
     } catch (error) {
       if (isPreparationCancelled(error)) return
       // 失败文案已由槽位内联展示，不再重复弹全局 toast。
@@ -401,7 +464,7 @@ export default function ImageWorkstation() {
   const handleImageUpload = useCallback(async (file: File) => {
     const invalid = imageFileError(file)
     if (invalid) { message.error(invalid); return }
-    if (hasMaskPaint && !await confirmRecovery('替换图片将清除当前蒙版，是否继续？')) return
+    if (hasMaskPaint && !await confirmRecovery(t('recovery.replaceImageClearMaskConfirm'))) return
     const actor=currentTaskActor();if(actor)saveWorkstationSession(actor,recoveryTool,{input:undefined})
     setUploading(true)
     try {
@@ -416,13 +479,13 @@ export default function ImageWorkstation() {
       setSourceAsset(asset)
       replaceSourceAsset(asset)
       setCompareMode('effect')
-      message.success('图片已上传')
+      message.success(t('upload.success'))
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '图片上传失败')
+      message.error(readableErrorMessage(error, t('errors.imageUploadFailed')))
     } finally {
       setUploading(false)
     }
-  }, [confirmRecovery, hasMaskPaint, message, replaceSourceAsset,recoveryTool])
+  }, [confirmRecovery, hasMaskPaint, message, replaceSourceAsset, recoveryTool, t])
 
   const uploadRef = useRef(handleImageUpload)
   useEffect(() => { uploadRef.current = handleImageUpload }, [handleImageUpload])
@@ -480,7 +543,7 @@ export default function ImageWorkstation() {
     if (!edgeRefine) return
     const handle = canvasHandleRef.current
     if (!handle || !('exportRefineMarks' in handle)) {
-      message.error('蒙版画布尚未准备好')
+      message.error(t('errors.maskCanvasNotReady'))
       return
     }
     try {
@@ -489,7 +552,7 @@ export default function ImageWorkstation() {
       setEdgeRefineResult({ itemId: edgeRefine.itemId, matte, cancelled: false })
       navigate('/toolbox/bg-remove')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '边缘精修失败')
+      message.error(readableErrorMessage(error, t('errors.edgeRefineFailed')))
     }
   }
 
@@ -502,27 +565,27 @@ export default function ImageWorkstation() {
 
   const handleGenerate = async () => {
     if (bridgeId && (!suiteBinding || (controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey) !== suiteBinding.inputObjectKey)) {
-      message.warning('请先恢复本会话输入；如需改用其他图片，请返回套图重新创建会话')
+      message.warning(t('bridge.restoreInputFirst'))
       return
     }
     if (creditQuoteBlocked(generateQuote)) {
-      message.warning('正在计算所需积分，请稍候...')
+      message.warning(t('credits.calculatingQuote'))
       return
     }
     if (configurationReady === undefined) {
-      message.warning(capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
+      message.warning(capabilityError ? t('blockReasons.configLoadFailed') : t('blockReasons.loadingConfig'))
       return
     }
     if (!toolReady) {
-      message.warning(COMING_SOON_SUBMIT_MESSAGE)
+      message.warning(comingSoonSubmitMessage())
       return
     }
     if (maskRequired && !hasMaskPaint) {
-      message.warning(inpaintMode === 'repaint' ? '请先涂抹要重绘的区域' : '请先涂抹要消除的区域')
+      message.warning(emptyMaskMessage(inpaintMode))
       return
     }
     if (activeTool.slug === 'repaint' && !repaintPrompt.trim()) {
-      message.warning('请先填写重绘描述')
+      message.warning(t('errors:client.repaintEmptyPrompt'))
       return
     }
     // 新一轮生成重新判断读取结果，不沿用上一轮的「仍无法读取」结论。
@@ -530,13 +593,16 @@ export default function ImageWorkstation() {
     try {
       const submitted = await controller.generate(canvasHandleRef.current)
       // 同步工具在 await 返回时已经完成，完成态由页面统一提示，避免「已提交」与「已完成」双 toast。
-      if (submitted?.status !== 'succeeded') message.success('任务已提交')
+      if (submitted?.status !== 'succeeded') message.success(t('notifications.taskSubmitted'))
     } catch (error) {
       if (isPreparationCancelled(error)) return
-      const description = error instanceof Error ? error.message : '请检查 API 服务是否已启动'
-      const emptyMask = description.includes('请先涂抹')
+      const description = readableErrorMessage(error, t('errors.checkApiService'))
+      const emptyMask = description === emptyMaskMessage('remove')
+        || description === emptyMaskMessage('repaint')
+        || description === EMPTY_ERASE_MASK_MESSAGE
+        || description === EMPTY_REPAINT_MASK_MESSAGE
       if (emptyMask) message.warning(description)
-      else message.error({ content: `任务提交失败：${description}`, duration: 4 })
+      else message.error({ content: t('errors.taskSubmitFailedWithReason', { reason: description }), duration: 4 })
     }
   }
 
@@ -544,16 +610,16 @@ export default function ImageWorkstation() {
   const handleCancelGeneration = async () => {
     try {
       await controller.cancel()
-      message.success('已取消生成')
+      message.success(t('notifications.generationCancelled'))
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '取消生成失败，请稍后重试')
+      message.error(readableErrorMessage(error, t('errors.cancelFailed')))
     }
   }
 
   /** 把上次场景放回场景槽位；读取失败时提示重新上传，不阻塞当前操作。 */
   const handleReuseLastScene = async () => {
     const asset = await fusionSelection.reuseLastScene()
-    if (!asset) message.warning('上次场景已不可用，请重新上传')
+    if (!asset) message.warning(t('fusion.lastSceneUnavailable'))
   }
 
   const handleDownload = async (asset = selectedResult, index = 0) => {
@@ -561,7 +627,7 @@ export default function ImageWorkstation() {
     setDownloadingAssetId(asset.id)
     try {
       await downloadImageAsset(asset, filenameForWorkstationResult({
-        toolLabel: activeTool.label,
+        toolLabel: activeToolLabel,
         width: asset.width,
         height: asset.height,
         mimeType: asset.mimeType,
@@ -584,7 +650,7 @@ export default function ImageWorkstation() {
         const blob = await blobFromImageSource(asset.url, asset.objectKey ?? asset.storage?.objectKey)
         return {
           name: filenameForWorkstationResult({
-            toolLabel: activeTool.label,
+            toolLabel: activeToolLabel,
             width: asset.width,
             height: asset.height,
             mimeType: blob.type || asset.mimeType,
@@ -598,7 +664,10 @@ export default function ImageWorkstation() {
         return
       }
       const zip = await createResultZip(files)
-      downloadBlob(zip, `${activeTool.label}_${files.length}${variationTool ? '张变体' : '张结果'}.zip`)
+      downloadBlob(zip, t(variationTool ? 'files.variationZipName' : 'files.resultZipName', {
+        tool: activeToolLabel,
+        count: files.length,
+      }))
     } catch (error) {
       message.error({ content: downloadFailureMessage(error), duration: 4 })
     } finally {
@@ -614,7 +683,7 @@ export default function ImageWorkstation() {
       return
     }
     if (inpaintMode && hasMaskPaint
-      && !await confirmRecovery('切换到该结果将清空当前蒙版，是否继续？')) return
+      && !await confirmRecovery(t('recovery.switchResultClearMaskConfirm'))) return
     controller.selectOutput(assetId)
     setCompareMode('effect')
   }
@@ -627,10 +696,10 @@ export default function ImageWorkstation() {
       return
     }
     modal.confirm({
-      title: '在这张结果上继续精修？',
-      content: '将把这张结果设为新的原图，后续精修基于它进行；原图仍保留在项目中。',
-      okText: '继续精修',
-      cancelText: '取消',
+      title: t('retouch.continueConfirmTitle'),
+      content: t('retouch.continueConfirmContent'),
+      okText: t('retouch.continueConfirmOk'),
+      cancelText: t('common:actions.cancel'),
       onOk: () => {
         controller.selectOutput(asset.id)
         setRetouchPreviewId(undefined)
@@ -641,23 +710,23 @@ export default function ImageWorkstation() {
 
   const handleRetry = async () => {
     if (controller.activeTask?.status !== 'succeeded' && creditQuoteBlocked(retryQuote)) {
-      message.warning('原任务报价暂不可用，请修改参数后重新生成')
+      message.warning(t('errors.retryQuoteUnavailable'))
       return
     }
     try {
       await controller.retry()
-      message.success(controller.activeTask?.status === 'succeeded' ? '已重试读取已有结果' : '已按原参数重新提交')
+      message.success(t(controller.activeTask?.status === 'succeeded' ? 'notifications.retriedRead' : 'notifications.resubmitted'))
     } catch (error) {
       if (isPreparationCancelled(error)) return
-      message.error(error instanceof Error ? error.message : '任务重试失败')
+      message.error(readableErrorMessage(error, t('errors.taskRetryFailed')))
     }
   }
   const handleRetryInputs = async () => {
     try {
       const result = await controller.retryInputPreparation()
-      if (result) message.success('任务已提交')
+      if (result) message.success(t('notifications.taskSubmitted'))
     } catch (error) {
-      if (!isPreparationCancelled(error)) message.error(error instanceof Error ? error.message : '输入重试失败')
+      if (!isPreparationCancelled(error)) message.error(readableErrorMessage(error, t('errors.inputRetryFailed')))
     }
   }
 
@@ -702,7 +771,9 @@ export default function ImageWorkstation() {
         planBailianOutpaint(outpaintGeometry.sourceSize.width, outpaintGeometry.sourceSize.height, padding)
       }
     } catch (error) {
-      outpaintLimitError = error instanceof Error ? error.message : '扩图范围超出服务限制'
+      outpaintLimitError = error instanceof Error
+        ? translateSharedOutpaintError(error.message)
+        : t('outpaint.errors.exceedsServiceLimit')
     }
   }
   const generateQuote = inpaintMode
@@ -717,8 +788,8 @@ export default function ImageWorkstation() {
   const creditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: generateQuote, balance: knownBalance })
   const retryCreditBlocked = imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
   const bridgeBlock = bridgeId && (!suiteBinding || (controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey) !== suiteBinding.inputObjectKey)
-    ? '请恢复本会话输入后再提交，已有结果可以显式回填' : undefined
-  const generateBlockReason = fusionTool && fusionLoading ? '请等待图片载入完成' : workstationGenerateBlockReason({
+    ? t('bridge.restoreBeforeSubmit') : undefined
+  const generateBlockReason = fusionTool && fusionLoading ? t('fusion.waitingImageLoad') : workstationGenerateBlockReason({
     toolReady,
     configurationPending: configurationReady === undefined && !capabilityError,
     configurationError: configurationReady === undefined && Boolean(capabilityError),
@@ -739,7 +810,7 @@ export default function ImageWorkstation() {
     outpaintLimitError,
     mode: inpaintMode,
   })
-  const blockReason = bridgeBlock ?? generateBlockReason ?? (creditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined)
+  const blockReason = bridgeBlock ?? generateBlockReason ?? (creditBlocked ? insufficientCreditsReason() : undefined)
   // 提交函数每次渲染都会重建；ref 只保存最新版本，键盘监听不必随渲染重挂。
   const generateRef = useRef(handleGenerate)
   useEffect(() => { generateRef.current = handleGenerate })
@@ -758,39 +829,48 @@ export default function ImageWorkstation() {
   const showRetryRead = Boolean(controller.resultReadError) || controller.readingResults
   const { previewRef, footerRef, sticky } = useStickyPreview(true)
   const inputDescription = recoveringActive&&!controller.inputAsset&&!fusionProduct&&!fusionReference
-    ? '正在同步任务，请稍候...'
+    ? t('recovery.syncingTask')
     : fusionTool
-    ? `${fusionProduct ? `商品 ${fusionProduct.width}×${fusionProduct.height}` : '请上传商品图'} · ${fusionReference ? `场景图 ${fusionReference.width}×${fusionReference.height}` : '请上传场景图'}`
+    ? t('footer.fusionInputDescription', {
+        product: fusionProduct
+          ? t('footer.fusionProductSize', { width: fusionProduct.width, height: fusionProduct.height })
+          : t('fusion.uploadProductHint'),
+        reference: fusionReference
+          ? t('footer.fusionReferenceSize', { width: fusionReference.width, height: fusionReference.height })
+          : t('fusion.uploadReferenceHint'),
+      })
     : !showSourcePreview
-      ? '当前工具即将上线，不会使用上一工具的图片'
+      ? t('footer.comingSoonNoPreviousInput')
       : controller.inputAsset
         ? `${controller.inputAsset.name} · ${controller.inputAsset.width}×${controller.inputAsset.height}`
-        : '请先上传需要处理的图片'
+        : t('blockReasons.uploadImageFirst')
   // 读取失败的唯一结论：原因、可用张数、计费提醒都收在这一句里。
-  const readFailureReason = controller.resultReadError ?? '结果读取失败'
+  const readFailureReason = controller.resultReadError
+    ? translateApiError({ message: controller.resultReadError, fallback: t('errors.resultReadFailed') })
+    : t('errors.resultReadFailed')
   const readSuccessCount = controller.outputAssets.length
   const readFailureCount = controller.resultReadFailureCount
   const readFailureSummary = readFailureCount > 0 && readSuccessCount > 0
     ? retryReadFailedAgain
-      ? `已就绪 ${readSuccessCount} 张，仍无法读取 ${readFailureCount} 张：${readFailureReason} · 可免费重试，或重新生成（会再次计费）`
-      : `已就绪 ${readSuccessCount} 张，${readFailureCount} 张读取失败：${readFailureReason} · 重试读取免费；重新生成会再次计费`
+      ? t('footer.readPartialFailedAgain', { ready: readSuccessCount, failed: readFailureCount, reason: readFailureReason })
+      : t('footer.readPartialFailed', { ready: readSuccessCount, failed: readFailureCount, reason: readFailureReason })
     : retryReadFailedAgain
-      ? `仍无法读取：${readFailureReason} · 可免费重试，或重新生成（会再次计费）`
-      : `结果暂时无法读取：${readFailureReason} · 重试读取免费；重新生成会再次计费`
+      ? t('footer.readFailedAgain', { reason: readFailureReason })
+      : t('footer.readFailed', { reason: readFailureReason })
   const footerInfo = controller.resultReadError
     ? readFailureSummary
     : controller.active || controller.submitting
-      ? '正在生成 · 请稍候'
+      ? t('footer.generatingWait')
       : controller.outputAssets.length > 0
-        ? `已生成 ${controller.outputAssets.length} 张 · ${inputDescription}`
+        ? t('footer.generatedWithInput', { count: controller.outputAssets.length, input: inputDescription })
         : inputDescription
   const inpaintCreditLabel = inpaintMode && generateQuote.status !== 'loading' && generateQuote.status !== 'unavailable'
     ? creditQuoteLabel(generateQuote)
     : undefined
   // 禁用原因不能只藏在 hover tooltip 里；页脚已说明缺图或正在生成时不再重复。
-  const duplicateFusionInputReason = fusionTool && blockReason === FUSION_INPUTS_REQUIRED_REASON
+  const duplicateFusionInputReason = fusionTool && blockReason === fusionInputsRequiredReason()
   const busy = controller.active || controller.submitting || controller.readingResults
-  const duplicateBusyReason = busy && blockReason === TASK_RUNNING_REASON
+  const duplicateBusyReason = busy && blockReason === taskRunningReason()
   const visibleBlockReason = blockReason && !duplicateFusionInputReason && !duplicateBusyReason && blockReason !== footerInfo && !creditBlocked && configurationReady !== undefined && toolReady
     ? blockReason
     : undefined
@@ -809,7 +889,7 @@ export default function ImageWorkstation() {
   }), [])
   const applyRecoveredInput=async(result:TaskCenterMedia,image:Awaited<ReturnType<typeof readRecoveryImage>>,detail:TaskCenterDetail,context:RecoveryActionContext)=>{
     assertRecoveryActor(context.actor,context.signal)
-    const asset=createImageAsset({id:'asset:'+recoveredResultId(detail,result),name:'生成结果',url:result.url,objectKey:result.objectKey,width:image.width,height:image.height,mimeType:image.mimeType,source:'generation'})
+    const asset=createImageAsset({id:'asset:'+recoveredResultId(detail,result),name:t('recovery.recoveredAssetName'),url:result.url,objectKey:result.objectKey,width:image.width,height:image.height,mimeType:image.mimeType,source:'generation'})
     bindRuntimeImage(context.actor.owner,asset,image.blob,recoveryRuntime.current)
     useEditorStore.getState().registerAsset(asset)
     setRuntimeImageUsers(recoveryRuntime.current,[asset.id,...(fusionReference ? [fusionReference.id] : [])])
@@ -820,36 +900,36 @@ export default function ImageWorkstation() {
   }
   const applySuiteInput = useCallback((detail: SuiteBridgeDetail, blob: Blob, actor: SuiteActor) => {
     const current = useUserStore.getState().account
-    if (current?.userId !== actor.userId || current.runtimeScope !== actor.runtimeScope) throw new Error('账号或环境已切换')
-    const asset = createImageAsset({ id: `asset:suite-bridge:${detail.bridge.id}`, name: `套图版本 ${detail.version.versionNumber}`,
+    if (current?.userId !== actor.userId || current.runtimeScope !== actor.runtimeScope) throw new Error(t('errors.accountOrScopeChanged'))
+    const asset = createImageAsset({ id: `asset:suite-bridge:${detail.bridge.id}`, name: t('bridge.suiteVersionName', { version: detail.version.versionNumber }),
       url: `/local-image/suite-bridge-${detail.bridge.id}`, objectKey: detail.asset.objectKey,
       width: detail.asset.size.width, height: detail.asset.size.height, mimeType: detail.asset.mimeType, source: 'upload' })
     bindRuntimeImage(actor.userId, asset, blob, recoveryRuntime.current)
     useEditorStore.getState().registerAsset(asset)
     setRuntimeImageUsers(recoveryRuntime.current, [asset.id])
     setSourceAsset(withRuntimeImage(asset, actor.userId)); replaceSourceAsset(asset); setHasMaskPaint(false)
-  }, [replaceSourceAsset])
+  }, [replaceSourceAsset, t])
   return (
     <div className="image-workstation-page">
-      <h1 className="sr-only">图片工作站 · {activeTool.label}</h1>
+      <h1 className="sr-only">{t('pageHeading', { tool: activeToolLabel })}</h1>
       {bridgeId && <WorkstationBridge key={`${account?.userId}:${account?.runtimeScope}:${bridgeId}:${activeTool.slug}`} id={bridgeId} tool={activeTool.slug}
         task={controller.activeTask} disabled={controller.formLocked || uploading || fusionLoading} onInput={applySuiteInput} onBinding={setSuiteBinding} />}
       {!bridgeId && <WorkstationRecovery tool={activeTool.slug as TaskTool} nativeBusy={controller.formLocked||uploading||fusionLoading}
         hasDraft={isDraftDirty} onRestoreInput={applyRecoveredInput}/>}
-      <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} onObserve={observeRecoveredTask} blockedReason={controller.formLocked || uploading || fusionLoading ? '当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。':undefined}
+      <TaskRecoveryPanel key={activeTool.slug} tools={[activeTool.slug as TaskTool]} onObserve={observeRecoveredTask} blockedReason={controller.formLocked || uploading || fusionLoading ? t('recovery.blockedBusy') : undefined}
         onUseImage={async (result,image,detail,context) => {
-          if (!await confirmRecovery('基于此图继续编辑将替换当前原图和蒙版，是否继续？')) return
+          if (!await confirmRecovery(t('recovery.useImageConfirm'))) return
           await applyRecoveredInput(result,image,detail,context)
-          if((detail.task.sourceKind==='image_job'||detail.task.sourceKind==='sync_credit')&&!saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:{sourceKind:detail.task.sourceKind,sourceId:detail.task.sourceId,ordinal:result.ordinal}}))message.warning('图片已载入，但未同步本地缓存，刷新后可从历史任务中重新载入')
+          if((detail.task.sourceKind==='image_job'||detail.task.sourceKind==='sync_credit')&&!saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:{sourceKind:detail.task.sourceKind,sourceId:detail.task.sourceId,ordinal:result.ordinal}}))message.warning(t('recovery.cacheSyncFailed'))
           await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)
         }}
         onLoadParameters={['smart-edit','relight','fusion','retouch','variation'].includes(activeTool.slug)?async (prepared,detail,context) => {
           const params=prepared.params
-          if(!prepared.source || (fusionTool&&!prepared.reference))throw new Error('原输入或参考图缺失，不能完整载入')
-          if(typeof params.count!=='number'||!Number.isInteger(params.count)||params.count<1||!['1k','2k','4k'].includes(String(params.resolution)))throw new Error('原生成参数不完整')
-          if(params.prompt!==undefined&&typeof params.prompt!=='string')throw new Error('原提示词参数无效')
-          if(params.keepSourceSize!==undefined&&typeof params.keepSourceSize!=='boolean')throw new Error('原输出尺寸参数无效')
-          if(!await confirmRecovery('载入原参数将替换当前原图、蒙版和表单，是否继续？'))return false
+          if(!prepared.source || (fusionTool&&!prepared.reference))throw new Error(t('recovery.missingSourceOrRef'))
+          if(typeof params.count!=='number'||!Number.isInteger(params.count)||params.count<1||!['1k','2k','4k'].includes(String(params.resolution)))throw new Error(t('recovery.incompleteParams'))
+          if(params.prompt!==undefined&&typeof params.prompt!=='string')throw new Error(t('recovery.invalidPromptParam'))
+          if(params.keepSourceSize!==undefined&&typeof params.keepSourceSize!=='boolean')throw new Error(t('recovery.invalidOutputSizeParam'))
+          if(!await confirmRecovery(t('recovery.loadParamsConfirm')))return false
           assertRecoveryActor(context.actor,context.signal)
           saveWorkstationSession(context.actor,activeTool.slug as TaskTool,{input:undefined})
           const source=prepared.source
@@ -870,18 +950,18 @@ export default function ImageWorkstation() {
         className="image-workstation-tool-switcher page-tab-row"
         options={WORKSTATION_TOOLS.map((item) => ({
           value: item.slug,
-          label: item.label,
+          label: workstationToolLabel(item.slug),
           ready: isWorkstationToolReady(item, capability => capabilityState(capability) !== false),
         }))}
         value={activeTool.slug}
-        ariaLabel="切换图片工具"
+        ariaLabel={t('toolSwitcherAria')}
         onChange={(slug) => navigate(`/image-workstation/${slug}`)}
       />
       <div className="image-workstation-main">
         <div ref={previewRef} className={`image-workstation-canvas-column${sticky ? ' is-sticky' : ''}`}>
           <section ref={previewPanelRef} className={`workstation-panel image-workstation-preview-panel${previewHasImage ? ' has-image' : ''}${relightTool ? ' is-relight' : ''}${inpaintTool ? ' is-inpaint' : ''}${fusionTool ? ' is-fusion' : ''}${previewStuck ? ' is-stuck' : ''}`} aria-labelledby="workstation-preview-heading">
             <div className="workstation-panel-heading-row">
-              <h2 id="workstation-preview-heading" className="workstation-panel-heading">图片与预览</h2>
+              <h2 id="workstation-preview-heading" className="workstation-panel-heading">{t('preview.heading')}</h2>
               <span className="workstation-preview-meta" aria-live="polite">{previewMeta}</span>
             </div>
             {inpaintMode && controller.inputAsset && !edgeRefine ? (
@@ -893,22 +973,26 @@ export default function ImageWorkstation() {
             {inpaintMode && !edgeRefine ? (
               <div className="workstation-preview-compact-row">
                 <p className="workstation-preview-compact-summary">
-                  {hasMaskPaint ? '蒙版已就绪，可继续涂抹或生成' : '尚未涂抹，回到画布继续涂抹'}
+                  {hasMaskPaint ? t('preview.inpaintSummaryReady') : t('preview.inpaintSummaryEmpty')}
                 </p>
               </div>
             ) : null}
             {relightTool ? (
               <div className="workstation-preview-compact-row">
                 <p className="workstation-preview-compact-summary">
-                  主光：{RELIGHT_DIRECTION_LABELS[relightOptions.direction]} · {RELIGHT_QUALITY_LABELS[relightOptions.quality]} · {RELIGHT_TEMPERATURE_LABELS[relightOptions.temperature]}
+                  {t('relight.compass.summary', {
+                    direction: t(RELIGHT_DIRECTION_LABEL_KEYS[relightOptions.direction]),
+                    quality: t(RELIGHT_QUALITY_LABEL_KEYS[relightOptions.quality]),
+                    temperature: t(RELIGHT_TEMPERATURE_LABEL_KEYS[relightOptions.temperature]),
+                  })}
                 </p>
                 {previewHasImage ? (
                   <button
                     type="button"
                     className="workstation-preview-compact-toggle"
-                    aria-label="方向示意"
+                    aria-label={t('relight.overlay.toggleLabel')}
                     aria-pressed={relightOverlayEnabled}
-                    title="实线箭头 = 主光；镜头/辉光徽标 = 正面/逆光；虚线 = 投影"
+                    title={t('relight.overlay.toggleTitle')}
                     onClick={() => setRelightOverlayEnabled(enabled => !enabled)}
                   >
                     {relightOverlayEnabled ? <EyeOutlined aria-hidden="true" /> : <EyeInvisibleOutlined aria-hidden="true" />}
@@ -919,14 +1003,16 @@ export default function ImageWorkstation() {
             {retouchTool ? (
               <div className="workstation-preview-compact-row">
                 <p className="workstation-preview-compact-summary">
-                  已选：{retouchDirectionSummary || '未选择方向'}
+                  {retouchDirectionSummary
+                    ? t('preview.retouchSelectedSummary', { summary: retouchDirectionSummary })
+                    : t('preview.retouchNoneSelected')}
                 </p>
               </div>
             ) : null}
             <CanvasArea
               interactionMode={activeTool.interactionMode}
-              activityLabel={recoveringActive?'正在同步进行中的任务...':controller.active?'正在处理生成任务...':undefined}
-              processingLabel={inpaintMode ? inpaintProcessingLabel : !controller.resultReadError && (controller.active || controller.submitting) ? fusionTool ? '正在生成，完成后在这里查看结果' : '正在生成，结果会显示在下方' : undefined}
+              activityLabel={recoveringActive ? t('canvas.activitySyncing') : controller.active ? t('canvas.activityGenerating') : undefined}
+              processingLabel={inpaintMode ? inpaintProcessingLabel : !controller.resultReadError && (controller.active || controller.submitting) ? fusionTool ? t('canvas.processingFusion') : t('canvas.processingDefault') : undefined}
               overlay={showRelightOverlay ? (
                 <RelightDirectionOverlay
                   direction={relightOptions.direction}
@@ -953,11 +1039,11 @@ export default function ImageWorkstation() {
                               : undefined
               }
               overlayToggle={relightTool && previewHasImage ? {
-                label: '方向示意',
+                label: t('relight.overlay.toggleLabel'),
                 pressed: relightOverlayEnabled,
                 onChange: () => setRelightOverlayEnabled(enabled => !enabled),
               } : undefined}
-              overlayHint={relightTool && previewHasImage && relightOverlayEnabled ? '拖动光源可微调' : undefined}
+              overlayHint={relightTool && previewHasImage && relightOverlayEnabled ? t('relight.overlay.dragHint') : undefined}
               imageUrl={fusionTool ? fusionProduct?.url : showSourcePreview ? controller.inputAsset?.url : undefined}
               resultImageUrl={controller.outputAssets.length > 0 ? selectedResult?.url : undefined}
               imageObjectKey={fusionTool ? fusionProduct?.objectKey ?? fusionProduct?.storage?.objectKey : controller.inputAsset?.objectKey ?? controller.inputAsset?.storage?.objectKey}
@@ -987,11 +1073,11 @@ export default function ImageWorkstation() {
               onReady={handleCanvasReady}
               onMaskChange={setHasMaskPaint}
               uploadHint={activeTool.slug === 'remove'
-                ? '上传图片后，涂抹需要消除的区域'
+                ? t('canvas.upload.removeHint')
                 : activeTool.slug === 'repaint'
-                  ? '上传后先涂抹要重绘的区域，再填写描述'
+                  ? t('canvas.upload.repaintHint')
                   : activeTool.slug === 'outpaint'
-                    ? '上传后拖拽绿色边框向外扩展，商品主体保持不变'
+                    ? t('canvas.upload.outpaintHint')
                     : undefined}
               onPreview={(view) => {
                 const id = view === 'original' ? sourceAsset?.id : selectedResult?.id ?? sourceAsset?.id
@@ -1030,7 +1116,7 @@ export default function ImageWorkstation() {
                 onPreview={openAt}
                 onDownloadAll={(fusionTool || retouchTool) && controller.outputAssets.length > 1 ? () => void handleDownloadAll() : undefined}
                 onContinue={retouchTool && selectedResult && selectedResult.id !== controller.inputAsset?.id ? handleContinueOnResult : undefined}
-                continueLabel="继续精修此结果"
+                continueLabel={t('retouch.continueResultLabel')}
                 continueDisabled={controller.formLocked}
               />
             )}
@@ -1039,22 +1125,22 @@ export default function ImageWorkstation() {
         <aside ref={settingsPanelRef} className="workstation-panel image-workstation-settings" aria-labelledby="workstation-settings-heading">
           <div className="workstation-panel-heading-row">
             <div className="image-workstation-settings-heading">
-              <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeTool.label}</h2>
-              {fusionTool ? <p className="image-workstation-settings-subtitle">保留商品，把背景换成第二张图的场景。</p> : null}
-              {retouchTool ? <p className="image-workstation-settings-subtitle">轻微修图，保留颜色、文字和构图。</p> : null}
+              <h2 id="workstation-settings-heading" className="workstation-panel-heading">{activeToolLabel}</h2>
+              {fusionTool ? <p className="image-workstation-settings-subtitle">{t('settings.fusionSubtitle')}</p> : null}
+              {retouchTool ? <p className="image-workstation-settings-subtitle">{t('settings.retouchSubtitle')}</p> : null}
             </div>
             {relightOutput ? (
-              <span className="workstation-settings-output">预计输出 {relightOutput.size} · {relightOutput.resolution.toUpperCase()}</span>
+              <span className="workstation-settings-output">{t('params.predictedOutput', { size: relightOutput.size, resolution: relightOutput.resolution.toUpperCase() })}</span>
             ) : null}
           </div>
           <CapabilityStatus
             ready={configurationReady}
             error={capabilityError}
             unavailableMessage={activeTool.slug === 'repaint'
-              ? UNAVAILABLE_SERVICE_MESSAGES.repaint
+              ? unavailableServiceMessage('repaint')
               : activeTool.slug === 'remove'
-                ? UNAVAILABLE_SERVICE_MESSAGES.remove
-                : `${COMING_SOON_SUBMIT_MESSAGE}。`}
+                ? unavailableServiceMessage('remove')
+                : t('toolsMeta.comingSoonUnavailable')}
             onRetry={() => void refetchCapabilities()}
           />
           {toolState !== false ? (
@@ -1142,7 +1228,7 @@ export default function ImageWorkstation() {
               </span>
             ) : null}
             {!edgeRefine ? (
-              <span className="image-workstation-shortcut-hint" aria-hidden="true">⌘/Ctrl + Enter 生成</span>
+              <span className="image-workstation-shortcut-hint" aria-hidden="true">{t('footer.shortcutHint')}</span>
             ) : null}
             {!edgeRefine && (
               <div className="image-workstation-footer-hints">
@@ -1154,8 +1240,8 @@ export default function ImageWorkstation() {
           <div className="image-workstation-footer-actions">
             {edgeRefine ? (
               <>
-                <Button onClick={cancelEdgeRefine}>取消精修</Button>
-                <Button type="primary" disabled={!controller.inputAsset} onClick={() => void finishEdgeRefine()}>完成精修</Button>
+                <Button onClick={cancelEdgeRefine}>{t('edgeRefine.cancel')}</Button>
+                <Button type="primary" disabled={!controller.inputAsset} onClick={() => void finishEdgeRefine()}>{t('edgeRefine.finish')}</Button>
               </>
             ) : (
               <>
@@ -1167,7 +1253,7 @@ export default function ImageWorkstation() {
                     loading={downloadingAssetId === selectedResult.id}
                     onClick={() => void handleDownload(selectedResult, Math.max(0, controller.outputAssets.findIndex((asset) => asset.id === selectedResult.id)))}
                   >
-                    下载结果
+                    {t('footer.downloadResult')}
                   </Button>
                 ) : null}
                 {showRetryRead ? (
@@ -1176,12 +1262,12 @@ export default function ImageWorkstation() {
                     loading={controller.readingResults}
                     onClick={() => void handleRetryRead()}
                   >
-                    {controller.readingResults ? '正在读取' : '重试读取'}
+                    {controller.readingResults ? t('footer.reading') : t('footer.retryRead')}
                   </Button>
                 ) : null}
                 {controller.active ? (
                   <Button danger loading={controller.cancelling} onClick={() => void handleCancelGeneration()}>
-                    取消生成
+                    {t('footer.cancelGeneration')}
                   </Button>
                 ) : null}
                 <Tooltip title={showRetryRead ? undefined : blockReason}>
@@ -1196,8 +1282,10 @@ export default function ImageWorkstation() {
                       onClick={handleGenerate}
                     >
                       {hasPreservedInput
-                        ? '再生成一版'
-                        : COUNT_TOOLS.includes(activeTool.slug as CountTool) ? `生成 ${effectiveParameters.count} 张` : '生成'}
+                        ? t('footer.generateAgain')
+                        : COUNT_TOOLS.includes(activeTool.slug as CountTool)
+                          ? t('footer.generateCount', { count: effectiveParameters.count })
+                          : t('footer.generate')}
                     </CreditActionButton>
                   </span>
                 </Tooltip>
@@ -1206,11 +1294,11 @@ export default function ImageWorkstation() {
           </div>
         </div>
       </div>
-      <PreviewGallery {...galleryProps} downloadLabel="下载图片" downloadTooltip="下载图片" onDownload={item => {
+      <PreviewGallery {...galleryProps} downloadLabel={t('footer.downloadImage')} downloadTooltip={t('footer.downloadImage')} onDownload={item => {
         const index = controller.outputAssets.findIndex(asset => asset.id === item.id)
         if (index >= 0) return handleDownload(controller.outputAssets[index], index)
         const input = [fusionProduct, fusionReference].find(asset => asset?.id === item.id)
-        if (input) return downloadImageAsset(input, input.name || '图片')
+        if (input) return downloadImageAsset(input, input.name || t('files.defaultImageName'))
       }} />
     </div>
   )

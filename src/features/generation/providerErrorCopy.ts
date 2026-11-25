@@ -1,10 +1,8 @@
-/** 图片供应商错误码对应的界面文案。服务端会写入同一句，这里在前端再映射一次。 */
-export const PROVIDER_ERROR_COPY: Record<string, string> = {
-  PROVIDER_FORBIDDEN: '图片服务暂不可用（上游权限限制）',
-}
+import { translateApiError } from '@/i18n/apiErrors'
+import { i18n } from '@/i18n'
 
+/** 将任务失败码和服务端错误消息映射为当前语言的界面文案。 */
 export function taskFailureText(errorCode: string | undefined, errorMessage: string | undefined, fallback: string) {
-  if (errorCode && PROVIDER_ERROR_COPY[errorCode]) return PROVIDER_ERROR_COPY[errorCode]
-  const message = errorMessage?.trim()
-  return message || fallback
+  if (errorCode === 'PROVIDER_FORBIDDEN') return i18n.t('errors:codes.PROVIDER_FORBIDDEN')
+  return translateApiError({ code: errorCode, message: errorMessage, fallback })
 }

@@ -1,18 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useOutletContext, useSearchParams } from 'react-router-dom'
 import { Alert, App, Button } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { authEnabled } from '@/cloud/client'
 import ToolSwitcher from '@/components/ToolSwitcher'
+import { translateApiError } from '@/i18n/apiErrors'
 import { useEmailAssistantController } from '@/features/email-assistant/useEmailAssistantController'
 import { useEmailGenerationGate } from '@/features/email-assistant/useEmailGenerationGate'
 import { useEmailModelConfiguration } from '@/features/email-assistant/useEmailModelConfiguration'
 import { useEmailBatchController } from '@/features/email-assistant/batch/useEmailBatchController'
 import { useUserStore } from '@/store/useUserStore'
-import { EMAIL_OPERATIONS } from '@/features/email-assistant/options'
+import { EMAIL_OPERATION_IDS } from '@/features/email-assistant/options'
 import SingleEmailAssistant from './SingleEmailAssistant'
 import BatchEmailAssistant from './BatchEmailAssistant'
 
-const MODES = [{ value: 'single', label: '单个' }, { value: 'batch', label: '批量' }]
+function formatEmailPageError(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback
+  const record = error as Error & {
+    code?: unknown
+    status?: unknown
+    extra?: unknown
+    requestId?: unknown
+  }
+  return translateApiError({
+    code: typeof record.code === 'string' ? record.code : undefined,
+    status: typeof record.status === 'number' ? record.status : undefined,
+    extra: record.extra && typeof record.extra === 'object' ? (record.extra as Record<string, unknown>) : undefined,
+    requestId: typeof record.requestId === 'string' ? record.requestId : undefined,
+    message: error.message,
+    fallback,
+  })
+}
 
 export default function EmailAssistant() {
   const userId = useUserStore(state => state.userId)
@@ -20,22 +38,33 @@ export default function EmailAssistant() {
 }
 
 function EmailAssistantSession() {
+  const { t } = useTranslation(['email', 'common'])
   const { openModelSettings } = useOutletContext<{ openModelSettings: () => void }>()
   const { message } = App.useApp()
   const [params, setParams] = useSearchParams()
   const { key: entryKey } = useLocation()
   const mode = params.get('mode') === 'batch' ? 'batch' : 'single'
-  const entryOperation = mode === 'single' ? EMAIL_OPERATIONS.find(item => item.value === params.get('operation'))?.value : undefined
+  const rawOperation = params.get('operation')
+  const entryOperation = mode === 'single'
+    ? EMAIL_OPERATION_IDS.find(value => value === rawOperation)
+    : undefined
   /** 资产页深链：`?taskId=` 表示直接打开这条邮件任务，与任务中心的 `?task=kind:id` 恢复流程互不影响。 */
   const deepLinkTaskId = params.get('taskId') ?? undefined
   const [batchVisited, setBatchVisited] = useState(mode === 'batch')
   const configuration = useEmailModelConfiguration()
   const gate = useEmailGenerationGate()
-  const single = useEmailAssistantController({ autoRestoreLatest: !entryOperation && !params.has('mode') && !params.has('task') && !deepLinkTaskId,readOnlyRecovery:params.has('task') })
+  const single = useEmailAssistantController({ autoRestoreLatest: !entryOperation && !params.has('mode') && !params.has('task') && !deepLinkTaskId, readOnlyRecovery: params.has('task') })
   const batch = useEmailBatchController(gate)
   const { settingsQuery, profilesQuery } = configuration
   const openTask = single.openTask
   const openedDeepLinkRef = useRef<string>()
+  const modes = useMemo(
+    () => [
+      { value: 'single', label: t('email:modes.single') },
+      { value: 'batch', label: t('email:modes.batch') },
+    ],
+    [t],
+  )
   useEffect(() => {
     if (!deepLinkTaskId) return
     let active = true
@@ -45,14 +74,14 @@ function EmailAssistantSession() {
       openedDeepLinkRef.current = deepLinkTaskId
       void openTask(deepLinkTaskId).catch(error => {
         if (!active) return
-        message.error(error instanceof Error ? error.message : '邮件任务加载失败')
+        message.error(formatEmailPageError(error, t('email:errors.loadTaskFailed')))
         const next = new URLSearchParams(params)
         next.delete('taskId'); next.set('mode', 'single')
         setParams(next, { replace: true })
       })
     })
     return () => { active = false }
-  }, [deepLinkTaskId, message, openTask, params, setParams])
+  }, [deepLinkTaskId, message, openTask, params, setParams, t])
   useEffect(() => {
     if (mode === 'batch' && !batchVisited) queueMicrotask(() => setBatchVisited(true))
   }, [mode, batchVisited])
@@ -64,21 +93,21 @@ function EmailAssistantSession() {
   }, [params, setParams])
 
   return <div className="email-assistant-page">
-    <h1 className="sr-only">邮件助手</h1>
-    <ToolSwitcher className="page-tab-row" options={MODES} value={mode} onChange={value => {
+    <h1 className="sr-only">{t('email:pageTitle')}</h1>
+    <ToolSwitcher className="page-tab-row" options={modes} value={mode} onChange={value => {
       const next = new URLSearchParams(params)
       next.set('mode', value); next.delete('operation'); setParams(next)
       if (value === 'batch') setBatchVisited(true)
       if (value === 'single') void single.refreshHistory?.().catch(() => undefined)
     }} />
     {authEnabled && configuration.error ? <Alert type="error" showIcon className="email-model-alert"
-      message="模型设置加载失败，请重试"
-      action={<Button size="small" onClick={() => { void settingsQuery.refetch(); void profilesQuery.refetch() }}>重试</Button>} />
+      message={t('email:errors.modelSettingsLoadFailed')}
+      action={<Button size="small" onClick={() => { void settingsQuery.refetch(); void profilesQuery.refetch() }}>{t('common:actions.retry')}</Button>} />
       : authEnabled && !configuration.loading && !configuration.ready ? <Alert type="info" showIcon className="email-model-alert"
-        message="平台邮件模型暂不可用，请稍后重试" /> : null}
+        message={t('email:errors.platformModelsUnavailable')} /> : null}
     <div hidden={mode !== 'single'}>
       {gate.owner === 'batch' ? <Alert className="email-model-alert" type="info" showIcon
-        message={batch.unresolved ? '批量邮件等待确认原任务状态，确认后可继续单个生成' : '批量邮件正在处理，暂停并等待当前邮件完成后可继续单个生成'} /> : null}
+        message={batch.unresolved ? t('email:alerts.batchUnresolved') : t('email:alerts.batchBusy')} /> : null}
       <SingleEmailAssistant controller={single} configuration={configuration} gate={gate}
         entryOperation={entryOperation} entryKey={entryKey} onEntryConsumed={consumeEntry} />
     </div>

@@ -6,9 +6,12 @@ import {
   CREDIT_LEDGER_PAGE_SIZE,
   creditJobTitle,
   creditKindLabel,
+  creditToolId,
   formatCreditDelta,
   mergeCreditJobEntries,
   type CreditLedgerItem,
+  type CreditLedgerPresentation,
+  type CreditLedgerReasonCode,
 } from '../shared/credits.js'
 
 const cursorSchema = z.object({
@@ -64,6 +67,30 @@ export interface CreditLedgerRow {
   balanceAfter: number
   charged: number | null
   reason: string | null
+  presentation?: CreditLedgerPresentation
+}
+
+function rowStatusOf(kind: string): CreditLedgerPresentation['status'] {
+  if (kind === 'reserve') return 'reserved'
+  if (kind === 'settle') return 'settled'
+  if (kind === 'refund') return 'refunded'
+  return undefined
+}
+
+function ledgerReasonCode(
+  row: { kind: string; reason: string | null; idempotency_key?: string | null },
+  meta: Record<string, unknown>,
+): CreditLedgerReasonCode | undefined {
+  const key = row.idempotency_key
+  if (key === 'initial') return 'initial_grant'
+  if (key?.startsWith('order:') && key.includes(':revoke:')) return 'cash_refund_reclaim'
+  if (key?.startsWith('order:')) return 'top_up'
+  if (key?.startsWith('admin:')) return 'admin_adjust'
+  if (row.reason === '首次赠送') return 'initial_grant'
+  if (row.reason === '现金退款或支付争议收回充值积分' || typeof meta.uncollectedCredits === 'number') return 'cash_refund_reclaim'
+  if (row.reason === '积分充值' || typeof meta.orderId === 'string') return 'top_up'
+  if (row.kind === 'adjust') return 'admin_adjust'
+  return undefined
 }
 
 export function presentCreditLedgerRow(row: {
@@ -74,6 +101,7 @@ export function presentCreditLedgerRow(row: {
   charged: number | null
   meta: unknown
   reason: string | null
+  idempotency_key?: string | null
   created_at: Date | string
   capability: string | null
   params: unknown
@@ -82,6 +110,8 @@ export function presentCreditLedgerRow(row: {
 }): CreditLedgerRow {
   const meta = readMeta(row.meta)
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)
+  const reasonCode = ledgerReasonCode(row, meta)
+  const status = rowStatusOf(row.kind)
   if (meta.free === true) {
     const failed = row.kind === 'refund'
     return {
@@ -96,17 +126,32 @@ export function presentCreditLedgerRow(row: {
       balanceAfter: row.balance_after,
       charged: typeof row.charged === 'number' ? row.charged : null,
       reason: row.reason,
+      presentation: {
+        entryType: 'free_bg_remove',
+        tool: 'bg-remove',
+        status: failed ? 'refunded' : 'settled',
+        ...(reasonCode ? { reasonCode } : {}),
+      },
     }
   }
   const capability = readString(row.capability) ?? readString(meta.capability)
   const params = row.params ?? (capability === 'text_to_video' && meta.mode === 'video_replication' ? meta : undefined)
+  const syncTool = readString(meta.tool)
+  const resolution = readResolution(meta, row.provider_params)
+  const count = readCountFromRow(meta, row.requested_count, row.delta)
+  const durationSeconds = capability === 'text_to_video' && params && typeof params === 'object' && 'durationSeconds' in params && typeof params.durationSeconds === 'number'
+    ? params.durationSeconds
+    : undefined
+  const toolId = capability === 'email_assist'
+    ? 'email-assist'
+    : syncTool ?? creditToolId(params, capability)
   const title = capability === 'email_assist'
     ? `邮件${({ reply:'回复', summarize:'总结', polish:'润色', grammar:'语法修正' } as Record<string,string>)[String(meta.operation)] ?? '处理'} · ${EMAIL_MODELS.find(model => model.id === meta.modelProfileId)?.label ?? '历史模型'}`
-    : readString(meta.tool) ? ({ erase:'消除',repaint:'重绘',outpaint:'扩图','bg-remove':'商品抠图' }[String(meta.tool)] ?? String(meta.tool)) : creditJobTitle({
+    : syncTool ? ({ erase:'消除',repaint:'重绘',outpaint:'扩图','bg-remove':'商品抠图' }[syncTool] ?? syncTool) : creditJobTitle({
     params,
     capability,
-    resolution: readResolution(meta, row.provider_params),
-    count: readCountFromRow(meta, row.requested_count, row.delta),
+    resolution,
+    count,
   })
   const charged = typeof row.charged === 'number' ? row.charged : null
   const label = creditKindLabel(row.kind, row.delta)
@@ -114,6 +159,40 @@ export function presentCreditLedgerRow(row: {
     ? `实扣 ${charged}`
     : ''
   const summary = [title, extra].filter(Boolean).join(' ')
+  const presentation: CreditLedgerPresentation = capability === 'email_assist'
+    ? {
+        entryType: 'email_assist',
+        tool: 'email-assist',
+        capability,
+        ...(readString(meta.operation) ? { operation: readString(meta.operation) } : {}),
+        ...(readString(meta.modelProfileId) ? { modelProfileId: readString(meta.modelProfileId) } : {}),
+        ...(status ? { status } : {}),
+        ...(reasonCode ? { reasonCode } : {}),
+      }
+    : syncTool
+      ? {
+          entryType: 'sync_tool',
+          tool: syncTool,
+          ...(capability ? { capability } : {}),
+          ...(status ? { status } : {}),
+          ...(reasonCode ? { reasonCode } : {}),
+        }
+      : (capability || toolId)
+        ? {
+            entryType: 'image_job',
+            ...(toolId ? { tool: toolId } : {}),
+            ...(capability ? { capability } : {}),
+            ...(resolution ? { resolution: resolution.toUpperCase() } : {}),
+            ...(count ? { count } : {}),
+            ...(typeof durationSeconds === 'number' ? { durationSeconds } : {}),
+            ...(status ? { status } : {}),
+            ...(reasonCode ? { reasonCode } : {}),
+          }
+        : {
+            entryType: 'account',
+            ...(status ? { status } : {}),
+            ...(reasonCode ? { reasonCode } : {}),
+          }
   return {
     id: row.id,
     createdAt,
@@ -126,6 +205,7 @@ export function presentCreditLedgerRow(row: {
     balanceAfter: row.balance_after,
     charged,
     reason: row.reason,
+    presentation,
   }
 }
 
@@ -138,6 +218,7 @@ function asLedgerSource(row: Record<string, unknown>) {
     charged: row.charged == null ? null : Number(row.charged),
     meta: row.meta,
     reason: row.reason == null ? null : String(row.reason),
+    idempotency_key: row.idempotency_key == null ? null : String(row.idempotency_key),
     created_at: row.created_at as Date | string,
     capability: row.capability == null ? null : String(row.capability),
     params: row.params,
@@ -160,6 +241,7 @@ function presentLedgerGroup(rows: ReturnType<typeof asLedgerSource>[]): CreditLe
       createdAt: item.createdAt,
       title: item.title,
       reason: item.reason,
+      presentation: item.presentation,
     })))
     if (rows[0].job_id && readMeta(rows[0].meta).tool) return {...merged,syncRequestId:rows[0].job_id}
     return merged
@@ -202,7 +284,7 @@ export async function listCreditLedger(sql: Transaction, cursor: string | null, 
   const rows = groupKeys.length === 0
     ? []
     : await sql`
-        select l.id,l.job_id,l.kind,l.delta,l.balance_after,l.charged,l.meta,l.reason,l.created_at,
+        select l.id,l.job_id,l.kind,l.delta,l.balance_after,l.charged,l.meta,l.reason,l.idempotency_key,l.created_at,
           j.capability,j.params,j.requested_count,j.provider_params
         from aigc.credit_ledger l
         left join aigc.image_jobs j on j.id=l.job_id

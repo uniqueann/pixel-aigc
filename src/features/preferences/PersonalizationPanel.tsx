@@ -1,26 +1,30 @@
 import { EMAIL_LANGUAGE_OPTIONS } from '@shared/email-models'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { App, Button, Popconfirm, Select, Space, Switch } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { defaultImageModel } from '@shared/image-models'
-import { COUNT_TOOLS, type CountTool } from '@shared/preferences'
+import { COUNT_TOOLS } from '@shared/preferences'
 import { usePreferencesStore } from './store'
 import { clearSidebarState } from './storage'
 import { CLEAR_IMAGE_MEMORY_SUCCESS_DURATION, clearImageMemoryFailureMessage } from './errors'
 import PreferencesSyncAlert from './PreferencesSyncAlert'
 
-const toolLabels: Record<CountTool, string> = { 'smart-edit': '智能编辑', relight: '打光', variation: '裂变', fusion: '融合', retouch: '精修' }
-const startPages = [
-  { value: '/', label: '工作台首页' }, { value: '/email', label: '邮件助手' },
-  { value: '/image-workstation', label: '图片工作站' }, { value: '/toolbox', label: '工具箱' },
-  { value: '/canvas', label: '自由画布' }, { value: '/assets', label: '我的资产' },
-  { value: 'last', label: '上次访问页面' },
-]
+const START_PAGE_KEYS = [
+  { value: '/', key: 'personalization.startPages.home' },
+  { value: '/email', key: 'personalization.startPages.email' },
+  { value: '/image-workstation', key: 'personalization.startPages.imageWorkstation' },
+  { value: '/toolbox', key: 'personalization.startPages.toolbox' },
+  { value: '/canvas', key: 'personalization.startPages.canvas' },
+  { value: '/assets', key: 'personalization.startPages.assets' },
+  { value: 'last', key: 'personalization.startPages.last' },
+] as const
 
 function PreferenceRow({ label, detail, children }: { label: string; detail: string; children: React.ReactNode }) {
   return <div className="setting-row"><span><strong>{label}</strong><small>{detail}</small></span><div className="preference-control">{children}</div></div>
 }
 
 export default function PersonalizationPanel() {
+  const { t } = useTranslation(['settings', 'email', 'common'])
   const preferences = usePreferencesStore(state => state.preferences)
   const status = usePreferencesStore(state => state.status)
   const update = usePreferencesStore(state => state.update)
@@ -29,14 +33,32 @@ export default function PersonalizationPanel() {
   const [clearError, setClearError] = useState<string | null>(null)
   const { workbench, image, email } = preferences
   const hasMemory = Object.keys(image.lastUsed).length > 0
-  const statusText = status === 'saving' ? '正在同步…' : status === 'saved' ? '已同步到账号' : status === 'local' ? '已保存到本机' : status === 'loading' ? '正在加载…' : '尚未同步'
+  const statusText = status === 'saving'
+    ? t('settings:personalization.syncStatus.saving')
+    : status === 'saved'
+      ? t('settings:personalization.syncStatus.saved')
+      : status === 'local'
+        ? t('settings:personalization.syncStatus.local')
+        : status === 'loading'
+          ? t('settings:personalization.syncStatus.loading')
+          : t('settings:personalization.syncStatus.idle')
   const canClear = hasMemory || status === 'error' || Boolean(clearError)
+
+  const startPages = useMemo(
+    () => START_PAGE_KEYS.map(item => ({ value: item.value, label: t(`settings:${item.key}` as never) })),
+    [t],
+  )
+  const emailLanguages = useMemo(
+    () => EMAIL_LANGUAGE_OPTIONS.map(item => ({ value: item.value, label: t(`email:languages.${item.value}` as never) })),
+    [t],
+  )
+
   async function clearImageMemory() {
     setClearing(true)
     try {
       await usePreferencesStore.getState().clearImageMemory()
       setClearError(null)
-      message.success({ content: '已清除图片参数记忆', duration: CLEAR_IMAGE_MEMORY_SUCCESS_DURATION })
+      message.success({ content: t('settings:personalization.clearMemorySuccess'), duration: CLEAR_IMAGE_MEMORY_SUCCESS_DURATION })
     } catch (caught) {
       const text = clearImageMemoryFailureMessage(caught)
       setClearError(text)
@@ -46,74 +68,89 @@ export default function PersonalizationPanel() {
     }
   }
   return <section className="personalization-panel">
-    <h2>个性化</h2>
-    <p className="settings-description">自定义常用参数与界面习惯，多端自动同步。</p>
+    <h2>{t('settings:personalization.title')}</h2>
+    <p className="settings-description">{t('settings:personalization.description')}</p>
     <div className="preferences-sync-status" role="status" aria-live="polite">{statusText}</div>
     <PreferencesSyncAlert className="preferences-panel-error" />
 
-    <h3 className="preferences-group-title">工作台习惯</h3>
+    <h3 className="preferences-group-title">{t('settings:personalization.workbenchGroup')}</h3>
     <div className="settings-rows">
-      <PreferenceRow label="默认打开页面" detail="打开工作台时的默认首选页面">
-        <Select aria-label="默认打开页面" value={workbench.startPage} options={startPages} onChange={startPage => update({ workbench: { startPage } })} />
+      <PreferenceRow label={t('settings:personalization.startPageLabel')} detail={t('settings:personalization.startPageDetail')}>
+        <Select aria-label={t('settings:personalization.startPageLabel')} value={workbench.startPage} options={startPages} onChange={startPage => update({ workbench: { startPage } })} />
       </PreferenceRow>
-      <PreferenceRow label="记住侧边栏状态" detail="记住侧边栏展开/折叠状态（移动端自动收起）">
-        <Switch aria-label="记住侧边栏状态" checked={workbench.rememberSidebar} onChange={rememberSidebar => update({ workbench: { rememberSidebar } })} />
+      <PreferenceRow label={t('settings:personalization.rememberSidebarLabel')} detail={t('settings:personalization.rememberSidebarDetail')}>
+        <Switch aria-label={t('settings:personalization.rememberSidebarLabel')} checked={workbench.rememberSidebar} onChange={rememberSidebar => update({ workbench: { rememberSidebar } })} />
       </PreferenceRow>
-      <PreferenceRow label="资产展示方式" detail="资产库默认视图样式">
-        <Select aria-label="资产展示方式" value={workbench.assetsView} options={[{ value: 'grid', label: '网格' }, { value: 'list', label: '列表' }, { value: 'remember', label: '记住上次选择' }]} onChange={assetsView => update({ workbench: { assetsView } })} />
+      <PreferenceRow label={t('settings:personalization.assetsViewLabel')} detail={t('settings:personalization.assetsViewDetail')}>
+        <Select aria-label={t('settings:personalization.assetsViewLabel')} value={workbench.assetsView} options={[
+          { value: 'grid', label: t('settings:personalization.assetsViews.grid') },
+          { value: 'list', label: t('settings:personalization.assetsViews.list') },
+          { value: 'remember', label: t('settings:personalization.assetsViews.remember') },
+        ]} onChange={assetsView => update({ workbench: { assetsView } })} />
       </PreferenceRow>
     </div>
 
-    <h3 className="preferences-group-title">图片处理</h3>
+    <h3 className="preferences-group-title">{t('settings:personalization.imageGroup')}</h3>
     <div className="settings-rows">
-      <PreferenceRow label="默认生成数量" detail="各工具新建任务时的默认张数（受模型或比例限制时自动适配）">
+      <PreferenceRow label={t('settings:personalization.defaultCountLabel')} detail={t('settings:personalization.defaultCountDetail')}>
         <div className="preferences-counts">
           {COUNT_TOOLS.map(tool => {
             const max = defaultImageModel(tool === 'variation' ? 'variation' : 'image_edit')?.ui.maxCount ?? 4
-            return <label key={tool}><span>{toolLabels[tool]}</span><Select aria-label={`${toolLabels[tool]}默认生成数量`} value={image.counts[tool]} options={Array.from({ length: max }, (_, i) => ({ value: i + 1, label: `${i + 1} 张` }))} onChange={value => update({ image: { counts: { [tool]: value } } })} /></label>
+            const toolLabel = t(`settings:personalization.countTools.${tool}` as never)
+            return <label key={tool}><span>{toolLabel}</span><Select aria-label={t('settings:personalization.defaultCountAria', { tool: toolLabel })} value={image.counts[tool]} options={Array.from({ length: max }, (_, i) => ({ value: i + 1, label: t('settings:personalization.countOption', { count: i + 1 }) }))} onChange={value => update({ image: { counts: { [tool]: value } } })} /></label>
           })}
         </div>
       </PreferenceRow>
-      <PreferenceRow label="默认分辨率" detail="图片生成与编辑的默认输出分辨率">
-        <Select aria-label="默认分辨率" value={image.resolution} options={(defaultImageModel('image_edit')?.ui.resolutions ?? ['2k']).map(value => ({ value, label: value.toUpperCase() }))} onChange={resolution => update({ image: { resolution } })} />
+      <PreferenceRow label={t('settings:personalization.defaultResolutionLabel')} detail={t('settings:personalization.defaultResolutionDetail')}>
+        <Select aria-label={t('settings:personalization.defaultResolutionLabel')} value={image.resolution} options={(defaultImageModel('image_edit')?.ui.resolutions ?? ['2k']).map(value => ({ value, label: value.toUpperCase() }))} onChange={resolution => update({ image: { resolution } })} />
       </PreferenceRow>
-      <PreferenceRow label="记住上次参数" detail="下次进入工具时，自动保留上次使用的生成参数">
-        <Switch aria-label="记住上次参数" checked={image.rememberParameters} onChange={rememberParameters => update({ image: { rememberParameters } })} />
+      <PreferenceRow label={t('settings:personalization.rememberParametersLabel')} detail={t('settings:personalization.rememberParametersDetail')}>
+        <Switch aria-label={t('settings:personalization.rememberParametersLabel')} checked={image.rememberParameters} onChange={rememberParameters => update({ image: { rememberParameters } })} />
       </PreferenceRow>
     </div>
     <div className="preferences-memory-actions">
-      <p>仅记录生成张数、分辨率等常用选项；图片与提示词不在此保留。</p>
+      <p>{t('settings:personalization.memoryPrivacyHint')}</p>
       <div className="preferences-clear-actions">
-        <Popconfirm title="清除图片参数记忆？" description="下次进入工具时将使用个人默认值。" okText="清除" cancelText="取消" getPopupContainer={() => document.body} onConfirm={() => clearImageMemory()}>
-          <Button size="small" loading={clearing} disabled={!canClear || clearing}>清除图片参数记忆</Button>
+        <Popconfirm title={t('settings:personalization.clearMemoryTitle')} description={t('settings:personalization.clearMemoryDescription')} okText={t('settings:personalization.clearMemoryConfirm')} cancelText={t('common:actions.cancel')} getPopupContainer={() => document.body} onConfirm={() => clearImageMemory()}>
+          <Button size="small" loading={clearing} disabled={!canClear || clearing}>{t('settings:personalization.clearMemoryButton')}</Button>
         </Popconfirm>
         {clearError ? (
           <>
-            <button type="button" className="preferences-clear-retry" disabled={clearing} onClick={() => void clearImageMemory()}>重试</button>
+            <button type="button" className="preferences-clear-retry" disabled={clearing} onClick={() => void clearImageMemory()}>{t('common:actions.retry')}</button>
             <span className="preferences-clear-error" role="alert">{clearError}</span>
           </>
         ) : null}
       </div>
     </div>
 
-    <h3 className="preferences-group-title">邮件助手</h3>
+    <h3 className="preferences-group-title">{t('settings:personalization.emailGroup')}</h3>
     <div className="settings-rows">
-      <PreferenceRow label="默认输出语言" detail="新邮件任务的输出语言，与界面语言分开">
-        <Select aria-label="默认输出语言" value={email.language} options={EMAIL_LANGUAGE_OPTIONS} onChange={language => update({ email: { language } })} />
+      <PreferenceRow label={t('settings:personalization.emailLanguageLabel')} detail={t('settings:personalization.emailLanguageDetail')}>
+        <Select aria-label={t('settings:personalization.emailLanguageLabel')} value={email.language} options={emailLanguages} onChange={language => update({ email: { language } })} />
       </PreferenceRow>
-      <PreferenceRow label="默认操作" detail="新建邮件任务时的默认操作">
-        <Select aria-label="默认操作" value={email.operation} options={[{ value: 'reply', label: '回复' }, { value: 'summarize', label: '总结' }, { value: 'polish', label: '润色' }, { value: 'grammar', label: '检查语法' }]} onChange={operation => update({ email: { operation } })} />
+      <PreferenceRow label={t('settings:personalization.emailOperationLabel')} detail={t('settings:personalization.emailOperationDetail')}>
+        <Select aria-label={t('settings:personalization.emailOperationLabel')} value={email.operation} options={[
+          { value: 'reply', label: t('settings:personalization.emailOperations.reply') },
+          { value: 'summarize', label: t('settings:personalization.emailOperations.summarize') },
+          { value: 'polish', label: t('settings:personalization.emailOperations.polish') },
+          { value: 'grammar', label: t('settings:personalization.emailOperations.grammar') },
+        ]} onChange={operation => update({ email: { operation } })} />
       </PreferenceRow>
-      <PreferenceRow label="默认润色方式" detail="邮件润色的默认风格（可多选）">
-        <Select aria-label="默认润色方式" mode="multiple" value={email.polishStyles} options={[{ value: 'clear', label: '提升清晰度' }, { value: 'shorten', label: '缩短' }, { value: 'lengthen', label: '增长' }, { value: 'simplify', label: '简化' }]} onChange={polishStyles => update({ email: { polishStyles } })} />
+      <PreferenceRow label={t('settings:personalization.emailPolishStylesLabel')} detail={t('settings:personalization.emailPolishStylesDetail')}>
+        <Select aria-label={t('settings:personalization.emailPolishStylesLabel')} mode="multiple" value={email.polishStyles} options={[
+          { value: 'clear', label: t('settings:personalization.emailPolishStyles.clear') },
+          { value: 'shorten', label: t('settings:personalization.emailPolishStyles.shorten') },
+          { value: 'lengthen', label: t('settings:personalization.emailPolishStyles.lengthen') },
+          { value: 'simplify', label: t('settings:personalization.emailPolishStyles.simplify') },
+        ]} onChange={polishStyles => update({ email: { polishStyles } })} />
       </PreferenceRow>
     </div>
     <div className="preferences-footer">
-      <span>设置会自动保存，并在下次新建任务时生效。</span>
-      <Space><Popconfirm title="恢复全部个性化默认设置？" description="同时清除图片参数记忆，并同步到当前账号。" okText="恢复默认" cancelText="取消" onConfirm={() => {
+      <span>{t('settings:personalization.footerAutoSave')}</span>
+      <Space><Popconfirm title={t('settings:personalization.resetAllTitle')} description={t('settings:personalization.resetAllDescription')} okText={t('settings:personalization.resetAllConfirm')} cancelText={t('common:actions.cancel')} onConfirm={() => {
         clearSidebarState(usePreferencesStore.getState().owner)
         usePreferencesStore.getState().reset()
-      }}><Button>恢复默认</Button></Popconfirm></Space>
+      }}><Button>{t('settings:personalization.resetAllButton')}</Button></Popconfirm></Space>
     </div>
   </section>
 }

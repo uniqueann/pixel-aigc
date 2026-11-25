@@ -1,6 +1,7 @@
 import { authEnabled, supabase } from '@/cloud/client'
 import axios from 'axios'
-import { uploadFailureText } from '@shared/upload-limits'
+import { i18n } from '@/i18n'
+import { extractErrorExtra, extractRequestId, translateApiError } from '@/i18n/apiErrors'
 import { useUserStore } from '@/store/useUserStore'
 import { apiErrorCode, responseErrorText } from './apiErrorText'
 
@@ -9,6 +10,7 @@ export class ApiError extends Error {
     message: string,
     public status?: number,
     public code?: string,
+    public extra?: Record<string, unknown>,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -32,7 +34,7 @@ function checkRequestActor(config: object | undefined) {
     (actor.userId !== current.userId ||
       actor.scope !== current.account?.runtimeScope)
   )
-    throw new ApiError('账号或环境已切换，旧请求已停止', 401, 'ACCOUNT_CHANGED')
+    throw new ApiError(i18n.t('errors:generic.accountOrScopeChanged'), 401, 'ACCOUNT_CHANGED')
 }
 apiClient.interceptors.request.use(async (config) => {
   const current = useUserStore.getState()
@@ -45,7 +47,7 @@ apiClient.interceptors.request.use(async (config) => {
     : null
   checkRequestActor(config)
   if (authEnabled && current.userId && session?.user.id !== current.userId)
-    throw new ApiError('登录账号已切换', 401, 'ACCOUNT_CHANGED')
+    throw new ApiError(i18n.t('errors:generic.accountChanged'), 401, 'ACCOUNT_CHANGED')
   const token = authEnabled
     ? session?.access_token
     : localStorage.getItem('access_token')
@@ -70,13 +72,19 @@ apiClient.interceptors.response.use(
     if (err.response?.status === 402 && typeof window !== 'undefined')
       window.dispatchEvent(new Event('aigc:recharge'))
     const data = err.response?.data
-    // 413 常见于平台层提前拒掉请求，此时没有中文业务文案，只有平台英文原文。
-    const message = responseErrorText(data) || err.message || '请求失败，请重试'
+    const code = apiErrorCode(data)
+    const extra = extractErrorExtra(data)
+    // 413 is often returned directly by the proxy/platform layer with raw English body.
+    const message = translateApiError({
+      code,
+      extra,
+      message: responseErrorText(data) || err.message || undefined,
+      status: err.response?.status,
+      requestId: extractRequestId(data),
+      fallback: i18n.t('errors:generic.requestFailed'),
+    })
     return Promise.reject(
-      new ApiError(uploadFailureText(message, err.response?.status) || message,
-        err.response?.status,
-        apiErrorCode(data),
-      ),
+      new ApiError(message, err.response?.status, code, extra),
     )
   },
 )

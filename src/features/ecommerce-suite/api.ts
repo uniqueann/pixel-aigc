@@ -1,4 +1,5 @@
 import { cloudRequest, CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { useUserStore } from '@/store/useUserStore'
 import { normalizeImageBlob } from '@shared/image-format'
 import type { SuiteActor, SuiteAssetRef, SuiteBatch, SuiteProject, SuiteProjectConfig, SuiteQuote, SuiteQuoteRequest, SuiteSlotDraft, SuiteSlotVersion } from '@shared/ecommerce-suite'
@@ -13,7 +14,7 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
   const assertCurrent = () => {
     signal?.throwIfAborted()
     const account = useUserStore.getState().account
-    if (account?.userId !== actor.userId || account.runtimeScope !== actor.runtimeScope) throw new CloudError(401, '账号或运行环境已切换', 'ACCOUNT_CHANGED')
+    if (account?.userId !== actor.userId || account.runtimeScope !== actor.runtimeScope) throw new CloudError(401, i18n.t('ecommerce:errors.accountScopeChanged'), 'ACCOUNT_CHANGED')
   }
   const request = async <T>(path: string, method = 'GET', body?: unknown, timeoutMs?: number): Promise<T> => {
     assertCurrent()
@@ -21,7 +22,7 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
     assertCurrent()
     return result
   }
-  const upload = async (projectId: string, assetId: string, source: Blob, name = '商品图片') => {
+  const upload = async (projectId: string, assetId: string, source: Blob, name = i18n.t('ecommerce:upload.defaultAssetName')) => {
     assertCurrent()
     const blob = await normalizeImageBlob(source)
     const pending = await request<{ asset?: SuiteAssetRef; assetId: string; uploadId: string; uploadUrl: string }>(`/${projectId}/assets`, 'POST', {
@@ -31,7 +32,7 @@ export function suiteClient(actor: SuiteActor, signal?: AbortSignal) {
     assertCurrent()
     const response = await fetch(pending.uploadUrl, { method: 'PUT', headers: { 'Content-Type': blob.type }, body: blob,
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(120000)]) : AbortSignal.timeout(120000) })
-    if (!response.ok) throw new Error('图片上传中断，可使用原上传编号继续')
+    if (!response.ok) throw new Error(i18n.t('ecommerce:upload.interrupted'))
     assertCurrent()
     return (await request<{ asset: SuiteAssetRef }>(`/${projectId}/assets/complete`, 'POST', { assetId: pending.assetId, uploadId: pending.uploadId })).asset
   }

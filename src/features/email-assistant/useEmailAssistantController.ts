@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { EMAIL_PRICE_VERSION } from '@shared/email-models'
+import { i18n } from '@/i18n'
+import { translateApiError } from '@/i18n/apiErrors'
 import type { CreateTaskPayload } from '@/services/api/task'
 import { authEnabled } from '@/cloud/client'
 import { useTaskPolling } from '@/hooks/useTaskPolling'
@@ -14,6 +16,24 @@ import {
 } from '@/types'
 
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
+
+function formatControllerError(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback
+  const record = error as Error & {
+    code?: unknown
+    status?: unknown
+    extra?: unknown
+    requestId?: unknown
+  }
+  return translateApiError({
+    code: typeof record.code === 'string' ? record.code : undefined,
+    status: typeof record.status === 'number' ? record.status : undefined,
+    extra: record.extra && typeof record.extra === 'object' ? (record.extra as Record<string, unknown>) : undefined,
+    requestId: typeof record.requestId === 'string' ? record.requestId : undefined,
+    message: error.message,
+    fallback,
+  })
+}
 
 function isEmailAssistTask(task: GenerationTask<unknown>): task is GenerationTask<EmailAssistTaskParams> {
   if (task.capability !== Capability.EmailAssist || !task.params || typeof task.params !== 'object') return false
@@ -57,7 +77,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
     setActiveTaskId(ACTIVE_STATUSES.has(nextTask.status) ? nextTask.id : undefined)
     if (nextTask.status !== 'succeeded') { setResultText(''); return }
     if (!nextTask.resultText?.trim()) {
-      setProtocolError('任务已完成，但接口没有返回邮件文本')
+      setProtocolError(i18n.t('email:controller.missingResultText'))
       setResultText('')
       return
     }
@@ -122,7 +142,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
     setSavingEdit(true)
     try {
       saveChainRef.current = saveChainRef.current.catch(() => undefined).then(() => {
-        if(!current())throw new DOMException('账号或环境已切换，已停止保存旧修改稿','AbortError')
+        if(!current())throw new DOMException(i18n.t('email:controller.accountOrScopeChanged'),'AbortError')
         return saveTaskEdit(pending.taskId,pending.text)
       })
       await saveChainRef.current
@@ -130,7 +150,10 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
     }
     catch (error) {
       if (current()&&!pendingEditRef.current) pendingEditRef.current = pending
-      setSubmissionError(error instanceof Error ? `修改稿保存失败：${error.message}` : '修改稿保存失败')
+      const reason = error instanceof Error
+        ? formatControllerError(error, i18n.t('email:controller.saveEditFailed'))
+        : undefined
+      setSubmissionError(reason ? i18n.t('email:controller.saveEditFailedWithReason', { reason }) : i18n.t('email:controller.saveEditFailed'))
       return false
     }
     finally { setSavingEdit(false) }
@@ -145,9 +168,9 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
   }, [flushEdit, task,sessionActor])
 
   const newTask = useCallback(async () => {
-    if (pendingRequestRef.current) throw new Error('请先确认原请求状态，避免重复生成')
+    if (pendingRequestRef.current) throw new Error(i18n.t('email:controller.confirmPendingRequest'))
     touchedRef.current = true
-    if (!await flushEdit()) throw new Error('修改稿保存失败，请重试后新建任务')
+    if (!await flushEdit()) throw new Error(i18n.t('email:controller.saveEditBeforeNewTask'))
     ++selectionEpochRef.current
     selectedTaskIdRef.current = undefined
     setTask(undefined)
@@ -159,7 +182,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
 
   const generate = useCallback(async (params: EmailAssistTaskParams, modelProfileId?: string, priceVersion?: string) => {
     touchedRef.current = true
-    if (!await flushEdit()) throw new Error('修改稿保存失败，请重试后生成')
+    if (!await flushEdit()) throw new Error(i18n.t('email:controller.saveEditBeforeGenerate'))
     const epoch = ++selectionEpochRef.current
     selectedTaskIdRef.current = undefined
     setSubmitting(true)
@@ -203,7 +226,7 @@ export function useEmailAssistantController(options?: { autoRestoreLatest?: bool
       if (!authEnabled) pendingRequestRef.current = undefined
       if (error && typeof error === 'object' && 'code' in error && ['PRICE_CHANGED','MODEL_UNAVAILABLE'].includes(String(error.code)))
         window.dispatchEvent(new Event('pixel:model-settings-changed'))
-      const message = error instanceof Error ? error.message : '邮件任务提交失败'
+      const message = formatControllerError(error, i18n.t('email:controller.submitFailed'))
       setSubmissionError(message)
       throw error
     } finally {

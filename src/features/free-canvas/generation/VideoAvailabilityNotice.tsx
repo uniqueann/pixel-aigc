@@ -1,9 +1,11 @@
 import { Button } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { CapabilityAvailability } from '@/components/capabilityAvailability'
 
 export default function VideoAvailabilityNotice({ state, onRetry }: { state: CapabilityAvailability; onRetry?: () => void }) {
+  const { t } = useTranslation('canvas')
   if (state === 'ready') return null
-  if (state === 'soon') return <p role="status">视频生成即将上线。</p>
-  if (state === 'error') return <p role="alert">视频功能加载失败，请重试。{onRetry ? <Button size="small" onClick={onRetry}>重试加载视频功能</Button> : null}</p>
-  return <p role="status">正在加载视频功能…</p>
+  if (state === 'soon') return <p role="status">{t('video.availability.soon')}</p>
+  if (state === 'error') return <p role="alert">{t('video.availability.error')}{onRetry ? <Button size="small" onClick={onRetry}>{t('video.availability.retry')}</Button> : null}</p>
+  return <p role="status">{t('video.availability.loading')}</p>
 }

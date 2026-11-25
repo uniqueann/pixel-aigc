@@ -1,0 +1,742 @@
+{
+  "tools": {
+    "smart-edit": "Smart Edit",
+    "relight": "Relight",
+    "remove": "Erase",
+    "repaint": "Inpaint",
+    "variation": "Variation",
+    "fusion": "Fusion",
+    "outpaint": "Outpaint",
+    "retouch": "Retouch"
+  },
+  "models": {
+    "hints": {
+      "fast26": "2.6 is faster",
+      "supports4k": "Supports 4K",
+      "faster": "Faster",
+      "lowestCost": "Best value",
+      "value1k": "1K value",
+      "samePrice2k": "Same at 2K",
+      "maxRef10": "Up to 10 refs",
+      "fastGoodText": "Fast · Accurate text",
+      "highDetail": "High detail · Multi-image"
+    }
+  },
+  "projectDefaultName": "Image Studio",
+  "pageHeading": "Image Studio · {{tool}}",
+  "toolSwitcherAria": "Switch image tool",
+  "common": {
+    "listSeparator": ", ",
+    "semicolon": "; "
+  },
+  "toolsMeta": {
+    "comingSoonSubmit": "This feature is coming soon",
+    "comingSoonUnavailable": "This feature is coming soon."
+  },
+  "validation": {
+    "smartEditPromptRequired": "Enter editing instructions first",
+    "retouchDirectionsRequired": "Select at least one retouch direction first"
+  },
+  "limits": {
+    "fusionNote": "Notes cannot exceed {{max}} characters",
+    "variationPrompt": "Extra instructions cannot exceed {{max}} characters",
+    "relightNote": "Notes cannot exceed {{max}} characters",
+    "retouchNote": "Notes cannot exceed {{max}} characters"
+  },
+  "platforms": {
+    "amazon-main": "Amazon Main",
+    "temu-main": "Temu Main",
+    "shopee-main": "Shopee Main",
+    "tiktok-main": "TikTok Shop Product"
+  },
+  "relight": {
+    "directions": {
+      "left": "Left",
+      "right": "Right",
+      "top": "Top",
+      "bottom": "Bottom",
+      "front": "Front",
+      "back": "Backlight",
+      "top-left": "Top-Left",
+      "top-right": "Top-Right",
+      "bottom-left": "Bottom-Left",
+      "bottom-right": "Bottom-Right"
+    },
+    "directionHints": {
+      "top": "Key light from directly above; shadow falls directly below.",
+      "left": "Key light from the left; shadow falls to the right.",
+      "right": "Key light from the right; shadow falls to the left.",
+      "front": "Key light from camera direction; shadow falls behind the product.",
+      "bottom": "Key light from below; shadow casts upward above the product.",
+      "back": "Key light from behind the product; rim glows and shadow casts toward the camera.",
+      "top-left": "Key light from top-left; shadow falls to bottom-right.",
+      "top-right": "Key light from top-right; shadow falls to bottom-left.",
+      "bottom-left": "Key light from bottom-left; shadow falls to top-right.",
+      "bottom-right": "Key light from bottom-right; shadow falls to top-left."
+    },
+    "qualities": {
+      "soft": "Soft",
+      "hard": "Hard"
+    },
+    "temperatures": {
+      "warm": "Warm",
+      "neutral": "Neutral",
+      "cool": "Cool"
+    },
+    "presets": {
+      "studioSoft": "Studio Soft",
+      "sunsetWarm": "Sunset Warm",
+      "coolRim": "Cool Rim"
+    },
+    "qualityLabel": "Light Quality",
+    "temperatureLabel": "Color Temperature",
+    "qualityHint": "Soft light has gentle transitions; hard light creates stronger contrast.",
+    "disclaimer": "Simulated relighting preview; final appearance depends on generation.",
+    "compass": {
+      "label": "Light Direction",
+      "presetsAria": "Lighting presets",
+      "directionAria": "Light direction",
+      "product": "Product",
+      "summary": "Key light: {{direction}} · {{quality}} · {{temperature}}",
+      "backHint": "{{hint}} Click any planar direction to switch back.",
+      "cellAria": "{{label}} light: {{hint}}",
+      "depthAria": "{{label}}: {{hint}}",
+      "srAnnouncement": "{{summary}} {{hint}}"
+    },
+    "overlay": {
+      "toggleLabel": "Direction Guide",
+      "toggleTitle": "Solid arrow = key light; camera/glow icon = front/backlight; dashed line = shadow",
+      "dragHint": "Drag light to adjust",
+      "dragHandleTitle": "Drag light source to adjust direction"
+    }
+  },
+  "retouch": {
+    "directions": {
+      "blemish": {
+        "label": "Remove Blemishes",
+        "hint": "Remove dust, scratches, and small spots without changing shape"
+      },
+      "brighten": {
+        "label": "Brighten",
+        "hint": "Raise exposure and brightness, soften heavy shadows"
+      },
+      "sharpen": {
+        "label": "Sharpen Edges",
+        "hint": "Sharpen existing edges only without inventing details"
+      },
+      "texture": {
+        "label": "Unify Texture",
+        "hint": "Even out surface lighting and texture without changing material"
+      }
+    },
+    "presets": {
+      "standard": {
+        "label": "One-Click Retouch",
+        "description": "Remove Blemishes + Brighten"
+      }
+    },
+    "continueResultLabel": "Keep Retouching",
+    "continueConfirmTitle": "Continue retouching on this result?",
+    "continueConfirmContent": "This result will be set as the new source image for subsequent retouching. The original image stays in the project.",
+    "continueConfirmOk": "Continue Retouching"
+  },
+  "settings": {
+    "fusionSubtitle": "Keep the product intact and place it into the second image's scene.",
+    "retouchSubtitle": "Subtle retouching while preserving colors, text, and composition."
+  },
+  "preview": {
+    "heading": "Image & Preview",
+    "waitingUpload": "Waiting for upload",
+    "readingResults": "Loading results",
+    "readingResultsWait": "Loading results, please wait",
+    "generating": "Generating",
+    "generatedCount": "{{count}} generated",
+    "inpaintProcessing": "Running {{tool}}; result will appear when ready",
+    "inpaintSummaryReady": "Mask ready; continue painting or generate",
+    "inpaintSummaryEmpty": "No mask yet; return to canvas to paint",
+    "retouchSelectedSummary": "Selected: {{summary}}",
+    "retouchNoneSelected": "None selected"
+  },
+  "upload": {
+    "success": "Image uploaded"
+  },
+  "credits": {
+    "calculatingQuote": "Calculating credit cost, please wait..."
+  },
+  "notifications": {
+    "taskSubmitted": "Task submitted",
+    "generationCancelled": "Generation cancelled",
+    "retriedRead": "Retried loading existing results",
+    "resubmitted": "Resubmitted with original parameters",
+    "retouchSucceeded": "Generated {{count}} result(s). Original image preserved for comparison, download, or further retouching.",
+    "repaintSucceeded": "Generated {{count}} result(s). Original image and mask preserved so you can adjust the prompt and run again.",
+    "genericSucceeded": "Generated {{count}} result(s), ready in the preview area."
+  },
+  "tasks": {
+    "succeededCount": "Generated {{count}} image(s)",
+    "cancelledHint": "Adjust parameters and generate again",
+    "failedFallback": "Task did not complete, please try again",
+    "processingWait": "Processing, please wait..."
+  },
+  "fusion": {
+    "productSlot": "Product image",
+    "referenceSlot": "Scene image",
+    "uploadProductHint": "Upload product image",
+    "uploadReferenceHint": "Upload scene image",
+    "productLoaded": "Product image loaded",
+    "referenceLoaded": "Scene image loaded",
+    "lastSceneUnavailable": "Previous scene is unavailable; please upload again",
+    "waitingImageLoad": "Wait for image loading to finish",
+    "stages": {
+      "preparing": "Preparing image",
+      "signing": "Preparing upload",
+      "uploading": "Uploading",
+      "ready": "Image ready",
+      "failed": "Preparation failed",
+      "cancelled": "Cancelled"
+    },
+    "phases": {
+      "submitting": "Submitting fusion task",
+      "cancelled": "Input preparation cancelled",
+      "preparing": "Preparing product and scene images"
+    },
+    "slotStatusLine": "{{slot}}: {{stage}}",
+    "retryFailedAndSubmit": "Retry failed image & submit",
+    "cancelPreparation": "Cancel preparation"
+  },
+  "logs": {
+    "fusionInput": "fusion-input"
+  },
+  "bridge": {
+    "restoreInputFirst": "Restore this session's input first, or return to E-commerce Suite to start a new session with another image",
+    "restoreBeforeSubmit": "Restore this session's input before submitting; existing results can still be applied explicitly",
+    "suiteVersionName": "Suite version {{version}}"
+  },
+  "recovery": {
+    "unsavedDraftConfirm": "You have an unsaved prompt or painted mask that will be discarded if you switch. Continue?",
+    "readingInputsBlocked": "Reading input image; please finish before switching",
+    "replaceImageClearMaskConfirm": "Replacing the image will clear the current mask. Continue?",
+    "switchResultClearMaskConfirm": "Switching to this result will clear the current mask. Continue?",
+    "syncingTask": "Syncing task, please wait...",
+    "recoveredAssetName": "Generated result",
+    "blockedBusy": "Image Studio is busy processing a task or reading inputs. Wait until finished; existing results can still be viewed.",
+    "useImageConfirm": "Continuing from this image will replace the current source image and mask. Continue?",
+    "cacheSyncFailed": "Image loaded, but local cache sync failed. You can reload it from task history after refreshing.",
+    "missingSourceOrRef": "Original source or reference image is missing; cannot load completely",
+    "incompleteParams": "Original generation parameters are incomplete",
+    "invalidPromptParam": "Original prompt parameter is invalid",
+    "invalidOutputSizeParam": "Original output size parameter is invalid",
+    "loadParamsConfirm": "Loading original parameters will replace the current image, mask, and form values. Continue?"
+  },
+  "footer": {
+    "fusionInputDescription": "{{product}} · {{reference}}",
+    "fusionProductSize": "Product {{width}}×{{height}}",
+    "fusionReferenceSize": "Scene {{width}}×{{height}}",
+    "comingSoonNoPreviousInput": "This tool is coming soon and will not reuse images from the previous tool",
+    "readPartialFailedAgain": "{{ready}} ready, still unable to load {{failed}}: {{reason}} · Retry loading for free, or regenerate (charges credits again)",
+    "readPartialFailed": "{{ready}} ready, {{failed}} failed to load: {{reason}} · Retrying load is free; regenerating charges credits again",
+    "readFailedAgain": "Still unable to load: {{reason}} · Retry loading for free, or regenerate (charges credits again)",
+    "readFailed": "Result temporarily unavailable: {{reason}} · Retrying load is free; regenerating charges credits again",
+    "generatingWait": "Generating · Please wait",
+    "generatedWithInput": "{{count}} generated · {{input}}",
+    "shortcutHint": "⌘/Ctrl + Enter to generate",
+    "downloadResult": "Download Result",
+    "reading": "Loading",
+    "retryRead": "Retry Load",
+    "cancelGeneration": "Cancel",
+    "generateAgain": "Generate Another",
+    "generateCount": "Generate {{count}}",
+    "generate": "Generate",
+    "downloadImage": "Download image"
+  },
+  "edgeRefine": {
+    "cancel": "Cancel Refinement",
+    "finish": "Apply Refinement"
+  },
+  "blockReasons": {
+    "taskRunning": "Please wait for the current task to finish",
+    "outpaintIdleFree": "Target matches current image size: drag the green frame or enter larger dimensions",
+    "outpaintIdlePreset": "Platform output matches source size; pick another platform or switch to Free Expand",
+    "removeUnavailable": "Erase service is temporarily unavailable. Please try again later or contact support.",
+    "repaintUnavailable": "Inpaint service is temporarily unavailable. Please try again later or contact support.",
+    "loadingConfig": "Loading configuration, please wait",
+    "configLoadFailed": "Failed to load configuration. Please retry.",
+    "uploadImageFirst": "Upload an image to process first"
+  },
+  "files": {
+    "defaultImageName": "image",
+    "defaultResultName": "result",
+    "variationZipName": "{{tool}}_{{count}}_variations.zip",
+    "resultZipName": "{{tool}}_{{count}}_results.zip"
+  },
+  "errors": {
+    "providerForbidden": "Image service temporarily unavailable (upstream permission restriction)",
+    "downloadReadFailed": "Download failed: unable to read result image",
+    "downloadFailedPrefix": "Download failed: ",
+    "downloadFailedWord": "Download failed",
+    "fusionInputsRequired": "Upload both product and scene images first",
+    "fusionPrepCancelled": "Input preparation cancelled",
+    "fusionSlotFailureEntry": "{{slot}}: {{error}}",
+    "fusionImageTimeout": "Image preparation timed out; retry the failed image",
+    "fusionSignTimeout": "Upload URL request timed out; retry the failed image",
+    "fusionPhaseSigning": "Upload URL request",
+    "fusionPhaseReading": "Image reading",
+    "fusionPhaseUploading": "Image upload",
+    "fusionPhaseInterrupted": "{{phase}} was interrupted; retry the failed image",
+    "fusionImagePrepFailed": "Image preparation failed; please retry",
+    "openLastSceneFailed": "Unable to open previous scene",
+    "lastSceneOpFailed": "Previous scene operation failed",
+    "resultDecodeFailed": "Generated result could not be decoded",
+    "resultSizeInvalid": "Generated result has invalid dimensions",
+    "sourceEcho": "Task completed, but no new generated image was returned",
+    "resultEmpty": "Task completed, but the service returned no images",
+    "createMaskFirst": "Paint a mask on the image first",
+    "outpaintCanvasNotReady": "Outpaint canvas is not ready yet",
+    "imageUploadFailed": "Image upload failed",
+    "historyQuotaExceeded": "Browser storage is full, so history could not be saved; you can still download the current image",
+    "historySaveFailed": "Failed to save history; please retry",
+    "sourceImageReadFailed": "Failed to read source image",
+    "resultSizeMismatch": "Result dimensions do not match expected size",
+    "outpaintResultSizeMismatch": "Outpaint result size does not match target; retry loading",
+    "processingFailed": "Processing failed",
+    "readFailedRetry": "Failed to read, please retry",
+    "waitCurrentSubmission": "Wait for the current submission to finish",
+    "taskSubmitFailed": "Failed to submit generation task",
+    "taskSubmitFailedWithReason": "Submission failed: {{reason}}",
+    "uploadSourceFirst": "Upload an image to edit first",
+    "incompleteParams": "Incomplete parameters",
+    "maskCanvasNotReady": "Mask canvas is not ready yet",
+    "canvasNotReadyFallback": "Canvas interaction for this tool is not available yet",
+    "repaintRemaskRequired": "Paint the mask again and retry",
+    "taskNotCancellable": "Current task cannot be cancelled yet",
+    "maskExportFailed": "Failed to export mask",
+    "canvasMaskUnsupported": "Your browser does not support canvas mask export",
+    "sourceSizeUnreadable": "Unable to read source image dimensions",
+    "readSelectionMaskFailed": "Failed to load selection mask",
+    "invertEmptySelection": "Create a selection before inverting",
+    "invertFailed": "Failed to invert selection",
+    "clickOnImage": "Click on the image",
+    "edgeRefineFailed": "Edge refinement failed",
+    "checkApiService": "Check that the API service is running",
+    "cancelFailed": "Failed to cancel generation; please try again",
+    "retryQuoteUnavailable": "Original task quote is unavailable; adjust parameters and regenerate",
+    "taskRetryFailed": "Failed to retry task",
+    "inputRetryFailed": "Failed to retry input preparation",
+    "resultReadFailed": "Failed to load result",
+    "resultReadFailedRetry": "Failed to read result. Please retry reading.",
+    "maxReferenceImages": "Selected model supports up to {{max}} reference images",
+    "accountOrScopeChanged": "Account or environment has switched"
+  },
+  "outpaint": {
+    "errors": {
+      "invalidTargetSize": "Invalid outpaint target dimensions",
+      "invalidSize": "Invalid outpaint dimensions",
+      "exceedsMaxPixels": "Outpaint output cannot exceed 64 MP. Reduce expansion area or choose Platform Size output.",
+      "invalidSourceSize": "Invalid source image dimensions",
+      "noEdgesToExpand": "No edges need to be expanded",
+      "aspectRatioOutOfRange": "Source image aspect ratio is outside the supported outpaint range",
+      "exceedsExpandRange": "Target size exceeds the outpaint expansion limit (up to 2× per side, up to 2 passes). Crop the source closer to the target ratio first.",
+      "exceedsServiceLimit": "Expansion range exceeds service limits"
+    }
+  },
+  "brush": {
+    "pen": "Brush",
+    "eraser": "Eraser",
+    "refineUsePen": "Use Brush for edge refinement",
+    "smartSelectReadyHint": "Click the product to select its outline",
+    "smartSelectComingSoon": "Smart Selection is coming soon",
+    "smartSelectLoadFailed": "Failed to load Smart Selection config. Please retry.",
+    "smartSelectLoading": "Loading Smart Selection config...",
+    "invert": "Invert",
+    "invertHint": "Invert selection outside the product",
+    "size": "Brush size",
+    "sizePixels": "{{value}} px",
+    "redo": "Redo",
+    "clearMask": "Clear mask",
+    "detectingProduct": "Detecting product outline..."
+  },
+  "canvas": {
+    "activitySyncing": "Syncing active task...",
+    "activityGenerating": "Processing generation task...",
+    "processingFusion": "Generating; result will appear here when ready",
+    "processingDefault": "Generating; results will appear below",
+    "compareEffectTab": "Result",
+    "compareOriginalEffectAria": "Compare original and result",
+    "compareOriginalResultAria": "Compare original and result",
+    "replaceImage": "Replace Image",
+    "loadingMaskCanvas": "Loading mask canvas...",
+    "maskComparingFootnote": "Viewing generated result; switch back to Original to keep painting.",
+    "smartSelectFootnote": "Click subject to auto-select outline; use Brush for text, watermarks, or fine details.",
+    "originalImageAlt": "Original image",
+    "openOriginalLargeAria": "Open original full-size preview",
+    "openEffectLargeAria": "Open result full-size preview",
+    "maskAria": "Mask painting canvas",
+    "maskKeyboardHelp": "Use arrow keys to move the brush and hold Space to paint. Press B for Brush, E for Eraser, [ or ] to resize, Ctrl/Cmd+Z to undo, Ctrl/Cmd+Shift+Z to redo, and Esc to exit the canvas.",
+    "maskKeyboardHint": "Arrows move · Space paint · B/E tool · [ ] size · Esc exit",
+    "currentGeneratedAlt": "Current generated result",
+    "sourcePendingAlt": "Source image",
+    "paintDisabledGenerating": "Generating; painting disabled",
+    "paintDisabledComparing": "Viewing generated result; switch to Original to keep painting",
+    "outpaintAria": "Outpaint boundary canvas",
+    "outpaintComparingHelp": "Viewing source image before outpainting; switch back to Result to continue. Press Esc to exit canvas.",
+    "outpaintPresetHelpWithSize": "Platform preset target {{width}} × {{height}} px, frame locked; press Esc to exit canvas.",
+    "outpaintPresetHelpLocked": "Platform preset target locked, frame locked; press Esc to exit canvas.",
+    "outpaintFreeHelpWithSize": "Current target {{width}} × {{height}} px. Use Left/Right arrows to adjust width, Up/Down arrows for height, hold Shift for {{step}} px steps, and Esc to exit canvas.",
+    "outpaintFreeHelpPending": "Target size pending. Use Left/Right arrows to adjust width, Up/Down arrows for height, hold Shift for {{step}} px steps, and Esc to exit canvas.",
+    "outpaintPresetLockedHint": "Platform preset locked",
+    "outpaintKeyboardHint": "Arrows resize · Hold Shift for larger step",
+    "upload": {
+      "loading": "Loading image...",
+      "prompt": "Upload a product image to process",
+      "formatLimit": "Supports PNG, JPEG, WebP up to {{mb}} each",
+      "removeHint": "Upload an image, then paint over the areas to erase",
+      "repaintHint": "Upload an image, paint the region to inpaint, then describe the change",
+      "outpaintHint": "Upload an image, then drag the green frame outward while keeping the product unchanged"
+    },
+    "fusion": {
+      "viewLargeAria": "View {{label}} full size",
+      "replaceAria": "Replace {{label}}",
+      "remove": "Remove",
+      "removeAria": "Remove {{label}}",
+      "loadingSlot": "Loading {{label}}...",
+      "uploadSlot": "Upload {{label}}",
+      "slotHintWithLimit": "{{hint}}. Supports PNG, JPEG, WebP up to {{mb}}",
+      "reuseLastSceneTitle": "Use last scene: {{name}}",
+      "reuseLastSceneAria": "Use last scene {{width}}×{{height}}",
+      "reuseLastScene": "Use last scene",
+      "compareSwitchAria": "Switch between fusion inputs and result",
+      "inputTab": "Inputs",
+      "resultAlt": "Fusion result",
+      "openResultLargeAria": "Open fusion result full-size preview",
+      "productLabel": "Product",
+      "productHint": "Product image to keep unchanged",
+      "referenceLabel": "Scene",
+      "referenceHint": "Scene image used only for the new background",
+      "swapAria": "Swap product and scene images",
+      "footnote": "Viewing fusion result; switch back to Inputs to replace product or scene."
+    },
+    "outpaint": {
+      "comparingOriginal": "Viewing original image before outpainting",
+      "presetCentered": "Centered to platform preset; frame is locked",
+      "idleAfterResult": "Result ready · Drag frame or enter larger dimensions to expand further",
+      "idleBeforeStart": "Not expanded yet · Drag frame or enter larger target dimensions",
+      "dragHint": "Drag the green frame handles to adjust expansion area",
+      "limitSize": "Reached {{maxScale}}× per-side limit",
+      "limitPixels": "Reached total pixel limit",
+      "resetTitle": "Reset to original size",
+      "loadingCanvas": "Loading outpaint canvas...",
+      "comparingFootnote": "Viewing original image; switch back to Result to continue outpainting."
+    },
+    "footnotes": {
+      "splitCompare": "Drag divider to compare details; select a result to continue retouching",
+      "selectToEdit": "Select a result below to continue editing",
+      "adjustAndGenerate": "Adjust parameters on the right and generate; results will appear here"
+    }
+  },
+  "compare": {
+    "afterAlt": "Current edited result",
+    "sliderAria": "Compare original and result",
+    "valueText": "Original {{before}}%, Retouched {{after}}%",
+    "afterLabel": "Retouched",
+    "fitCanvas": "Fit to canvas",
+    "actualSize": "View actual pixels (1:1)"
+  },
+  "results": {
+    "continueEdit": "Continue Editing",
+    "downloadAll": "Download All",
+    "countOne": "{{count}} image",
+    "countOther": "{{count}} images",
+    "strip": {
+      "itemResult": "result",
+      "itemCandidate": "candidate",
+      "titleResult": "Results",
+      "titleCandidate": "Candidates",
+      "selectAria": "Select {{label}} {{index}}{{suffix}}",
+      "itemAlt": "{{label}} {{index}}",
+      "zoomAria": "Zoom {{label}} {{index}}",
+      "downloadAria": "Download {{label}} {{index}}",
+      "hints": {
+        "selectedInpaint": "Image #{{index}} is active as source; continue editing",
+        "selectedOutpaint": "Image #{{index}} is shown on canvas; expand further",
+        "selectedResult": "Image #{{index}} is shown in preview",
+        "selectedNextInput": "Image #{{index}} will be used as next input",
+        "unselectedInpaint": "Click a thumbnail to edit from it, or download directly",
+        "unselectedOutpaint": "Click a thumbnail to switch canvas result, or download directly",
+        "unselectedResultGrid": "Compare results side by side; click an image to preview",
+        "unselectedResult": "Click a thumbnail to preview, or download directly",
+        "unselectedNextInput": "Select one to use as next input"
+      },
+      "badges": {
+        "inpaint": "Current Source",
+        "outpaint": "On Canvas",
+        "result": "In Preview",
+        "nextInput": "Next Input"
+      },
+      "selectedSuffix": {
+        "inpaint": ", active as source",
+        "outpaint": ", shown on canvas",
+        "result": ", shown in preview",
+        "nextInput": ", selected for next round"
+      }
+    },
+    "variationGrid": {
+      "title": "Variations",
+      "selectedHint": "Variation #{{index}} selected as next input",
+      "unselectedHint": "Click an image to inspect; select one to continue editing",
+      "previewAria": "View variation {{index}} full size",
+      "selectedBadge": "Selected",
+      "selectedButton": "Selected",
+      "selectAria": "Continue editing from variation {{index}}",
+      "downloadAria": "Download variation {{index}}"
+    }
+  },
+  "inpaintGuide": {
+    "stepLabels": {
+      "remove": "Erase steps",
+      "repaint": "Inpaint steps"
+    },
+    "steps": {
+      "remove": {
+        "step1": "Paint mask",
+        "step2": "Optional note",
+        "step3": "Generate"
+      },
+      "repaint": {
+        "step1": "Paint mask",
+        "step2": "Describe edit",
+        "step3": "Generate"
+      }
+    },
+    "status": {
+      "remove": {
+        "1": "Paint over the areas to erase on the canvas",
+        "2": "Masked · Add optional background notes, or leave blank to generate",
+        "3": "Mask ready; only painted areas will change — ready to generate"
+      },
+      "repaint": {
+        "1": "Paint over the areas to inpaint on the canvas",
+        "2": "Masked · Enter an inpaint description",
+        "3": "Mask and description ready — ready to generate"
+      }
+    }
+  },
+  "params": {
+    "inpaintModelLabel": "Tongyi Wanxiang 2.1 Image Edit",
+    "modelLabel": "Model",
+    "editPromptLabel": "Edit Instructions",
+    "optionalNoteLabel": "Additional Notes (Optional)",
+    "addOptionalNoteLabel": "Add Notes (Optional)",
+    "optionalNoteAria": "Additional notes",
+    "variationNoteOpen": "Extra Instructions (Optional)",
+    "variationNoteClosed": "Add Extra Instructions (Optional)",
+    "variationNotePlaceholder": "e.g., outdoor camping scene, top-down view",
+    "variationNoteAria": "Extra instructions",
+    "fusionNotePlaceholder": "e.g., placed on a wooden dining table in warm afternoon light",
+    "retouchNotePlaceholder": "e.g., keep hangtag text crisp",
+    "smartEditPlaceholder": "e.g., change to a pure white e-commerce background while keeping product details",
+    "smartEditTemplatesAria": "Prompt templates",
+    "variationTemplatesAria": "Variation direction templates",
+    "quickFillLabel": "Quick Fill",
+    "restoreLastPrompt": "Restore last prompt",
+    "outputSizeLabel": "Output Size",
+    "renderResolutionLabel": "Render Resolution",
+    "fourKUnsupportedRatio": "4K is not supported for this aspect ratio",
+    "fourKFallbackSuffix": " · 4K unsupported for this ratio; generating at 2K",
+    "fourKFallbackSentence": "4K is not supported for this aspect ratio; generating at 2K.",
+    "keepSourceSize": "Keep Original Size",
+    "uploadSourceFirstTitle": "Upload a source image first",
+    "sourceTooLargeTitle": "Source image is too large to keep original size",
+    "retouchOutputSource": "Output {{width}}×{{height}} (original size) · billed at {{resolution}}",
+    "retouchOutputTier": "Output {{width}}×{{height}} (long edge {{resolution}})",
+    "predictedOutput": "Est. output {{size}} · {{resolution}}",
+    "retouchUpscaleToSourceSameTier": " · Source exceeds {{resolution}}; upscaling back to original size",
+    "retouchUpscaleToSourceDiffTier": " · Source requires {{derived}}; generating at {{resolution}} and scaling to original size",
+    "retouchUpscaleNotice": "Original {{sourceWidth}}×{{sourceHeight}} will upscale to {{targetWidth}}×{{targetHeight}}; retouching won't redraw content, though dimensions will change.",
+    "retouchDirectionsLegend": "Retouch Directions",
+    "requiredSrOnly": " (required)",
+    "recommendedBadge": "Recommended",
+    "retouchSelectAtLeastOne": "Select at least one direction",
+    "retouchAllSelected": "All {{count}} selected",
+    "retouchSelectedSummary": "Selected: {{directions}}",
+    "selectAll": "Select all",
+    "clearSelection": "Clear",
+    "relightNotePlaceholder": "e.g., softer shadow, preserve highlights on the cup",
+    "repaintPromptMissingHint": "Enter an inpaint description before generating.",
+    "repaintPromptHint": "The description applies only to painted areas; unpainted areas stay untouched.",
+    "repaintMaskReady": "Mask ready; only painted areas will be repainted",
+    "repaintMaskEmpty": "No mask yet; paint the area to inpaint on the canvas",
+    "repaintPromptLabel": "Inpaint Description",
+    "repaintPromptPlaceholder": "Describe what should appear in the masked area, e.g., a clear glass vase on the table",
+    "removeMaskReady": "Mask ready; only painted areas will change",
+    "removeMaskEmpty": "No mask yet; paint the area to erase on the canvas",
+    "removeSmartSelectHint": "Smart Selection costs no credits, or paint directly with the brush.",
+    "removePromptLabel": "Background Description (Optional)",
+    "removePromptPlaceholder": "Leave blank for small objects; for large areas, describe the desired background (avoid writing 'delete X')",
+    "outputLabel": "Output",
+    "sizeLabel": "Size",
+    "sameAsOriginalSize": "Same as original",
+    "countLabel": "Count",
+    "onePerRun": "1 per run",
+    "creditsLabel": "Credits",
+    "repaintContractNote": "Inpaint uses a fixed model; switching models, resolution, or output count is not supported.",
+    "removeContractNote": "Erase uses a fixed model; switching models, resolution, or output count is not supported.",
+    "smartEditTemplates": {
+      "whiteBg": {
+        "label": "White Background",
+        "prompt": "Change to a pure white e-commerce background, keeping product details and natural shadow"
+      },
+      "outdoor": {
+        "label": "Outdoor Scene",
+        "prompt": "Change to a natural outdoor scene while preserving product color and material"
+      },
+      "lightingOnly": {
+        "label": "Adjust Lighting",
+        "prompt": "Adjust lighting and atmosphere only without changing product structure or color"
+      },
+      "cleanClutter": {
+        "label": "Clean Clutter",
+        "prompt": "Remove background clutter while keeping the main product intact"
+      }
+    },
+    "variationTemplates": {
+      "outdoor": {
+        "label": "Outdoor Scene",
+        "prompt": "Place in a natural outdoor scene, keeping the main product and details"
+      },
+      "indoor": {
+        "label": "Indoor Scene",
+        "prompt": "Place in a bright indoor scene, keeping the main product and details"
+      },
+      "topDown": {
+        "label": "Top-Down Shot",
+        "prompt": "Change to a top-down composition with the product centered and clean breathing room"
+      },
+      "minimalist": {
+        "label": "Minimalist Space",
+        "prompt": "Change to a minimalist composition with generous negative space highlighting the product"
+      }
+    },
+    "contracts": {
+      "variation": {
+        "keepLabel": "Keep",
+        "keepText": "Product subject and recognizability",
+        "changeLabel": "Change",
+        "changeText": "Scene or composition",
+        "outputLabel": "Output",
+        "outputOne": "{{count}} variation per run",
+        "outputOther": "{{count}} variations per run"
+      },
+      "retouch": {
+        "keepLabel": "Keep",
+        "keepText": "Product colors, materials, and overall white balance",
+        "unchangedLabel": "Preserve",
+        "unchangedText": "Text, logos, labels, and composition",
+        "onlyDoLabel": "Adjust",
+        "onlyDoText": "Blemish removal, brightening, edge sharpening, and texture uniformity"
+      },
+      "fusion": {
+        "keepLabel": "Keep",
+        "keepText": "Product shape, color, surface texture, printed text, and logos",
+        "sceneLabel": "Scene",
+        "sceneText": "Provides background and mood only; scene objects won't be drawn onto the product",
+        "noAddLabel": "Avoid",
+        "noAddText": "No edits to the product itself; no added text or watermarks"
+      }
+    },
+    "outpaint": {
+      "targetLabel": "Output Target",
+      "modes": {
+        "free": "Free Expand",
+        "platformRatio": "Platform Ratio",
+        "platformSize": "Platform Size"
+      },
+      "modeHints": {
+        "free": "Keep original resolution and extend edges outward.",
+        "platformRatio": "Keep source resolution and expand frame to match platform aspect ratio.",
+        "platformSize": "Resize source to exact platform pixels and extend background."
+      },
+      "predictedSize": "Est. output {{width}} × {{height}} px.",
+      "uploadToShowSize": "Upload an image to see estimated dimensions.",
+      "freeSizeLabel": "Target Dimensions",
+      "decreaseSize": "Decrease target size",
+      "targetWidthAria": "Target width",
+      "targetHeightAria": "Target height",
+      "increaseSize": "Increase target size",
+      "maxScaleHint": "Up to {{maxScale}}× per side; larger inputs clamp automatically.",
+      "platformLabel": "Target Platform",
+      "platformSizeOption": "{{platform}} · {{width}}×{{height}}",
+      "platformRatioOption": "{{platform}} · Aspect ratio only"
+    }
+  },
+  "examples": {
+    "summary": "Examples",
+    "fusion": {
+      "productAria": "Product sample: standalone product photo whose shape, color, and texture stay unchanged",
+      "productCaption": "Product",
+      "sceneAria": "Scene sample: dashed frame shows scene supplies background only; scene objects stay out of the product",
+      "sceneCaption": "Scene",
+      "compositeAria": "Composite sample: product placed unchanged into the new scene while scene props remain in the background",
+      "compositeCaption": "Composite",
+      "note": "Solid frame = product kept unchanged; dashed frame = scene supplies background only and props won't merge into the product."
+    },
+    "inpaint": {
+      "sourceAria": "Original sample: unwanted clutter next to the product",
+      "sourceCaption": "Original",
+      "removeMaskAria": "Paint sample: mask covers clutter while product remains untouched",
+      "repaintMaskAria": "Paint & describe sample: mask covers clutter and prompt applies only inside this region",
+      "removeMaskCaption": "Paint",
+      "repaintMaskCaption": "Paint + Prompt",
+      "removeResultAria": "Erase result sample: clutter removed and dashed frame filled with AI background",
+      "repaintResultAria": "Inpaint result sample: masked area replaced according to description",
+      "removeResultCaption": "Background Filled",
+      "repaintResultCaption": "Prompt Applied",
+      "removeNote": "Red = painted mask; dashed frame = AI-filled background while everything else stays unchanged.",
+      "repaintNote": "Red = painted area; speech bubble = description applied only inside this area while everything else stays unchanged."
+    },
+    "outpaint": {
+      "sourceAria": "Original sample: image ends at the solid frame with no content outside",
+      "sourceCaption": "Original",
+      "dragAria": "Drag sample: drag the green dashed frame outward; light green area will be filled by AI",
+      "dragCaption": "Drag Green Frame",
+      "resultAria": "Expanded sample: new background filled outside the frame while product size and position stay unchanged",
+      "resultCaption": "Background Extended",
+      "note": "Green dashed frame = target canvas (drag to choose how much to expand); solid frame = original pixels kept intact."
+    },
+    "relight": {
+      "frontAria": "Front light sample: light comes from the camera direction; shadow falls behind product",
+      "frontCaption": "Front: shadow behind",
+      "leftAria": "Left light sample: light comes from the left; shadow falls to the right",
+      "leftCaption": "Left: shadow right",
+      "backAria": "Backlight sample: light from behind product; rim glows and shadow casts toward camera",
+      "backCaption": "Backlight: shadow forward",
+      "note": "Solid arrow = key light direction; dashed line = shadow. Camera icon = front light; glow behind product = backlight."
+    },
+    "retouch": {
+      "sourceAria": "Original sample: dust spots and dark shadow on product surface",
+      "sourceCaption": "Original",
+      "retouchedAria": "Retouched sample: dust removed and dark shadow brightened",
+      "retouchedCaption": "Retouched",
+      "lockedAria": "Text and color preserved sample",
+      "lockedCaption": "Text & Color Intact",
+      "note": "Fixes dust, dark shadows, and existing edges only; text, logos, and product colors stay unchanged."
+    },
+    "smartEdit": {
+      "bgAria": "Change background sample: keep product and place into a new scene",
+      "bgCaption": "Background",
+      "colorAria": "Recolor sample: change only product color or material",
+      "colorCaption": "Color",
+      "propsAria": "Add props sample: add accessories or decor around the product",
+      "propsCaption": "Add Props",
+      "note": "Dashed frame & highlight = areas changed by your prompt; state what to preserve in your prompt."
+    },
+    "variation": {
+      "sourceAria": "Original sample: product photo on white background",
+      "sourceCaption": "Original",
+      "sceneAria": "Variation sample: keep product and swap background to outdoor wooden table",
+      "sceneCaption": "New Scene",
+      "layoutAria": "Variation sample: keep product and switch to top-down minimalist framing",
+      "layoutCaption": "New Framing",
+      "note": "Concept: keep the product recognizable while varying the scene or framing; generate multiple variants at once."
+    }
+  }
+}

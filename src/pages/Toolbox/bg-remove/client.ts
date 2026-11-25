@@ -7,6 +7,8 @@ import { normalizeImageBlob } from '@shared/image-format'
 import { clientTiming, downloadImageResult, fileToBase64, ImageResultError,
   readImageResult, shouldUseInlineImageTransport, throwIfImageRequestAborted } from '@/services/api/image-transfer'
 import { createTask, getTask, liveCapabilityReady } from '@/services/api/task'
+import { i18n } from '@/i18n'
+import { translateApiError } from '@/i18n/apiErrors'
 import { Capability } from '@/types'
 import { useUserStore } from '@/store/useUserStore'
 import { BgRemoveSourceUploads, type BgRemoveSourceMetrics } from './sourceUpload'
@@ -51,19 +53,19 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
   const saveTransfer = () => options.onTransfer?.({ ...transfer })
   const check = () => {
     throwIfImageRequestAborted(options.signal)
-    if (shouldStop()) throw new DOMException('处理已取消', 'AbortError')
+    if (shouldStop()) throw new DOMException(i18n.t('toolbox:errors.processingCancelled'), 'AbortError')
     const current = useUserStore.getState()
     if (version !== sessionVersion || (current.userId ?? 'local') !== ownerId
       || (current.account?.runtimeScope ?? 'local') !== runtimeScope)
-      throw new DOMException('账号或环境已切换，旧抠图请求已停止', 'AbortError')
+      throw new DOMException(i18n.t('toolbox:errors.bgRemoveAccountSwitched'), 'AbortError')
   }
   const finish = async (blob: Blob) => {
     check()
     try {
       const normalized = await normalizeImageBlob(blob)
-      if (normalized.type !== 'image/png') throw new Error('抠图结果不是透明 PNG')
+      if (normalized.type !== 'image/png') throw new Error(i18n.t('toolbox:errors.bgRemoveNotPng'))
       const size = await readSize(normalized)
-      if (size.width !== image.width || size.height !== image.height) throw new Error('抠图结果尺寸与原图不一致')
+      if (size.width !== image.width || size.height !== image.height) throw new Error(i18n.t('toolbox:errors.bgRemoveSizeMismatch'))
       check()
       return normalized
     } catch (error) {
@@ -78,7 +80,7 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
   const started = performance.now()
   if (transfer.result) {
     try {
-      const matte = await finish(await downloadImageResult(transfer.result, '抠图', options.signal, options.ownerId))
+      const matte = await finish(await downloadImageResult(transfer.result, i18n.t('toolbox:bgRemove.toolShort'), options.signal, options.ownerId))
       console.info(JSON.stringify({ evt: 'bg-remove-client', resultReuse: true, downloadMs: Math.round(performance.now() - started) }))
       return matte
     }
@@ -131,7 +133,7 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
     })
     check()
     const downloadStarted = performance.now()
-    const matte = await readImageResult(response, '抠图', {
+    const matte = await readImageResult(response, i18n.t('toolbox:bgRemove.toolShort'), {
       expectedMime: 'image/png', signal: options.signal, ownerId: options.ownerId,
       onObjectResult: result => { check(); transfer.result = result; saveTransfer() },
     }).catch(error => {
@@ -145,7 +147,7 @@ async function requestTencentMatte(image: BatchImage, shouldStop: () => boolean,
       totalMs: Math.round(performance.now() - started) }))
     return finish(matte)
   }
-  throw new Error('图片对象已过期，请重新上传')
+  throw new Error(i18n.t('toolbox:errors.sourceObjectExpired'))
 }
 
 export async function requestMatte(image: BatchImage, shouldStop: () => boolean, options: MattingOptions = {}) {
@@ -159,16 +161,18 @@ export async function requestMatte(image: BatchImage, shouldStop: () => boolean,
     params: { sourceImageUrl: uploaded.url, size: { width: image.width, height: image.height } },
   })
   while (ACTIVE.has(current.status)) {
-    if (shouldStop()) throw new Error('处理已取消')
+    if (shouldStop()) throw new Error(i18n.t('toolbox:errors.processingCancelled'))
     await new Promise(resolve => setTimeout(resolve, 2000))
-    if (shouldStop()) throw new Error('处理已取消')
+    if (shouldStop()) throw new Error(i18n.t('toolbox:errors.processingCancelled'))
     current = await getTask(current.id)
   }
-  if (current.status !== 'succeeded') throw new Error(current.errorMessage || '抠图失败')
+  if (current.status !== 'succeeded') {
+    throw new Error(translateApiError({ message: current.errorMessage, fallback: i18n.t('toolbox:errors.bgRemoveFailed') }))
+  }
   const url = current.resultUrls?.[0]
-  if (!url) throw new Error('抠图没有返回图片')
+  if (!url) throw new Error(i18n.t('toolbox:errors.bgRemoveNoImage'))
   const blob = await blobFromImageSource(url, current.resultImages?.[0]?.objectKey)
   const size = await readSize(blob)
-  if (size.width !== image.width || size.height !== image.height) throw new Error('抠图结果尺寸与原图不一致')
+  if (size.width !== image.width || size.height !== image.height) throw new Error(i18n.t('toolbox:errors.bgRemoveSizeMismatch'))
   return blob
 }

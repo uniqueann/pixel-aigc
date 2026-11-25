@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ProductSilhouette } from './exampleArt'
 import { OUTPAINT_FRAME_COLOR } from '../utils/outpaintGeometry'
 
@@ -25,24 +26,25 @@ const TARGET = { x: 8, y: 14, width: 96, height: 84 }
 const FLOOR_Y = 76
 
 export default function OutpaintExample() {
+  const { t } = useTranslation('workstation')
   return (
     <details className="tool-example concept-example outpaint-example" open>
-      <summary>示例</summary>
+      <summary>{t('examples.summary')}</summary>
       <div className="tool-example-row">
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="原图示意：画面到这里就截止了，实线框外没有内容">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.outpaint.sourceAria')}>
               <PhotoCard />
             </svg>
           </div>
-          <figcaption>原图</figcaption>
+          <figcaption>{t('examples.outpaint.sourceCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
             <svg
               viewBox="0 0 112 112"
               role="img"
-              aria-label="拖拽示意：绿色虚线框向外拖，框外的浅绿区域就是要由 AI 补齐的部分"
+              aria-label={t('examples.outpaint.dragAria')}
             >
               <rect
                 x={TARGET.x}
@@ -58,14 +60,14 @@ export default function OutpaintExample() {
               <Handles />
             </svg>
           </div>
-          <figcaption>向外拖绿框</figcaption>
+          <figcaption>{t('examples.outpaint.dragCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
             <svg
               viewBox="0 0 112 112"
               role="img"
-              aria-label="补齐示意：框外补出了背景，商品位置和大小没有变化"
+              aria-label={t('examples.outpaint.resultAria')}
             >
               <rect
                 x={TARGET.x}
@@ -82,11 +84,11 @@ export default function OutpaintExample() {
               <TargetFrame faded />
             </svg>
           </div>
-          <figcaption>框外补背景</figcaption>
+          <figcaption>{t('examples.outpaint.resultCaption')}</figcaption>
         </figure>
       </div>
       <p className="concept-example-note">
-        绿色虚线框 = 目标画布，向外拖多少就补多少；实线框 = 原图像素边界，框内原样保留。
+        {t('examples.outpaint.note')}
       </p>
     </details>
   )

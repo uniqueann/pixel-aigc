@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { PictureOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import { Button, Skeleton } from 'antd'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import { usePreviewGallery } from '@/components/usePreviewGallery'
 import { useBlobUrls } from '@/components/useBlobUrls'
@@ -10,20 +11,20 @@ import { hydrateWorkstationHistoryFromImageJobs } from '@/features/assets/hydrat
 import { hydrateVideoJobs } from '@/features/assets/hydrateVideoJobs'
 import { HISTORY_CHANGED, listHistoryPreviews, type WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
 import { isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
-import { dashboardTime, QUICK_START_GROUPS } from './catalog'
+import { dashboardTime, getQuickStartGroups } from './catalog'
 import { worksStripFades } from './worksStrip'
 import NewUserCard from './NewUserCard'
 import { acknowledgeWelcome } from '@/features/activation/client'
 import { useUserStore } from '@/store/useUserStore'
 
-const entries = QUICK_START_GROUPS.flatMap(group => group.entries)
-
-function workLabel(record: WorkstationHistoryListItem) {
+function workLabel(record: WorkstationHistoryListItem, t: ReturnType<typeof useTranslation<readonly ['dashboard', 'common']>>['t']) {
   const slug = record.toolSlug.replace(/_/g, '-')
-  return entries.find(entry => entry.href.endsWith(`/${slug}`))?.label ?? (record.video ? '视频作品' : '图片作品')
+  const entries = getQuickStartGroups().flatMap(group => group.entries)
+  return entries.find(entry => entry.href.endsWith(`/${slug}`))?.label ?? (record.video ? t('dashboard:recentWorks.videoWork') : t('dashboard:recentWorks.imageWork'))
 }
 
 export default function RecentWorks({ ownerId }: { ownerId: string }) {
+  const { t } = useTranslation(['dashboard', 'common'])
   const [items, setItems] = useState<WorkstationHistoryListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [hydrating, setHydrating] = useState(authEnabled)
@@ -50,7 +51,7 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
         const expiry = Math.min(...result.flatMap(item => item.video ? [Date.parse(item.video.retentionExpiresAt)] : []))
         if (Number.isFinite(expiry)) expiryTimer = setTimeout(() => void refresh(), Math.min(2147483647, Math.max(1, expiry - Date.now() + 20)))
       } catch (reason) {
-        if (active && version === requestVersion) setError(reason instanceof Error ? reason.message : '作品读取失败')
+        if (active && version === requestVersion) setError(reason instanceof Error ? reason.message : t('dashboard:recentWorks.readFailed'))
       } finally { if (active && version === requestVersion) setLoading(false) }
     }
     const hydrate = async () => {
@@ -62,12 +63,12 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
           hydrateVideoJobs(ownerId, abort.signal),
         ])
         if (!active || !isCurrentWorkstationHistoryOwner(ownerId)) return
-        setHydrateError(imageResult.failed ? `有 ${imageResult.failed} 项作品没有同步` : undefined)
+        setHydrateError(imageResult.failed ? t('dashboard:recentWorks.partialSyncFailed', { count: imageResult.failed }) : undefined)
         await refresh()
       } catch (reason) {
         if (!active || !isCurrentWorkstationHistoryOwner(ownerId)) return
         if (reason instanceof DOMException && reason.name === 'AbortError') return
-        setHydrateError('云端作品暂时没有同步')
+        setHydrateError(t('dashboard:recentWorks.cloudSyncFailed'))
       } finally { if (active) setHydrating(false) }
     }
     const schedule = () => { clearTimeout(timer); timer = setTimeout(() => void refresh(), 100) }
@@ -81,15 +82,18 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
       active = false; abort.abort(); clearTimeout(timer); clearTimeout(expiryTimer); channel?.close()
       window.removeEventListener(HISTORY_CHANGED, changed); window.removeEventListener('focus', schedule)
     }
-  }, [ownerId, attempt])
+  }, [ownerId, attempt, t])
   const thumbnails = useMemo(() => items.map(item => item.thumbnail), [items])
   const urls = useBlobUrls(thumbnails)
-  const previews = useMemo<PreviewItem[]>(() => items.map(item => ({
-    id: item.id, mediaType: item.mediaType, thumbSrc: item.thumbnail ? urls.get(item.thumbnail) ?? '' : '', fullSrc: '',
-    historyId: item.id, objectKey: item.video?.objectKey ?? item.objectKey, ownerId,
-    retentionExpiresAt: item.video?.retentionExpiresAt, posterKey: item.video?.posterKey, title: workLabel(item),
-    meta: { tool: workLabel(item), resolution: `${item.width}×${item.height}`, createdAt: item.createdAt },
-  })), [items, ownerId, urls])
+  const previews = useMemo<PreviewItem[]>(() => items.map(item => {
+    const label = workLabel(item, t)
+    return {
+      id: item.id, mediaType: item.mediaType, thumbSrc: item.thumbnail ? urls.get(item.thumbnail) ?? '' : '', fullSrc: '',
+      historyId: item.id, objectKey: item.video?.objectKey ?? item.objectKey, ownerId,
+      retentionExpiresAt: item.video?.retentionExpiresAt, posterKey: item.video?.posterKey, title: label,
+      meta: { tool: label, resolution: `${item.width}×${item.height}`, createdAt: item.createdAt },
+    }
+  }), [items, ownerId, urls, t])
   const { openAt, galleryProps } = usePreviewGallery(previews)
   const stripRef = useRef<HTMLDivElement>(null)
   const [fades, setFades] = useState({ left: false, right: false })
@@ -125,18 +129,22 @@ export default function RecentWorks({ ownerId }: { ownerId: string }) {
     }
   }, [items.length, loading])
   return <section className="dashboard-section" aria-labelledby="dashboard-works-title">
-    <div className="dashboard-section-heading"><h2 id="dashboard-works-title">最近作品</h2><Link to="/assets">查看全部</Link></div>
-    {hydrating ? <p className="dashboard-section-note">正在同步最近作品…</p> : null}
-    {error || hydrateError ? <div className="dashboard-inline-error" role="alert">{error ?? hydrateError}<Button size="small" onClick={() => setAttempt(value => value + 1)}>重试读取</Button></div> : null}
+    <div className="dashboard-section-heading"><h2 id="dashboard-works-title">{t('dashboard:recentWorks.title')}</h2><Link to="/assets">{t('common:actions.viewAll')}</Link></div>
+    {hydrating ? <p className="dashboard-section-note">{t('dashboard:recentWorks.syncing')}</p> : null}
+    {error || hydrateError ? <div className="dashboard-inline-error" role="alert">{error ?? hydrateError}<Button size="small" onClick={() => setAttempt(value => value + 1)}>{t('common:actions.retryLoad')}</Button></div> : null}
     {loading || (hydrating && !items.length) ? <Skeleton active title={false} paragraph={{ rows: 2 }} /> : items.length ? <div className={`dashboard-works-scroller${fades.left ? ' has-left-fade' : ''}${fades.right ? ' has-right-fade' : ''}`}>
-      <div className="dashboard-works-strip" ref={stripRef} aria-label="最近作品列表">
-      {items.map(item => <button className="dashboard-work-tile" type="button" key={item.id} onClick={() => openAt(item.id)}
-        aria-label={`${item.video ? '播放' : '预览'}${workLabel(item)} ${dashboardTime(item.createdAt)}`}>
-        <span className="dashboard-work-cover">
-          {item.thumbnail && urls.get(item.thumbnail) ? <img src={urls.get(item.thumbnail)} alt="" loading="lazy" /> : item.video ? <PlayCircleOutlined /> : <PictureOutlined />}
-          {item.video ? <span className="dashboard-video-duration">{item.video.durationSeconds} 秒</span> : null}
-        </span><strong>{workLabel(item)}</strong><time dateTime={item.createdAt}>{dashboardTime(item.createdAt)}</time>
-      </button>)}
+      <div className="dashboard-works-strip" ref={stripRef} aria-label={t('dashboard:recentWorks.listAria')}>
+      {items.map(item => {
+        const label = workLabel(item, t)
+        const time = dashboardTime(item.createdAt)
+        return <button className="dashboard-work-tile" type="button" key={item.id} onClick={() => openAt(item.id)}
+          aria-label={item.video ? t('dashboard:recentWorks.playAria', { label, time }) : t('dashboard:recentWorks.previewAria', { label, time })}>
+          <span className="dashboard-work-cover">
+            {item.thumbnail && urls.get(item.thumbnail) ? <img src={urls.get(item.thumbnail)} alt="" loading="lazy" /> : item.video ? <PlayCircleOutlined /> : <PictureOutlined />}
+            {item.video ? <span className="dashboard-video-duration">{t('dashboard:recentWorks.durationSeconds', { seconds: item.video.durationSeconds })}</span> : null}
+          </span><strong>{label}</strong><time dateTime={item.createdAt}>{time}</time>
+        </button>
+      })}
       </div>
     </div> : !error && !hydrateError ? <NewUserCard key={ownerId} ownerId={ownerId} /> : null}
     <PreviewGallery {...galleryProps} />

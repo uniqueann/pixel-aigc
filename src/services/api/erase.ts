@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { authorizeSyncQuote } from './billing'
 import { postBilledSyncImage } from './billed-sync'
 import type { ImageResultReadOptions } from './image-transfer'
@@ -22,9 +23,9 @@ export async function requestErase(
   resultOptions: ImageResultReadOptions = {},
 ) {
   const prepareStarted = performance.now()
-  const painted = pngMaskBlob(mask, '请先涂抹要消除的区域', '消除蒙版无效，请重新涂抹')
-  if (!painted.size || painted.size > MAX_IMAGE_BYTES) throw new Error('消除蒙版不能超过 20 MB')
-  if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')
+  const painted = pngMaskBlob(mask, i18n.t('errors:client.eraseEmptyMask'), i18n.t('errors:client.eraseInvalidMask'))
+  if (!painted.size || painted.size > MAX_IMAGE_BYTES) throw new Error(i18n.t('errors:client.eraseMaskTooLarge'))
+  if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error(i18n.t('errors:generic.singleImageTooLarge'))
   const quote = await authorizeSyncQuote('erase', 5)
   if (image && !sourceObjectKey) image = await normalizeImageBlob(image)
   const inline = image && shouldUseInlineEraseTransport(image.size, painted.size, prompt, sourceObjectKey)
@@ -46,5 +47,5 @@ export async function requestErase(
   body.clientTimingMs = clientTiming(prepareStarted, uploadMs)
   resultOptions.onTaskIdentity?.(quote.requestId)
   const response = await postBilledSyncImage('erase', body, quote,resultOptions.signal)
-  return readImageResult(response, '消除', resultOptions)
+  return readImageResult(response, i18n.t('credits:syncTools.erase'), resultOptions)
 }

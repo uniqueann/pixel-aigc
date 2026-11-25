@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Segmented } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { formatToolSwitcherLabel } from './toolSwitcherLabel'
 import { scrollEdges, scrollSelectedIntoView } from './toolSwitcherScroll'
 
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function ToolSwitcher({ options, value, onChange, className, ariaLabel }: Props) {
+  useTranslation('common')
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [edges, setEdges] = useState({ left: false, right: false })
   const updateEdges = useCallback(() => {

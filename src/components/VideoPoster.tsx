@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { PlayCircleOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { readOwnedVideoUrl } from '@/services/api/ownedVideos'
 import { useUserStore } from '@/store/useUserStore'
 import CoverPlaceholder from './CoverPlaceholder'
@@ -11,6 +12,7 @@ export default function VideoPoster({ posterKey, ownerId, retentionExpiresAt, va
   /** strip 用于自由画布结果条；cover 用于作品墙封面（同图铺底 + 统一占位）。 */
   variant?: 'strip' | 'cover'
 }) {
+  const { t } = useTranslation('common')
   const userId = useUserStore(state => state.userId)
   const [poster, setPoster] = useState<{ key: string; url: string; userId: string | null; ownerId?: string }>()
   useEffect(() => {
@@ -24,7 +26,7 @@ export default function VideoPoster({ posterKey, ownerId, retentionExpiresAt, va
   if (!poster || poster.key !== posterKey || poster.userId !== userId || poster.ownerId !== ownerId) {
     return variant === 'cover'
       ? <CoverPlaceholder icon={<PlayCircleOutlined />} />
-      : <span className="preview-video-poster"><PlayCircleOutlined /> 视频</span>
+      : <span className="preview-video-poster"><PlayCircleOutlined /> {t('preview.videoPosterBadge')}</span>
   }
   return (
     <>
@@ -35,7 +37,7 @@ export default function VideoPoster({ posterKey, ownerId, retentionExpiresAt, va
         src={poster.url}
         loading="lazy"
         decoding="async"
-        alt={variant === 'cover' ? '' : '视频封面'}
+        alt={variant === 'cover' ? '' : t('preview.videoPosterAlt')}
         onError={() => setPoster(undefined)}
       />
     </>

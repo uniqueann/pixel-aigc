@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+import zhWorkstation from '@/i18n/locales/zh-CN/workstation.json'
 import { expansionPlan } from '@/pages/Toolbox/aspect-ratio/expansion'
 import { MAX_OUTPAINT_OUTPUT_PIXELS, MAX_SCALE, paddingAround, type OutpaintOutputMode } from '@shared/outpaint'
 
@@ -287,4 +289,23 @@ export function outpaintLimitReason(
   const probe = clampOutpaintTargetSize(sourceWidth, sourceHeight, target.width + 1, target.height + 1)
   if (probe.size.width === target.width && probe.size.height === target.height) return 'pixels'
   return undefined
+}
+
+const SHARED_OUTPAINT_ERROR_KEYS = {
+  [zhWorkstation.outpaint.errors.invalidTargetSize]: 'workstation:outpaint.errors.invalidTargetSize',
+  [zhWorkstation.outpaint.errors.invalidSize]: 'workstation:outpaint.errors.invalidSize',
+  [zhWorkstation.outpaint.errors.exceedsMaxPixels]: 'workstation:outpaint.errors.exceedsMaxPixels',
+  [zhWorkstation.outpaint.errors.invalidSourceSize]: 'workstation:outpaint.errors.invalidSourceSize',
+  [zhWorkstation.outpaint.errors.noEdgesToExpand]: 'workstation:outpaint.errors.noEdgesToExpand',
+  [zhWorkstation.outpaint.errors.aspectRatioOutOfRange]: 'workstation:outpaint.errors.aspectRatioOutOfRange',
+  [zhWorkstation.outpaint.errors.exceedsExpandRange]: 'workstation:outpaint.errors.exceedsExpandRange',
+  [zhWorkstation.outpaint.errors.exceedsServiceLimit]: 'workstation:outpaint.errors.exceedsServiceLimit',
+} as const
+
+type SharedOutpaintErrorKey = (typeof SHARED_OUTPAINT_ERROR_KEYS)[keyof typeof SHARED_OUTPAINT_ERROR_KEYS]
+
+/** Map shared Chinese outpaint validation messages to the active UI locale. */
+export function translateSharedOutpaintError(message: string) {
+  const key = (SHARED_OUTPAINT_ERROR_KEYS as Record<string, SharedOutpaintErrorKey | undefined>)[message]
+  return key ? i18n.t(key) : message
 }

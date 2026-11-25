@@ -1,8 +1,9 @@
 import type { ImageAsset } from '@/editor/types'
+import { i18n } from '@/i18n'
 import type { GenerationTask } from '@/types'
-import { SOURCE_ECHO_ERROR } from './sourceEcho'
+import { SOURCE_ECHO_ERROR, sourceEchoError } from './sourceEcho'
 
-export { SOURCE_ECHO_ERROR }
+export { SOURCE_ECHO_ERROR, sourceEchoError }
 
 export function readSourceImageUrl(params: unknown): string | undefined {
   if (!params || typeof params !== 'object' || !('sourceImageUrl' in params)) return undefined
@@ -25,8 +26,8 @@ export function finalizeWorkstationResults(
   if (generated.length > 0) return { assets: generated }
   return {
     assets: [],
-        error: assets.length === 0
-      ? '任务已完成，但接口没有返回图片结果'
-      : SOURCE_ECHO_ERROR,
+    error: assets.length === 0
+      ? i18n.t('workstation:errors.resultEmpty')
+      : sourceEchoError(),
   }
 }

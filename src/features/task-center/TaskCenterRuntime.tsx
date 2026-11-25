@@ -10,12 +10,13 @@ import {
 } from 'react'
 import { onlineManager, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { useUserStore } from '@/store/useUserStore'
 import { useTaskStore } from '@/store/useTaskStore'
 import {
   taskIsActive,
-  taskToolLabels,
   type TaskCenterSummary,
   type TaskHistoryState,
   type TaskTool,
@@ -38,6 +39,7 @@ import {
   type TaskReceipt,
 } from './receipts'
 import { TaskCenterContext, type TaskCenterContextValue } from './context'
+import { taskToolLabel } from './format'
 import { taskCenterPollIntervalMs } from './pollInterval'
 const TaskCenterDrawer = lazy(() =>
   import('./TaskCenterDrawer').then((module) => ({
@@ -93,6 +95,7 @@ function TaskCenterSession({
   )
   const client = useQueryClient(),
     { notification, message } = App.useApp()
+  const { t } = useTranslation('taskCenter')
   const [open, setOpen] = useState(false),
     [selected, setSelected] = useState<TaskCenterSummary | null>(null),
     [tool, setTool] = useState<TaskTool>(),
@@ -149,7 +152,7 @@ function TaskCenterSession({
           (entry) => entry.sourceKind === task.sourceKind && entry.sourceId === task.sourceId,
         )
         if (selectedRef.current?.taskKey !== task.taskKey && !viewing) {
-          const title = task.tool ? taskToolLabels[task.tool] : '任务'
+          const title = taskToolLabel(task.tool, 'short')
           const announce =
             task.state === 'succeeded'
               ? notification.success
@@ -158,9 +161,19 @@ function TaskCenterSession({
             key: `task-center:${actor!.owner}:${actor!.scope}:${key}`,
             message:
               task.state === 'succeeded'
-                ? `${title}${task.partial ? '部分完成' : '已完成'}`
-                : `${title}${task.state === 'expired' ? '已超时' : '失败'}`,
-            description: '点击查看生成结果与详情',
+                ? i18n.t(
+                    task.partial
+                      ? 'taskCenter:runtime.notifyPartial'
+                      : 'taskCenter:runtime.notifySucceeded',
+                    { title },
+                  )
+                : i18n.t(
+                    task.state === 'expired'
+                      ? 'taskCenter:runtime.notifyExpired'
+                      : 'taskCenter:runtime.notifyFailed',
+                    { title },
+                  ),
+            description: i18n.t('taskCenter:runtime.notifyDescription'),
             onClick: () => {
               if (current()) {
                 setSelected(task)
@@ -215,7 +228,11 @@ function TaskCenterSession({
       try {
         const data = await readTaskSidebar(actor!, signal)
         if (!current())
-          throw new CloudError(401, '账号已切换', 'ACCOUNT_CHANGED')
+          throw new CloudError(
+            401,
+            i18n.t('taskCenter:errors.accountChanged'),
+            'ACCOUNT_CHANGED',
+          )
         failures.current = 0
         return data
       } catch (error) {
@@ -293,7 +310,7 @@ function TaskCenterSession({
       if (data.actor && (data.actor.owner !== actor.owner || data.actor.scope !== actor.scope)) return
       if (data.type === 'storage-error' && !storageWarned.current) {
         storageWarned.current = true
-        message.warning('提交凭据未能保存在本机，刷新后可从近期任务查找')
+        message.warning(i18n.t('taskCenter:runtime.storageWarning'))
       }
       if (
         data.receipt &&
@@ -402,7 +419,7 @@ function TaskCenterSession({
           error:
             query.error ??
             (!online
-              ? new CloudError(0, '网络已断开，保留上次快照', 'OFFLINE')
+              ? new CloudError(0, t('runtime.offline'), 'OFFLINE')
               : null),
           receipts,
           open,

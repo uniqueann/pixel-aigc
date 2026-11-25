@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, App, Button, Checkbox, Modal, Select, Spin } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { SuiteProjectDetail } from '@shared/ecommerce-suite-runtime'
 import type { SuiteQuote } from '@shared/ecommerce-suite'
 import { SUITE_CATEGORY_TEMPLATES } from '@shared/ecommerce-suite-templates'
@@ -7,6 +8,7 @@ import { listImageModels, type PublicImageModel } from '@/services/api/imageMode
 import ModelChoice from '@/components/ModelChoice'
 import type { SuiteClient } from './api'
 import { getSlotUnreadyReason, type SuiteRetrySelection } from './batchPlan'
+import { formatSuiteError, suiteSceneToneLabel, suiteSlotLabel } from './i18n'
 
 export type { SuiteRetrySelection }
 
@@ -14,6 +16,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
   data: SuiteProjectDetail; client: SuiteClient; retry?: SuiteRetrySelection; blocked: boolean;
   flush: () => Promise<void>; onSubmit: (quote: SuiteQuote) => Promise<void>; onClose: () => void; onError: (error: unknown) => void
 }) {
+  const { t } = useTranslation('ecommerce')
   const { message } = App.useApp()
   const [models, setModels] = useState<PublicImageModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(true)
@@ -84,7 +87,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
           const slot = config.slots.find(slot => slot.id === id)!
           const strategy = SUITE_CATEGORY_TEMPLATES[config.subcategory].slots.find(template => template.key === slot.key)!.strategy
           if (strategy !== 'image_edit') return { slotId: id, mode: 'reuse' as const }
-          if (!model) throw new Error('请先选择可用图片模型')
+          if (!model) throw new Error(t('plan.errors.selectModel'))
           return {
             slotId: id,
             mode: 'image_edit' as const,
@@ -100,14 +103,14 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
         setAgreed(false)
         setExpired(false)
         setPlanError(null)
-        message.success(`已完成费用预估，共 ${response.items.length} 个槽位，最高 ${response.totalCredits} 积分`)
+        message.success(t('plan.quoteSuccessToast', { count: response.items.length, credits: response.totalCredits }))
         setTimeout(() => {
           quoteSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
         }, 60)
       }
     } catch (error) {
       if (alive.current) {
-        const errorText = error instanceof Error ? error.message : '费用预估失败，请稍后重试'
+        const errorText = formatSuiteError(error, 'ecommerce:plan.errors.quoteFailed')
         setPlanError(errorText)
         onError(error)
       }
@@ -122,12 +125,12 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
       className="suite-batch-plan"
       centered
       styles={{ body: { maxHeight: 'calc(100dvh - 220px)', overflowY: 'auto' } }}
-      title={retry ? '重新生成未完成槽位' : '全套批量生成'}
+      title={retry ? t('plan.retryTitle') : t('plan.title')}
       onCancel={busy ? undefined : onClose}
       width={720}
       footer={quote ? (
         <>
-          {!agreed && !expired && !blocked && <span className="suite-muted" style={{ marginRight: 12 }}>请先勾选确认</span>}
+          {!agreed && !expired && !blocked && <span className="suite-muted" style={{ marginRight: 12 }}>{t('plan.confirmCheckboxFirst')}</span>}
           <Button
             type="primary"
             loading={busy}
@@ -138,7 +141,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
               void onSubmit(quote).then(() => { if (alive.current) onClose() }).catch(onError).finally(() => { if (alive.current) setBusy(false) })
             }}
           >
-            {expired ? '已超时，请重新计算' : `开始批量生成 · ${quote.totalCredits} 积分上限`}
+            {expired ? t('plan.expiredButton') : t('plan.submitButton', { credits: quote.totalCredits })}
           </Button>
         </>
       ) : (
@@ -148,7 +151,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
           disabled={blocked || !selected.length || modelsLoading || !model}
           onClick={() => { void prepare() }}
         >
-          {busy ? '正在计算预估费用...' : modelsLoading ? '正在加载模型配置...' : '计算预估费用'}
+          {busy ? t('plan.calculatingButton') : modelsLoading ? t('plan.loadingModelsButton') : t('plan.calculateButton')}
         </Button>
       )}
     >
@@ -157,7 +160,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
           type="error"
           showIcon
           closable
-          message="费用预估未完成"
+          message={t('plan.quoteFailedTitle')}
           description={planError}
           onClose={() => setPlanError(null)}
           style={{ marginBottom: 12 }}
@@ -165,10 +168,10 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
       )}
       <Alert
         type="info"
-        message="批量生成说明"
-        description="系统将为所选槽位批量生成场景展示图，按实际成功张数扣除积分，失败不扣费。生成后可逐槽位核对并设为当前使用。"
+        message={t('plan.infoTitle')}
+        description={t('plan.infoDesc')}
       />
-      <p className="suite-muted">当前统一风格：{data.project.config.style.sceneTone || '默认风格'}。可在商品信息中随时调整风格与描述标签。</p>
+      <p className="suite-muted">{t('plan.currentStyleNote', { tone: suiteSceneToneLabel(data.project.config.style.sceneTone) })}</p>
       <div className="suite-plan-slots">
         {data.project.config.slots.map(slot => {
           const reason = getSlotUnreadyReason(slot, data.project.config.subcategory, data.project.config.facts)
@@ -182,18 +185,18 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
                   setSelected(ids => event.target.checked ? [...ids, slot.id] : ids.filter(id => id !== slot.id))
                 }}
               >
-                {slot.name}
+                {suiteSlotLabel(slot)}
               </Checkbox>
               {reason && <small>{reason}</small>}
             </label>
           )
         })}
       </div>
-      <p className="suite-muted">尺寸图支持添加文字与标注线，不单独调用生图模型；缺少尺寸规格或卖点时可先在“商品信息与规格”中补充并确认。</p>
+      <p className="suite-muted">{t('plan.sizeSlotHint')}</p>
       <label className="suite-plan-field">
-        图片模型
+        {t('plan.modelLabel')}
         <ModelChoice
-          ariaLabel="批次图片模型"
+          ariaLabel={t('plan.modelAria')}
           models={models}
           value={model?.id}
           loading={modelsLoading}
@@ -203,9 +206,9 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
         />
       </label>
       <label className="suite-plan-field">
-        生成分辨率
+        {t('plan.resolutionLabel')}
         <Select
-          aria-label="批次分辨率"
+          aria-label={t('plan.resolutionAria')}
           value={actualResolution}
           disabled={busy || modelsLoading || !model}
           options={model?.ui.resolutions.map(value => ({ value, label: value.toUpperCase() }))}
@@ -227,7 +230,7 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
           }}
         >
           <Spin size="small" />
-          <span>正在核对所选槽位并计算预估费用…</span>
+          <span>{t('plan.calculatingHint')}</span>
         </div>
       )}
 
@@ -237,45 +240,48 @@ export default function BatchPlanPanel({ data, client, retry, blocked, flush, on
             <Alert
               type="warning"
               showIcon
-              message="预估已超时"
-              description="费用预估已超时失效，请重新计算后再开始批量生成。"
+              message={t('plan.quoteExpiredTitle')}
+              description={t('plan.quoteExpiredDesc')}
               style={{ marginBottom: 14 }}
             />
           ) : (
             <Alert
               type="success"
               showIcon
-              message="费用预估已完成"
-              description={`已核算 ${quote.items.length} 个槽位的生成参数，最高预估消耗 ${quote.totalCredits} 积分（按实际成功生成张数扣除积分，失败不扣费）。请核对下方明细并勾选确认。`}
+              message={t('plan.quoteDoneTitle')}
+              description={t('plan.quoteDoneDesc', { count: quote.items.length, credits: quote.totalCredits })}
               style={{ marginBottom: 14 }}
             />
           )}
           <div className="suite-plan-items">
-            {quote.items.map(item => (
-              <div className="suite-quote" key={item.operationId}>
-                <strong>{data.project.config.slots.find(slot => slot.id === item.slotId)?.name}</strong>
-                {item.mode === 'reuse' ? (
-                  <p>复用已有底图，无生成费用</p>
-                ) : (
-                  <>
-                    <p>{models.find(model => model.id === item.modelProfileId)?.label ?? item.modelProfileId} · {item.resolution.toUpperCase()} · {item.count} 张候选</p>
-                    <p>预期 {item.size.width} × {item.size.height}；单价 {item.unitCredits} 积分；合计 {item.credits} 积分</p>
-                    {item.warnings?.length ? <Alert type="warning" message="模型已自动规范化输出规格，请核对分辨率与费用" /> : null}
-                    <details><summary>查看生成提示词详情</summary><pre>{item.promptSnapshot}</pre></details>
-                  </>
-                )}
-              </div>
-            ))}
+            {quote.items.map(item => {
+              const slot = data.project.config.slots.find(slot => slot.id === item.slotId)
+              return (
+                <div className="suite-quote" key={item.operationId}>
+                  <strong>{slot ? suiteSlotLabel(slot) : undefined}</strong>
+                  {item.mode === 'reuse' ? (
+                    <p>{t('plan.itemReuseDesc')}</p>
+                  ) : (
+                    <>
+                      <p>{t('plan.itemEditMeta', { model: models.find(model => model.id === item.modelProfileId)?.label ?? item.modelProfileId, resolution: item.resolution.toUpperCase(), count: item.count })}</p>
+                      <p>{t('plan.itemEditPricing', { width: item.size.width, height: item.size.height, unitCredits: item.unitCredits, credits: item.credits })}</p>
+                      {item.warnings?.length ? <Alert type="warning" message={t('plan.itemNormalizedWarning')} /> : null}
+                      <details><summary>{t('plan.viewPromptDetail')}</summary><pre>{item.promptSnapshot}</pre></details>
+                    </>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <p className="suite-muted" style={{ margin: '12px 0 8px' }}>
-            所选 {quote.items.length} 个槽位，最高预估消耗 {quote.totalCredits} 积分；按实际成功生成张数结算。
+            {t('plan.quoteSummaryLine', { count: quote.items.length, credits: quote.totalCredits })}
           </p>
           <Checkbox checked={agreed} disabled={busy || expired} onChange={event => setAgreed(event.target.checked)}>
-            已核对生成槽位与费用上限
+            {t('plan.confirmCheckboxLabel')}
           </Checkbox>
           {expired && (
             <div style={{ marginTop: 8 }}>
-              <Button onClick={() => { invalidate(); void prepare() }}>重新计算费用</Button>
+              <Button onClick={() => { invalidate(); void prepare() }}>{t('plan.recalculateButton')}</Button>
             </div>
           )}
         </div>

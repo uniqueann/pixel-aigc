@@ -1,6 +1,7 @@
 import { cloudRequest, CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { useUserStore } from '@/store/useUserStore'
-import { SYNC_TOOL_LABELS, type BillingCatalog, type CreditCurrency, type CreditOrder, type CreditPackId, type PaymentProvider, type SyncCreditOperation, type SyncCreditQuote } from '@shared/billing'
+import { type BillingCatalog, type CreditCurrency, type CreditOrder, type CreditPackId, type PaymentProvider, type SyncCreditOperation, type SyncCreditQuote } from '@shared/billing'
 import type { SyncImageObjectResult } from '@shared/sync-image'
 import type { CreditDiscountPreview } from '@shared/credit-discounts'
 
@@ -25,17 +26,17 @@ export interface SpendConfirmation {
 }
 export async function authorizeSyncQuote(operation: SyncCreditOperation,maxCredits: number): Promise<SyncCreditQuote & {owner: string}> {
   const owner=useUserStore.getState().userId
-  if (!owner) throw new CloudError(401,'请先登录再使用在线图片服务','AUTH_REQUIRED')
+  if (!owner) throw new CloudError(401,i18n.t('errors:generic.authRequiredForOnlineImage'),'AUTH_REQUIRED')
   const catalog=await getBillingCatalog(owner)
-  if (useUserStore.getState().userId!==owner) throw new CloudError(401,'账号已切换，请重新提交','ACCOUNT_CHANGED')
-  if (catalog.paymentBlocked) throw new CloudError(409,'积分账户需要人工核对，请联系支持','CREDIT_ACCOUNT_REVIEW')
+  if (useUserStore.getState().userId!==owner) throw new CloudError(401,i18n.t('errors:generic.accountChangedResubmit'),'ACCOUNT_CHANGED')
+  if (catalog.paymentBlocked) throw new CloudError(409,i18n.t('errors:codes.CREDIT_ACCOUNT_REVIEW'),'CREDIT_ACCOUNT_REVIEW')
   const amount=operation === 'bg-remove' && catalog.freeBgRemoveRemaining>0 ? 0 : maxCredits
-  if (catalog.balance<amount) { openCreditRecharge(); throw new CloudError(402,`积分不足，本次最多需要 ${amount} 积分`,'INSUFFICIENT_CREDITS') }
+  if (catalog.balance<amount) { openCreditRecharge(); throw new CloudError(402,i18n.t('errors:generic.insufficientCreditsAmount',{amount}),'INSUFFICIENT_CREDITS',{required:amount,balance:catalog.balance}) }
   if (amount>0) {
     const approved=await new Promise<boolean>(resolve=>window.dispatchEvent(new CustomEvent<SpendConfirmation>(SPEND_CONFIRM_EVENT,{detail:{owner,operation,required:amount,balance:catalog.balance,resolve}})))
-    if (!approved) throw new DOMException(`已取消${SYNC_TOOL_LABELS[operation]}`,'AbortError')
+    if (!approved) throw new DOMException(i18n.t('errors:generic.cancelledOperation',{tool:i18n.t(`credits:syncTools.${operation}` as never)}),'AbortError')
   }
-  if (useUserStore.getState().userId!==owner) throw new CloudError(401,'账号已切换，请重新提交','ACCOUNT_CHANGED')
+  if (useUserStore.getState().userId!==owner) throw new CloudError(401,i18n.t('errors:generic.accountChangedResubmit'),'ACCOUNT_CHANGED')
   return {requestId:crypto.randomUUID(),priceVersion:catalog.priceVersion,maxCredits:amount,owner}
 }
 export async function refreshBillingBalance(owner: string) {

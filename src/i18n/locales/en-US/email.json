@@ -1,0 +1,323 @@
+{
+  "operations": {
+    "summarize": "Summarize",
+    "reply": "Reply",
+    "polish": "Polish",
+    "grammar": "Fix Grammar"
+  },
+  "polishStyles": {
+    "clear": "Clearer",
+    "shorten": "Shorter",
+    "lengthen": "Longer",
+    "simplify": "Simpler"
+  },
+  "languages": {
+    "zh": "Chinese",
+    "en": "English",
+    "en-US": "English (US)",
+    "en-GB": "English (UK)",
+    "ja": "Japanese",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "it": "Italian"
+  },
+  "modelHints": {
+    "zhBatch": "Best for Chinese / Batch",
+    "langBatch": "Best for this language / Batch"
+  },
+  "pageTitle": "Email Assistant",
+  "modes": {
+    "single": "Single",
+    "batch": "Batch"
+  },
+  "errors": {
+    "loadTaskFailed": "Failed to load email task",
+    "modelSettingsLoadFailed": "Failed to load model settings. Please retry.",
+    "platformModelsUnavailable": "Platform email models are temporarily unavailable. Please try again later."
+  },
+  "alerts": {
+    "batchUnresolved": "Batch email has pending status confirmation. Confirm it before resuming single generation.",
+    "batchBusy": "Batch email is running. Pause and wait for the current email to finish before generating a single email."
+  },
+  "validation": {
+    "sourceRequired": "Paste the email content to process first"
+  },
+  "modelChoice": {
+    "ariaLabel": "Model for this run",
+    "placeholder": "Select a platform model",
+    "creditsLabel": "{{label}} · {{credits}} credits",
+    "unavailable": "Unavailable"
+  },
+  "controller": {
+    "missingResultText": "Task completed, but the service returned no email text",
+    "accountOrScopeChanged": "Account or environment switched; stopped saving previous edited draft",
+    "saveEditFailed": "Failed to save edited draft",
+    "saveEditFailedWithReason": "Failed to save edited draft: {{reason}}",
+    "confirmPendingRequest": "Check the previous request status before starting a new one",
+    "saveEditBeforeNewTask": "Failed to save edited draft. Retry before starting a new task.",
+    "saveEditBeforeGenerate": "Failed to save edited draft. Retry before generating.",
+    "submitFailed": "Failed to submit email task"
+  },
+  "single": {
+    "confirmLeaveUnsaved": "Current email content is unsaved. Leaving will clear your draft. Continue?",
+    "confirmNewTask": "Starting a new task will clear the current email and generated result. Continue?",
+    "uncertainAlert": "Previous request status is unconfirmed. Check status before generating again.",
+    "recoverSubmission": "Check or recover request",
+    "sourceTitle": "Source Email",
+    "sourcePlaceholder": "Paste the email content you want to process",
+    "instructionTitle": "Instructions",
+    "instructionPlaceholder": "Describe key points, e.g., politely explain shipping delay and share ETA",
+    "settingsTitle": "Settings",
+    "newTask": "New Task",
+    "operationLabel": "Action",
+    "languageLabel": "Language",
+    "polishStylesLabel": "Polish Styles (Multi-select)",
+    "modelLabel": "Model for this run",
+    "balanceLoading": "Loading...",
+    "billingSummary": "{{credits}} credits per successful generation · Balance {{balance}}",
+    "rechargeCredits": "Top up",
+    "billingHint": "Charged only on success; failures refund automatically. Max output length adapts to the selected model.",
+    "generate": "Generate",
+    "resultTitle": "Generated Result",
+    "regenerate": "Regenerate",
+    "resultGeneratingPlaceholder": "Generating email content...",
+    "resultPlaceholder": "Generated result will appear here",
+    "savingEdit": "Saving edited draft...",
+    "legacyModel": "Legacy model",
+    "billingRefundedSuffix": " · Refunded",
+    "billingReservedSuffix": " · Reserved {{credits}}",
+    "taskCostSummary": "{{model}} · Charged {{credits}} credits{{billingSuffix}}",
+    "tokenUsage": "Used {{tokens}} tokens",
+    "recentTitle": "Last 7 Days",
+    "historyPlaceholder": "Select a recent task",
+    "refreshHistory": "Refresh",
+    "deleteConfirm": "Delete this email task and its content?",
+    "deleteTask": "Delete Current Task",
+    "emptyHistory": "No email tasks yet",
+    "status": {
+      "succeededReady": "Email text generated; edit or copy below",
+      "readingResult": "Loading generated result",
+      "failedFallback": "Task did not complete. Please retry.",
+      "processing": "AI is processing the email"
+    },
+    "messages": {
+      "busyCannotSwitch": "An email task is currently running. Wait for it to finish before starting a new action.",
+      "cannotStartNew": "Unable to start a new email action",
+      "loadingModelSettings": "Loading model settings, please wait",
+      "modelSettingsLoadFailed": "Failed to load model settings. Please retry.",
+      "gateBusy": "An email is currently processing. Please wait for it to finish.",
+      "generated": "Email content generated",
+      "generateFailed": "Failed to generate email",
+      "submitFailed": "Failed to submit email task",
+      "copied": "Result copied",
+      "copyFailed": "Copy failed. Please select the text manually.",
+      "regenerated": "Email content regenerated",
+      "retryFailed": "Retry failed",
+      "taskRetryFailed": "Failed to retry task",
+      "newTaskFailed": "Failed to start new task",
+      "queryFailed": "Failed to check request",
+      "historyLoadFailed": "Failed to load task history",
+      "historyLoadMoreFailed": "Failed to load more",
+      "deleteFailed": "Failed to delete task"
+    },
+    "recovery": {
+      "blockedReason": "An email task is currently processing or awaiting confirmation. Finish before loading parameters.",
+      "incompleteParams": "Original email parameters are incomplete",
+      "invalidInstruction": "Original email instruction parameter is invalid",
+      "confirmLoadParams": "Loading original parameters will overwrite current email content. Save drafts first if needed. Continue?",
+      "saveEditBeforeLoadFailed": "Failed to save edited draft. Retry before loading parameters."
+    }
+  },
+  "csv": {
+    "listSeparator": ", ",
+    "operationWithStyles": "{{operation}}: {{styles}}",
+    "headers": {
+      "source": "Source Email",
+      "instruction": "Instructions",
+      "settings": "Settings",
+      "language": "Language"
+    },
+    "exportHeaders": {
+      "result": "Generated Result",
+      "status": "Status",
+      "error": "Error",
+      "model": "Model",
+      "credits": "Credits Charged"
+    },
+    "errors": {
+      "sourceRequired": "Source email cannot be empty",
+      "sourceTooLong": "Source email cannot exceed 10,000 characters",
+      "instructionTooLong": "Instructions cannot exceed 1,000 characters",
+      "invalidOperation": "Settings must be Summarize, Reply, Polish, or Fix Grammar",
+      "onlyPolishSupportsStyles": "Polish styles can only be specified when using Polish",
+      "polishStyleFormat": "Format polish styles as \"Polish: Clearer+Shorter\"",
+      "unsupportedPolishStyle": "Supported polish styles: Clearer, Shorter, Longer, Simpler (join with +)",
+      "invalidLanguage": "Language must be a supported language name or code",
+      "malformedCsv": "Invalid CSV format. Check quotes, commas, and line breaks, then re-upload.",
+      "duplicateHeaders": "CSV column headers cannot be duplicated",
+      "missingColumns": "Missing CSV columns: {{columns}}",
+      "emptyRecords": "No email rows found in CSV. Add content and re-upload.",
+      "tooManyRows": "Up to {{max}} emails per batch. Split the CSV and re-upload.",
+      "columnCountMismatch": "Column count does not match header row; check commas and quotes",
+      "rowInvalidFallback": "Invalid row values",
+      "invalidFileType": "Please upload a CSV file",
+      "fileTooLarge": "CSV file cannot exceed {{limit}}",
+      "encodingUnsupported": "Unable to read file or unsupported encoding. Save as UTF-8 CSV and re-upload."
+    }
+  },
+  "runner": {
+    "errors": {
+      "requestFailed": "Email task request failed. Please try again shortly.",
+      "mismatchedTask": "Service returned a mismatched email task",
+      "taskExpired": "Original task was deleted or expired. Check Credit History; regenerating will be billed as a new task.",
+      "pollFailed": "Failed to query task: {{reason}}",
+      "missingResultText": "Task completed, but the service returned no email text",
+      "generateFailed": "Email generation failed. Please retry.",
+      "findFailed": "Failed to query original request: {{reason}}",
+      "submitAndFindFailed": "{{submitReason}}; failed to query original request: {{findReason}}",
+      "loadBlocked": "Wait for the current task to finish or re-check pending tasks before replacing the CSV"
+    },
+    "pauseMessages": {
+      "uncertain": "Original task status is unconfirmed. Re-check status before resuming to avoid duplicates.",
+      "gateBusy": "An email is currently processing. Wait for it to finish before starting batch generation.",
+      "paused": "Paused. Completed results are preserved; you can resume pending emails.",
+      "pausing": "Waiting for the current email to finish before pausing remaining items..."
+    }
+  },
+  "batch": {
+    "locator": "Row #{{sequence}} (CSV line {{csvLine}})",
+    "errorWithLocator": "{{locator}}: {{message}}",
+    "status": {
+      "pending": "Pending",
+      "processing": "Generating",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "invalid": "Invalid",
+      "uncertain": "Confirming"
+    },
+    "filters": {
+      "all": "All",
+      "pending": "Pending",
+      "failed": "Failed",
+      "succeeded": "Completed"
+    },
+    "columns": {
+      "index": "#",
+      "status": "Status",
+      "result": "Result",
+      "actions": "Actions"
+    },
+    "actions": {
+      "details": "Details",
+      "pause": "Pause",
+      "pausing": "Pausing...",
+      "generate": "Generate",
+      "resume": "Resume",
+      "pendingCountSuffix": " ({{count}})",
+      "retryFailed": "Retry Failed",
+      "recover": "Check Pending Tasks",
+      "clearBatch": "Clear Batch",
+      "exportCsv": "Export CSV",
+      "downloadTemplate": "Download Template",
+      "replaceFile": "Replace File",
+      "keepCurrentFile": "Keep Current File"
+    },
+    "files": {
+      "defaultPrefix": "email-batch",
+      "exportName": "{{name}}-results.csv",
+      "templateName": "email-assistant-batch-template.csv"
+    },
+    "summary": {
+      "defaultTitle": "Current Batch",
+      "counts": "Total {{total}} · Pending {{pending}} · Generating {{processing}} · Succeeded {{succeeded}} · Failed {{failed}} · Invalid {{invalid}} · Confirming {{uncertain}}",
+      "eta": "Estimated at 60/hour: at least ~{{minutes}} min"
+    },
+    "confirmRun": {
+      "retryTitle": "Retry failed emails?",
+      "startTitle": "Start batch generation?",
+      "eta": "At ~60 emails/hour, this will take at least ~{{count}} min. ",
+      "balanceNote": "Current balance can cover up to {{completable}} email(s). ",
+      "content": "{{model}}, {{creditsPerRun}} credit(s) per success; {{count}} email(s) in this run, est. {{estimatedCredits}} credit(s). {{eta}}{{balanceNote}}Failed items refund automatically; batch pauses on low balance.",
+      "ok": "Start Generation"
+    },
+    "replaceConfirm": {
+      "title": "Replace current batch?",
+      "content": "Current {{count}} email(s) will be replaced and cannot be recovered."
+    },
+    "clearConfirm": {
+      "title": "Clear current batch?",
+      "succeededNote": " ({{count}} with generated results)",
+      "content": "This will remove {{total}} email(s){{succeededNote}} and cannot be recovered.",
+      "ok": "Clear"
+    },
+    "messages": {
+      "imported": "Imported {{total}} email(s) ({{valid}} ready to generate)",
+      "importFailed": "CSV import failed",
+      "copied": "Result copied",
+      "copyFailed": "Copy failed. Open details and select the text manually.",
+      "actionFailed": "Batch action failed",
+      "cleared": "Cleared {{count}} email(s)",
+      "undoFailed": "Failed to undo",
+      "clearFailed": "Failed to clear batch"
+    },
+    "importCard": {
+      "title": "Import Emails",
+      "hideGuide": "Hide Template Guide",
+      "showGuide": "Template Guide",
+      "currentFile": "Current file: {{name}}",
+      "rowCount": "{{count}} email(s)",
+      "readingCsv": "Reading CSV...",
+      "uploadText": "Click or drag a CSV file here",
+      "uploadHint": "UTF-8 CSV format, up to {{maxRows}} emails, max {{maxSize}}",
+      "retentionHint": "Batch data stays on this page when switching tabs; refreshing or leaving interrupts generation, so export results promptly.",
+      "rateHint": "Generates one email sequentially at a time, up to 60 submissions per hour. Submitted emails remain in your 7-day history.",
+      "localModeHint": "Local mode is not connected to model services, so batch generation is unavailable. You can still import, preview, and export CSV.",
+      "modelLockedHint": "The selected model is locked for this batch and cannot be changed once started.",
+      "mixedLanguageAlert": "Multiple languages detected. Select a single model manually, or split into single-language batches.",
+      "validSummary": "{{count}} valid email(s){{costPart}}",
+      "validCostPart": " · Est. {{remaining}} credits pending · Charged {{charged}} credits",
+      "balanceLine": "Balance {{balance}}{{completablePart}}",
+      "completablePart": ", enough for {{count}} email(s) at this rate"
+    },
+    "guide": {
+      "colHeader": "Column",
+      "rulesHeader": "Rules",
+      "sourceRule": "Required, up to 10,000 characters; supports line breaks, commas, and quotes.",
+      "instructionRule": "Optional, up to 1,000 characters.",
+      "settingsRule": "Summarize, Reply, Fix Grammar, or Polish; Polish can combine styles.",
+      "languageRule": "Chinese, English, Japanese, French, German, Spanish, Portuguese, or Italian.",
+      "settingsNotePrefix": "In the Settings column, enter an action: Summarize, Reply, Fix Grammar, or Polish (e.g., \"Polish: Clearer+Shorter\"). Other optional styles include \"Longer\" and \"Simpler\". Leave Settings or Language blank to use your ",
+      "personalDefaults": "personal defaults",
+      "settingsNoteSuffix": " at import time; entering only \"Polish\" uses your default polish styles.",
+      "languageOptionItem": "{{label}} ({{code}})",
+      "languageSeparator": ", ",
+      "languageNote": "Languages: {{options}}."
+    },
+    "resultCard": {
+      "title": "Batch Results"
+    },
+    "alerts": {
+      "singleBusy": "A single email is currently processing. Batch generation can begin once it finishes.",
+      "invalidRows": "Validation error in {{locators}}. Only valid rows will be generated; fix the CSV and re-upload."
+    },
+    "filterCount": "Showing {{shown}} of {{total}}",
+    "emptyAll": "Import a CSV file to preview and generate emails here",
+    "emptyFiltered": "No matching emails",
+    "detail": {
+      "prev": "Previous",
+      "next": "Next",
+      "copyResult": "Copy Result",
+      "effectiveSettings": "Effective Settings",
+      "effectiveLanguage": "Effective Language",
+      "creditsCost": "Credits Charged",
+      "model": "Model",
+      "status": "Status",
+      "readonly": "Read-only",
+      "sourceReadonlyAria": "Source email (read-only)",
+      "instructionReadonlyAria": "Instructions (read-only)",
+      "resultReadonlyAria": "Generated result (read-only)"
+    }
+  }
+}

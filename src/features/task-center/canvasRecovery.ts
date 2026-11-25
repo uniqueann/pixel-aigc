@@ -1,4 +1,5 @@
 import type { TaskCenterDetail, TaskCenterMedia } from '@shared/task-center'
+import { i18n } from '@/i18n'
 import { Capability } from '@/types'
 import { useEditorStore } from '@/editor/store'
 import { recoveryForTask,usePersistenceStore } from '@/editor/persistence/persistenceStore'
@@ -8,20 +9,21 @@ import { generationIdForTask } from '@/editor/adapters/taskAdapter'
 import { ResolveGenerationCommand } from '@/editor/commands'
 import type { ImageAsset,VideoAsset,ImageNode,VideoNode } from '@/editor/types'
 import { assertRecoveryActor,persistRecoveredResult,readRecoveryImage,recoveredResultId } from './recoveryMedia'
+import { formatTaskErrorMessage } from './format'
 import type { RecoveryActionContext } from './TaskRecoveryPanel'
 
 export interface CanvasRecoveryContext extends RecoveryActionContext { projectId: string; sceneId: string; epoch: number }
 function check(context:CanvasRecoveryContext) {
   assertRecoveryActor(context.actor,context.signal)
   const state=usePersistenceStore.getState(),editor=useEditorStore.getState()
-  if(state.epoch!==context.epoch||editor.project?.id!==context.projectId||editor.activeSceneId!==context.sceneId)throw new DOMException('画布或场景已切换','AbortError')
-  if(!state.writable||state.phase!=='ready'||state.cloud?.conflict)throw new Error('当前项目不能编辑，请先取得编辑权或处理冲突')
-  if(!editor.project.document.scenes.some(scene=>scene.id===context.sceneId))throw new Error('原任务场景不存在，可在任务详情查看结果')
+  if(state.epoch!==context.epoch||editor.project?.id!==context.projectId||editor.activeSceneId!==context.sceneId)throw new DOMException(i18n.t('taskCenter:errors.canvasOrSceneSwitched'),'AbortError')
+  if(!state.writable||state.phase!=='ready'||state.cloud?.conflict)throw new Error(i18n.t('taskCenter:errors.projectNotEditable'))
+  if(!editor.project.document.scenes.some(scene=>scene.id===context.sceneId))throw new Error(i18n.t('taskCenter:errors.originalSceneMissing'))
 }
 export async function applyRecoveredCanvasTask(detail:TaskCenterDetail,context:CanvasRecoveryContext,explicit?:TaskCenterMedia) {
   check(context)
   const task=detail.task,editor=useEditorStore.getState(),project=editor.project!,scene=project.document.scenes.find(scene=>scene.id===context.sceneId)!
-  if(task.origin?.entry!=='canvas'||task.origin.projectId!==context.projectId||task.origin.sceneId!==context.sceneId)throw new Error('原任务不属于当前项目或场景')
+  if(task.origin?.entry!=='canvas'||task.origin.projectId!==context.projectId||task.origin.sceneId!==context.sceneId)throw new Error(i18n.t('taskCenter:errors.taskNotInProjectOrScene'))
   let record=recoveryForTask(task.sourceId)
   if(!record){
     const pending=Object.values(usePersistenceStore.getState().recoveries).find(item=>item.projectId===context.projectId&&item.sceneId===context.sceneId&&!item.abandoned
@@ -45,10 +47,10 @@ export async function applyRecoveredCanvasTask(detail:TaskCenterDetail,context:C
     let blob:Blob|undefined
     if(result.kind==='image') {
       const measured=await readRecoveryImage(result,context.actor,context.signal);blob=measured.blob
-      asset=existingAsset??createImageAsset({id,name:`原任务结果 ${result.ordinal+1}`,url:result.url,objectKey:result.objectKey,width:measured.width,height:measured.height,mimeType:measured.mimeType,source:'generation',generationId,createdAt:task.createdAt})
+      asset=existingAsset??createImageAsset({id,name:i18n.t('taskCenter:canvas.recoveredImageName',{index:result.ordinal+1}),url:result.url,objectKey:result.objectKey,width:measured.width,height:measured.height,mimeType:measured.mimeType,source:'generation',generationId,createdAt:task.createdAt})
     } else {
-      if(!result.video)throw new Error('原视频元数据不完整，可在详情播放和下载')
-      asset=existingAsset??createVideoAsset({id,name:'原视频结果',url:result.url,objectKey:result.objectKey,width:result.width,height:result.height,duration:result.video.durationSeconds,
+      if(!result.video)throw new Error(i18n.t('taskCenter:errors.videoMetaIncompleteShort'))
+      asset=existingAsset??createVideoAsset({id,name:i18n.t('taskCenter:canvas.recoveredVideoName'),url:result.url,objectKey:result.objectKey,width:result.width,height:result.height,duration:result.video.durationSeconds,
         retentionExpiresAt:result.video.retentionExpiresAt,posterKey:result.video.posterKey,hasAudio:result.video.hasAudio,generationId,createdAt:task.createdAt})
     }
     check(context)
@@ -69,7 +71,7 @@ export async function applyRecoveredCanvasTask(detail:TaskCenterDetail,context:C
   const previous=useEditorStore.getState().project!.generations[generationId]
   if(matched||explicit)current.registerGeneration({id:generationId,backendTaskId:task.sourceId,capability:task.capability as Capability,
     status:task.state==='expired'?'failed':task.state,input:detail.params??previous?.input??{},inputAssetIds:record?.context.inputAssetIds??previous?.inputAssetIds??[],
-    outputAssetIds:[...new Set([...(previous?.outputAssetIds??[]),...fresh.map(output=>output.asset.id)])],createdAt:task.createdAt,updatedAt:task.updatedAt,error:detail.errorMessage??undefined})
+    outputAssetIds:[...new Set([...(previous?.outputAssetIds??[]),...fresh.map(output=>output.asset.id)])],createdAt:task.createdAt,updatedAt:task.updatedAt,error:formatTaskErrorMessage(task,detail.errorMessage)??undefined})
   if(record&&terminal)usePersistenceStore.getState().setRecovery({...record,applied:true})
   if(fresh.length)current.selectNodes([fresh[0].node.id])
   if(fresh.length||remove.length||previous?.status!==task.state)await flushProject()

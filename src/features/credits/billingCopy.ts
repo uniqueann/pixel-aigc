@@ -1,18 +1,13 @@
 import { EMAIL_MODELS } from '@shared/email-models'
-import { BG_REMOVE_MONTHLY_FREE, SYNC_TOOL_LABELS, syncCreditPrice, type SyncCreditOperation } from '@shared/billing'
-import { creditToolName } from '@shared/credits'
+import { BG_REMOVE_MONTHLY_FREE, syncCreditPrice, type SyncCreditOperation } from '@shared/billing'
 import type { ImageResolution } from '@shared/image-generation'
 import { IMAGE_MODEL_PROFILES, type ImageModelProfile } from '@shared/image-models'
 import { MAX_EXPAND_PASSES, MAX_SCALE } from '@shared/outpaint'
 import { VIDEO_MODELS, videoModelCredits, videoModelModes, videoModelResolutions } from '@shared/video-models'
-import { CANVAS_MODES } from '@/pages/FreeCanvas/modes'
+import { i18n } from '@/i18n'
+import { activeLocale } from '@/i18n/format'
 import { WORKSTATION_TOOLS } from '@/pages/ImageWorkstation/tools'
-import { FIT_STRATEGIES } from '@/pages/Toolbox/aspect-ratio/strategies'
-import { SUBJECT_DETECTION_LABEL } from '@/pages/Toolbox/aspect-ratio/subjectLabels'
-import { LOCAL_TEMPLATE_LABEL } from '@/pages/Toolbox/shared/presetLabels'
-import { TOOLBOX_TOOLS } from '@/pages/Toolbox/tools'
-import { NAV_META } from '@/router/meta'
-import { SMART_SELECT_LABEL } from '@/services/api/smartSelectLabels'
+import { getNavLabel } from '@/router/meta'
 
 const RESOLUTION_ORDER: ImageResolution[] = ['1k', '2k', '4k']
 const PER_IMAGE_SLUGS = ['smart-edit', 'relight', 'variation', 'fusion', 'retouch'] as const
@@ -24,7 +19,7 @@ export interface BillingExplanationCopy {
 }
 
 function slash(values: Array<string | number>) {
-  return values.join('／')
+  return values.join(i18n.t('credits:explanation.slash'))
 }
 
 function whole(value: number) {
@@ -34,33 +29,42 @@ function whole(value: number) {
 export function formatBillingMonth(month: string) {
   const match = /^(\d{4})-(\d{2})$/.exec(month.trim())
   if (!match) return ''
-  return `${Number(match[1])}年${Number(match[2])}月`
+  const year = Number(match[1])
+  const monthNumber = Number(match[2])
+  if (activeLocale() === 'en-US') {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(year, monthNumber - 1, 1)))
+  }
+  return i18n.t('credits:explanation.monthYear', { year, month: monthNumber })
 }
 
-function toolLabel(tools: ReadonlyArray<{ slug: string; label: string }>, slug: string) {
-  const tool = tools.find(item => item.slug === slug)
-  if (!tool) throw new Error(`计费说明缺少工具：${slug}`)
-  return tool.label
+function workstationToolLabel(slug: string) {
+  return i18n.t(`workstation:tools.${slug}` as never)
+}
+
+function syncToolLabel(operation: SyncCreditOperation) {
+  return i18n.t(`credits:syncTools.${operation}` as never)
 }
 
 function strategyLabel(value: 'letterbox' | 'crop' | 'outpaint') {
-  const item = FIT_STRATEGIES.find(strategy => strategy.value === value)
-  if (!item) throw new Error(`计费说明缺少转比例策略：${value}`)
-  return item.label
+  return i18n.t(`toolbox:aspectRatio.strategies.${value}` as never)
 }
 
 function assertWorkstationToolsCovered() {
   const known = new Set<string>([...PER_IMAGE_SLUGS, ...SYNC_SLUGS])
-  const missing = WORKSTATION_TOOLS.filter(tool => !known.has(tool.slug)).map(tool => tool.label)
-  if (missing.length) throw new Error(`计费说明未覆盖：${missing.join('、')}`)
+  const missing = WORKSTATION_TOOLS.filter(tool => !known.has(tool.slug)).map(tool => tool.slug)
+  if (missing.length) throw new Error(`Missing billing coverage: ${missing.join(', ')}`)
   const pairs: Array<[typeof SYNC_SLUGS[number], SyncCreditOperation]> = [
     ['remove', 'erase'],
     ['repaint', 'repaint'],
     ['outpaint', 'outpaint'],
   ]
   for (const [slug, operation] of pairs) {
-    if (toolLabel(WORKSTATION_TOOLS, slug) !== SYNC_TOOL_LABELS[operation]) {
-      throw new Error(`${slug} 的界面名称和计费名称不一致`)
+    if (workstationToolLabel(slug) !== syncToolLabel(operation)) {
+      throw new Error(`Tool label mismatch for ${slug} / ${operation}`)
     }
   }
 }
@@ -79,44 +83,79 @@ function downgradeNote(profile: ImageModelProfile) {
   const limited = profile.ui.resolutionRatioConstraints?.['4k']
   const twoK = profile.pricing.creditsPerImage['2k']
   if (!limited?.length || !Number.isSafeInteger(twoK)) return ''
-  return `当前比例不支持 4K 时改为按 2K 生成，并按 2K 的 ${twoK} 分扣。`
+  return i18n.t('credits:explanation.downgrade4k', { credits: twoK })
 }
 
 function videoItem() {
-  const text = creditToolName({ mode: 'text_to_video' }, 'text_to_video')
-  const image = creditToolName({ mode: 'image_to_video' }, 'text_to_video')
-  return VIDEO_MODELS.map(model => {
+  const comma = i18n.t('credits:explanation.comma')
+  const sentenceComma = i18n.t('credits:explanation.sentenceComma')
+  const semicolon = i18n.t('credits:explanation.semicolon')
+  const text = i18n.t('canvas:modes.text-to-video')
+  const image = i18n.t('credits:ledger.tools.image-to-video')
+  const separator = activeLocale() === 'en-US' ? ' ' : ''
+  const modelsText = VIDEO_MODELS.map(model => {
     const prices = videoModelResolutions(model).map(resolution => {
-      const parts = model.durations.map(duration => `${duration} 秒 ${videoModelCredits(model, resolution, duration)} 分`)
-      return `${resolution.toUpperCase()}：${parts.join('，')}`
+      const parts = model.durations.map(duration => (
+        i18n.t('credits:explanation.videoDurationPart', {
+          duration,
+          credits: videoModelCredits(model, resolution, duration),
+        })
+      ))
+      return i18n.t('credits:explanation.videoResolutionParts', {
+        resolution: resolution.toUpperCase(),
+        parts: parts.join(sentenceComma),
+      })
     })
-    return `${videoModelModes(model).includes('image_to_video') ? `${text}、${image}` : text}（${model.label}）按条计费：${prices.join('；')}。`
-  }).join('') + '是否生成声音不改变价格，实际可用模型以页面开放状态为准。'
+    const modes = videoModelModes(model).includes('image_to_video') ? `${text}${comma}${image}` : text
+    return i18n.t('credits:explanation.videoItem', {
+      modes,
+      model: model.label,
+      prices: prices.join(semicolon),
+    })
+  }).join(separator)
+  return `${modelsText}${separator}${i18n.t('credits:explanation.videoAudioNote')}`
 }
 
 function generationItems() {
   assertWorkstationToolsCovered()
-  const textToImage = CANVAS_MODES.find(mode => mode.slug === 'text-to-image')
-  if (!textToImage) throw new Error('计费说明缺少文生图名称')
-  const names = [textToImage.label, ...PER_IMAGE_SLUGS.map(slug => toolLabel(WORKSTATION_TOOLS, slug))]
+  const comma = i18n.t('credits:explanation.comma')
+  const period = i18n.t('credits:explanation.period')
+  const textToImage = i18n.t('canvas:modes.text-to-image')
+  const names = [textToImage, ...PER_IMAGE_SLUGS.map(slug => workstationToolLabel(slug))]
   const enabled = IMAGE_MODEL_PROFILES.filter(profile => profile.enabled && pricedResolutions(profile).length)
-  if (!enabled.length) throw new Error('没有可用的图片单价')
+  if (!enabled.length) throw new Error('No enabled image model pricing available')
   const groups = new Map<string, { labels: string[]; phrase: string; downgrade: string }>()
   for (const profile of enabled) {
     const rows = pricedResolutions(profile)
-    const phrase = `${slash(rows.map(row => row.resolution.toUpperCase()))} 分别扣 ${slash(rows.map(row => row.credits))} 分`
-    const key = `${phrase}|${downgradeNote(profile)}`
-    const current = groups.get(key) ?? { labels: [], phrase, downgrade: downgradeNote(profile) }
+    const phrase = i18n.t('credits:explanation.resolutionCredits', {
+      resolutions: slash(rows.map(row => row.resolution.toUpperCase())),
+      credits: slash(rows.map(row => row.credits)),
+    })
+    const downgrade = downgradeNote(profile)
+    const key = `${phrase}|${downgrade}`
+    const current = groups.get(key) ?? { labels: [], phrase, downgrade }
     current.labels.push(profile.label)
     groups.set(key, current)
   }
-  const unit = enabled.every(profile => profile.pricing.unit === 'image') ? '每张' : '按次'
+  const unit = enabled.every(profile => profile.pricing.unit === 'image')
+    ? i18n.t('credits:explanation.unitPerImage')
+    : i18n.t('credits:explanation.unitPerRequest')
   const priceText = [...groups.values()].map(group => (
-    groups.size === 1 ? group.phrase : `${group.labels.join('、')}：${group.phrase}`
-  )).join('。')
+    groups.size === 1
+      ? group.phrase
+      : i18n.t('credits:explanation.modelResolutionGroup', {
+        labels: group.labels.join(comma),
+        phrase: group.phrase,
+      })
+  )).join(period)
   const downgrades = [...new Set([...groups.values()].map(group => group.downgrade).filter(Boolean))]
   const items = [
-    `${names.join('、')}按输出分辨率${unit}计费，${priceText}。提交时按请求张数预扣，成功后只结算成功的张数，未成功的张数退回。${downgrades.join('')}`,
+    i18n.t('credits:explanation.generationLead', {
+      names: names.join(comma),
+      unit,
+      priceText,
+      downgrades: downgrades.join(activeLocale() === 'en-US' ? ' ' : ''),
+    }).trimEnd(),
   ]
   const video = videoItem()
   if (video) items.push(video)
@@ -127,37 +166,79 @@ function editItems() {
   const erase = syncCreditPrice('erase')
   const repaint = syncCreditPrice('repaint')
   const onePass = syncCreditPrice('outpaint', 1)
-  const maxPasses = syncCreditPrice('outpaint', MAX_EXPAND_PASSES)
+  const maxPassCredits = syncCreditPrice('outpaint', MAX_EXPAND_PASSES)
+  const eraseLabel = syncToolLabel('erase')
+  const repaintLabel = syncToolLabel('repaint')
   const sameEditPrice = erase === repaint
-    ? `${SYNC_TOOL_LABELS.erase}、${SYNC_TOOL_LABELS.repaint}每次 ${erase} 分。`
-    : `${SYNC_TOOL_LABELS.erase}每次 ${erase} 分。${SYNC_TOOL_LABELS.repaint}每次 ${repaint} 分。`
+    ? i18n.t('credits:explanation.editSamePrice', { erase: eraseLabel, repaint: repaintLabel, credits: erase })
+    : i18n.t('credits:explanation.editDiffPrice', {
+      erase: eraseLabel,
+      eraseCredits: erase,
+      repaint: repaintLabel,
+      repaintCredits: repaint,
+    })
   return [
     sameEditPrice,
-    `${SYNC_TOOL_LABELS.outpaint}按扩图范围计费：1 轮 ${onePass} 分，${MAX_EXPAND_PASSES} 轮 ${maxPasses} 分。每边一轮最多扩到原图该边的 ${MAX_SCALE} 倍；超出单轮范围时继续扩展，最多 ${MAX_EXPAND_PASSES} 轮。先按最高 ${maxPasses} 分预扣，实际轮次更少时自动退回差额。`,
+    i18n.t('credits:explanation.outpaintItem', {
+      outpaint: syncToolLabel('outpaint'),
+      onePass,
+      maxPasses: MAX_EXPAND_PASSES,
+      maxCredits: maxPassCredits,
+      maxScale: MAX_SCALE,
+    }),
   ]
 }
 
 function mattingItem(remaining: number, month: string) {
-  const billed = SYNC_TOOL_LABELS['bg-remove']
-  const toolbox = toolLabel(TOOLBOX_TOOLS, 'bg-remove')
-  const name = toolbox === billed ? billed : `${billed}（工具箱里的${toolbox}）`
-  const when = month ? `${month}还可免费 ${remaining} 张` : `本月还可免费 ${remaining} 张`
-  return `${name}每月免费 ${BG_REMOVE_MONTHLY_FREE} 张（每月 1 日刷新）。${when}。正在处理的免费请求占用额度，失败或超时自动释放。超出免费额度后每张 ${syncCreditPrice('bg-remove')} 分。`
+  const billed = syncToolLabel('bg-remove')
+  const toolbox = i18n.t('toolbox:tools.bg-remove')
+  const name = toolbox === billed ? billed : i18n.t('credits:explanation.mattingCombinedName', { billed, toolbox })
+  const when = month
+    ? i18n.t('credits:explanation.mattingWhenMonth', { month, remaining })
+    : i18n.t('credits:explanation.mattingWhenCurrent', { remaining })
+  return i18n.t('credits:explanation.mattingItem', {
+    name,
+    monthlyFree: BG_REMOVE_MONTHLY_FREE,
+    when,
+    price: syncCreditPrice('bg-remove'),
+  })
 }
 
 function freeToolItem() {
-  const email = NAV_META['/email']
-  if (!email) throw new Error('计费说明缺少邮件助手名称')
-  return `${SUBJECT_DETECTION_LABEL}、${SMART_SELECT_LABEL}不单独扣分。${strategyLabel('letterbox')}、${toolLabel(TOOLBOX_TOOLS, 'watermark')}和${LOCAL_TEMPLATE_LABEL}在本机处理，不扣积分。${strategyLabel('crop')}（含${toolLabel(TOOLBOX_TOOLS, 'pipeline')}里的裁剪）在本机渲染，不扣积分，但主体识别可能上传缩略图。转比例里的${strategyLabel('outpaint')}会上传图片生成背景，按${SYNC_TOOL_LABELS.outpaint}计费。${email}使用平台模型：${EMAIL_MODELS.map(model => `${model.label} 每次成功 ${model.credits} 积分`).join('，')}，失败返还。`
+  const email = getNavLabel('/email')
+  const sentenceComma = i18n.t('credits:explanation.sentenceComma')
+  const emailModels = EMAIL_MODELS.map(model => (
+    i18n.t('credits:explanation.emailModelCredit', { model: model.label, credits: model.credits })
+  )).join(sentenceComma)
+  return i18n.t('credits:explanation.freeToolsItem', {
+    subject: i18n.t('toolbox:aspectRatio.subjectDetection'),
+    smartSelect: i18n.t('toolbox:aspectRatio.smartSelect'),
+    letterbox: strategyLabel('letterbox'),
+    watermark: i18n.t('toolbox:tools.watermark'),
+    localTemplate: i18n.t('toolbox:aspectRatio.localTemplate'),
+    crop: strategyLabel('crop'),
+    pipeline: i18n.t('toolbox:tools.pipeline'),
+    outpaintStrategy: strategyLabel('outpaint'),
+    outpaint: syncToolLabel('outpaint'),
+    email,
+    emailModels,
+  })
 }
 
 function refundItems(includeVideo: boolean) {
-  const syncTools = [SYNC_TOOL_LABELS.erase, SYNC_TOOL_LABELS.repaint, SYNC_TOOL_LABELS.outpaint, SYNC_TOOL_LABELS['bg-remove']].join('、')
-  const items = [
-    '图片任务失败或超时会退回预扣积分；成功后只结算成功张数的费用。超时未完成的任务不再计入扣费。',
-  ]
-  if (includeVideo) items.push('视频任务失败或超时会退回预扣积分。超时未完成的任务不再计入扣费。')
-  items.push(`${syncTools}失败或超时会退回已扣积分；超时后的任务需重新提交。免费的${SYNC_TOOL_LABELS['bg-remove']}失败或超时会释放本月占用的免费额度。`)
+  const comma = i18n.t('credits:explanation.comma')
+  const syncTools = [
+    syncToolLabel('erase'),
+    syncToolLabel('repaint'),
+    syncToolLabel('outpaint'),
+    syncToolLabel('bg-remove'),
+  ].join(comma)
+  const items = [i18n.t('credits:explanation.refundImage')]
+  if (includeVideo) items.push(i18n.t('credits:explanation.refundVideo'))
+  items.push(i18n.t('credits:explanation.refundSync', {
+    tools: syncTools,
+    bgRemove: syncToolLabel('bg-remove'),
+  }))
   return items
 }
 
@@ -168,12 +249,12 @@ export function billingExplanationCopy(input: {
   const remaining = whole(input.freeBgRemoveRemaining)
   const month = formatBillingMonth(input.freeBgRemoveMonth)
   return {
-    summary: `按功能扣分，${SYNC_TOOL_LABELS['bg-remove']}本月还可免费 ${remaining} 张`,
+    summary: i18n.t('credits:explanation.summary', { tool: syncToolLabel('bg-remove'), remaining }),
     groups: [
-      { title: '生成类', items: generationItems() },
-      { title: '编辑类', items: editItems() },
-      { title: '抠图与工具', items: [mattingItem(remaining, month), freeToolItem()] },
-      { title: '预扣与退还', items: refundItems(Boolean(videoItem())) },
+      { title: i18n.t('credits:explanation.groups.generation'), items: generationItems() },
+      { title: i18n.t('credits:explanation.groups.edit'), items: editItems() },
+      { title: i18n.t('credits:explanation.groups.toolbox'), items: [mattingItem(remaining, month), freeToolItem()] },
+      { title: i18n.t('credits:explanation.groups.refund'), items: refundItems(Boolean(videoItem())) },
     ],
   }
 }

@@ -1,22 +1,25 @@
 import type { GenerationJob } from '@/editor/types'
+import { i18n } from '@/i18n'
 
 /** 视频任务的阶段文案与右栏 `GenerationTaskStatus` 保持一致。 */
 export type GenerationPhase = 'submitting' | 'queued' | 'generating' | 'transferring'
 
-const PHASE_LABELS: Record<GenerationPhase, string> = {
-  submitting: '提交确认中',
-  queued: '排队中',
-  generating: '视频生成中',
-  transferring: '视频转存中',
-}
+const PHASE_KEYS = {
+  submitting: 'canvas:placeholder.phases.submitting',
+  queued: 'canvas:placeholder.phases.queued',
+  generating: 'canvas:placeholder.phases.generating',
+  transferring: 'canvas:placeholder.phases.transferring',
+} as const
 
 /** 挂钟时长：60 秒以内只报秒，超过就报分秒。 */
 export function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000))
-  if (seconds < 60) return `${seconds} 秒`
+  if (seconds < 60) return i18n.t('canvas:placeholder.elapsed.seconds', { seconds })
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60
-  return rest ? `${minutes} 分 ${rest} 秒` : `${minutes} 分`
+  return rest
+    ? i18n.t('canvas:placeholder.elapsed.minutesSeconds', { minutes, seconds: rest })
+    : i18n.t('canvas:placeholder.elapsed.minutes', { minutes })
 }
 
 /**
@@ -29,20 +32,24 @@ export function placeholderDetail(
   now = Date.now(),
   phase?: GenerationPhase,
 ): string {
-  if (status === 'failed' || status === 'cancelled') return '可在右侧重试或修改参数'
+  if (status === 'failed' || status === 'cancelled') return i18n.t('canvas:placeholder.detail.failed')
   // 视频任务阶段更长，"转存中"这段最容易让人以为卡死，阶段优先于通用文案。
   if (phase && status !== 'succeeded') {
-    const label = PHASE_LABELS[phase]
+    const label = i18n.t(PHASE_KEYS[phase])
     if (phase === 'queued' || phase === 'submitting') {
-      return job ? `${label} · 已等待 ${formatElapsed(now - Date.parse(job.createdAt))}` : label
+      return job ? i18n.t('canvas:placeholder.detail.phaseWaiting', { label, elapsed: formatElapsed(now - Date.parse(job.createdAt)) }) : label
     }
-    return job ? `${label} · 已用 ${formatElapsed(now - Date.parse(job.createdAt))}` : label
+    return job ? i18n.t('canvas:placeholder.detail.phaseElapsed', { label, elapsed: formatElapsed(now - Date.parse(job.createdAt)) }) : label
   }
   if (status === 'processing') {
-    return job ? `已用 ${formatElapsed(now - Date.parse(job.createdAt))} · 完成后替换此占位` : '结果完成后会替换此占位'
+    return job
+      ? i18n.t('canvas:placeholder.detail.processingElapsed', { elapsed: formatElapsed(now - Date.parse(job.createdAt)) })
+      : i18n.t('canvas:placeholder.detail.processingGeneric')
   }
   if (status === 'queued' || status === 'pending') {
-    return job ? `已等待 ${formatElapsed(now - Date.parse(job.createdAt))}` : '正在等待生成任务'
+    return job
+      ? i18n.t('canvas:placeholder.detail.queuedElapsed', { elapsed: formatElapsed(now - Date.parse(job.createdAt)) })
+      : i18n.t('canvas:placeholder.detail.waiting')
   }
-  return '正在等待生成任务'
+  return i18n.t('canvas:placeholder.detail.waiting')
 }

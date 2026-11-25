@@ -1,6 +1,7 @@
 import type { VideoReplicationTaskParams } from '@shared/video-replication'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushProject } from '@/editor/persistence/projectPersistence'
+import { i18n } from '@/i18n'
 import { recoveryForTask, usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import type { GenerationContext, GenerationRecovery } from '@/editor/persistence/types'
 import { createTask, findTaskByRequest } from '@/services/api/task'
@@ -44,7 +45,7 @@ import { videoRetryParametersSupported } from './videoParameters'
 
 const ACTIVE_STATUSES = new Set(['pending', 'queued', 'processing'])
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired'])
-const EMPTY_RESULT_ERROR = '任务完成但未返回结果'
+const emptyResultError = () => i18n.t('canvas:generation.emptyResultError')
 
 function isTerminalStatus(status: string | undefined) {
   return !!status && TERMINAL_STATUSES.has(status)
@@ -113,7 +114,7 @@ function createGenerationNodes(
     type: 'generation',
     generationId,
     resultIndex: index,
-    name: `生成占位 ${index + 1}`,
+    name: i18n.t('canvas:generation.placeholderName', { index: index + 1 }),
     ...placement,
     rotation: 0,
     opacity: 1,
@@ -190,10 +191,10 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
       if (isCurrent()) {
         unsavedHistoryRef.current.delete(completedTask.id)
         setHistorySaved(unsavedHistoryRef.current.size === 0)
-        setHistoryError(unsavedHistoryRef.current.size ? '仍有生成图片未保存，可重试保存' : undefined)
+        setHistoryError(unsavedHistoryRef.current.size ? i18n.t('canvas:generation.unsavedImages') : undefined)
       }
     } catch (error) {
-      if (isCurrent()) setHistoryError(error instanceof Error ? error.message : '资产保存失败')
+      if (isCurrent()) setHistoryError(error instanceof Error ? error.message : i18n.t('canvas:generation.assetSaveFailed'))
     } finally { savingHistoryRef.current.delete(completedTask.id) }
   }, [isCurrent, mockGateway, ownerId])
   const [protocolError, setProtocolError] = useState<string>()
@@ -273,14 +274,15 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
     completedTask: CanvasGenerationTask,
     generation: GenerationJob,
   ) => {
+    const errorText = emptyResultError()
     const failedTask: CanvasGenerationTask = {
       ...completedTask,
       status: 'failed',
-      errorMessage: EMPTY_RESULT_ERROR,
+      errorMessage: errorText,
     }
     setTask(failedTask)
     upsertTask(failedTask)
-    registerGeneration({ ...generation, status: 'failed', error: EMPTY_RESULT_ERROR })
+    registerGeneration({ ...generation, status: 'failed', error: errorText })
     return failedTask
   }, [registerGeneration, upsertTask])
 
@@ -341,24 +343,24 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
   ) => {
     if (!sceneId || !isCurrent() || !usePersistenceStore.getState().writable || submissionGateRef.current) return
     if (initialRequest.capability === Capability.Variation && !confirmedTask && !canSubmitFreeCanvasVariation()) {
-      setSubmissionError('裂变模型尚未就绪，请检查登录与模型配置')
+      setSubmissionError(i18n.t('canvas:generation.variationNotReady'))
       return
     }
     if (initialRequest.capability === Capability.TextToImage && !confirmedTask && !canSubmitFreeCanvasTextToImage()) {
-      setSubmissionError('文生图模型尚未就绪，请检查登录与模型配置')
+      setSubmissionError(i18n.t('canvas:generation.textToImageNotReady'))
       return
     }
     if (initialRequest.capability === Capability.TextToVideo && !confirmedTask) {
       const params = initialRequest.params as ImageToVideoTaskParams | TextToVideoTaskParams | VideoReplicationTaskParams
       if (!canSubmitFreeCanvasVideo(params.mode ?? 'text_to_video')) {
-        setSubmissionError('视频模型尚未就绪，请检查登录与模型配置'); return
+        setSubmissionError(i18n.t('canvas:generation.videoNotReady')); return
       }
-      if (usePersistenceStore.getState().cloud) { setSubmissionError('请先另存为本地副本，再生成视频'); return }
+      if (usePersistenceStore.getState().cloud) { setSubmissionError(i18n.t('canvas:generation.saveLocalCopyForVideo')); return }
       if (!mockGateway) {
         const mode = params.mode ?? 'text_to_video'
         const model = useCanvasVideoConfiguration.getState().models.find(model => model.id === initialRequest.modelProfileId)
-        if (!videoModelAvailableForMode(model, mode)) { setSubmissionError('原视频模型暂不可用，请手动选择其他模型后生成。'); return }
-        if (!videoRetryParametersSupported(model, mode, params)) { setSubmissionError('H3 仅提供原生有声视频，请修改参数后重新生成'); return }
+        if (!videoModelAvailableForMode(model, mode)) { setSubmissionError(i18n.t('canvas:video.settings.modelUnavailableNotice')); return }
+        if (!videoRetryParametersSupported(model, mode, params)) { setSubmissionError(i18n.t('canvas:generation.h3NativeAudioOnly')); return }
       }
     }
     submissionGateRef.current = true
@@ -447,7 +449,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
 
       if (emptyResult) {
         typedTask = markEmptyResultFailed(typedTask, result.generation)
-        setProtocolError(EMPTY_RESULT_ERROR)
+        setProtocolError(emptyResultError())
       }
 
       replacedPlaceholders.forEach((node) => removeNode(sceneId, node.id))
@@ -461,19 +463,19 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
     try {
       let prepared = initialRequest
       if (!mockGateway && initialRequest.capability === Capability.TextToImage && !confirmedTask && !(initialRequest.params as TextToImageTaskParams).resolution) {
-        throw new Error('请选择生成分辨率')
+        throw new Error(i18n.t('canvas:generation.selectResolution'))
       }
       if (!mockGateway && initialRequest.capability === Capability.Variation && !confirmedTask) {
         const params = { ...initialRequest.params } as VariationTaskParams
         if (!params.sourceImageKey) {
           const source = useEditorStore.getState().project?.assets[initialContext.inputAssetIds[0]]
-          if (source?.type !== 'image') throw new Error('源图片不可用，请重新选择图片')
-          setPreparationPhase('正在准备并上传原图…')
-          params.sourceImageKey = await taskInputKey(source, '读取原图失败', { ownerId, signal: lifetimeAbortRef.current.signal })
+          if (source?.type !== 'image') throw new Error(i18n.t('canvas:generation.sourceUnavailableReselect'))
+          setPreparationPhase(i18n.t('canvas:generation.preparingSourceUpload'))
+          params.sourceImageKey = await taskInputKey(source, i18n.t('canvas:generation.readSourceFailed'), { ownerId, signal: lifetimeAbortRef.current.signal })
           params.sourceWidth = source.width
           params.sourceHeight = source.height
         }
-        if (!params.resolution) throw new Error('请选择生成分辨率')
+        if (!params.resolution) throw new Error(i18n.t('canvas:generation.selectResolution'))
         delete params.sourceImageUrl
         prepared = { ...initialRequest, params }
       }
@@ -481,18 +483,18 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
         const params = { ...initialRequest.params } as ImageToVideoTaskParams | VideoReplicationTaskParams
         if ((params.mode === 'image_to_video' || params.mode === 'video_replication') && (!params.sourceImageKey || freshVideoInput)) {
           const source = useEditorStore.getState().project?.assets[initialContext.inputAssetIds[0]]
-          if (source?.type !== 'image') throw new Error('源图片不可用，请重新选择图片')
-          setPreparationPhase(params.mode === 'video_replication' ? '正在准备商品图…' : '正在准备并上传视频首帧…')
+          if (source?.type !== 'image') throw new Error(i18n.t('canvas:generation.sourceUnavailableReselect'))
+          setPreparationPhase(params.mode === 'video_replication' ? i18n.t('canvas:generation.preparingProduct') : i18n.t('canvas:generation.preparingVideoFirstFrame'))
           const refreshLocalInput = params.mode === 'video_replication' && source.url.startsWith('data:')
             && imageObjectKey(source)?.startsWith('temporary/')
-          params.sourceImageKey = await taskInputKey(source, '读取原图失败', { ownerId, signal: lifetimeAbortRef.current.signal,
+          params.sourceImageKey = await taskInputKey(source, i18n.t('canvas:generation.readSourceFailed'), { ownerId, signal: lifetimeAbortRef.current.signal,
             ...(freshVideoInput || refreshLocalInput ? { forceUpload: true } : {}) })
         }
         if ('sourceImageUrl' in params) delete params.sourceImageUrl
         prepared = { ...initialRequest, params }
       }
       if (!isCurrent()) return
-      setPreparationPhase('正在提交生成任务…')
+      setPreparationPhase(i18n.t('canvas:generation.submittingTask'))
       await submitSingle(
         prepared,
         initialPlacements,
@@ -503,7 +505,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
     } catch (error) {
       if (isCurrent()) {
         setAutoRetrying(false)
-        setSubmissionError(error instanceof Error ? error.message : '生成任务提交失败')
+        setSubmissionError(error instanceof Error ? error.message : i18n.t('canvas:generation.submitFailed'))
         const status = error && typeof error === 'object' && 'status' in error ? error.status : undefined
         if (typeof status === 'number' && status >= 400 && status < 500 && status !== 408) {
           const record = usePersistenceStore.getState().recoveries[initialRequest.requestId]
@@ -598,7 +600,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
     }
     if (emptyResult) {
       markEmptyResultFailed(typedTask, adapted.generation)
-      setProtocolError(EMPTY_RESULT_ERROR)
+      setProtocolError(emptyResultError())
     }
     void flushProject().catch(() => undefined)
   }, [
@@ -746,7 +748,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
     if (displayedTask.capability === Capability.TextToVideo) {
       const model = useCanvasVideoConfiguration.getState().models.find(model => model.id === modelProfileIdForRetry(displayedTask))
       if (model?.audioMode === 'native' && (displayedTask.params as TextToVideoTaskParams).generateAudio !== true) {
-        setSubmissionError('原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成')
+        setSubmissionError(i18n.t('canvas:generation.legacySilentH3'))
         return
       }
     }
@@ -805,7 +807,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
   const resumeSubmission = useCallback(async () => {
     if (!pendingSubmission || submissionGateRef.current) return
     if (pendingSubmission.ownerId && pendingSubmission.ownerId !== ownerId) {
-      setSubmissionError('此请求属于其他账号，请放弃等待后重新创建任务')
+      setSubmissionError(i18n.t('canvas:generation.foreignRequest'))
       return
     }
     const placeholders = (readScene()?.nodes ?? []).filter((node): node is GenerationNode => node.type === 'generation' && pendingSubmission.replacedPlaceholderIds.includes(node.id))
@@ -815,7 +817,7 @@ export function useFreeCanvasGenerationController(sceneId: SceneId | undefined,r
       setSubmitting(true)
       try { confirmed = await findTaskByRequest(pendingSubmission.request.requestId) as GenerationTask<CanvasGenerationTaskParams> | undefined }
       catch (error) {
-        if (isCurrent()) setSubmissionError(error instanceof Error ? error.message : '原任务查询失败，请重新查询')
+        if (isCurrent()) setSubmissionError(error instanceof Error ? error.message : i18n.t('canvas:generation.queryOriginalFailed'))
         return
       } finally {
         submissionGateRef.current = false

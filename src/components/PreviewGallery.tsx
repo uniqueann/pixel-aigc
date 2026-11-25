@@ -1,6 +1,7 @@
 import { Children, cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type ReactElement, type ReactNode } from 'react'
 import { CloseOutlined, DownloadOutlined, RetweetOutlined } from '@ant-design/icons'
 import { App, Button, Image, Spin, Tooltip } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { blobFromImageSource, downloadFailureMessage, filenameWithMimeExtension } from '@/features/image-workstation/download'
 import { useUserStore } from '@/store/useUserStore'
 import { isCurrentWorkstationHistoryOwner, currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
@@ -111,6 +112,7 @@ function withPreviewDownload(originalNode: ReactNode, download: ReactElement, co
 }
 
 function PreviewImage({ image, onRetry }: { image: ReactElement<RcPreviewImageProps>; onRetry?: () => void }) {
+  const { t } = useTranslation('common')
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
   const frameRef = useRef<HTMLDivElement>(null)
@@ -161,8 +163,8 @@ function PreviewImage({ image, onRetry }: { image: ReactElement<RcPreviewImagePr
         <div className="preview-load-state">
           {state === 'loading' ? <Spin /> : (
             <>
-              <span>图片加载失败</span>
-              <Button onClick={() => { setState('loading'); if (onRetry) onRetry(); else setAttempt(value => value + 1) }}>重试</Button>
+              <span>{t('preview.imageLoadFailed')}</span>
+              <Button onClick={() => { setState('loading'); if (onRetry) onRetry(); else setAttempt(value => value + 1) }}>{t('actions.retry')}</Button>
             </>
           )}
         </div>
@@ -173,13 +175,15 @@ function PreviewImage({ image, onRetry }: { image: ReactElement<RcPreviewImagePr
 }
 
 export default function PreviewGallery({ items, open, current, onClose, onChange, onDownload, downloadLabel, downloadTooltip }: PreviewGalleryProps) {
+  const { t, i18n } = useTranslation('common')
   const { message } = App.useApp()
   // 关闭后的 Portal 会以 display:none 留在 DOM，用实例级 class 避免串到别的预览。
   const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const [comparing, setComparing] = useState(false)
   const item = items[current]
   const isVideo = item?.mediaType === 'video'
-  const previewTitle = `${isVideo ? '视频预览' : '图片预览'}${item?.title ? `：${item.title}` : isVideo ? '：当前视频' : ''}`
+  const sep = i18n.language === 'en-US' ? ': ' : '：'
+  const previewTitle = `${isVideo ? t('preview.videoPreviewTitle') : t('preview.imagePreviewTitle')}${item?.title ? `${sep}${item.title}` : isVideo ? `${sep}${t('preview.currentVideo')}` : ''}`
   const { id: readId, objectKey: readKey, historyId: readHistoryId, ownerId: readOwnerId, fullSrc: readSrc, expiresAt: readExpiresAt } = item ?? {}
   const currentUserId = useUserStore(state => state.userId)
   const signatureOwnerRef = useRef<string>()
@@ -194,12 +198,12 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
     let lease: ReturnType<typeof retainImageBlob> | undefined
     queueMicrotask(() => { if (active) { setReadFailure(undefined); setResolved(undefined) } })
     if (readOwnerId && !isCurrentWorkstationHistoryOwner(readOwnerId)) {
-      queueMicrotask(() => { if (active) setReadFailure({ id: readId, message: '账号已切换，无法读取其他账号的图片' }) })
+      queueMicrotask(() => { if (active) setReadFailure({ id: readId, message: t('preview.accountSwitchedRead') }) })
       return () => { active = false; controller.abort() }
     }
     let ownerId: string
     try { ownerId = readOwnerId ?? currentWorkstationHistoryOwner() }
-    catch { queueMicrotask(() => { if (active) setReadFailure({ id: readId, message: '登录账号尚未就绪' }) }); return () => { active = false; controller.abort() } }
+    catch { queueMicrotask(() => { if (active) setReadFailure({ id: readId, message: t('preview.accountNotReady') }) }); return () => { active = false; controller.abort() } }
     signatureOwnerRef.current ??= ownerId
     // 账号切换后不沿用旧签名，重新让本站接口验证当前账号的对象权限。
     const signedSrc = signatureOwnerRef.current === ownerId ? readSrc : undefined
@@ -208,9 +212,9 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
         if (!active) return
         lease = retainImageBlob(blob)
         setResolved({ id: readId, url: lease.url, userId: currentUserId })
-      }).catch(error => { if (active) setReadFailure({ id: readId, message: error instanceof Error ? error.message : '图片读取失败' }) })
+      }).catch(error => { if (active) setReadFailure({ id: readId, message: error instanceof Error ? error.message : t('preview.imageReadFailed') }) })
     return () => { active = false; controller.abort(); lease?.release() }
-  }, [open, isVideo, readId, readKey, readHistoryId, readOwnerId, readSrc, readExpiresAt, readAttempt, currentUserId])
+  }, [open, isVideo, readId, readKey, readHistoryId, readOwnerId, readSrc, readExpiresAt, readAttempt, currentUserId, t])
   const requiresRead = !isVideo && Boolean(item?.objectKey || item?.historyId)
   const localSrc = resolved?.id === item?.id && resolved?.userId === currentUserId ? resolved?.url : undefined
   const retryImage = () => {
@@ -226,8 +230,8 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
   const download = async () => {
     if (!item) return
     try {
-      if (item.ownerId && !isCurrentWorkstationHistoryOwner(item.ownerId)) throw new Error('账号已切换，无法下载其他账号的图片')
-      if (isVideo) await downloadOwnedVideo({ objectKey: item.objectKey, url: item.fullSrc, retentionExpiresAt: item.retentionExpiresAt }, `${item.title ?? '视频'}.mp4`, item.ownerId)
+      if (item.ownerId && !isCurrentWorkstationHistoryOwner(item.ownerId)) throw new Error(t('preview.accountSwitchedDownload'))
+      if (isVideo) await downloadOwnedVideo({ objectKey: item.objectKey, url: item.fullSrc, retentionExpiresAt: item.retentionExpiresAt }, `${item.title ?? t('preview.videoAlt')}.mp4`, item.ownerId)
       else if (onDownload) await onDownload({ ...item, fullSrc: localSrc ?? item.fullSrc })
       else {
         const currentBlob = localSrc ? runtimeImageBlob(localSrc) : undefined
@@ -235,7 +239,7 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = filenameWithMimeExtension(item.title || '图片', blob.type)
+        link.download = filenameWithMimeExtension(item.title || t('preview.imageAlt'), blob.type)
         link.click()
         window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       }
@@ -249,28 +253,28 @@ export default function PreviewGallery({ items, open, current, onClose, onChange
   if (items.length === 0) return null
   return <>
     {(!comparing || (requiresRead && !localSrc)) && (!isVideo || open) && <Image.PreviewGroup
-      items={items.map(entry => ({ src: entry.id === item?.id && localSrc ? localSrc : entry.mediaType === 'video' || entry.objectKey || entry.historyId ? 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' : entry.fullSrc, alt: entry.title ?? '媒体预览' }))}
+      items={items.map(entry => ({ src: entry.id === item?.id && localSrc ? localSrc : entry.mediaType === 'video' || entry.objectKey || entry.historyId ? 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=' : entry.fullSrc, alt: entry.title ?? t('preview.mediaAlt') }))}
       preview={{
         visible: open,
         current,
         // 通过 rc-dialog 的 title 提供 aria-labelledby，sr-only 保证不改变视觉布局。
         title: <span className="sr-only">{previewTitle}</span>,
-        closeIcon: <CloseOutlined aria-label="关闭预览" />,
+        closeIcon: <CloseOutlined aria-label={t('preview.closePreview')} />,
         onVisibleChange: visible => { if (!visible && (!comparing || (requiresRead && !localSrc))) { setComparing(false); onClose() } },
         onChange: change,
         rootClassName: `preview-gallery-overlay preview-gallery-${instanceId}`,
-        imageRender: image => isVideo && open ? <VideoPlayer key={item.id} ownerId={item.ownerId} reference={{ objectKey: item.objectKey, url: item.fullSrc, expiresAt: item.expiresAt, retentionExpiresAt: item.retentionExpiresAt }} /> : requiresRead && !localSrc ? <div className="preview-image-frame"><div className="preview-load-state">{readError ? <><span>{readError}</span><Button onClick={() => setReadAttempt(value => value + 1)}>重试读取</Button></> : <Spin />}</div></div> : <PreviewImage image={image} onRetry={requiresRead ? retryImage : undefined} />,
+        imageRender: image => isVideo && open ? <VideoPlayer key={item.id} ownerId={item.ownerId} reference={{ objectKey: item.objectKey, url: item.fullSrc, expiresAt: item.expiresAt, retentionExpiresAt: item.retentionExpiresAt }} /> : requiresRead && !localSrc ? <div className="preview-image-frame"><div className="preview-load-state">{readError ? <><span>{readError}</span><Button onClick={() => setReadAttempt(value => value + 1)}>{t('actions.retryLoad')}</Button></> : <Spin />}</div></div> : <PreviewImage image={image} onRetry={requiresRead ? retryImage : undefined} />,
         toolbarRender: originalNode => withPreviewDownload(
           isVideo ? null : originalNode,
           <PreviewDownloadButton
             key="download"
-            label={isVideo ? '下载视频' : downloadLabel ?? '下载原始大图'}
-            tooltip={isVideo ? '下载视频' : downloadTooltip ?? '下载原图'}
+            label={isVideo ? t('preview.downloadVideo') : downloadLabel ?? t('preview.downloadOriginalDefault')}
+            tooltip={isVideo ? t('preview.downloadVideo') : downloadTooltip ?? t('preview.downloadOriginalTooltip')}
             split={!isVideo}
             onClick={() => void download()}
           />,
           !isVideo && item?.originalSrc
-            ? <Button key="compare" className="preview-toolbar-action" type="text" icon={<RetweetOutlined />} aria-label="对比原图与结果" onClick={() => setComparing(true)} />
+            ? <Button key="compare" className="preview-toolbar-action" type="text" icon={<RetweetOutlined />} aria-label={t('preview.compareOriginalAndResult')} onClick={() => setComparing(true)} />
             : undefined,
         ),
       }}

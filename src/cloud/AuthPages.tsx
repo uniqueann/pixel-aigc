@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Alert, Button, Input, Space, type InputRef } from 'antd'
 import { EyeInvisibleOutlined, EyeOutlined, GoogleOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
+import { useLocaleStore } from '@/i18n/store'
 import { authEnabled, cloudConfigurationError, supabase } from './client'
 import { callbackHasLink, exchangeCodeOnce, verifyEmailLink } from './authCallback'
 import { safeNext } from './authPaths'
-import { authErrorFields, authErrorMessage, type AuthField } from './authErrors'
+import { authErrorFields, authErrorMessage, LocalAuthError, type AuthField } from './authErrors'
 import { PixelWordmark } from '@/components/brand/PixelLogo'
 
 const callbackUrl = () => `${window.location.origin}/auth/callback`
@@ -24,6 +26,7 @@ function PasswordField({ id, label, placeholder, autoComplete, minLength, invali
   value: string
   onChange: (value: string) => void
 }) {
+  const { t } = useTranslation('auth')
   const [visible, setVisible] = useState(false)
   const inputRef = useRef<InputRef>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
@@ -47,7 +50,7 @@ function PasswordField({ id, label, placeholder, autoComplete, minLength, invali
         ref={toggleRef}
         type="button"
         className="auth-password-toggle"
-        aria-label={visible ? '隐藏密码' : '显示密码'}
+        aria-label={visible ? t('pages.fields.hidePassword') : t('pages.fields.showPassword')}
         aria-pressed={visible}
         onMouseDown={event => event.preventDefault()}
         onClick={event => {
@@ -63,16 +66,39 @@ function PasswordField({ id, label, placeholder, autoComplete, minLength, invali
   </>
 }
 
+function AuthLocaleHeader() {
+  const locale = useLocaleStore(state => state.locale)
+  const setLocale = useLocaleStore(state => state.setLocale)
+  const nextLocale = locale === 'zh-CN' ? 'en-US' : 'zh-CN'
+  return (
+    <div className="auth-screen-top">
+      <PixelWordmark className="auth-wordmark" />
+      <Button
+        size="small"
+        type="text"
+        className="auth-locale-toggle"
+        onClick={() => void setLocale(nextLocale)}
+      >
+        {nextLocale === 'en-US' ? 'English' : '简体中文'}
+      </Button>
+    </div>
+  )
+}
+
 // 认证页共用的法务入口，避免停用页与配置错误页各写一份。
 function LegalLinks() {
+  const { t } = useTranslation('auth')
+  const locale = useLocaleStore(state => state.locale)
+  const langSuffix = locale === 'en-US' ? '?lang=en-US' : ''
   return <Space wrap className="auth-legal">
-    <a href="/about" target="_blank" rel="noopener noreferrer">产品介绍</a>
-    <a href="/privacy" target="_blank" rel="noopener noreferrer">隐私政策</a>
-    <a href="https://contentup.cc/terms" target="_blank" rel="noopener noreferrer">服务条款</a>
+    <a href={`/about${langSuffix}`} target="_blank" rel="noopener noreferrer">{t('pages.legal.about')}</a>
+    <a href={`/privacy${langSuffix}`} target="_blank" rel="noopener noreferrer">{t('pages.legal.privacy')}</a>
+    <a href="https://contentup.cc/terms" target="_blank" rel="noopener noreferrer">{t('pages.legal.terms')}</a>
   </Space>
 }
 
 export default function AuthPages() {
+  const { t } = useTranslation('auth')
   const path = window.location.pathname
   const params = new URLSearchParams(window.location.search)
   const [email, setEmail] = useState('')
@@ -80,7 +106,13 @@ export default function AuthPages() {
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [error, setError] = useState(cloudConfigurationError ?? (path === '/auth/callback' ? params.get('error_description') ?? params.get('error') ?? (callbackHasLink(params) ? '' : '登录链接无效或已过期，请重新申请') : ''))
+  const [error, setError] = useState(
+    cloudConfigurationError ?? (
+      path === '/auth/callback'
+        ? params.get('error_description') ?? params.get('error') ?? (callbackHasLink(params) ? '' : t('errors.invalid_auth_link'))
+        : ''
+    ),
+  )
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [errorFields, setErrorFields] = useState<AuthField[]>([])
   const next = safeNext(params.get('next'))
@@ -106,14 +138,14 @@ export default function AuthPages() {
     const errors: FieldErrors = {}
     const trimmedEmail = email.trim()
     if (path !== '/reset-password') {
-      if (!trimmedEmail) errors.email = '请输入邮箱'
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) errors.email = '请输入有效的邮箱地址'
+      if (!trimmedEmail) errors.email = t('pages.validation.emailRequired')
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) errors.email = t('pages.validation.emailInvalid')
     }
-    if (['/login','/register','/reset-password'].includes(path)) {
-      if (!password) errors.password = '请输入密码'
-      else if (path !== '/login' && !validPassword(password)) errors.password = '密码须为 8–128 位字符'
+    if (['/login', '/register', '/reset-password'].includes(path)) {
+      if (!password) errors.password = t('pages.validation.passwordRequired')
+      else if (path !== '/login' && !validPassword(password)) errors.password = t('pages.validation.passwordLength')
     }
-    if (['/register','/reset-password'].includes(path) && password !== confirm) errors.confirm = '两次输入的密码不一致'
+    if (['/register', '/reset-password'].includes(path) && password !== confirm) errors.confirm = t('pages.validation.passwordMismatch')
     return errors
   }
   const applyAuthError = (err: unknown, fallback: string) => {
@@ -146,7 +178,7 @@ export default function AuthPages() {
           sessionStorage.setItem('pixel-aigc-recovery', response.data.user?.id ?? '')
           window.location.replace('/reset-password')
         } else window.location.replace(safeNext(sessionStorage.getItem('pixel-aigc-next')))
-      }).catch(err => setError(authErrorMessage(err, '登录链接无效，请重试')))
+      }).catch(err => setError(authErrorMessage(err, t('pages.fallbacks.linkInvalid'))))
       return
     }
     if (!callbackParams.has('token_hash')) return
@@ -162,19 +194,19 @@ export default function AuthPages() {
       }
       window.location.replace(safeNext(sessionStorage.getItem('pixel-aigc-next')))
     })
-  }, [path])
+  }, [path, t])
 
-  const run = async (action: () => Promise<void>, fallback = '请求失败，请重试') => {
+  const run = async (action: () => Promise<void>, fallback = t('pages.fallbacks.requestFailed')) => {
     setBusy(true); setError(''); setNotice('')
     try { await action() } catch (err) { applyAuthError(err, fallback) }
     finally { setBusy(false) }
   }
-  const submitFallback = path === '/login' ? '登录失败，请稍后重试。'
-    : path === '/register' ? '注册失败，请稍后重试。'
-    : path === '/verify-email' ? '验证邮件发送失败，请稍后重试。'
-    : path === '/forgot-password' ? '重置邮件发送失败，请稍后重试。'
-    : path === '/reset-password' ? '密码更新失败，请稍后重试。'
-    : '请求失败，请重试'
+  const submitFallback = path === '/login' ? t('pages.fallbacks.loginFailed')
+    : path === '/register' ? t('pages.fallbacks.registerFailed')
+    : path === '/verify-email' ? t('pages.fallbacks.verifyEmailFailed')
+    : path === '/forgot-password' ? t('pages.fallbacks.forgotPasswordFailed')
+    : path === '/reset-password' ? t('pages.fallbacks.resetPasswordFailed')
+    : t('pages.fallbacks.requestFailed')
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const client = supabase
@@ -185,7 +217,7 @@ export default function AuthPages() {
       setErrorFields([])
       setError('')
       setNotice('')
-      const first = (['email','password','confirm'] as AuthField[]).find(field => errors[field])
+      const first = (['email', 'password', 'confirm'] as AuthField[]).find(field => errors[field])
       if (first) focusField(first)
       return
     }
@@ -206,12 +238,12 @@ export default function AuthPages() {
           ? await client.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: callbackUrl() } })
           : await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${callbackUrl()}?next=/reset-password` })
         if (resultError) throw resultError
-        setNotice(path === '/verify-email'
-          ? '验证邮件已发送，请查收邮件完成验证。'
-          : '重置密码链接已发送至您的邮箱，请查收。')
+        setNotice(path === '/verify-email' ? t('pages.notices.verificationSent') : t('pages.notices.resetSent'))
       } else if (path === '/reset-password') {
         const { data } = await client.auth.getUser()
-        if (!data.user || sessionStorage.getItem('pixel-aigc-recovery') !== data.user.id) throw new Error('恢复会话已失效，请重新申请密码重置邮件')
+        if (!data.user || sessionStorage.getItem('pixel-aigc-recovery') !== data.user.id) {
+          throw new LocalAuthError('recovery_session_expired', t('errors.recovery_session_expired'))
+        }
         const { error: resultError } = await client.auth.updateUser({ password })
         if (resultError) throw resultError
         sessionStorage.removeItem('pixel-aigc-recovery')
@@ -221,29 +253,36 @@ export default function AuthPages() {
   }
 
   if (!authEnabled || cloudConfigurationError) return <div className="project-recovery-screen auth-screen">
-    <PixelWordmark className="auth-wordmark" />
-    <h2>账号系统不可用</h2>
-    <Alert type="error" showIcon message={cloudConfigurationError ?? '当前环境未启用账号系统。'} />
+    <AuthLocaleHeader />
+    <h2>{t('pages.unavailableTitle')}</h2>
+    <Alert type="error" showIcon message={cloudConfigurationError ?? t('pages.unavailableMessage')} />
     <LegalLinks />
   </div>
   if (path === '/account-disabled') return <div className="project-recovery-screen auth-screen">
-    <PixelWordmark className="auth-wordmark" />
-    <h2>账号已停用</h2>
-    <p>当前账号暂时无法使用 Pixel AIGC，请联系管理员。</p>
-    <Button type="primary" block onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>退出并切换账号</Button>
+    <AuthLocaleHeader />
+    <h2>{t('pages.disabledTitle')}</h2>
+    <p>{t('pages.disabledDescription')}</p>
+    <Button type="primary" block onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>{t('pages.signOutAndSwitch')}</Button>
     <LegalLinks />
   </div>
-  const labels: Record<string,string> = { '/login': '登录', '/register': '注册', '/verify-email': '验证邮箱', '/forgot-password': '找回密码', '/reset-password': '设置新密码', '/auth/callback': '正在完成验证' }
+  const labels: Record<string, string> = {
+    '/login': t('pages.titles.login'),
+    '/register': t('pages.titles.register'),
+    '/verify-email': t('pages.titles.verifyEmail'),
+    '/forgot-password': t('pages.titles.forgotPassword'),
+    '/reset-password': t('pages.titles.resetPassword'),
+    '/auth/callback': t('pages.titles.callback'),
+  }
   return <div className="project-recovery-screen auth-screen">
-    <PixelWordmark className="auth-wordmark" />
-    <h2>{labels[path] ?? '账号'}</h2>
-    {path === '/verify-email' && <p>注册邮件已发送，如需重发请输入邮箱。</p>}
-    {path === '/reset-password' && <p>设置新密码后，请使用新密码重新登录。</p>}
+    <AuthLocaleHeader />
+    <h2>{labels[path] ?? t('pages.titles.default')}</h2>
+    {path === '/verify-email' && <p>{t('pages.verifyEmailHint')}</p>}
+    {path === '/reset-password' && <p>{t('pages.resetPasswordHint')}</p>}
     {error && <Alert id="auth-form-error" type="error" showIcon message={error} />}
     {notice && <Alert type="info" showIcon message={notice} />}
     {path !== '/auth/callback' && <form noValidate onSubmit={submit} className="auth-form">
       {path !== '/reset-password' && <div className="auth-field">
-        <label className="auth-field-label" htmlFor="auth-email">邮箱</label>
+        <label className="auth-field-label" htmlFor="auth-email">{t('pages.fields.email')}</label>
         <Input
           id="auth-email"
           status={isInvalid('email') ? 'error' : undefined}
@@ -252,17 +291,17 @@ export default function AuthPages() {
           aria-invalid={isInvalid('email') || undefined}
           aria-describedby={describedBy('email')}
           required
-          placeholder="邮箱"
+          placeholder={t('pages.fields.email')}
           value={email}
           onChange={event => { setEmail(event.target.value); clearFieldError('email') }}
         />
         {fieldErrors.email && <p id="auth-email-error" className="auth-field-error">{fieldErrors.email}</p>}
       </div>}
-      {['/login','/register','/reset-password'].includes(path) && <div className="auth-field">
+      {['/login', '/register', '/reset-password'].includes(path) && <div className="auth-field">
         <PasswordField
           id="auth-password"
-          label={path === '/reset-password' ? '新密码' : '密码'}
-          placeholder={path === '/reset-password' ? '新密码' : '密码'}
+          label={path === '/reset-password' ? t('pages.fields.newPassword') : t('pages.fields.password')}
+          placeholder={path === '/reset-password' ? t('pages.fields.newPassword') : t('pages.fields.password')}
           autoComplete={path === '/login' ? 'current-password' : 'new-password'}
           minLength={path === '/login' ? undefined : 8}
           invalid={isInvalid('password')}
@@ -272,11 +311,11 @@ export default function AuthPages() {
         />
         {fieldErrors.password && <p id="auth-password-error" className="auth-field-error">{fieldErrors.password}</p>}
       </div>}
-      {['/register','/reset-password'].includes(path) && <div className="auth-field">
+      {['/register', '/reset-password'].includes(path) && <div className="auth-field">
         <PasswordField
           id="auth-confirm"
-          label="确认密码"
-          placeholder="确认密码"
+          label={t('pages.fields.confirmPassword')}
+          placeholder={t('pages.fields.confirmPassword')}
           autoComplete="new-password"
           minLength={8}
           invalid={isInvalid('confirm')}
@@ -286,20 +325,20 @@ export default function AuthPages() {
         />
         {fieldErrors.confirm && <p id="auth-confirm-error" className="auth-field-error">{fieldErrors.confirm}</p>}
       </div>}
-      <Button htmlType="submit" type="primary" loading={busy}>{path === '/verify-email' ? '重发验证邮件' : path === '/forgot-password' ? '发送重置邮件' : labels[path]}</Button>
+      <Button htmlType="submit" type="primary" loading={busy}>{path === '/verify-email' ? t('pages.submit.resendVerify') : path === '/forgot-password' ? t('pages.submit.sendReset') : labels[path]}</Button>
     </form>}
     {path === '/login' && <>
-      <div className="auth-divider" aria-hidden="true"><span>或</span></div>
+      <div className="auth-divider" aria-hidden="true"><span>{t('pages.divider')}</span></div>
       <Button block icon={<GoogleOutlined />} onClick={() => { void run(async () => {
         sessionStorage.setItem('pixel-aigc-next', next)
         const { error: resultError } = await supabase!.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callbackUrl(), queryParams: { prompt: 'select_account' } } })
         if (resultError) throw resultError
-      }, 'Google 登录发起失败，请稍后重试。') }} loading={busy}>使用 Google 登录</Button>
+      }, t('pages.fallbacks.googleFailed')) }} loading={busy}>{t('pages.googleSignIn')}</Button>
     </>}
     <Space wrap>
-      {path !== '/login' && <a href="/login">返回登录</a>}
-      {path === '/login' && <><a href={`/register?next=${encodeURIComponent(next)}`}>注册账号</a><a href="/forgot-password">忘记密码</a></>}
-      {path === '/auth/callback' || path === '/reset-password' ? <a href="/forgot-password">重新申请重置邮件</a> : null}
+      {path !== '/login' && <a href="/login">{t('pages.links.backToLogin')}</a>}
+      {path === '/login' && <><a href={`/register?next=${encodeURIComponent(next)}`}>{t('pages.links.register')}</a><a href="/forgot-password">{t('pages.links.forgotPassword')}</a></>}
+      {path === '/auth/callback' || path === '/reset-password' ? <a href="/forgot-password">{t('pages.links.reapplyReset')}</a> : null}
     </Space>
     <LegalLinks />
   </div>

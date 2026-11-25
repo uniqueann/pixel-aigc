@@ -1,5 +1,6 @@
 import { DownloadOutlined, EditOutlined, ZoomInOutlined } from '@ant-design/icons'
 import { Button } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { AssetId, ImageAsset } from '@/editor/types'
 
 interface ImageAssetStripProps {
@@ -39,10 +40,12 @@ export default function ImageAssetStrip({
   onPreview,
   onDownloadAll,
   onContinue,
-  continueLabel = '继续编辑',
+  continueLabel,
   continueDisabled = false,
 }: ImageAssetStripProps) {
+  const { t } = useTranslation('workstation')
   if (assets.length === 0) return null
+  const resolvedContinueLabel = continueLabel ?? t('results.continueEdit')
   const selectedIndex = assets.findIndex(asset => asset.id === selectedAssetId)
   const inpaintResult = variant === 'inpaint-result'
   const outpaintResult = variant === 'outpaint-result'
@@ -50,35 +53,51 @@ export default function ImageAssetStrip({
   const grid = layout === 'grid'
   const hint = selectedIndex >= 0
     ? inpaintResult
-      ? `第 ${selectedIndex + 1} 张已作为当前原图，可继续编辑`
+      ? t('results.strip.hints.selectedInpaint', { index: selectedIndex + 1 })
       : outpaintResult
-        ? `第 ${selectedIndex + 1} 张已在画布显示，可继续扩图`
+        ? t('results.strip.hints.selectedOutpaint', { index: selectedIndex + 1 })
         : plainResult
-          ? `第 ${selectedIndex + 1} 张已在预览区显示`
-          : `第 ${selectedIndex + 1} 张将作为下一轮输入`
+          ? t('results.strip.hints.selectedResult', { index: selectedIndex + 1 })
+          : t('results.strip.hints.selectedNextInput', { index: selectedIndex + 1 })
     : inpaintResult
-      ? '点击缩略图可基于该结果继续编辑，或直接下载'
+      ? t('results.strip.hints.unselectedInpaint')
       : outpaintResult
-        ? '点击缩略图切换画布中的结果，或直接下载'
+        ? t('results.strip.hints.unselectedOutpaint')
         : plainResult
-          ? grid ? '并排查看多张结果，点击图片在预览区查看' : '点击缩略图在预览区查看，或直接下载'
-          : '选中一张作为下一轮输入'
-  const badge = inpaintResult ? '当前原图' : outpaintResult ? '画布中' : plainResult ? '预览中' : '下一轮输入'
-  const resultLabel = inpaintResult || outpaintResult || plainResult ? '结果' : '候选结果'
-  const stripLabel = inpaintResult || outpaintResult || plainResult ? '本次结果' : '候选结果'
-  const selectedSuffix = inpaintResult
-    ? '，当前作为原图'
+          ? grid
+            ? t('results.strip.hints.unselectedResultGrid')
+            : t('results.strip.hints.unselectedResult')
+          : t('results.strip.hints.unselectedNextInput')
+  const badge = inpaintResult
+    ? t('results.strip.badges.inpaint')
     : outpaintResult
-      ? '，已在画布显示'
+      ? t('results.strip.badges.outpaint')
       : plainResult
-        ? '，已在预览区显示'
-        : '，当前作为下一轮输入'
+        ? t('results.strip.badges.result')
+        : t('results.strip.badges.nextInput')
+  const resultLabel = inpaintResult || outpaintResult || plainResult
+    ? t('results.strip.itemResult')
+    : t('results.strip.itemCandidate')
+  const stripLabel = inpaintResult || outpaintResult || plainResult
+    ? t('results.strip.titleResult')
+    : t('results.strip.titleCandidate')
+  const selectedSuffix = inpaintResult
+    ? t('results.strip.selectedSuffix.inpaint')
+    : outpaintResult
+      ? t('results.strip.selectedSuffix.outpaint')
+      : plainResult
+        ? t('results.strip.selectedSuffix.result')
+        : t('results.strip.selectedSuffix.nextInput')
 
   return (
     <div className="workstation-result-strip" role="group" aria-label={stripLabel}>
       <div className={`workstation-result-strip-head${grid ? ' is-grid' : ''}`}>
         <span className="workstation-result-strip-title">{stripLabel}</span>
-        {grid ? <span className="workstation-result-count">{assets.length} 张</span> : null}
+        {grid ? (
+          <span className="workstation-result-count">
+            {t(assets.length === 1 ? 'results.countOne' : 'results.countOther', { count: assets.length })}
+          </span>
+        ) : null}
         <span className="workstation-result-strip-hint">{hint}</span>
         {(onContinue && selectedIndex >= 0) || (grid && assets.length > 1 && onDownloadAll) ? (
           <span className="workstation-result-strip-actions">
@@ -90,7 +109,7 @@ export default function ImageAssetStrip({
                 disabled={continueDisabled}
                 onClick={() => onContinue(assets[selectedIndex])}
               >
-                {continueLabel}
+                {resolvedContinueLabel}
               </Button>
             ) : null}
             {grid && assets.length > 1 && onDownloadAll ? (
@@ -101,7 +120,7 @@ export default function ImageAssetStrip({
                 loading={downloadingAll}
                 onClick={onDownloadAll}
               >
-                下载全部
+                {t('results.downloadAll')}
               </Button>
             ) : null}
           </span>
@@ -119,11 +138,15 @@ export default function ImageAssetStrip({
               <button
                 type="button"
                 className="workstation-result-thumb"
-                aria-label={`选择${resultLabel} ${index + 1}${selected ? selectedSuffix : ''}`}
+                aria-label={t('results.strip.selectAria', {
+                  label: resultLabel,
+                  index: index + 1,
+                  suffix: selected ? selectedSuffix : '',
+                })}
                 aria-pressed={selected}
                 onClick={() => onSelect(asset.id)}
               >
-                <img src={asset.url} alt={`${resultLabel} ${index + 1}`} />
+                <img src={asset.url} alt={t('results.strip.itemAlt', { label: resultLabel, index: index + 1 })} />
                 <span className="workstation-result-index" aria-hidden="true">{index + 1}</span>
                 {selected ? <span className="workstation-result-badge">{badge}</span> : null}
               </button>
@@ -133,7 +156,7 @@ export default function ImageAssetStrip({
                   size="small"
                   type="text"
                   icon={<ZoomInOutlined />}
-                  aria-label={`放大${resultLabel} ${index + 1}`}
+                  aria-label={t('results.strip.zoomAria', { label: resultLabel, index: index + 1 })}
                   onClick={() => onPreview(asset.id)}
                 />
                 {onDownload ? (
@@ -142,7 +165,7 @@ export default function ImageAssetStrip({
                     size="small"
                     type="text"
                     icon={<DownloadOutlined />}
-                    aria-label={`下载${resultLabel} ${index + 1}`}
+                    aria-label={t('results.strip.downloadAria', { label: resultLabel, index: index + 1 })}
                     loading={downloadingAssetId === asset.id}
                     onClick={(event) => {
                       event.stopPropagation()

@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { Capability, type GenerationTask } from '@/types'
 import type { Asset, AssetId, GenerationId, GenerationJob } from '@/editor/types'
 import { createImageAsset, createVideoAsset } from '@/editor/services/assetService'
@@ -39,7 +40,7 @@ export function adaptGenerationTask<TParams>(
     const common = {
       id: options.existingAssets?.find(asset => measured?.objectKey && asset.objectKey === measured.objectKey)?.id
         ?? (measured?.ordinal !== undefined ? `asset:${task.id}:o${measured.ordinal}` : assetIdForTaskResult(task.id, index)),
-      name: `生成结果 ${index + 1}`,
+      name: i18n.t('canvas:editor.generatedResultName', { index: index + 1 }),
       url: measured?.url ?? url,
       width: measured?.width || outputSize.width,
       height: measured?.height || outputSize.height,

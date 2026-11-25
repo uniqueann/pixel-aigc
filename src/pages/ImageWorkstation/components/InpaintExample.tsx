@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { MASK_PAINT_CSS } from '@shared/smart-select'
 import { ProductSilhouette } from './exampleArt'
 
@@ -11,30 +12,29 @@ import { ProductSilhouette } from './exampleArt'
 export type InpaintExampleMode = 'remove' | 'repaint'
 
 export default function InpaintExample({ mode }: { mode: InpaintExampleMode }) {
+  const { t } = useTranslation('workstation')
   const isRemove = mode === 'remove'
   return (
     <details className={`tool-example concept-example inpaint-example is-${mode}`} open>
-      <summary>示例</summary>
+      <summary>{t('examples.summary')}</summary>
       <div className="tool-example-row">
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="原图示意：商品旁边有一处杂物">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.inpaint.sourceAria')}>
               <Backdrop />
               <Floor />
               <Clutter />
               <ProductSilhouette />
             </svg>
           </div>
-          <figcaption>原图</figcaption>
+          <figcaption>{t('examples.inpaint.sourceCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
             <svg
               viewBox="0 0 112 112"
               role="img"
-              aria-label={isRemove
-                ? '涂抹示意：蒙版盖住杂物，商品保持原样'
-                : '涂抹并描述示意：蒙版盖住杂物，气泡里的描述只作用在这块区域'}
+              aria-label={t(isRemove ? 'examples.inpaint.removeMaskAria' : 'examples.inpaint.repaintMaskAria')}
             >
               <Backdrop />
               <Floor />
@@ -45,29 +45,25 @@ export default function InpaintExample({ mode }: { mode: InpaintExampleMode }) {
               <ProductSilhouette />
             </svg>
           </div>
-          <figcaption>{isRemove ? '涂抹' : '涂抹 + 描述'}</figcaption>
+          <figcaption>{t(isRemove ? 'examples.inpaint.removeMaskCaption' : 'examples.inpaint.repaintMaskCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
             <svg
               viewBox="0 0 112 112"
               role="img"
-              aria-label={isRemove
-                ? '补背景示意：杂物消失，虚线框标出由 AI 补齐的背景'
-                : '按描述生成示意：蒙版位置变成描述里的事物'}
+              aria-label={t(isRemove ? 'examples.inpaint.removeResultAria' : 'examples.inpaint.repaintResultAria')}
             >
               <Backdrop />
               {isRemove ? <><Floor /><Refilled /></> : <><Floor /><GeneratedThing /><MaskAreaRing /></>}
               <ProductSilhouette />
             </svg>
           </div>
-          <figcaption>{isRemove ? '背景被补齐' : '按描述生成'}</figcaption>
+          <figcaption>{t(isRemove ? 'examples.inpaint.removeResultCaption' : 'examples.inpaint.repaintResultCaption')}</figcaption>
         </figure>
       </div>
       <p className="concept-example-note">
-        {isRemove
-          ? '红色 = 涂抹的蒙版；虚线框 = AI 补齐的背景，其余保持原样。'
-          : '红色 = 涂抹区域；气泡 = 只作用在这块区域的描述，其余保持原样。'}
+        {t(isRemove ? 'examples.inpaint.removeNote' : 'examples.inpaint.repaintNote')}
       </p>
     </details>
   )

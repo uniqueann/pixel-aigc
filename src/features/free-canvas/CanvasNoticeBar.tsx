@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CloseCircleOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons'
 import { Button } from 'antd'
 
@@ -31,13 +32,14 @@ const LEVEL_ICONS = {
  * 画布本身是主体，任何状态提示都不该占用整块首屏。
  */
 export default function CanvasNoticeBar({ notices }: { notices: CanvasNotice[] }) {
+  const { t } = useTranslation('canvas')
   const [expanded, setExpanded] = useState(false)
   if (!notices.length) return null
   const hidden = notices.length - 1
   const visible = expanded ? notices : notices.slice(0, 1)
 
   return (
-    <section className="free-canvas-notices" aria-label="画布状态提示">
+    <section className="free-canvas-notices" aria-label={t('noticeBar.aria')}>
       <ul>
         {visible.map((notice) => (
           <li key={notice.key} className={`free-canvas-notice is-${notice.level}`} role="status">
@@ -71,7 +73,7 @@ export default function CanvasNoticeBar({ notices }: { notices: CanvasNotice[] }
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
-          {expanded ? '收起提示' : `还有 ${hidden} 项提示`}
+          {expanded ? t('noticeBar.collapse') : t('noticeBar.more', { count: hidden })}
         </button>
       ) : null}
     </section>

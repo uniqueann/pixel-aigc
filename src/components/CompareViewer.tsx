@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { Button, Modal, Spin } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { PreviewItem } from './PreviewGallery'
 
 interface Props {
@@ -12,11 +13,12 @@ interface Props {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 function ImageLayer({ src, label, transform }: { src: string; label: string; transform: string }) {
+  const { t } = useTranslation('common')
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
   return <>
     {status === 'loading' && <div className="compare-image-status"><Spin /></div>}
-    {status === 'error' && <div className="compare-image-status"><span>{label}加载失败</span><Button onClick={() => { setStatus('loading'); setAttempt(value => value + 1) }}>重试</Button></div>}
+    {status === 'error' && <div className="compare-image-status"><span>{t('preview.compareLoadFailed', { label })}</span><Button onClick={() => { setStatus('loading'); setAttempt(value => value + 1) }}>{t('actions.retry')}</Button></div>}
     <img
       key={attempt}
       src={src}
@@ -30,6 +32,7 @@ function ImageLayer({ src, label, transform }: { src: string; label: string; tra
 }
 
 export default function CompareViewer({ items, current, onChange, onClose }: Props) {
+  const { t } = useTranslation('common')
   const item = items[current]
   const [position, setPosition] = useState(50)
   const [scale, setScale] = useState(1)
@@ -120,12 +123,12 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
     className="compare-modal"
     centered
     styles={{ mask: { background: 'rgba(0,0,0,0.85)' } }}
-    title={item.title ?? '原图 / 结果对比'}
+    title={item.title ?? t('preview.compareModalTitle')}
   >
     <div className="compare-controls">
-      <span>左：原图 · 右：结果</span>
-      <Button onPointerDown={() => setHolding(true)} onPointerUp={() => setHolding(false)} onPointerCancel={() => setHolding(false)} onPointerLeave={() => setHolding(false)}>按住查看原图（空格）</Button>
-      <Button onClick={reset}>重置视图</Button>
+      <span>{t('preview.compareLegend')}</span>
+      <Button onPointerDown={() => setHolding(true)} onPointerUp={() => setHolding(false)} onPointerCancel={() => setHolding(false)} onPointerLeave={() => setHolding(false)}>{t('preview.holdToViewOriginal')}</Button>
+      <Button onClick={reset}>{t('preview.resetView')}</Button>
     </div>
     <div
       ref={setStage}
@@ -136,18 +139,18 @@ export default function CompareViewer({ items, current, onChange, onClose }: Pro
       onPointerCancel={onPointerUp}
       onDoubleClick={reset}
       role="img"
-      aria-label="拖动分割线对比原图和结果；双击重置视图"
+      aria-label={t('preview.compareStageAria')}
     >
-      <div className="compare-layer"><ImageLayer src={item.fullSrc} label="结果图" transform={transform} /></div>
-      <div className="compare-layer compare-original-layer" style={{ clipPath: holding ? undefined : `inset(0 ${100 - position}% 0 0)` }}><ImageLayer src={item.originalSrc} label="原图" transform={transform} /></div>
+      <div className="compare-layer"><ImageLayer src={item.fullSrc} label={t('preview.resultImageLabel')} transform={transform} /></div>
+      <div className="compare-layer compare-original-layer" style={{ clipPath: holding ? undefined : `inset(0 ${100 - position}% 0 0)` }}><ImageLayer src={item.originalSrc} label={t('preview.originalImageLabel')} transform={transform} /></div>
       {!holding && <div className="compare-divider" style={{ left: `${position}%` }}><span>↔</span></div>}
-      <span className="compare-label compare-label-left">原图</span>
-      <span className="compare-label compare-label-right">结果</span>
+      <span className="compare-label compare-label-left">{t('preview.originalShort')}</span>
+      <span className="compare-label compare-label-right">{t('preview.resultShort')}</span>
     </div>
     <div className="compare-navigation">
-      <Button disabled={current === 0} onClick={() => onChange(current - 1)}>上一张</Button>
+      <Button disabled={current === 0} onClick={() => onChange(current - 1)}>{t('preview.prevImage')}</Button>
       <span>{current + 1} / {items.length}</span>
-      <Button disabled={current >= items.length - 1} onClick={() => onChange(current + 1)}>下一张</Button>
+      <Button disabled={current >= items.length - 1} onClick={() => onChange(current + 1)}>{t('preview.nextImage')}</Button>
     </div>
   </Modal>
 }

@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { cropFocusForImage } from './subjectFocus'
 import type { AspectRatioSettings, BatchImage, RenderRequest, RenderResult, SubjectDetection } from './types'
 
@@ -40,13 +41,13 @@ export async function processBatch({
         targetHeight,
       })
       if (shouldStop()) { update(item.id, { status: 'pending' }); return }
-      if (result.width !== targetWidth || result.height !== targetHeight) throw new Error('输出尺寸与目标平台不一致')
+      if (result.width !== targetWidth || result.height !== targetHeight) throw new Error(i18n.t('toolbox:errors.outputSizeMismatch'))
       update(item.id, { status: 'succeeded', output: result.blob, outputMime: result.mimeType, error: undefined, cropFocus })
     } catch (error) {
       if (shouldStop()) { update(item.id, { status: 'pending' }); return }
       update(item.id, {
         status: 'failed', output: undefined, outputMime: undefined, cropFocus: undefined,
-        error: error instanceof Error ? error.message : '图片处理失败',
+        error: error instanceof Error ? error.message : i18n.t('toolbox:errors.processFailed'),
       })
     }
   }

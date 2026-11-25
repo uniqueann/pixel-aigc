@@ -1,4 +1,5 @@
 import { readBlobBytes } from '@shared/image-format'
+import { i18n } from '@/i18n'
 import type { TaskInputUploadMetrics, uploadTaskInput } from '@/services/api/upload'
 
 export const BG_REMOVE_SOURCE_CACHE_MS = 30 * 60_000
@@ -32,7 +33,7 @@ interface UploadQueueItem {
   signal: AbortSignal
   start: () => void
 }
-const cancelled = () => new DOMException('图片上传已取消', 'AbortError')
+const cancelled = () => new DOMException(i18n.t('toolbox:errors.uploadCancelled'), 'AbortError')
 function check(signal?: AbortSignal) { if (signal?.aborted) throw signal.reason ?? cancelled() }
 
 /** 仅在当前账号和环境的内存会话中缓存内容摘要、对象键，不缓存图片或签名地址。 */

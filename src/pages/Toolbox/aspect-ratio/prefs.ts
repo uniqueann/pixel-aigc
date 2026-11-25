@@ -1,4 +1,5 @@
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import { i18n } from '@/i18n'
 import { DEFAULT_ASPECT_RATIO_SETTINGS, type AspectRatioSettings, type FitStrategy } from './types'
 
 const DATABASE_NAME = 'pixel-aigc-aspect-ratio-prefs'
@@ -37,7 +38,7 @@ function openDatabase(): Promise<IDBDatabase> {
       request.result.createObjectStore(STORE_NAME, { keyPath: 'scope' })
     }
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error('无法打开转比例设置'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:errors.prefsOpenAspectRatio')))
   })
 }
 
@@ -47,8 +48,8 @@ async function transact<T>(mode: IDBTransactionMode, action: (store: IDBObjectSt
     const transaction = db.transaction(STORE_NAME, mode)
     let result: T
     transaction.oncomplete = () => { db.close(); resolve(result) }
-    transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error('读取转比例设置失败')) }
-    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('转比例设置操作已中止')) }
+    transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error(i18n.t('toolbox:errors.prefsReadAspectRatio'))) }
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error(i18n.t('toolbox:errors.prefsAbortAspectRatio'))) }
     action(transaction.objectStore(STORE_NAME), value => { result = value }, reject)
   })
 }
@@ -57,7 +58,7 @@ export async function readPrefs(scope: string): Promise<AspectRatioSettings> {
   const record = await transact<StoredPrefs | undefined>('readonly', (store, resolve, reject) => {
     const request = store.get(scope)
     request.onsuccess = () => resolve(request.result as StoredPrefs | undefined)
-    request.onerror = () => reject(request.error ?? new Error('读取转比例设置失败'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:errors.prefsReadAspectRatio')))
   })
   return normalizeSettings(record?.settings)
 }
@@ -67,7 +68,7 @@ export async function writePrefs(scope: string, settings: AspectRatioSettings): 
   await transact<void>('readwrite', (store, resolve, reject) => {
     const request = store.put(record)
     request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error('保存转比例设置失败'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:errors.prefsSaveAspectRatio')))
   })
 }
 
@@ -75,6 +76,6 @@ export async function clearPrefs(scope: string): Promise<void> {
   await transact<void>('readwrite', (store, resolve, reject) => {
     const request = store.delete(scope)
     request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error('清除转比例设置失败'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:errors.prefsClearAspectRatio')))
   })
 }

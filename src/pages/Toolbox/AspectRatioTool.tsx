@@ -1,8 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { App, Button, Input, Progress, Segmented, Select, Spin, Tooltip } from 'antd'
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import { i18n } from '@/i18n'
+import { activeLocale, formatMegabytes } from '@/i18n/format'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import CapabilityStatus from '@/components/CapabilityStatus'
 import { useUserStore } from '@/store/useUserStore'
@@ -29,21 +32,20 @@ import { aspectRatioPrivacyNote, aspectRatioProcessingHint } from './aspect-rati
 import { clearAspectRatioSession, loadAspectRatioSession, saveAspectRatioSession } from './aspect-ratio/session'
 import { PREVIEW_MAX_DIMENSION, type AspectRatioSettings, type BatchImage } from './aspect-ratio/types'
 import { datedDownloadName } from './shared/dateStamp'
-import { LOCAL_TEMPLATE_LABEL } from './shared/presetLabels'
+import { getPlatformPresetLabel } from './shared/presetLabels'
 import { inspectImage, MAX_ZIP_BYTES, queueLimitMessage } from './shared/inspect'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { aspectRatioBatchQuote } from '@/features/credits/batchQuotes'
 import { creditQuoteBlocked, type CreditQuote } from '@/features/credits/quotes'
-import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { imageCreditBlocksSubmit, insufficientCreditsReason } from '@/features/credits/imageCredits'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { isCanvasMockGateway } from '@/features/free-canvas/generation/availability'
 import TaskRecoveryPanel from '@/features/task-center/TaskRecoveryPanel'
-import { assertRecoveryActor,persistRecoveredResult } from '@/features/task-center/recoveryMedia'
+import { assertRecoveryActor, persistRecoveredResult } from '@/features/task-center/recoveryMedia'
 import type { RecoveryActionContext } from '@/features/task-center/TaskRecoveryPanel'
 
-
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : '操作失败'
+  return error instanceof Error ? error.message : i18n.t('toolbox:errors.operationFailed')
 }
 
 interface PreviewState {
@@ -64,6 +66,7 @@ interface SettingsSnapshot {
 }
 
 export default function AspectRatioTool() {
+  const { t } = useTranslation(['toolbox', 'common', 'errors'])
   const { message, modal } = App.useApp()
   const navigate = useNavigate()
   const scope = useUserStore(state => state.userId ?? 'local')
@@ -115,6 +118,7 @@ export default function AspectRatioTool() {
   const [presetName, setPresetName] = useState('')
 
   const preset = PLATFORM_SIZE_PRESETS.find(item => item.id === settings.selectedPresetId) ?? PLATFORM_SIZE_PRESETS[0]
+  const presetLabel = getPlatformPresetLabel(preset.id, preset.label)
   const selected = items.find(item => item.id === selectedId)
   const selectedOutputPlan = selected && settings.strategy === 'outpaint'
     ? expansionPlan(selected.width, selected.height, preset.width, preset.height, settings.outpaintOutputMode)
@@ -124,8 +128,8 @@ export default function AspectRatioTool() {
   const failed = items.filter(item => item.status === 'failed')
   const galleryById = new Map(galleryProps.items.map(item => [item.id, item]))
   const batchSummary = items.length > 0
-    ? `成功 ${completed.length} · 失败 ${failed.length} · 可下载 ${completed.length}`
-    : '等待图片'
+    ? t('shared.batchSummary', { succeeded: completed.length, failed: failed.length, downloadable: completed.length })
+    : t('shared.waitingImages')
   const degradeLabel = unavailableCropSummary(completed.map(item => item.cropFocus))
   const missedSubjectCount = completed.filter(item => item.cropFocus?.source === 'grid' && !item.cropFocus.unavailable).length
   const processingItems = items.filter(item => item.status === 'processing')
@@ -141,12 +145,13 @@ export default function AspectRatioTool() {
     : processing && settings.strategy === 'outpaint'
       ? outpaintProgressLabel(completed.length, items.length, processingItems.map(item => item.file.name))
       : progressLabel({ itemCount: items.length, completedCount: completed.length, failedCount: failed.length, processing })
+  const showsSeparateFailures = processing && (settings.strategy === 'crop' || settings.strategy === 'outpaint')
   const statusText = progressDetail
-    + (failed.length > 0 && processing && !progressDetail.includes('失败') ? `，${failed.length} 张失败` : '')
+    + (failed.length > 0 && showsSeparateFailures ? t('shared.failedCountSuffix', { count: failed.length }) : '')
     + (degradeLabel ? ` · ${degradeLabel}` : '')
   const downloadActionLabel = completed.length > 0 && failed.length > 0
-    ? `下载 ${completed.length} 张结果`
-    : '打包下载'
+    ? t('shared.downloadCount', { count: completed.length })
+    : t('shared.downloadZip')
   const kind = selected ? previewKind({ mode: previewMode, hasResult: Boolean(selected.output), status: selected.status }) : null
   const currentPreview = selected && !processing && previewState?.imageId === selected.id && previewState.settings === settings ? previewState : null
   const previewUrl = selected ? previewSource(kind ?? 'pending', currentPreview?.url ?? null, selected.sourceUrl) : undefined
@@ -228,10 +233,9 @@ export default function AspectRatioTool() {
     let active = true
     void listPresets(scope).then(records => {
       if (active) setPresets(records)
-    }).catch(error => { if (active) message.warning(`读取本机模板失败：${errorMessage(error)}`) })
+    }).catch(error => { if (active) message.warning(i18n.t('toolbox:presets.readFailed', { error: errorMessage(error) })) })
     return () => { active = false }
   }, [scope, message])
-
 
   useEffect(() => {
     let cancelled = false
@@ -306,14 +310,14 @@ export default function AspectRatioTool() {
 
   async function saveCurrentPreset() {
     const name = presetName.trim()
-    if (!name) { message.warning('请先输入模板名称'); return }
-    if (presets.some(preset => preset.name === name)) { message.warning('模板名称已存在'); return }
+    if (!name) { message.warning(t('presets.enterName')); return }
+    if (presets.some(preset => preset.name === name)) { message.warning(t('presets.duplicateName')); return }
     try {
       const preset = await savePreset(scope, name, settingsRef.current)
       setPresets(current => [preset, ...current])
       setSelectedTemplateId(preset.id)
       setPresetName('')
-      message.success('模板已保存在本机')
+      message.success(t('presets.savedLocal'))
     } catch (error) { message.error(errorMessage(error)) }
   }
 
@@ -328,10 +332,10 @@ export default function AspectRatioTool() {
     const preset = presets.find(item => item.id === selectedTemplateId)
     if (!preset) return
     modal.confirm({
-      title: '删除本机模板？',
-      content: `“${preset.name}”将从本机删除，无法恢复。`,
-      okText: '删除',
-      cancelText: '取消',
+      title: t('presets.deleteTitle'),
+      content: t('presets.deleteContent', { name: preset.name }),
+      okText: t('common:actions.delete'),
+      cancelText: t('common:actions.cancel'),
       okButtonProps: { danger: true },
       autoFocusButton: 'cancel',
       onOk: () => removePreset(preset.id),
@@ -343,11 +347,11 @@ export default function AspectRatioTool() {
       await deletePreset(id)
       setPresets(current => current.filter(item => item.id !== id))
       setSelectedTemplateId(current => current === id ? null : current)
-      message.success('模板已删除')
+      message.success(t('presets.deleted'))
     } catch (error) { message.error(errorMessage(error)) }
   }
 
-  function addFile(file: File,recovery?:RecoveryActionContext) {
+  function addFile(file: File, recovery?: RecoveryActionContext) {
     if (processingRef.current) return
     const queuedBytes = itemsRef.current.reduce((sum, item) => sum + item.file.size, 0) + pendingBytesRef.current
     const blocked = queueLimitMessage(file, itemsRef.current.length + addingCountRef.current, queuedBytes)
@@ -358,7 +362,7 @@ export default function AspectRatioTool() {
     addChainRef.current = addChainRef.current.then(async () => {
       const inspected = await inspectImage(file)
       if (!mountedRef.current) return
-      if(recovery)assertRecoveryActor(recovery.actor,recovery.signal)
+      if (recovery) assertRecoveryActor(recovery.actor, recovery.signal)
       const item: BatchImage = {
         id: crypto.randomUUID(), file, sourceMime: inspected.mimeType,
         sourceUrl: URL.createObjectURL(file), width: inspected.width, height: inspected.height, status: 'pending',
@@ -367,7 +371,7 @@ export default function AspectRatioTool() {
       commitItems([...itemsRef.current, item])
       setSelectedId(current => current ?? item.id)
     }).catch(error => {
-      if (mountedRef.current) message.error(`${file.name}：${errorMessage(error)}`)
+      if (mountedRef.current) message.error(t('shared.fileErrorPrefix', { name: file.name, error: errorMessage(error) }))
     }).finally(() => {
       addingCountRef.current -= 1
       pendingBytesRef.current -= file.size
@@ -411,10 +415,10 @@ export default function AspectRatioTool() {
     if (processingRef.current || !itemsRef.current.length) return
     const count = itemsRef.current.length
     modal.confirm({
-      title: '清空全部图片？',
-      content: `将移除 ${count} 张图片及其已完成结果，此操作不可撤销。`,
-      okText: '清空',
-      cancelText: '取消',
+      title: t('shared.clearConfirmTitle'),
+      content: t('shared.clearConfirmContent', { count }),
+      okText: t('shared.clearConfirmOk'),
+      cancelText: t('common:actions.cancel'),
       okButtonProps: { danger: true },
       autoFocusButton: 'cancel',
       onOk: clearFiles,
@@ -428,12 +432,12 @@ export default function AspectRatioTool() {
     clearSettingsNotice()
     const quote = quoteFor(onlyIds)
     if (creditQuoteBlocked(quote)) {
-      message.warning('无法计算本次费用，请检查扩图范围')
+      message.warning(t('aspectRatio.quoteError'))
       return
     }
     if (needsRemote(quote) && !outpaintReady) {
-      message.warning(outpaintReady === false ? '智能扩展还没配好阿里云百炼 API Key'
-        : capabilityError ? '功能配置加载失败，请重试' : '正在加载功能配置，请稍候')
+      message.warning(outpaintReady === false ? t('aspectRatio.outpaintMissingKey')
+        : capabilityError ? t('errors:generic.configLoadFailed') : t('common:status.loadingConfig'))
       return
     }
     processingRef.current = true
@@ -460,11 +464,11 @@ export default function AspectRatioTool() {
           renderLocal: (image, plan) => settings.outpaintOutputMode === 'original'
             ? Promise.resolve({ blob: image.file, mimeType: image.file.type, width: image.width, height: image.height })
             : renderer().render({
-            file: image.file,
-            settings: { ...settings, strategy: 'letterbox', background: '#ffffff' },
-            targetWidth: plan.targetSize.width,
-            targetHeight: plan.targetSize.height,
-          }),
+              file: image.file,
+              settings: { ...settings, strategy: 'letterbox', background: '#ffffff' },
+              targetWidth: plan.targetSize.width,
+              targetHeight: plan.targetSize.height,
+            }),
           expandRemote: (image, plan) => expandRemoteImage(image, plan, shouldStop),
           update, shouldStop,
         })
@@ -537,11 +541,11 @@ export default function AspectRatioTool() {
 
   return (
     <div className="toolbox-watermark toolbox-aspect-ratio toolbox-sticky-preview">
-      <h1 className="sr-only">转比例</h1>
-      <TaskRecoveryPanel tools={['aspect-ratio']} blockedReason={processing||adding||packaging?'当前队列正在处理，请完成后再添加输入':undefined} onUseImage={async(result,image,detail,context)=>{
-        await persistRecoveredResult(detail,result,context.actor,context.signal,image.blob)
-        assertRecoveryActor(context.actor,context.signal)
-        await addFile(new File([image.blob],`已有扩展-${detail.task.sourceId}.jpg`,{type:image.mimeType}),context)
+      <h1 className="sr-only">{t('tools.aspect-ratio')}</h1>
+      <TaskRecoveryPanel tools={['aspect-ratio']} blockedReason={processing || adding || packaging ? t('shared.queueBusyBlocked') : undefined} onUseImage={async (result, image, detail, context) => {
+        await persistRecoveredResult(detail, result, context.actor, context.signal, image.blob)
+        assertRecoveryActor(context.actor, context.signal)
+        await addFile(new File([image.blob], t('aspectRatio.recoveredFileName', { sourceId: detail.task.sourceId }), { type: image.mimeType }), context)
       }}/>
       <ToolboxImageCard
         items={items.map(item => ({
@@ -550,7 +554,7 @@ export default function AspectRatioTool() {
           url: item.sourceUrl,
           status: item.status,
           error: item.error,
-          note: item.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : item.cropFocus?.note,
+          note: item.status === 'processing' && settings.strategy === 'crop' ? t('aspectRatio.detectingSubject') : item.cropFocus?.note,
         }))}
         selectedId={selectedId}
         disabled={busy}
@@ -561,38 +565,44 @@ export default function AspectRatioTool() {
         processingHint={aspectRatioProcessingHint(settings.strategy)}
       />
       <div className="toolbox-watermark-main">
-        <section ref={previewPanelRef} className={`toolbox-preview-panel${selected && resultView === 'single' ? ' has-image' : ''}`} aria-label="转比例预览">
+        <section ref={previewPanelRef} className={`toolbox-preview-panel${selected && resultView === 'single' ? ' has-image' : ''}`} aria-label={t('aspectRatio.previewAria')}>
           <div className="toolbox-section-heading">
             <div className="toolbox-preview-title">
-              <strong>转比例预览</strong>
+              <strong>{t('aspectRatio.previewTitle')}</strong>
               <span className="toolbox-preview-meta">{resultView === 'grid'
-                ? `结果网格 · ${batchSummary}`
+                ? `${t('shared.resultGrid')} · ${batchSummary}`
                 : selected
                   ? `${selected.file.name} · ${selected.width} × ${selected.height}${kind && kind !== 'result' ? ` · ${previewMeta(kind)}` : ''}`
-                  : `${preset.label} · ${settings.strategy === 'outpaint' && settings.outpaintOutputMode === 'original' ? '保留原图分辨率' : `${selectedOutputSize.width} × ${selectedOutputSize.height}`}`}</span>
+                  : `${presetLabel} · ${settings.strategy === 'outpaint' && settings.outpaintOutputMode === 'original' ? t('aspectRatio.outputModes.original') : `${selectedOutputSize.width} × ${selectedOutputSize.height}`}`}</span>
             </div>
             <div className="toolbox-preview-actions">
               {items.length > 0 && (
                 <Segmented
                   size="small"
-                  aria-label="结果视图"
+                  aria-label={t('shared.resultViewAria')}
                   value={resultView}
-                  options={[{ label: '单张', value: 'single' }, { label: '结果网格', value: 'grid' }]}
+                  options={[
+                    { label: t('shared.singleView'), value: 'single' },
+                    { label: t('shared.resultGrid'), value: 'grid' },
+                  ]}
                   onChange={value => setResultView(value === 'grid' ? 'grid' : 'single')}
                 />
               )}
               {selected?.output && resultView === 'single' && (
                 <Segmented
                   size="small"
-                  aria-label="预览对照"
+                  aria-label={t('shared.compareViewAria')}
                   value={previewMode}
-                  options={[{ label: '结果', value: 'result' }, { label: '对比原图', value: 'source' }]}
+                  options={[
+                    { label: t('shared.resultOption'), value: 'result' },
+                    { label: t('shared.compareSourceOption'), value: 'source' },
+                  ]}
                   onChange={value => setPreviewMode(value === 'source' ? 'source' : 'result')}
                 />
               )}
-              {currentPreview?.loading && <span>正在更新预览…</span>}
+              {currentPreview?.loading && <span>{t('shared.updatingPreview')}</span>}
               {settings.strategy === 'outpaint' && selected?.status === 'failed' && (
-                <Button size="small" type="link" disabled={busy} onClick={() => refineFailed(selected.id)}>去工作站精修</Button>
+                <Button size="small" type="link" disabled={busy} onClick={() => refineFailed(selected.id)}>{t('aspectRatio.refineWorkstation')}</Button>
               )}
               {selected && (
                 <PreviewResultActions
@@ -608,10 +618,10 @@ export default function AspectRatioTool() {
             </div>
           </div>
           {items.length > 0 && resultView === 'single' && <p className="toolbox-batch-summary">{batchSummary}</p>}
-          {currentPreview?.error && <div className="toolbox-preview-error">预览失败：{currentPreview.error}</div>}
+          {currentPreview?.error && <div className="toolbox-preview-error">{t('shared.previewError', { error: currentPreview.error })}</div>}
           <PreviewItemNotice
             error={selected?.error}
-            note={selected ? (selected.status === 'processing' && settings.strategy === 'crop' ? '正在识别商品主体…' : selected.cropFocus?.note) : undefined}
+            note={selected ? (selected.status === 'processing' && settings.strategy === 'crop' ? t('aspectRatio.detectingSubject') : selected.cropFocus?.note) : undefined}
             warning={Boolean(selected && selected.status !== 'processing' && selected.cropFocus?.source === 'grid')}
           />
           {resultView === 'grid' ? (
@@ -622,7 +632,7 @@ export default function AspectRatioTool() {
               filter={resultFilter}
               onFilterChange={setResultFilter}
               onSelect={selectImage}
-              ariaLabel="转比例结果网格"
+              ariaLabel={t('aspectRatio.gridAria')}
               checkerboard={settings.strategy === 'letterbox' && settings.background === 'transparent'}
               compact={items.length <= 4}
             />
@@ -636,7 +646,7 @@ export default function AspectRatioTool() {
                     alt={previewAltText}
                     tabIndex={canOpenResult ? 0 : undefined}
                     role={canOpenResult ? 'button' : undefined}
-                    aria-label={canOpenResult ? '打开转比例结果大图' : undefined}
+                    aria-label={canOpenResult ? t('aspectRatio.openFullAria') : undefined}
                     onClick={canOpenResult ? () => openAt(selected.id) : undefined}
                     onKeyDown={canOpenResult ? event => {
                       if (event.key !== 'Enter' && event.key !== ' ') return
@@ -652,30 +662,33 @@ export default function AspectRatioTool() {
                     </div>
                   )}
                 </>
-              ) : <p>先添加图片，再选择平台和适配方式</p>}
+              ) : <p>{t('aspectRatio.emptyStage')}</p>}
             </div>
           )}
           <p className="toolbox-hint">
-            {resultView === 'grid' ? '点击任意结果查看单张大图。' : ''}
-            预览最长边不超过 {PREVIEW_MAX_DIMENSION}px；{settings.strategy === 'outpaint' && settings.outpaintOutputMode === 'original' && !selected
-              ? '添加图片后显示每张图片的预计输出尺寸。'
-              : `${selected ? '当前图片' : ''}导出为 ${selectedOutputSize.width} × ${selectedOutputSize.height}。`}
-            {aspectRatioPrivacyNote(settings.strategy)}
+            {resultView === 'grid' ? `${t('shared.gridClickHint')}${activeLocale() === 'en-US' ? ' ' : ''}` : ''}
+            {t('aspectRatio.previewSpecPrefix', { px: PREVIEW_MAX_DIMENSION })}
+            {settings.strategy === 'outpaint' && settings.outpaintOutputMode === 'original' && !selected
+              ? t('aspectRatio.originalSizePendingHint')
+              : selected
+                ? t('aspectRatio.currentImageExportSize', { width: selectedOutputSize.width, height: selectedOutputSize.height })
+                : t('aspectRatio.defaultExportSize', { width: selectedOutputSize.width, height: selectedOutputSize.height })}
+            {activeLocale() === 'en-US' ? ' ' : ''}{aspectRatioPrivacyNote(settings.strategy)}
           </p>
-          {upscale > 2 && <p className="toolbox-hint toolbox-warning">当前图片需要放大超过 2 倍才能铺满目标尺寸，细节可能变糊。</p>}
+          {upscale > 2 && <p className="toolbox-hint toolbox-warning">{t('aspectRatio.upscaleWarning')}</p>}
         </section>
 
         <AspectRatioSettingsPanel settings={settings} disabled={controlsLocked} onChange={updateSettings}
           outpaintStatus={<CapabilityStatus ready={outpaintReady} error={capabilityError}
-            unavailableMessage="智能扩展还不能用。请在服务端配置阿里云百炼的 DASHSCOPE_API_KEY（华北2北京）。"
+            unavailableMessage={t('aspectRatio.outpaintUnavailableDetail')}
             onRetry={() => void refetchCapabilities()} />}
           templates={
           <div className="toolbox-presets">
-            <label className="toolbox-field-label">{LOCAL_TEMPLATE_LABEL}</label>
+            <label className="toolbox-field-label">{t('aspectRatio.localTemplate')}</label>
             <div className="toolbox-preset-row">
               <Select
-                placeholder="选择已保存模板"
-                aria-label="选择已保存模板"
+                placeholder={t('presets.selectPlaceholder')}
+                aria-label={t('presets.selectPlaceholder')}
                 value={selectedTemplateId}
                 disabled={controlsLocked}
                 options={presets.map(preset => ({ value: preset.id, label: preset.name }))}
@@ -683,11 +696,11 @@ export default function AspectRatioTool() {
                 allowClear
                 onClear={() => setSelectedTemplateId(null)}
               />
-              <Button disabled={!selectedTemplateId || controlsLocked} onClick={requestRemovePreset}>删除</Button>
+              <Button disabled={!selectedTemplateId || controlsLocked} onClick={requestRemovePreset}>{t('common:actions.delete')}</Button>
             </div>
             <div className="toolbox-preset-row">
-              <Input value={presetName} maxLength={40} disabled={controlsLocked} placeholder="新模板名称" aria-label="新模板名称" onChange={event => setPresetName(event.target.value)} onPressEnter={() => void saveCurrentPreset()} />
-              <Button icon={<SaveOutlined />} disabled={controlsLocked} onClick={() => void saveCurrentPreset()}>保存</Button>
+              <Input value={presetName} maxLength={40} disabled={controlsLocked} placeholder={t('presets.newNamePlaceholder')} aria-label={t('presets.newNameLabel')} onChange={event => setPresetName(event.target.value)} onPressEnter={() => void saveCurrentPreset()} />
+              <Button icon={<SaveOutlined />} disabled={controlsLocked} onClick={() => void saveCurrentPreset()}>{t('common:actions.save')}</Button>
             </div>
           </div>
           }
@@ -696,41 +709,45 @@ export default function AspectRatioTool() {
 
       <ResultGallery
         {...galleryProps}
-        downloadLabel="下载转比例结果"
-        downloadTooltip="下载转比例结果"
-        resultLabel="转比例结果"
+        downloadLabel={t('aspectRatio.downloadLabel')}
+        downloadTooltip={t('aspectRatio.downloadTooltip')}
+        resultLabel={t('aspectRatio.resultLabel')}
         checkerboard={settings.strategy === 'letterbox' && settings.background === 'transparent'}
         onDownload={item => downloadOne(item.id)}
       />
 
       <div className="toolbox-watermark-footer">
-        {settings.strategy === 'crop' && missedSubjectCount > 0 && <p className="toolbox-crop-notice toolbox-crop-warning" role="status">{missedSubjectCount} 张没识别到商品，已按当前九宫格裁剪。请把焦点改到商品所在位置后再处理。</p>}
+        {settings.strategy === 'crop' && missedSubjectCount > 0 && (
+          <p className="toolbox-crop-notice toolbox-crop-warning" role="status">
+            {t('aspectRatio.missedSubjectBanner', { count: missedSubjectCount })}
+          </p>
+        )}
         <div className="toolbox-progress" role="status" aria-live="polite">
           <span>{statusText}</span>
-          {processing && <Progress size="small" aria-label="处理进度" percent={Math.max(donePercent, 8)} showInfo={false} />}
-          {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">结果超过 200 MB，请逐张下载</span>}
+          {processing && <Progress size="small" aria-label={t('shared.progressAria')} percent={Math.max(donePercent, 8)} showInfo={false} />}
+          {outputBytes > MAX_ZIP_BYTES && <span className="toolbox-warning">{t('shared.zipLimitWarning', { limit: formatMegabytes(MAX_ZIP_BYTES) })}</span>}
           {settingsNotice && (
             <span className="toolbox-undo-notice">
-              设置已更改，已清除 {settingsNotice.count} 张已完成结果
-              <Button type="link" size="small" autoInsertSpace={false} className="toolbox-undo-button" onClick={undoSettingsChange}>撤销</Button>
+              {t('shared.settingsClearedNotice', { count: settingsNotice.count })}
+              <Button type="link" size="small" autoInsertSpace={false} className="toolbox-undo-button" onClick={undoSettingsChange}>{t('common:actions.undo')}</Button>
             </span>
           )}
         </div>
         <div className="toolbox-footer-actions">
           <CreditQuoteNotice quote={generateQuote} />
           <Button type={mode === 'download' ? 'primary' : 'default'} icon={<DownloadOutlined />} disabled={!completed.length || processing || outputBytes > MAX_ZIP_BYTES} loading={packaging} onClick={() => void downloadAll()}>{downloadActionLabel}</Button>
-          {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>查看结果</Button>}
+          {mode === 'download' && <Button type="link" className="toolbox-view-result" onClick={showResult}>{t('shared.viewResults')}</Button>}
           {mode === 'retry' && (
             <>
-              <CreditActionButton type="primary" quote={quoteFor(failed.map(item => item.id))} disabled={busy || creditBlocked || (needsRemote(quoteFor(failed.map(item => item.id))) && !outpaintReady)} onClick={() => void processImages(failed.map(item => item.id))}>重试失败项</CreditActionButton>
-              {hasPending && <CreditActionButton quote={generateQuote} disabled={creditBlocked || (needsRemote(generateQuote) && !outpaintReady) || busy} onClick={() => void processImages()}>继续处理剩余</CreditActionButton>}
+              <CreditActionButton type="primary" quote={quoteFor(failed.map(item => item.id))} disabled={busy || creditBlocked || (needsRemote(quoteFor(failed.map(item => item.id))) && !outpaintReady)} onClick={() => void processImages(failed.map(item => item.id))}>{t('shared.retryFailed')}</CreditActionButton>
+              {hasPending && <CreditActionButton quote={generateQuote} disabled={creditBlocked || (needsRemote(generateQuote) && !outpaintReady) || busy} onClick={() => void processImages()}>{t('shared.continueRemaining')}</CreditActionButton>}
             </>
           )}
-          {mode === 'cancel' && <Button danger onClick={cancelProcessing}>取消处理</Button>}
+          {mode === 'cancel' && <Button danger onClick={cancelProcessing}>{t('shared.cancelProcessing')}</Button>}
           {(mode === 'process' || mode === 'empty') && (
-            <Tooltip title={creditBlocked ? INSUFFICIENT_CREDITS_REASON : mode === 'empty' ? '请先添加图片' : needsRemote(generateQuote) && !outpaintReady ? '智能扩展服务暂不可用' : undefined}>
+            <Tooltip title={creditBlocked ? insufficientCreditsReason() : mode === 'empty' ? t('shared.addImagesFirst') : needsRemote(generateQuote) && !outpaintReady ? t('aspectRatio.outpaintServiceUnavailable') : undefined}>
               <span>
-                <CreditActionButton quote={generateQuote} type="primary" disabled={creditBlocked || (needsRemote(generateQuote) && !outpaintReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>开始处理</CreditActionButton>
+                <CreditActionButton quote={generateQuote} type="primary" disabled={creditBlocked || (needsRemote(generateQuote) && !outpaintReady) || !items.some(item => item.status !== 'succeeded') || busy} onClick={() => void processImages()}>{t('shared.startProcessing')}</CreditActionButton>
               </span>
             </Tooltip>
           )}

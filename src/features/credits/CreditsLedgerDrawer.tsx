@@ -1,20 +1,24 @@
 import { Button, Drawer, Image, Segmented, Space, Tabs } from 'antd'
 import { DownloadOutlined, EyeOutlined, FileTextOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { creditJobSpec } from '@shared/credits'
+import { EMAIL_MODELS } from '@shared/email-models'
 import EmptyState from '@/components/EmptyState'
+import { i18n } from '@/i18n'
+import { translateApiError, translateLegacyDbText } from '@/i18n/apiErrors'
+import { activeLocale, formatDateTime } from '@/i18n/format'
+import zhCredits from '@/i18n/locales/zh-CN/credits.json'
 import { listCreditLedger, type CreditLedgerItem, type CreditLedgerPage } from '@/services/api/credits'
+import type { ApiError } from '@/services/api/client'
 import { useUserStore } from '@/store/useUserStore'
 import RechargePanel from './RechargePanel'
 import { BILLING_REFRESH_EVENT, recoverSyncResult } from '@/services/api/billing'
 
 type LedgerFilter = 'all' | 'expense' | 'income' | 'refund'
 
-const FILTER_OPTIONS: { label: string; value: LedgerFilter }[] = [
-  { label: '全部', value: 'all' },
-  { label: '消耗扣费', value: 'expense' },
-  { label: '充值赠送', value: 'income' },
-  { label: '失败退款', value: 'refund' },
-]
+const CJK_RE = /[\u4e00-\u9fff]/
+const EMAIL_OP_KEYS = new Set(['reply', 'summarize', 'polish', 'grammar'])
 
 function filterLedgerItem(item: CreditLedgerItem, filter: LedgerFilter): boolean {
   if (filter === 'all') return true
@@ -25,23 +29,135 @@ function filterLedgerItem(item: CreditLedgerItem, filter: LedgerFilter): boolean
     return item.delta > 0 && item.kind !== 'refund'
   }
   if (filter === 'refund') {
-    return item.kind === 'refund' || item.label.includes('退款') || (item.reason?.includes('退款') ?? false)
+    return (
+      item.kind === 'refund' ||
+      item.presentation?.status === 'refunded' ||
+      item.presentation?.reasonCode === 'cash_refund_reclaim' ||
+      translateLegacyDbText(item.reason) === i18n.t('errors:legacyDb.cashRefundReclaim')
+    )
   }
   return true
 }
 
-function formatLedgerTime(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN')
+function localizedKindLabel(kind: string, delta: number): string {
+  if (kind === 'settle') return delta <= 0 ? i18n.t('credits:ledger.kinds.settle') : i18n.t('credits:ledger.kinds.settleRefund')
+  if (kind === 'grant' || kind === 'reserve' || kind === 'refund' || kind === 'adjust') {
+    return i18n.t(`credits:ledger.kinds.${kind}`)
+  }
+  return kind
+}
+
+function localizeReason(item: CreditLedgerItem): string | undefined {
+  const code = item.presentation?.reasonCode
+  if (code === 'initial_grant') return i18n.t('errors:legacyDb.initialGrant')
+  if (code === 'top_up') return i18n.t('errors:legacyDb.creditTopUp')
+  if (code === 'cash_refund_reclaim') return i18n.t('errors:legacyDb.cashRefundReclaim')
+  if (!item.reason) return undefined
+  const fallback = code === 'admin_adjust' ? i18n.t('credits:ledger.kinds.adjust') : undefined
+  return translateLegacyDbText(item.reason, activeLocale() === 'zh-CN' ? item.reason : fallback)
+}
+
+function localizedPresentation(item: CreditLedgerItem): {
+  label: string
+  summary: string
+  deltaText: string
+  reason?: string
+} {
+  const reason = localizeReason(item)
+  const p = item.presentation
+  if (!p) {
+    if (activeLocale() === 'zh-CN') {
+      return { label: item.label, summary: item.summary, deltaText: item.deltaText, reason }
+    }
+    const isFreeCutout = item.label === zhCredits.ledger.freeBgRemove.label
+    if (isFreeCutout) {
+      return {
+        label: i18n.t('credits:ledger.freeBgRemove.label'),
+        summary: item.kind === 'refund' ? i18n.t('credits:ledger.freeBgRemove.refundedSummary') : i18n.t('credits:ledger.freeBgRemove.usedSummary'),
+        deltaText: i18n.t('credits:ledger.freeBgRemove.deltaText'),
+        reason,
+      }
+    }
+    const safeLabel = !CJK_RE.test(item.label) ? item.label : localizedKindLabel(item.kind, item.delta)
+    const safeSummary = !CJK_RE.test(item.summary) ? item.summary : ''
+    const safeDelta = !CJK_RE.test(item.deltaText) ? item.deltaText : String(item.delta)
+    return { label: safeLabel, summary: safeSummary, deltaText: safeDelta, reason }
+  }
+
+  if (p.entryType === 'free_bg_remove') {
+    return {
+      label: i18n.t('credits:ledger.freeBgRemove.label'),
+      summary: p.status === 'refunded' ? i18n.t('credits:ledger.freeBgRemove.refundedSummary') : i18n.t('credits:ledger.freeBgRemove.usedSummary'),
+      deltaText: i18n.t('credits:ledger.freeBgRemove.deltaText'),
+      reason,
+    }
+  }
+
+  let title = ''
+  if (p.entryType === 'email_assist') {
+    const opKey = p.operation && EMAIL_OP_KEYS.has(p.operation) ? p.operation : 'default'
+    const operation = i18n.t(`credits:ledger.email.ops.${opKey}` as never)
+    const model = EMAIL_MODELS.find(entry => entry.id === p.modelProfileId)?.label ?? i18n.t('credits:ledger.email.legacyModel')
+    title = i18n.t('credits:ledger.email.title', { operation, model })
+  } else if (p.entryType === 'sync_tool') {
+    title = p.tool
+      ? i18n.t(`credits:syncTools.${p.tool}` as never, { defaultValue: CJK_RE.test(item.title) ? p.tool : item.title })
+      : (CJK_RE.test(item.title) ? '' : item.title)
+  } else if (p.entryType === 'image_job') {
+    const toolLabel = p.tool
+      ? i18n.t(`credits:ledger.tools.${p.tool}` as never, { defaultValue: CJK_RE.test(item.title) ? '' : item.title })
+      : ''
+    if (p.capability === 'text_to_video') {
+      const duration = typeof p.durationSeconds === 'number'
+        ? i18n.t('credits:ledger.durationSeconds', { seconds: p.durationSeconds })
+        : undefined
+      title = [toolLabel, p.resolution?.toUpperCase(), duration].filter(Boolean).join(' ')
+    } else {
+      const spec = creditJobSpec(p.resolution, p.count)
+      title = [toolLabel, spec].filter(Boolean).join(' ')
+    }
+  }
+
+  const isMergedJob = p.entryType === 'image_job' && Boolean(item.title) && item.label === item.title
+  if (isMergedJob) {
+    let summary = ''
+    if (p.status === 'reserved') {
+      summary = i18n.t('credits:ledger.status.reserved')
+    } else if (p.status === 'refunded') {
+      summary = i18n.t('credits:ledger.status.refunded')
+    } else if (p.status === 'settled') {
+      const charged = item.charged ?? 0
+      summary = (p.refunded ?? 0) > 0 && charged > 0
+        ? i18n.t('credits:ledger.status.settledWithRefund', { charged, refunded: p.refunded })
+        : i18n.t('credits:ledger.status.settled', { charged })
+    }
+    return {
+      label: title || (CJK_RE.test(item.label) ? localizedKindLabel(item.kind, item.delta) : item.label),
+      summary: summary || (CJK_RE.test(item.summary) ? '' : item.summary),
+      deltaText: item.deltaText,
+      reason,
+    }
+  }
+
+  const extra = item.charged != null && (item.kind === 'settle' || item.kind === 'refund')
+    ? i18n.t('credits:ledger.status.settled', { charged: item.charged })
+    : ''
+  return {
+    label: localizedKindLabel(item.kind, item.delta),
+    summary: [title, extra].filter(Boolean).join(' '),
+    deltaText: item.deltaText,
+    reason,
+  }
 }
 
 function LedgerRow({ item }: { item: CreditLedgerItem }) {
+  const { t } = useTranslation(['credits', 'common', 'errors'])
   const positive = item.delta > 0
   const owner = useUserStore(state => state.userId ?? state.account?.userId)
   const [recovering, setRecovering] = useState(false)
-  const [recovery, setRecovery] = useState<string>()
+  const [recovery, setRecovery] = useState<{ kind: 'reserved' | 'refunded' | 'recovered' | 'raw'; raw?: string }>()
   const [resultUrl, setResultUrl] = useState<string>()
+  const display = localizedPresentation(item)
 
   const handleRecover = () => {
     if (!item.syncRequestId || !owner) return
@@ -51,16 +167,21 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
         const currentUserId = useUserStore.getState().userId ?? useUserStore.getState().account?.userId
         if (currentUserId !== owner) return
         setResultUrl(result.result?.url)
-        setRecovery(
-          result.state === 'reserved'
-            ? '仍在处理中，稍后可再次查询'
-            : result.state === 'refunded'
-              ? '已失败或超时，积分已退回'
-              : '结果已找回，临时保留 7 天'
-        )
+        setRecovery({
+          kind: result.state === 'reserved' ? 'reserved' : result.state === 'refunded' ? 'refunded' : 'recovered',
+        })
       })
-      .catch(error => {
-        setRecovery(error instanceof Error ? error.message : '结果查询失败')
+      .catch(cause => {
+        const apiError = cause as ApiError | undefined
+        setRecovery({
+          kind: 'raw',
+          raw: translateApiError({
+            code: apiError?.code,
+            extra: apiError?.extra,
+            message: cause instanceof Error ? cause.message : undefined,
+            fallback: t('credits:drawer.queryFailed'),
+          }),
+        })
       })
       .finally(() => {
         setRecovering(false)
@@ -84,14 +205,24 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
     }
   }
 
+  const recoveryText = recovery
+    ? recovery.kind === 'reserved'
+      ? t('credits:drawer.queryPending')
+      : recovery.kind === 'refunded'
+        ? t('credits:drawer.queryRefunded')
+        : recovery.kind === 'recovered'
+          ? t('credits:drawer.queryRecovered')
+          : recovery.raw
+    : undefined
+
   return (
     <li className="credits-ledger-row">
       <div className="credits-ledger-row-main">
         <div className="credits-ledger-row-title-line">
-          <strong>{item.label}</strong>
-          {item.summary ? <span className="credits-ledger-summary">{item.summary}</span> : null}
+          <strong>{display.label}</strong>
+          {display.summary ? <span className="credits-ledger-summary">{display.summary}</span> : null}
         </div>
-        {item.reason ? <small className="credits-ledger-reason">{item.reason}</small> : null}
+        {display.reason ? <small className="credits-ledger-reason">{display.reason}</small> : null}
         {item.syncRequestId && owner ? (
           <div className="credits-ledger-recovery-action">
             <Button
@@ -99,7 +230,7 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
               loading={recovering}
               onClick={handleRecover}
             >
-              查询已有结果
+              {t('credits:drawer.queryResult')}
             </Button>
           </div>
         ) : null}
@@ -109,23 +240,23 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
               width={52}
               height={52}
               src={resultUrl}
-              alt="生成结果预览"
+              alt={t('credits:drawer.resultPreviewAlt')}
               className="credits-recovery-thumbnail"
               preview={{ mask: <EyeOutlined /> }}
             />
             <div className="credits-recovery-info">
-              <span className="credits-recovery-title">结果已找回</span>
-              <small className="credits-recovery-tip">临时保留 7 天</small>
+              <span className="credits-recovery-title">{t('credits:drawer.recoveredTitle')}</span>
+              <small className="credits-recovery-tip">{t('credits:drawer.recoveredTip')}</small>
               <div className="credits-recovery-links">
                 <Button
                   size="small"
                   type="link"
-                  aria-label="下载"
+                  aria-label={t('common:actions.download')}
                   icon={<DownloadOutlined />}
                   onClick={() => void handleDownload(resultUrl)}
                   style={{ padding: 0, height: 'auto', fontSize: 12 }}
                 >
-                  下载
+                  {t('common:actions.download')}
                 </Button>
                 <a
                   href={resultUrl}
@@ -133,19 +264,19 @@ function LedgerRow({ item }: { item: CreditLedgerItem }) {
                   rel="noreferrer"
                   className="credits-recovery-external-link"
                 >
-                  打开结果图片 ↗
+                  {t('credits:drawer.openResultImage')}
                 </a>
               </div>
             </div>
           </div>
-        ) : recovery ? (
-          <small className="credits-recovery-status">{recovery}</small>
+        ) : recoveryText ? (
+          <small className="credits-recovery-status">{recoveryText}</small>
         ) : null}
-        <time dateTime={item.createdAt}>{formatLedgerTime(item.createdAt)}</time>
+        <time dateTime={item.createdAt}>{formatDateTime(item.createdAt)}</time>
       </div>
       <div className="credits-ledger-row-amounts">
-        <span className={positive ? 'is-plus' : item.delta < 0 ? 'is-minus' : undefined}>{item.deltaText}</span>
-        <small>余额 {item.balanceAfter}</small>
+        <span className={positive ? 'is-plus' : item.delta < 0 ? 'is-minus' : undefined}>{display.deltaText}</span>
+        <small>{t('credits:drawer.balanceAfter', { balance: item.balanceAfter })}</small>
       </div>
     </li>
   )
@@ -160,6 +291,7 @@ export default function CreditsLedgerDrawer({
   onClose: () => void
   initialTab?: 'ledger' | 'recharge'
 }) {
+  const { t } = useTranslation(['credits', 'common'])
   const credits = useUserStore(state => state.credits)
   const owner = useUserStore(state => state.userId)
   const version = useRef(0)
@@ -195,11 +327,19 @@ export default function CreditsLedgerDrawer({
         ? { ...next, items: [...(current?.items ?? []), ...next.items] }
         : next)
     } catch (cause) {
-      if (current === version.current) setError(cause instanceof Error ? cause.message : '积分明细加载失败')
+      if (current === version.current) {
+        const apiError = cause as ApiError | undefined
+        setError(translateApiError({
+          code: apiError?.code,
+          extra: apiError?.extra,
+          message: cause instanceof Error ? cause.message : undefined,
+          fallback: t('credits:drawer.loadFailed'),
+        }))
+      }
     } finally {
       if (current === version.current) { setLoading(false); setLoadingMore(false) }
     }
-  }, [owner])
+  }, [owner, t])
 
   useEffect(() => {
     let active = true
@@ -220,19 +360,26 @@ export default function CreditsLedgerDrawer({
     return items.filter(item => filterLedgerItem(item, filter))
   }, [items, filter])
 
+  const filterOptions: { label: string; value: LedgerFilter }[] = [
+    { label: t('credits:drawer.filters.all'), value: 'all' },
+    { label: t('credits:drawer.filters.expense'), value: 'expense' },
+    { label: t('credits:drawer.filters.income'), value: 'income' },
+    { label: t('credits:drawer.filters.refund'), value: 'refund' },
+  ]
+
   const tabItems = [
     {
       key: 'ledger',
       label: (
         <span className="credits-tab-label">
           <FileTextOutlined style={{ marginRight: 6 }} />
-          积分明细
+          {t('credits:drawer.tabs.ledger')}
         </span>
       ),
       children: (
         <div className="credits-ledger-tab-pane">
           {error ? <p className="credits-ledger-error">{error}</p> : null}
-          {loading && !page ? <p className="credits-ledger-hint">正在加载积分流水…</p> : null}
+          {loading && !page ? <p className="credits-ledger-hint">{t('credits:drawer.loading')}</p> : null}
           {page ? (
             <>
               <div className="credits-ledger-filter-bar">
@@ -240,13 +387,13 @@ export default function CreditsLedgerDrawer({
                   block
                   value={filter}
                   onChange={val => setFilter(val as LedgerFilter)}
-                  options={FILTER_OPTIONS}
+                  options={filterOptions}
                 />
               </div>
               {page.items.length === 0 ? (
-                <EmptyState description="还没有积分流水" />
+                <EmptyState description={t('credits:drawer.emptyAll')} />
               ) : filteredItems.length === 0 ? (
-                <EmptyState description="暂无该分类的明细记录" />
+                <EmptyState description={t('credits:drawer.emptyFiltered')} />
               ) : (
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <ol className="credits-ledger-list">
@@ -254,10 +401,10 @@ export default function CreditsLedgerDrawer({
                   </ol>
                   {page.nextCursor ? (
                     <Button block loading={loadingMore} onClick={() => void load(page.nextCursor ?? undefined)}>
-                      加载更多
+                      {t('common:actions.loadMore')}
                     </Button>
                   ) : (
-                    <p className="credits-ledger-hint">已经到底了</p>
+                    <p className="credits-ledger-hint">{t('credits:drawer.endOfList')}</p>
                   )}
                 </Space>
               )}
@@ -271,7 +418,7 @@ export default function CreditsLedgerDrawer({
       label: (
         <span className="credits-tab-label">
           <ThunderboltOutlined style={{ marginRight: 6 }} />
-          充值与套餐
+          {t('credits:drawer.tabs.recharge')}
         </span>
       ),
       children: (
@@ -293,7 +440,7 @@ export default function CreditsLedgerDrawer({
 
   return (
     <Drawer
-      title={`购买积分 · 余额 ${page?.balance ?? credits}`}
+      title={t('credits:drawer.title', { balance: page?.balance ?? credits })}
       placement="right"
       width="min(440px, 100vw)"
       open={open}
@@ -303,17 +450,17 @@ export default function CreditsLedgerDrawer({
     >
       <div className="credits-drawer-summary-card">
         <div className="credits-drawer-balance-box">
-          <span className="credits-drawer-balance-label">可用积分余额</span>
+          <span className="credits-drawer-balance-label">{t('credits:drawer.availableBalance')}</span>
           <div className="credits-drawer-balance-value">
             <span className="credits-drawer-balance-num">{page?.balance ?? credits}</span>
-            <span className="credits-drawer-balance-unit">分</span>
+            <span className="credits-drawer-balance-unit">{t('credits:drawer.unit')}</span>
           </div>
         </div>
         <Button
           type={activeTab === 'recharge' ? 'default' : 'primary'}
           onClick={() => setActiveTab(activeTab === 'recharge' ? 'ledger' : 'recharge')}
         >
-          {activeTab === 'recharge' ? '查看明细' : '立即充值'}
+          {activeTab === 'recharge' ? t('credits:drawer.viewLedger') : t('credits:drawer.rechargeNow')}
         </Button>
       </div>
 

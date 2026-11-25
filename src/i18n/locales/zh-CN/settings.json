@@ -1,0 +1,165 @@
+{
+  "title": "设置",
+  "tabs": {
+    "general": "通用",
+    "personalization": "个性化",
+    "data": "数据控制",
+    "account": "账号"
+  },
+  "general": {
+    "title": "通用",
+    "description": "调整界面显示和常用体验。",
+    "languageLabel": "语言",
+    "languageDetail": "界面显示语言",
+    "languageSelectAria": "选择界面语言",
+    "languages": {
+      "zh-CN": "简体中文",
+      "en-US": "English"
+    },
+    "appearanceLabel": "外观",
+    "appearanceAria": "选择外观模式",
+    "appearanceSystemDetail": "跟随系统设置（当前为{{mode}}模式）",
+    "appearanceDarkDetail": "始终使用深色外观",
+    "appearanceLightDetail": "始终使用浅色外观",
+    "modes": {
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统"
+    }
+  },
+  "data": {
+    "title": "数据控制",
+    "description": "管理项目数据与产品改进选项。",
+    "analyticsLabel": "使用数据与产品改进",
+    "analyticsDetail": "仅统计功能使用频次以改进产品体验，绝不收集您的图片、邮件及提示词内容",
+    "analyticsAria": "允许记录使用事件",
+    "analyticsSaveFailed": "使用数据设置保存失败，请重试"
+  },
+  "account": {
+    "title": "账号",
+    "localDescription": "当前为本地模式，未连接账号。",
+    "description": "管理 Pixel AIGC 的个人资料与工作空间。",
+    "displayNameLabel": "昵称",
+    "displayNameDetail": "仅在 Pixel AIGC 显示",
+    "workspaceLabel": "个人空间",
+    "workspaceDetail": "默认工作空间",
+    "emailLabel": "邮箱",
+    "emailVerified": "已验证",
+    "emailUnverified": "未验证",
+    "providersLabel": "登录方式",
+    "providersDetail": "已绑定登录方式",
+    "providerNames": {
+      "google": "Google",
+      "email": "邮箱密码"
+    },
+    "providerSeparator": "、",
+    "securityLabel": "账号安全",
+    "securityDetail": "修改密码将同步影响关联的 ContentUp、EDM 服务登录",
+    "resetPassword": "重置密码",
+    "googleSecurityHint": "请在 Google 账号中管理登录安全",
+    "saveFailed": "保存失败"
+  },
+  "personalization": {
+    "loadingGate": "正在加载个性化设置…",
+    "title": "个性化",
+    "description": "自定义常用参数与界面习惯，多端自动同步。",
+    "syncStatus": {
+      "saving": "正在同步…",
+      "saved": "已同步到账号",
+      "local": "已保存到本机",
+      "loading": "正在加载…",
+      "idle": "尚未同步"
+    },
+    "syncRetry": "重试同步",
+    "syncErrors": {
+      "network": "网络异常，请检查网络后重试",
+      "generic": "同步失败，请稍后重试",
+      "clearNetwork": "清除失败，网络异常，请检查网络后重试",
+      "clearGeneric": "清除图片参数记忆失败，请稍后重试",
+      "browserStorageUnavailable": "当前浏览器无法保存偏好，刷新后可能丢失，请检查浏览器存储设置",
+      "loadFailed": "读取个性化设置失败，已使用本机偏好：{{reason}}",
+      "notSynced": "个性化设置尚未同步：{{reason}}",
+      "refreshFailed": "刷新个性化设置失败：{{reason}}"
+    },
+    "workbenchGroup": "工作台习惯",
+    "startPageLabel": "默认打开页面",
+    "startPageDetail": "打开工作台时的默认首选页面",
+    "startPages": {
+      "home": "工作台首页",
+      "email": "邮件助手",
+      "imageWorkstation": "图片工作站",
+      "toolbox": "工具箱",
+      "canvas": "自由画布",
+      "assets": "我的资产",
+      "last": "上次访问页面"
+    },
+    "rememberSidebarLabel": "记住侧边栏状态",
+    "rememberSidebarDetail": "记住侧边栏展开/折叠状态（移动端自动收起）",
+    "assetsViewLabel": "资产展示方式",
+    "assetsViewDetail": "资产库默认视图样式",
+    "assetsViews": {
+      "grid": "网格",
+      "list": "列表",
+      "remember": "记住上次选择"
+    },
+    "imageGroup": "图片处理",
+    "defaultCountLabel": "默认生成数量",
+    "defaultCountDetail": "各工具新建任务时的默认张数（受模型或比例限制时自动适配）",
+    "defaultCountAria": "{{tool}}默认生成数量",
+    "countOption": "{{count}} 张",
+    "countTools": {
+      "smart-edit": "智能编辑",
+      "relight": "打光",
+      "variation": "裂变",
+      "fusion": "融合",
+      "retouch": "精修"
+    },
+    "defaultResolutionLabel": "默认分辨率",
+    "defaultResolutionDetail": "图片生成与编辑的默认输出分辨率",
+    "rememberParametersLabel": "记住上次参数",
+    "rememberParametersDetail": "下次进入工具时，自动保留上次使用的生成参数",
+    "memoryPrivacyHint": "仅记录生成张数、分辨率等常用选项；图片与提示词不在此保留。",
+    "clearMemoryTitle": "清除图片参数记忆？",
+    "clearMemoryDescription": "下次进入工具时将使用个人默认值。",
+    "clearMemoryConfirm": "清除",
+    "clearMemoryButton": "清除图片参数记忆",
+    "clearMemorySuccess": "已清除图片参数记忆",
+    "countMemory": {
+      "lastUsed": "上次使用",
+      "restoreAria": "恢复默认生成数量",
+      "restore": "恢复默认"
+    },
+    "emailGroup": "邮件助手",
+    "emailLanguageLabel": "默认输出语言",
+    "emailLanguageDetail": "新邮件任务的输出语言，与界面语言分开",
+    "emailOperationLabel": "默认操作",
+    "emailOperationDetail": "新建邮件任务时的默认操作",
+    "emailOperations": {
+      "reply": "回复",
+      "summarize": "总结",
+      "polish": "润色",
+      "grammar": "检查语法"
+    },
+    "emailPolishStylesLabel": "默认润色方式",
+    "emailPolishStylesDetail": "邮件润色的默认风格（可多选）",
+    "emailPolishStyles": {
+      "clear": "提升清晰度",
+      "shorten": "缩短",
+      "lengthen": "增长",
+      "simplify": "简化"
+    },
+    "footerAutoSave": "设置会自动保存，并在下次新建任务时生效。",
+    "resetAllTitle": "恢复全部个性化默认设置？",
+    "resetAllDescription": "同时清除图片参数记忆，并同步到当前账号。",
+    "resetAllConfirm": "恢复默认",
+    "resetAllButton": "恢复默认",
+    "emailModel": {
+      "loadFailed": "邮件模型偏好加载失败",
+      "label": "默认邮件模型",
+      "detail": "未指定时按输出语言推荐；邮件按每次成功生成扣积分",
+      "auto": "按输出语言推荐",
+      "creditsUnit": "{{label}} · {{credits}} 积分",
+      "updated": "默认邮件模型已更新"
+    }
+  }
+}

@@ -12,6 +12,7 @@ import { IMAGE_SIZE_PRESETS } from '@/features/free-canvas/generation/config'
 
 const pageSource = readFileSync(resolve(process.cwd(), 'src/pages/FreeCanvas/index.tsx'), 'utf8')
 const stageSource = readFileSync(resolve(process.cwd(), 'src/features/free-canvas/FreeCanvasStage.tsx'), 'utf8')
+const zhCanvas = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/locales/zh-CN/canvas.json'), 'utf8'))
 
 describe('失败生成占位卡片删除与清理', () => {
   beforeEach(() => {
@@ -22,8 +23,10 @@ describe('失败生成占位卡片删除与清理', () => {
   it('源码契约：FreeCanvasStage 允许删除失败或已取消的占位，生成中占位保持锁定', () => {
     expect(stageSource).toContain("(selectedGenerationStatus === 'failed' || selectedGenerationStatus === 'cancelled')")
     expect(stageSource).toContain("canDeleteSelected = !!singleSelected && (singleSelected.type !== 'generation' || isSelectedTerminalGeneration)")
-    expect(stageSource).toContain('删除占位框')
-    expect(stageSource).toContain('生成中的占位框暂不支持删除')
+    expect(stageSource).toContain("t('stage.toolbar.deletePlaceholder')")
+    expect(stageSource).toContain("t('stage.toolbar.deletePlaceholderBlocked')")
+    expect(zhCanvas.stage.toolbar.deletePlaceholder).toBe('删除占位框')
+    expect(zhCanvas.stage.toolbar.deletePlaceholderBlocked).toBe('生成中的占位框暂不支持删除')
   })
 
   it('源码契约：FreeCanvas/index.tsx handleDelete 允许删除终态生成节点并收敛 recovery 和 task', () => {

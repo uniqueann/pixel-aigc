@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { JPEG_QUALITY } from './types'
 import { outputMime } from './prefs'
 
@@ -15,7 +16,7 @@ async function loadImage(blob: Blob) {
 
 function canvasBlob(canvas: HTMLCanvasElement, type: string) {
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(value => value ? resolve(value) : reject(new Error('图片编码失败')), type, JPEG_QUALITY)
+    canvas.toBlob(value => value ? resolve(value) : reject(new Error(i18n.t('toolbox:errors.encodeFailed'))), type, JPEG_QUALITY)
   })
 }
 
@@ -34,7 +35,7 @@ export async function compositeMatte(matte: Blob, background: string, previewMax
     canvas.width = width
     canvas.height = height
     const context = canvas.getContext('2d')
-    if (!context) throw new Error('无法创建图片处理画布')
+    if (!context) throw new Error(i18n.t('toolbox:errors.canvasContext'))
     if (background !== 'transparent') {
       context.fillStyle = background
       context.fillRect(0, 0, width, height)

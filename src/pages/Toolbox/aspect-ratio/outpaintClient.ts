@@ -3,6 +3,8 @@ import { blobFromImageSource } from '@/features/image-workstation/download'
 import { paddingAround, requestOutpaint } from '@/services/api/outpaint'
 import { uploadDataUrl, uploadImage } from '@/services/api/upload'
 import { createTask, getTask, liveCapabilityReady } from '@/services/api/task'
+import { i18n } from '@/i18n'
+import { translateApiError } from '@/i18n/apiErrors'
 import { Capability, type OutpaintTaskParams } from '@/types'
 import type { ExpansionPlan } from './expansion'
 import type { BatchImage, RenderResult } from './types'
@@ -11,7 +13,7 @@ const ACTIVE = new Set(['pending', 'queued', 'processing'])
 
 async function canvasBlob(canvas: HTMLCanvasElement, type: string) {
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, type, 0.92))
-  if (!blob) throw new Error('图片编码失败')
+  if (!blob) throw new Error(i18n.t('toolbox:errors.encodeFailed'))
   return blob
 }
 
@@ -21,7 +23,7 @@ export async function renderScaledSource(file: File, width: number, height: numb
   canvas.width = width
   canvas.height = height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error('无法创建图片处理画布')
+  if (!context) throw new Error(i18n.t('toolbox:errors.canvasContext'))
   context.imageSmoothingEnabled = true
   context.imageSmoothingQuality = 'high'
   context.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, 0, 0, width, height)
@@ -56,14 +58,16 @@ async function expandViaTask(scaled: File, plan: ExpansionPlan, targetWidth: num
   const task = await createTask({ capability: Capability.Outpaint, params, requestId: crypto.randomUUID() })
   let current: Awaited<ReturnType<typeof getTask>> = task
   while (ACTIVE.has(current.status)) {
-    if (shouldStop()) throw new Error('处理已取消')
+    if (shouldStop()) throw new Error(i18n.t('toolbox:errors.processingCancelled'))
     await new Promise(resolve => setTimeout(resolve, 2000))
-    if (shouldStop()) throw new Error('处理已取消')
+    if (shouldStop()) throw new Error(i18n.t('toolbox:errors.processingCancelled'))
     current = await getTask(current.id)
   }
-  if (current.status !== 'succeeded') throw new Error(current.errorMessage || '扩图失败')
+  if (current.status !== 'succeeded') {
+    throw new Error(translateApiError({ message: current.errorMessage, fallback: i18n.t('toolbox:errors.outpaintFailed') }))
+  }
   const url = current.resultUrls?.[0]
-  if (!url) throw new Error('扩图没有返回图片')
+  if (!url) throw new Error(i18n.t('toolbox:errors.outpaintNoImage'))
   const blob = await blobFromImageSource(url, current.resultImages?.[0]?.objectKey)
   const size = await readSize(blob)
   return { blob, mimeType: blob.type || 'image/jpeg', width: size.width, height: size.height }
@@ -84,7 +88,7 @@ export async function expandRemoteImage(image: BatchImage, plan: ExpansionPlan, 
     targetHeight,
   )
   const blob = await requestOutpaint(scaled, scaled.type, padding,undefined,{sourceSize:plan.sourceSize})
-  if (shouldStop()) throw new Error('处理已取消')
+  if (shouldStop()) throw new Error(i18n.t('toolbox:errors.processingCancelled'))
   const size = await readSize(blob)
   return { blob, mimeType: 'image/jpeg', width: size.width, height: size.height }
 }

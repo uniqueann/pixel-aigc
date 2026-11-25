@@ -1,4 +1,5 @@
 import { normalizeImageBlob } from '@shared/image-format'
+import { i18n } from '@/i18n'
 import { Capability, type GenerationTask } from '@/types'
 import { getTask, listTasks } from '@/services/api/task'
 import { readOwnedImage } from '@/services/api/ownedImages'
@@ -45,8 +46,8 @@ export async function historyRecordsFromImageTask(task: GenerationTask<unknown>,
 /** 先按元数据选定最近 50 张，再读取缺失图片；失败候选不会触发更旧图片下载。 */
 export async function hydrateWorkstationHistoryFromImageJobs(ownerId: string, options: { signal?: AbortSignal; onProgress?: () => void } = {}) {
   const assertOwner = () => {
-    if (options.signal?.aborted) throw new DOMException('补记已取消', 'AbortError')
-    if (!isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('账号已切换，停止补记历史')
+    if (options.signal?.aborted) throw new DOMException(i18n.t('assets:errors.hydrateAborted'), 'AbortError')
+    if (!isCurrentWorkstationHistoryOwner(ownerId)) throw new Error(i18n.t('assets:errors.hydrateAccountSwitched'))
   }
   assertOwner()
   const [local, deletions] = await Promise.all([listHistoryMetadata(ownerId), listHistoryDeletions(ownerId)])

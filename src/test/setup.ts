@@ -1,3 +1,4 @@
+import '@/i18n'
 // jsdom 计算 getComputedStyle 时会扫描文档里的全部样式。Ant Design 会注入上千条规则，
 // Testing Library 的角色查询又会对每个节点调用它（含 ::before / ::after）。
 // 单次查询就能超过 Vitest 默认的 5 秒，GitHub Actions 的双核机器上会间歇失败。

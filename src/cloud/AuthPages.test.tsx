@@ -124,10 +124,13 @@ describe('账号页邮箱链接', () => {
   })
 
   it('verifyOtp 失败时停在回调页', async () => {
-    auth.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: new Error('链接已过期') })
+    auth.verifyOtp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: Object.assign(new Error('Token has expired or is invalid'), { code: 'otp_expired' }),
+    })
     visit('/auth/callback?token_hash=pkce_abc&type=email')
     render(<AuthPages />)
-    expect(await screen.findByText('链接已过期')).toBeTruthy()
+    expect(await screen.findByText('验证链接已过期，请重新申请。')).toBeTruthy()
     expect(replace).not.toHaveBeenCalled()
   })
 

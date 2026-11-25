@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { Capability, type GenerationTask } from '@/types'
 import { listTasks } from '@/services/api/task'
 import { isCurrentWorkstationHistoryOwner } from './historyOwner'
@@ -16,11 +17,11 @@ export function metadataFromVideoTask(task: GenerationTask<unknown>): Workstatio
 
 export async function hydrateVideoJobs(ownerId: string, signal?: AbortSignal) {
   for (let page = 1; page <= 1000; page++) {
-    if (signal?.aborted || !isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('视频资产读取已取消')
+    if (signal?.aborted || !isCurrentWorkstationHistoryOwner(ownerId)) throw new Error(i18n.t('assets:errors.videoSyncCancelled'))
     const listed = await listTasks({ capability: Capability.TextToVideo, page })
-    if (signal?.aborted || !isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('视频资产读取已取消')
+    if (signal?.aborted || !isCurrentWorkstationHistoryOwner(ownerId)) throw new Error(i18n.t('assets:errors.videoSyncCancelled'))
     for (const task of listed.items) {
-      if (signal?.aborted || !isCurrentWorkstationHistoryOwner(ownerId)) throw new Error('视频资产读取已取消')
+      if (signal?.aborted || !isCurrentWorkstationHistoryOwner(ownerId)) throw new Error(i18n.t('assets:errors.videoSyncCancelled'))
       if (!task.video || task.status !== 'succeeded') continue
       await recordVideoHistory(ownerId, { id: `${task.id}:o${task.video.ordinal}`, taskId: task.id, objectKey: task.video.objectKey,
         ordinal: task.video.ordinal, mediaType: 'video', video: task.video, modelProfileId: task.modelProfileId, toolSlug: 'text-to-video', capability: Capability.TextToVideo,

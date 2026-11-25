@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Alert, Button, Empty, Modal } from 'antd'
 import { authEnabled } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import { hydrateWorkstationHistoryFromImageJobs } from '@/features/assets/hydrateImageJobs'
 import { listHistoryPreviews, HISTORY_CHANGED, type WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
@@ -13,8 +15,9 @@ function HistoryThumbnail({ blob, label }: { blob: Blob; label: string }) {
 }
 
 function PickerSkeleton() {
+  const { t } = useTranslation('canvas')
   return (
-    <div className="canvas-asset-picker-grid" aria-busy="true" aria-label="正在加载资产">
+    <div className="canvas-asset-picker-grid" aria-busy="true" aria-label={t('assetPicker.loadingAria')}>
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="canvas-asset-picker-skeleton" />
       ))}
@@ -22,9 +25,11 @@ function PickerSkeleton() {
   )
 }
 
-export default function CanvasAssetPicker({ ownerId, busy, onSelect, onClose, targetLabel = '画布' }: {
+export default function CanvasAssetPicker({ ownerId, busy, onSelect, onClose, targetLabel }: {
   ownerId: string; busy: boolean; onSelect: (record: WorkstationHistoryListItem) => Promise<void>; onClose: () => void; targetLabel?: string
 }) {
+  const { t } = useTranslation(['canvas', 'common'])
+  const resolvedTarget = targetLabel ?? t('canvas:assetPicker.defaultTarget')
   const [items, setItems] = useState<WorkstationHistoryListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -40,7 +45,7 @@ export default function CanvasAssetPicker({ ownerId, busy, onSelect, onClose, ta
       const records = await listHistoryPreviews(ownerId)
       if (current()) setItems(records)
     } catch (err) {
-      if (current()) setError(err instanceof Error ? err.message : '资产读取失败')
+      if (current()) setError(err instanceof Error ? err.message : i18n.t('canvas:assetPicker.readFailed'))
     }
   }, [ownerId])
 
@@ -52,11 +57,11 @@ export default function CanvasAssetPicker({ ownerId, busy, onSelect, onClose, ta
     setSyncing(true)
     try {
       const result = await hydrateWorkstationHistoryFromImageJobs(ownerId, { signal })
-      if (result.failed && current()) setError('部分云端图片尚未补记，可重试读取')
+      if (result.failed && current()) setError(i18n.t('canvas:assetPicker.partialHydrateError'))
       const records = await listHistoryPreviews(ownerId)
       if (current()) setItems(records)
     } catch (err) {
-      if (current() && !signal.aborted) setError(err instanceof Error ? err.message : '云端同步失败，可重试读取')
+      if (current() && !signal.aborted) setError(err instanceof Error ? err.message : i18n.t('canvas:assetPicker.cloudSyncFailed'))
     } finally {
       if (current()) setSyncing(false)
     }
@@ -84,15 +89,15 @@ export default function CanvasAssetPicker({ ownerId, busy, onSelect, onClose, ta
     return () => { abort.abort(); window.removeEventListener(HISTORY_CHANGED, changed) }
   }, [readLocal, hydrateInBackground])
 
-  return <Modal title="从我的资产添加图片" open onCancel={onClose} footer={null} width={680}>
-    <p>选择一张图片，加入当前{targetLabel}。资产列表按当前账号显示最近的图片结果。{syncing && !loading && <span className="canvas-asset-picker-syncing">云端同步中…</span>}</p>
-    {error && <Alert type="warning" showIcon message={error} action={<Button size="small" onClick={retry}>重试读取</Button>} />}
-    {loading ? <PickerSkeleton /> : items.length === 0 ? <Empty description="暂无图片资产，可以先上传本地图片" /> : <div className="canvas-asset-picker-grid">
-      {items.map(item => <button key={item.id} className="canvas-asset-picker-item" disabled={busy} onClick={() => { void onSelect(item) }} aria-label={`添加${workstationToolLabel(item.toolSlug)} ${item.width}×${item.height}到${targetLabel}`}>
-        {item.thumbnail ? <HistoryThumbnail blob={item.thumbnail} label={workstationToolLabel(item.toolSlug)} /> : <span>图片</span>}
+  return <Modal title={t('canvas:assetPicker.modalTitle')} open onCancel={onClose} footer={null} width={680}>
+    <p>{t('canvas:assetPicker.description', { target: resolvedTarget })}{syncing && !loading && <span className="canvas-asset-picker-syncing">{t('canvas:assetPicker.syncing')}</span>}</p>
+    {error && <Alert type="warning" showIcon message={error} action={<Button size="small" onClick={retry}>{t('common:actions.retryLoad')}</Button>} />}
+    {loading ? <PickerSkeleton /> : items.length === 0 ? <Empty description={t('canvas:assetPicker.empty')} /> : <div className="canvas-asset-picker-grid">
+      {items.map(item => <button key={item.id} className="canvas-asset-picker-item" disabled={busy} onClick={() => { void onSelect(item) }} aria-label={t('canvas:assetPicker.itemAria', { tool: workstationToolLabel(item.toolSlug), width: item.width, height: item.height, target: resolvedTarget })}>
+        {item.thumbnail ? <HistoryThumbnail blob={item.thumbnail} label={workstationToolLabel(item.toolSlug)} /> : <span>{t('canvas:assetPicker.imageFallback')}</span>}
         <strong>{workstationToolLabel(item.toolSlug)}</strong><span>{item.width} × {item.height}</span>
       </button>)}
     </div>}
-    {busy && <p role="status">正在读取并添加图片…</p>}
+    {busy && <p role="status">{t('canvas:assetPicker.adding')}</p>}
   </Modal>
 }

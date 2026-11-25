@@ -2,7 +2,10 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ConfigProvider, App as AntdApp, theme as antdTheme } from 'antd'
-import zhCN from 'antd/locale/zh_CN'
+import '@/i18n'
+import { fontFamilyForLocale, getAntdLocale } from '@/i18n/antdLocale'
+import { useLocaleStore } from '@/i18n/store'
+import PostLoginLoading from '@/components/brand/PostLoginLoading'
 import RootApp from './App'
 import { clearChunkReloadMark } from '@/utils/chunkLoadError'
 import { useThemeStore } from '@/store/useThemeStore'
@@ -21,11 +24,18 @@ const queryClient = new QueryClient({
 
 export function ThemedApp() {
   const resolvedTheme = useThemeStore(state => state.resolvedTheme)
+  const locale = useLocaleStore(state => state.locale)
+  const localeReady = useLocaleStore(state => state.ready)
   const isDark = resolvedTheme === 'dark'
+  const fontFamily = fontFamilyForLocale(locale)
+
+  if (!localeReady) {
+    return <PostLoginLoading label="" />
+  }
 
   return (
     <ConfigProvider
-      locale={zhCN}
+      locale={getAntdLocale(locale)}
       theme={{
         algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: isDark
@@ -40,8 +50,7 @@ export function ThemedApp() {
               colorTextSecondary: '#9c9a9f',
               colorTextTertiary: '#6c6a70',
               borderRadius: 8,
-              fontFamily:
-                "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif",
+              fontFamily,
             }
           : {
               colorPrimary: '#12a67f',
@@ -54,8 +63,7 @@ export function ThemedApp() {
               colorTextSecondary: '#64748b',
               colorTextTertiary: '#94a3b8',
               borderRadius: 8,
-              fontFamily:
-                "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif",
+              fontFamily,
             },
       }}
     >

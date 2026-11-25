@@ -1,16 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Alert, Button, Checkbox, Collapse, Image, InputNumber, Modal, Progress, Select, Tag } from 'antd'
+import { useTranslation } from 'react-i18next'
+import { formatDateTime } from '@/i18n/format'
 import type { SuiteActor } from '@shared/ecommerce-suite'
 import type { SuiteProjectDetail } from '@shared/ecommerce-suite-runtime'
 import { suiteChecksFailed, type SuiteExportConfig, type SuitePrecheck } from '@shared/ecommerce-suite-precheck'
 import { suiteExportConfigSchema } from '@shared/ecommerce-suite'
 import { downloadBlob } from '@/pages/Toolbox/shared/zip'
 import type { SuiteClient } from './api'
+import { formatSuiteError, localizeSuiteCheck, suiteSlotLabel } from './i18n'
 import { backupAssetBlob } from './recoveryPackage'
 import { encodeSuiteSelection, zipSuiteExport, type SuiteExportedFile, type SuiteExportSkip } from './export'
 
-const stateNames = { pass: '通过', warning: '警告', unknown: '未知', fail: '失败' }
 function ExportPreview({ file }: { file: SuiteExportedFile }) {
+  const { t } = useTranslation('ecommerce')
   const [urls, setUrls] = useState<{ thumbnail: string; original: string }>()
   useEffect(() => {
     if (!file.blob) return
@@ -22,20 +25,21 @@ function ExportPreview({ file }: { file: SuiteExportedFile }) {
       try {
         canvas.width = image.width; canvas.height = image.height
         const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('缩略预览不可用')
+        if (!ctx) throw new Error(t('export.errors.thumbUnavailable'))
         ctx.drawImage(image, 0, 0)
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
         if (!disposed && blob) { thumbnail = URL.createObjectURL(blob); setUrls({ thumbnail, original }) }
       } finally { image.close(); canvas.width = 1; canvas.height = 1 }
     })().catch(() => { if (!disposed) setUrls(undefined) })
     return () => { disposed = true; URL.revokeObjectURL(original); if (thumbnail) URL.revokeObjectURL(thumbnail) }
-  }, [file.blob, file.metadata?.height, file.metadata?.width])
-  return urls ? <figure><Image src={urls.thumbnail} preview={{ src: urls.original }} alt={`${file.name}实际编码成品`} width={150} /><figcaption>{file.metadata?.width}×{file.metadata?.height} · 点击核对</figcaption></figure> : null
+  }, [file.blob, file.metadata?.height, file.metadata?.width, t])
+  return urls ? <figure><Image src={urls.thumbnail} preview={{ src: urls.original }} alt={t('export.previewAlt', { name: file.name })} width={150} /><figcaption>{t('export.previewCaption', { width: file.metadata?.width, height: file.metadata?.height })}</figcaption></figure> : null
 }
 export default function ExportPanel({ actor, data, client, signal, liveKey, initialSlotId, prepare, onClose }: {
   actor: SuiteActor; data: SuiteProjectDetail; client: SuiteClient; signal: AbortSignal; liveKey: string; initialSlotId?: string
   prepare: (slotIds: string[]) => Promise<SuiteProjectDetail>; onClose: () => void
 }) {
+  const { t } = useTranslation(['ecommerce', 'common'])
   const [selected, setSelected] = useState(() => initialSlotId ? [initialSlotId] : data.project.config.slots.filter(slot => slot.enabled).map(slot => slot.id))
   const [output, setOutput] = useState<SuiteExportConfig>({ platform: data.project.config.platform, width: 2000, height: 2000, format: 'jpeg', background: '#ffffff', jpegQuality: .94 })
   const [report, setReport] = useState<SuitePrecheck>()
@@ -72,10 +76,10 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
           const slot = saved.project.config.slots.find(slot => slot.id === id)!
           const versionId = saved.project.slotHeads.find(head => head.slotId === id)?.activeVersionId
           if (versionId) versions.push(versionId)
-          else missing.push({ slotId: id, name: slot.name, reason: '尚无已选用成品；失败或活动任务不会阻止其他槽位导出' })
+          else missing.push({ slotId: id, name: suiteSlotLabel(slot), reason: t('ecommerce:export.skippedNoVersion') })
         }
         setSkipped(missing)
-        if (!versions.length) throw new Error('所选槽位没有已保存成品，请先选用候选版本')
+        if (!versions.length) throw new Error(t('ecommerce:export.errors.noSavedVersions'))
         frozen = await client.precheck(saved.project.id, versions, parsed)
         combined.throwIfAborted()
         // 保存引发的修订先呈现，再建立本次检查的失效基准。
@@ -88,10 +92,10 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
         return backupAssetBlob(actor, item.asset, combined)
       }, combined, (done, total) => setProgress(Math.round(done / total * 100)), retry ? files : [])
       combined.throwIfAborted(); client.assertCurrent()
-      if (expectedKey !== currentKey.current) throw new Error('编码期间项目或图层已变化，请重新预检')
+      if (expectedKey !== currentKey.current) throw new Error(t('ecommerce:export.errors.changedDuringEncode'))
       // 警告、未知项与部分导出都必须由用户显式确认；预检完成不能自动放行下载。
       setReport(frozen); setFiles(encoded)
-    } catch (error) { if (!signal.aborted) setError(run.signal.aborted ? '已取消，可以重新预检' : error instanceof Error ? error.message : '合规预检失败') }
+    } catch (error) { if (!signal.aborted) setError(run.signal.aborted ? t('ecommerce:export.errors.cancelled') : formatSuiteError(error, 'ecommerce:export.errors.precheckFailed')) }
     finally { if (!signal.aborted && controller.current === run) setBusy(false) }
   }
   const stale = Boolean(report && verifiedKey !== liveKey)
@@ -106,50 +110,57 @@ export default function ExportPanel({ actor, data, client, signal, liveKey, init
     try {
       client.assertCurrent()
       const latest = await client.precheck(report.projectId, report.items.map(item => item.version.id), report.output)
-      if (latest.fingerprint !== report.fingerprint) { setReport(undefined); setFiles([]); throw new Error('云端项目或当前版本已变化，请重新预检') }
+      if (latest.fingerprint !== report.fingerprint) { setReport(undefined); setFiles([]); throw new Error(t('ecommerce:export.errors.cloudChanged')) }
       run.signal.throwIfAborted()
       if (single && ready.length === 1) downloadBlob(ready[0].blob!, ready[0].name)
       else {
         const zip = await zipSuiteExport(report, files, skipped, acknowledged, partial)
         run.signal.throwIfAborted()
         client.assertCurrent()
-        if (verifiedKey !== currentKey.current) throw new Error('项目已变化，请重新预检')
-        downloadBlob(zip, ready[0].name.replace(/\.[^.]+$/, '') + '_成品包.zip')
+        if (verifiedKey !== currentKey.current) throw new Error(t('ecommerce:export.errors.projectChanged'))
+        downloadBlob(zip, ready[0].name.replace(/\.[^.]+$/, '') + t('ecommerce:export.zipSuffix'))
       }
-    } catch (error) { if (!signal.aborted) setError(error instanceof Error ? error.message : '打包失败，可以重试下载') }
+    } catch (error) { if (!signal.aborted) setError(formatSuiteError(error, 'ecommerce:export.errors.zipFailed')) }
     finally { if (!signal.aborted) setBusy(false) }
   }
-  return <Modal open title="合规检查与成品导出" width={960} onCancel={() => { controller.current?.abort(); onClose() }} footer={<div className="suite-actions">
-    {busy && <Button onClick={() => controller.current?.abort()}>取消处理</Button>}
-    <Button disabled={busy || !selected.length} onClick={() => { void check() }}>开始合规检查</Button>
-    {report && !stale && files.some(file => file.error) && <Button disabled={busy} onClick={() => { void check(true) }}>仅重试失败文件</Button>}
-    {ready.length === 1 && <Button disabled={!canDownload} onClick={() => { void download(true) }}>下载单图</Button>}
-    <Button type="primary" disabled={!canDownload} onClick={() => { void download() }}>下载 {ready.length} 张成品 ZIP</Button>
+  const totalSize = t('common:units.mb', { value: (ready.reduce((sum, file) => sum + file.blob!.size, 0) / 1024 / 1024).toFixed(2) })
+  return <Modal open title={t('ecommerce:export.title')} width={960} onCancel={() => { controller.current?.abort(); onClose() }} footer={<div className="suite-actions">
+    {busy && <Button onClick={() => controller.current?.abort()}>{t('ecommerce:export.cancelButton')}</Button>}
+    <Button disabled={busy || !selected.length} onClick={() => { void check() }}>{t('ecommerce:export.checkButton')}</Button>
+    {report && !stale && files.some(file => file.error) && <Button disabled={busy} onClick={() => { void check(true) }}>{t('ecommerce:export.retryFailedButton')}</Button>}
+    {ready.length === 1 && <Button disabled={!canDownload} onClick={() => { void download(true) }}>{t('ecommerce:export.downloadSingleButton')}</Button>}
+    <Button type="primary" disabled={!canDownload} onClick={() => { void download() }}>{t('ecommerce:export.downloadZipButton', { count: ready.length })}</Button>
   </div>}>
     <div className="suite-export-panel">
-      <Alert type="info" showIcon message="合规导出说明" description="系统将对所选图片的尺寸、格式和平台规范进行自动核对；未固化的文字标注将在预检时自动保存为新版本并设为当前使用，随后合成导出。导出不消耗积分。" />
-      <fieldset disabled={busy}><legend>选择要导出的槽位</legend><div className="suite-export-slots">{data.project.config.slots.map(slot => <Checkbox key={slot.id} checked={selected.includes(slot.id)} onChange={event => {
+      <Alert type="info" showIcon message={t('ecommerce:export.infoTitle')} description={t('ecommerce:export.infoDesc')} />
+      <fieldset disabled={busy}><legend>{t('ecommerce:export.slotsLegend')}</legend><div className="suite-export-slots">{data.project.config.slots.map(slot => <Checkbox key={slot.id} checked={selected.includes(slot.id)} onChange={event => {
         invalidate(); setSelected(old => event.target.checked ? [...old, slot.id] : old.filter(id => id !== slot.id))
-      }}>{slot.order + 1}. {slot.name}{data.project.slotHeads.find(head => head.slotId === slot.id)?.activeVersionId ? '' : '（未生成）'}</Checkbox>)}</div></fieldset>
+      }}>{slot.order + 1}. {suiteSlotLabel(slot)}{data.project.slotHeads.find(head => head.slotId === slot.id)?.activeVersionId ? '' : t('ecommerce:export.unreadyTag')}</Checkbox>)}</div></fieldset>
       <div className="suite-export-controls">
-        <label>输出预设<Select disabled={busy} value={output.width === 2000 && output.height === 2000 ? 'square' : output.width === 4096 && output.height === 4096 ? '4k' : 'custom'} onChange={value => { if (value === 'square') patch({ width: 2000, height: 2000 }); if (value === '4k') patch({ width: 4096, height: 4096 }) }} options={[{ value: 'square', label: '2000×2000（标准预设）' }, { value: '4k', label: '4096×4096 (4K 超清)' }, { value: 'custom', label: '自定义像素' }]} /></label>
-        <label>宽度（px）<InputNumber disabled={busy} min={1} max={10000} precision={0} value={output.width} onChange={value => patch({ width: value ?? 1 })} /></label>
-        <label>高度（px）<InputNumber disabled={busy} min={1} max={10000} precision={0} value={output.height} onChange={value => patch({ height: value ?? 1 })} /></label>
-        <label>文件格式<Select disabled={busy} value={output.format} onChange={value => patch({ format: value, ...(value === 'jpeg' && output.background === 'transparent' ? { background: '#ffffff' } : {}) })} options={[{ value: 'jpeg', label: 'JPEG' }, { value: 'png', label: 'PNG' }, ...(output.platform === 'general' ? [{ value: 'webp', label: 'WebP' }] : [])]} /></label>
-        <label>图片质量<InputNumber disabled={busy || output.format === 'png'} min={.1} max={1} step={.05} value={output.jpegQuality} onChange={value => patch({ jpegQuality: value ?? .94 })} /></label>
-        <label>背景底色<Select disabled={busy} value={output.background} onChange={value => patch({ background: value })} options={[{ value: '#ffffff', label: '不透明白底' }, ...(output.format !== 'jpeg' ? [{ value: 'transparent', label: '保留透明' }] : []), ...(output.platform === 'general' ? [{ value: '#111827', label: '深色背景' }] : [])]} /></label>
+        <label>{t('ecommerce:export.presetLabel')}<Select disabled={busy} value={output.width === 2000 && output.height === 2000 ? 'square' : output.width === 4096 && output.height === 4096 ? '4k' : 'custom'} onChange={value => { if (value === 'square') patch({ width: 2000, height: 2000 }); if (value === '4k') patch({ width: 4096, height: 4096 }) }} options={[{ value: 'square', label: t('ecommerce:export.presetSquare') }, { value: '4k', label: t('ecommerce:export.preset4k') }, { value: 'custom', label: t('ecommerce:export.presetCustom') }]} /></label>
+        <label>{t('ecommerce:export.widthLabel')}<InputNumber disabled={busy} min={1} max={10000} precision={0} value={output.width} onChange={value => patch({ width: value ?? 1 })} /></label>
+        <label>{t('ecommerce:export.heightLabel')}<InputNumber disabled={busy} min={1} max={10000} precision={0} value={output.height} onChange={value => patch({ height: value ?? 1 })} /></label>
+        <label>{t('ecommerce:export.formatLabel')}<Select disabled={busy} value={output.format} onChange={value => patch({ format: value, ...(value === 'jpeg' && output.background === 'transparent' ? { background: '#ffffff' } : {}) })} options={[{ value: 'jpeg', label: 'JPEG' }, { value: 'png', label: 'PNG' }, ...(output.platform === 'general' ? [{ value: 'webp', label: 'WebP' }] : [])]} /></label>
+        <label>{t('ecommerce:export.qualityLabel')}<InputNumber disabled={busy || output.format === 'png'} min={.1} max={1} step={.05} value={output.jpegQuality} onChange={value => patch({ jpegQuality: value ?? .94 })} /></label>
+        <label>{t('ecommerce:export.backgroundLabel')}<Select disabled={busy} value={output.background} onChange={value => patch({ background: value })} options={[{ value: '#ffffff', label: t('ecommerce:export.bgWhite') }, ...(output.format !== 'jpeg' ? [{ value: 'transparent', label: t('ecommerce:export.bgTransparent') }] : []), ...(output.platform === 'general' ? [{ value: '#111827', label: t('ecommerce:export.bgDark') }] : [])]} /></label>
       </div>
-      {(error || stale) && <Alert type="error" showIcon message={stale ? '项目配置或当前版本已改变，请重新检查' : error} />}
+      {(error || stale) && <Alert type="error" showIcon message={stale ? t('ecommerce:export.staleAlert') : error} />}
       {busy && <Progress percent={progress} status="active" />}
       {report && !stale && <>
-        <p role="status">{ready.length} 张成品可导出，{failures} 项跳过；成品合计 {(ready.reduce((sum, file) => sum + file.blob!.size, 0) / 1024 / 1024).toFixed(2)} MB。</p>
-        <p className="suite-muted">规范依据：{data.project.config.platform === 'amazon' ? 'Amazon 美国站 Listing 规范' : '通用电商规范'} · 规则版本：{report.ruleVersion} · 检查时间：{new Date(report.checkedAt).toLocaleString()}</p>
+        <p role="status">{t('ecommerce:export.summaryLine', { ready: ready.length, skipped: failures, size: totalSize })}</p>
+        <p className="suite-muted">{t('ecommerce:export.ruleLine', { platform: data.project.config.platform === 'amazon' ? t('ecommerce:export.platformSpecs.amazon') : t('ecommerce:export.platformSpecs.general'), ruleVersion: report.ruleVersion, checkedAt: formatDateTime(report.checkedAt) })}</p>
         <div className="suite-export-previews">{ready.map(file => <ExportPreview key={file.versionId} file={file} />)}</div>
-        <Collapse items={[{ key: 'project', label: '平台合规检查项', children: report.checks.map(check => <p key={check.ruleId}><Tag>{stateNames[check.state]}</Tag>{check.title}：{check.evidence} {check.advice}{check.source && <> <a href={check.source} target="_blank" rel="noreferrer">规则说明</a></>}</p>) },
-          ...files.map(file => ({ key: file.slotId, label: `${file.name} · ${file.blob ? '已通过检查' : '无法导出'}`, children: <>{file.checks.map((check, index) => <p key={`${check.ruleId}:${index}`}><Tag color={check.state === 'fail' ? 'error' : check.state === 'pass' ? 'success' : 'warning'}>{stateNames[check.state]}</Tag>{check.title}：{check.evidence} {check.advice}{check.source && <> <a href={check.source} target="_blank" rel="noreferrer">规则说明</a></>}</p>)}</> })),
-          ...skipped.map(item => ({ key: item.slotId, label: `${item.name} · 跳过`, children: item.reason }))]} />
-        {needsReview && <Checkbox checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)}>已知晓上述提示项并继续导出</Checkbox>}
-        {failures > 0 && <Checkbox checked={partial} onChange={event => setPartial(event.target.checked)}>仅导出已就绪的图片</Checkbox>}
+        <Collapse items={[{ key: 'project', label: t('ecommerce:export.projectChecksHeading'), children: report.checks.map(check => {
+          const localized = localizeSuiteCheck(check, data.project.config.subcategory)
+          return <p key={localized.ruleId}><Tag>{t(`ecommerce:export.states.${localized.state}`)}</Tag>{t('ecommerce:export.checks.checkEntry', { title: localized.title, evidence: localized.evidence })}{localized.advice ? ` ${localized.advice}` : ''}{localized.source && <> <a href={localized.source} target="_blank" rel="noreferrer">{t('ecommerce:export.ruleDocLink')}</a></>}</p>
+        }) },
+          ...files.map(file => ({ key: file.slotId, label: t('ecommerce:export.fileCheckLabel', { name: file.name, status: file.blob ? t('ecommerce:export.filePassed') : t('ecommerce:export.fileFailed') }), children: <>{file.checks.map((check, index) => {
+            const localized = localizeSuiteCheck(check, data.project.config.subcategory)
+            return <p key={`${localized.ruleId}:${index}`}><Tag color={localized.state === 'fail' ? 'error' : localized.state === 'pass' ? 'success' : 'warning'}>{t(`ecommerce:export.states.${localized.state}`)}</Tag>{t('ecommerce:export.checks.checkEntry', { title: localized.title, evidence: localized.evidence })}{localized.advice ? ` ${localized.advice}` : ''}{localized.source && <> <a href={localized.source} target="_blank" rel="noreferrer">{t('ecommerce:export.ruleDocLink')}</a></>}</p>
+          })}</> })),
+          ...skipped.map(item => ({ key: item.slotId, label: t('ecommerce:export.skippedSlotLabel', { name: item.name }), children: item.reason }))]} />
+        {needsReview && <Checkbox checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)}>{t('ecommerce:export.acknowledgeCheckbox')}</Checkbox>}
+        {failures > 0 && <Checkbox checked={partial} onChange={event => setPartial(event.target.checked)}>{t('ecommerce:export.partialCheckbox')}</Checkbox>}
       </>}
     </div>
   </Modal>

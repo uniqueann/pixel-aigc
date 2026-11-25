@@ -1,5 +1,6 @@
 import { liveCapabilityReady, registerLiveCapability } from '@/services/api/task'
 import { cloudEnabled } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { Capability } from '@/types'
 
 export interface CapabilityFlags {
@@ -17,7 +18,7 @@ export interface CapabilityFlags {
 
 export async function loadCapabilityFlags(): Promise<CapabilityFlags> {
   const response = await fetch('/api/capabilities', { signal: AbortSignal.timeout(15000) })
-  if (!response.ok) throw new Error('功能配置加载失败，请重试')
+  if (!response.ok) throw new Error(i18n.t('errors:generic.configLoadFailed'))
   const flags = await response.json() as CapabilityFlags
   registerLiveCapability(Capability.ImageEdit, Boolean(flags.imageEdit))
   return flags

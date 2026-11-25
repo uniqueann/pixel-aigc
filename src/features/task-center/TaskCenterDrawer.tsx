@@ -22,16 +22,14 @@ import {
   DownloadOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import PreviewGallery, { type PreviewItem } from '@/components/PreviewGallery'
 import VideoPlayer from '@/components/VideoPlayer'
+import { formatDateTime } from '@/i18n/format'
 import { readOwnedImage } from '@/services/api/ownedImages'
 import { downloadOwnedVideo } from '@/services/api/ownedVideos'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
-import { modelDisplayName } from '@shared/model-display'
 import {
-  taskBillingLabel,
-  taskStateLabel,
-  taskToolLabels,
   taskTools,
   taskIsActive,
   type TaskCenterMedia,
@@ -48,7 +46,14 @@ import {
 } from './client'
 import { useTaskCenter } from './context'
 import { TaskStatusDot } from './TaskCenterSidebar'
-import { relativeTime } from './format'
+import {
+  formatTaskErrorMessage,
+  localizedModelDisplayName,
+  localizedTaskBillingLabel,
+  localizedTaskStateLabel,
+  relativeTime,
+  taskToolLabel,
+} from './format'
 import { taskDestination } from './route'
 
 export function TaskCenterDrawer() {
@@ -65,6 +70,7 @@ function TaskDrawerPanel({
 }: {
   center: NonNullable<ReturnType<typeof useTaskCenter>>
 }) {
+  const { t } = useTranslation('taskCenter')
   const { message } = App.useApp(),
     actor = center.actor
   const navigate = useNavigate()
@@ -164,7 +170,7 @@ function TaskDrawerPanel({
       expiresAt: new Date(result.urlExpiresAt).getTime(),
       ownerId: currentWorkstationHistoryOwner(),
       retentionExpiresAt: task?.resultExpiresAt ?? undefined,
-      title: `${task?.tool ? taskToolLabels[task.tool] : '任务'} ${result.ordinal + 1}`,
+      title: `${taskToolLabel(task?.tool, 'short')} ${result.ordinal + 1}`,
     }))
   const download = async (item: PreviewItem) => {
     if (!sameTaskActor(actor)) return
@@ -178,7 +184,9 @@ function TaskDrawerPanel({
             expiresAt: item.expiresAt,
             retentionExpiresAt: item.retentionExpiresAt,
           },
-          `视频-${task?.sourceId ?? '结果'}.mp4`,
+          t('drawer.videoFilename', {
+            id: task?.sourceId ?? t('drawer.videoFilenameFallback'),
+          }),
           ownerId,
           {
             signal: abortRef.current.signal,
@@ -199,13 +207,13 @@ function TaskDrawerPanel({
       const url = URL.createObjectURL(blob),
         a = document.createElement('a')
       a.href = url
-      a.download = `${task?.tool ? taskToolLabels[task.tool] : '生成结果'}-${item.id.split(':').slice(-1)[0]}.${blob.type === 'image/jpeg' ? 'jpg' : 'png'}`
+      a.download = `${taskToolLabel(task?.tool, 'result')}-${item.id.split(':').slice(-1)[0]}.${blob.type === 'image/jpeg' ? 'jpg' : 'png'}`
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch {
       if (sameTaskActor(actor)) {
         setReadingError(true)
-        message.error('结果读取失败，请重新读取已有结果')
+        message.error(t('drawer.readResultFailed'))
       }
     }
   }
@@ -220,17 +228,20 @@ function TaskDrawerPanel({
       }
     } catch {
       if (sameTaskActor(actor)) {
-        message.info('任务结果已变化，请重新查看')
+        message.info(t('drawer.resultChangedReload'))
         reload()
       }
     } finally {
       if (sameTaskActor(actor)) setActionBusy(false)
     }
   }
+  const detailError = task
+    ? formatTaskErrorMessage(task, value?.errorMessage)
+    : null
   return (
     <>
       <Drawer
-        title={selected ? '任务详情' : '近期任务'}
+        title={selected ? t('drawer.detailTitle') : t('drawer.recentTitle')}
         open={center.open}
         width="min(560px, 100vw)"
         onClose={() => {
@@ -243,13 +254,13 @@ function TaskDrawerPanel({
           selected && task ? (
             <div className="task-drawer-footer">
               <Space wrap>
-                <Button onClick={center.credits}>查看积分明细</Button>
+                <Button onClick={center.credits}>{t('drawer.viewCredits')}</Button>
                 {!taskIsActive(task) && task.outcomeVersion ? (
                   <Button
                     loading={actionBusy}
                     onClick={() => void dismiss(task)}
                   >
-                    移出列表
+                    {t('drawer.dismiss')}
                   </Button>
                 ) : null}
               </Space>
@@ -258,7 +269,7 @@ function TaskDrawerPanel({
                   <Button
                     type="primary"
                     icon={<ArrowRightOutlined aria-hidden="true" />}
-                    aria-label="在工具中查看"
+                    aria-label={t('drawer.openInTool')}
                     onClick={() => {
                       window.dispatchEvent(
                         new CustomEvent('pixel-sidebar-collapse'),
@@ -267,11 +278,13 @@ function TaskDrawerPanel({
                       center.close()
                     }}
                   >
-                    在工具中查看
+                    {t('drawer.openInTool')}
                   </Button>
                 ) : (
-                  <Tooltip title="该任务不支持跳转至原页面，可在当前页面查看生成结果">
-                    <Button disabled aria-label="在工具中查看">在工具中查看</Button>
+                  <Tooltip title={t('drawer.cannotOpenInToolTooltip')}>
+                    <Button disabled aria-label={t('drawer.openInTool')}>
+                      {t('drawer.openInTool')}
+                    </Button>
                   </Tooltip>
                 )}
               </div>
@@ -289,26 +302,28 @@ function TaskDrawerPanel({
                   center.show(undefined, center.tool)
                 }}
               >
-                返回列表
+                {t('drawer.backToList')}
               </Button>
             ) : null}
             <Button icon={<ReloadOutlined />} onClick={reload}>
-              刷新
+              {t('actions.refresh')}
             </Button>
           </Space>
           <span>
             {selected
               ? task
-                ? `提交于 ${relativeTime(task.createdAt)}`
+                ? t('drawer.submittedAtRelative', {
+                    time: relativeTime(task.createdAt),
+                  })
                 : ''
-              : '展示近 30 天内的任务记录'}
+              : t('drawer.recentWindowNotice')}
           </span>
         </div>
         {!selected ? (
           <>
             <div className="task-history-filters">
               <Select
-                aria-label="任务工具筛选"
+                aria-label={t('drawer.filterToolAria')}
                 value={center.tool ?? 'all'}
                 onChange={(tool) =>
                   center.filter(
@@ -317,24 +332,24 @@ function TaskDrawerPanel({
                   )
                 }
                 options={[
-                  { value: 'all', label: '全部工具' },
+                  { value: 'all', label: t('drawer.allTools') },
                   ...taskTools.map((tool) => ({
                     value: tool,
-                    label: taskToolLabels[tool],
+                    label: taskToolLabel(tool),
                   })),
                 ]}
               />
               <Select
-                aria-label="任务状态筛选"
+                aria-label={t('drawer.filterStateAria')}
                 value={center.state}
                 onChange={(state: TaskHistoryState) =>
                   center.filter(center.tool, state)
                 }
                 options={[
-                  { value: 'all', label: '全部状态' },
-                  { value: 'active', label: '进行中' },
-                  { value: 'succeeded', label: '已完成' },
-                  { value: 'failed', label: '失败/超时' },
+                  { value: 'all', label: t('drawer.stateAll') },
+                  { value: 'active', label: t('drawer.stateActive') },
+                  { value: 'succeeded', label: t('drawer.stateSucceeded') },
+                  { value: 'failed', label: t('drawer.stateFailed') },
                 ]}
               />
             </div>
@@ -347,12 +362,12 @@ function TaskDrawerPanel({
                 >
                   <span className="task-status-dot is-gray" />
                   <div>
-                    <strong>任务确认中</strong>
-                    <p>正在同步任务状态，请稍候...</p>
-                    <small>操作编号 {receipt.requestId}</small>
+                    <strong>{t('pending.title')}</strong>
+                    <p>{t('pending.description')}</p>
+                    <small>{t('pending.requestId', { id: receipt.requestId })}</small>
                   </div>
                   <Button size="small" onClick={() => center.forget(receipt)}>
-                    忽略此提示
+                    {t('pending.dismiss')}
                   </Button>
                 </div>
               ))}
@@ -361,10 +376,10 @@ function TaskDrawerPanel({
               <Alert
                 type="warning"
                 showIcon
-                message="无法获取最新状态，已显示上次记录"
+                message={t('drawer.historyLoadWarning')}
                 action={
                   <Button size="small" onClick={reload}>
-                    重试
+                    {t('actions.retry')}
                   </Button>
                 }
               />
@@ -380,16 +395,14 @@ function TaskDrawerPanel({
                 >
                   <TaskStatusDot task={row} />
                   <span>
-                    <strong>
-                      {row.tool ? taskToolLabels[row.tool] : '生成任务'}
-                    </strong>
+                    <strong>{taskToolLabel(row.tool)}</strong>
                     <span>
-                      {taskStateLabel(row)} · {row.completedCount}/
+                      {localizedTaskStateLabel(row)} · {row.completedCount}/
                       {row.requestedCount} · {relativeTime(row.createdAt)}
                     </span>
                     <small>
-                      {taskBillingLabel(row)}
-                      {row.dismissed ? ' · 已移出列表' : ''}
+                      {localizedTaskBillingLabel(row)}
+                      {row.dismissed ? t('drawer.dismissedSuffix') : ''}
                     </small>
                   </span>
                 </button>
@@ -398,7 +411,7 @@ function TaskDrawerPanel({
             !history.error &&
             !history.data?.pages.some((page) => page.items.length) &&
             !center.receipts.length ? (
-              <Empty description="暂无近期任务" />
+              <Empty description={t('empty')} />
             ) : null}
             {history.hasNextPage ? (
               <Button
@@ -406,7 +419,7 @@ function TaskDrawerPanel({
                 loading={history.isFetchingNextPage}
                 onClick={() => void history.fetchNextPage()}
               >
-                加载更多
+                {t('actions.loadMore')}
               </Button>
             ) : null}
           </>
@@ -417,10 +430,10 @@ function TaskDrawerPanel({
               <Alert
                 type="warning"
                 showIcon
-                message="任务详情加载失败，请稍后重试"
+                message={t('drawer.detailLoadFailed')}
                 action={
                   <Button size="small" onClick={reload}>
-                    重新读取
+                    {t('actions.reload')}
                   </Button>
                 }
               />
@@ -431,10 +444,10 @@ function TaskDrawerPanel({
                   <div className="task-detail-heading-main">
                     <TaskStatusDot task={task} />
                     <h3 className="task-detail-title">
-                      {task.tool ? taskToolLabels[task.tool] : '生成任务'}
+                      {taskToolLabel(task.tool)}
                     </h3>
                     <Tag className={`task-state-tag is-${task.state}`}>
-                      {taskStateLabel(task)}
+                      {localizedTaskStateLabel(task)}
                     </Tag>
                   </div>
                   <span className="task-detail-time">
@@ -446,21 +459,36 @@ function TaskDrawerPanel({
                   <Alert
                     type="info"
                     showIcon
-                    message={task.sourceKind === 'suite_batch' ? `部分槽位完成（${task.completedCount}/${task.requestedCount}），成功候选费用见原任务` : `部分生成成功（${task.completedCount}/${task.requestedCount} 张），仅按实际成功张数扣费`}
+                    message={
+                      task.sourceKind === 'suite_batch'
+                        ? t('drawer.partialSuiteBatch', {
+                            completed: task.completedCount,
+                            requested: task.requestedCount,
+                          })
+                        : t('drawer.partialImages', {
+                            completed: task.completedCount,
+                            requested: task.requestedCount,
+                          })
+                    }
                   />
                 ) : null}
                 {value?.children && <div className="task-detail-section">
-                  <div className="task-detail-section-title">原图片任务与费用</div>
-                  <p>完成数按目标槽位计算；候选张数及实际费用分别保留在原任务中。未派发项和原图复用不创建图片任务。</p>
+                  <div className="task-detail-section-title">{t('drawer.suiteChildrenTitle')}</div>
+                  <p>{t('drawer.suiteChildrenDesc')}</p>
                   {value.children.map(child => <Button key={child.taskKey} block onClick={() => center.show(child)}>
-                    {taskStateLabel(child)} · {child.completedCount}/{child.requestedCount} 张候选 · {taskBillingLabel(child)} · 查看原任务
+                    {t('drawer.suiteChildItem', {
+                      state: localizedTaskStateLabel(child),
+                      completed: child.completedCount,
+                      requested: child.requestedCount,
+                      billing: localizedTaskBillingLabel(child),
+                    })}
                   </Button>)}
                 </div>}
-                {value?.errorMessage && task.state !== 'succeeded' ? (
-                  <Alert type="warning" showIcon message={value.errorMessage} />
+                {detailError && task.state !== 'succeeded' ? (
+                  <Alert type="warning" showIcon message={detailError} />
                 ) : null}
                 {task.warnings.includes('LATE_RESULT_NO_CHARGE') ? (
-                  <Alert type="info" message="已同步最新生成结果，不额外扣费" />
+                  <Alert type="info" message={t('detail.lateResultNoCharge')} />
                 ) : null}
                 {task.resultAvailability === 'expired' ||
                 task.resultAvailability === 'unavailable' ? (
@@ -469,25 +497,25 @@ function TaskDrawerPanel({
                     showIcon
                     message={
                       task.resultAvailability === 'expired'
-                        ? '生成文件已过期（扣费记录不受影响）'
-                        : '生成结果暂不可用或已失效'
+                        ? t('detail.resultExpired')
+                        : t('detail.resultUnavailable')
                     }
                   />
                 ) : null}
                 {readingError ? (
                   <Alert
                     type="warning"
-                    message="结果读取失败，请重新读取已有结果"
-                    action={<Button onClick={reload}>重新读取</Button>}
+                    message={t('drawer.readResultFailed')}
+                    action={<Button onClick={reload}>{t('actions.reload')}</Button>}
                   />
                 ) : null}
 
                 {preview.length > 0 ? (
                   <div className="task-detail-section">
                     <div className="task-detail-section-title">
-                      <span>生成成果</span>
+                      <span>{t('detail.mediaTitle')}</span>
                       <span className="task-detail-count">
-                        共 {preview.length} 项
+                        {t('detail.mediaCount', { count: preview.length })}
                       </span>
                     </div>
                     <div
@@ -509,7 +537,7 @@ function TaskDrawerPanel({
                             <Image
                               width="100%"
                               src={item.thumbSrc}
-                              alt={`生成结果 ${index + 1}`}
+                              alt={t('detail.mediaAlt', { index: index + 1 })}
                               preview={false}
                               onClick={() => setGallery(index)}
                               onError={() => setReadingError(true)}
@@ -519,7 +547,7 @@ function TaskDrawerPanel({
                             icon={<DownloadOutlined />}
                             onClick={() => void download(item)}
                           >
-                            下载结果
+                            {t('detail.downloadResult')}
                           </Button>
                         </div>
                       ))}
@@ -530,28 +558,28 @@ function TaskDrawerPanel({
                 {value?.results.some((r) => r.kind === 'text') ? (
                   <div className="task-detail-section">
                     <div className="task-detail-section-title">
-                      <span>生成文本</span>
+                      <span>{t('detail.textTitle')}</span>
                     </div>
                     {value?.results.map((result, index) =>
                       result.kind === 'text' ? (
                         <div key={index} className="task-text-result-card">
                           <div className="task-text-result-block">
                             <div className="task-text-result-header">
-                              <h4>生成结果</h4>
+                              <h4>{t('detail.textResultHeading')}</h4>
                               <Button
                                 size="small"
                                 icon={<CopyOutlined aria-hidden="true" />}
-                                aria-label="复制结果"
+                                aria-label={t('actions.copyResult')}
                                 onClick={() =>
                                   void navigator.clipboard
                                     .writeText(result.text)
-                                    .then(() => message.success('已复制'))
+                                    .then(() => message.success(t('detail.copied')))
                                     .catch(() =>
-                                      message.error('复制失败，请手动选择文本'),
+                                      message.error(t('detail.copyFailed')),
                                     )
                                 }
                               >
-                                复制结果
+                                {t('actions.copyResult')}
                               </Button>
                             </div>
                             <pre>{result.text}</pre>
@@ -559,23 +587,21 @@ function TaskDrawerPanel({
                           {result.editedText ? (
                             <div className="task-text-result-block">
                               <div className="task-text-result-header">
-                                <h4>修改草稿</h4>
+                                <h4>{t('detail.editedDraftHeading')}</h4>
                                 <Button
                                   size="small"
                                   icon={<CopyOutlined aria-hidden="true" />}
-                                  aria-label="复制修改稿"
+                                  aria-label={t('actions.copyEdited')}
                                   onClick={() =>
                                     void navigator.clipboard
                                       .writeText(result.editedText!)
-                                      .then(() => message.success('已复制'))
+                                      .then(() => message.success(t('detail.copied')))
                                       .catch(() =>
-                                        message.error(
-                                          '复制失败，请手动选择文本',
-                                        ),
+                                        message.error(t('detail.copyFailed')),
                                       )
                                   }
                                 >
-                                  复制修改稿
+                                  {t('actions.copyEdited')}
                                 </Button>
                               </div>
                               <pre>{result.editedText}</pre>
@@ -592,51 +618,51 @@ function TaskDrawerPanel({
                 !value?.results.length ? (
                   <div className="task-detail-active-banner">
                     <Spin size="small" />
-                    <span>任务正在处理中，生成成果将在此实时呈现…</span>
+                    <span>{t('detail.processingBanner')}</span>
                   </div>
                 ) : null}
 
                 <div className="task-detail-section">
                   <div className="task-detail-section-title">
-                    <span>任务信息</span>
+                    <span>{t('detail.infoTitle')}</span>
                   </div>
                   <div className="task-detail-meta-grid">
                     <div className="task-meta-item">
-                      <span className="task-meta-label">模型</span>
+                      <span className="task-meta-label">{t('detail.modelLabel')}</span>
                       <span className="task-meta-value">
-                        {modelDisplayName(task.modelProfileId)}
+                        {localizedModelDisplayName(task.modelProfileId)}
                       </span>
                     </div>
                     <div className="task-meta-item">
-                      <span className="task-meta-label">完成数量</span>
+                      <span className="task-meta-label">{t('detail.completedCountLabel')}</span>
                       <span className="task-meta-value">
                         {task.completedCount}/{task.requestedCount}
                       </span>
                     </div>
                     <div className="task-meta-item">
-                      <span className="task-meta-label">积分消耗</span>
+                      <span className="task-meta-label">{t('detail.billingLabel')}</span>
                       <span className="task-meta-value">
-                        {taskBillingLabel(task)}
+                        {localizedTaskBillingLabel(task)}
                       </span>
                     </div>
                     <div className="task-meta-item">
-                      <span className="task-meta-label">提交时间</span>
+                      <span className="task-meta-label">{t('detail.createdAtLabel')}</span>
                       <span className="task-meta-value">
-                        {new Date(task.createdAt).toLocaleString()}
+                        {formatDateTime(task.createdAt)}
                       </span>
                     </div>
                     {task.resultExpiresAt ? (
                       <div className="task-meta-item">
-                        <span className="task-meta-label">结果有效期</span>
+                        <span className="task-meta-label">{t('detail.expiresAtLabel')}</span>
                         <span className="task-meta-value">
-                          {new Date(task.resultExpiresAt).toLocaleString()}
+                          {formatDateTime(task.resultExpiresAt)}
                         </span>
                       </div>
                     ) : null}
                   </div>
                   {!taskDestination(task) ? (
                     <p className="task-detail-notice">
-                      该任务不支持跳转至原页面，可在当前页面查看生成结果。
+                      {t('detail.cannotReopenNotice')}
                     </p>
                   ) : null}
                 </div>

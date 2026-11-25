@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Alert, Button, Space } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { authEnabled, cloudConfigurationError, cloudRequest, supabase, CloudError } from './client'
 import { setPersistenceUser } from '@/editor/persistence/database'
 import { useUserStore, type AccountContext } from '@/store/useUserStore'
 import PostLoginLoading from '@/components/brand/PostLoginLoading'
 
 export default function AuthGate({ children }: { children: ReactNode }) {
+  const { t } = useTranslation(['auth', 'common'])
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(authEnabled ? 'loading' : 'ready')
   const [error, setError] = useState(cloudConfigurationError ?? '')
   useEffect(() => {
@@ -35,7 +37,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         window.location.replace('/account-disabled')
         return
       }
-      setError(err instanceof Error ? err.message : '账号初始化失败')
+      setError(err instanceof Error ? err.message : t('auth:gate.initFailed'))
       setState('error')
     })
     const { data: listener } = client.auth.onAuthStateChange((event, session) => {
@@ -46,14 +48,14 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       }
     })
     return () => { disposed = true; listener.subscription.unsubscribe() }
-  }, [])
+  }, [t])
   if (cloudConfigurationError) return <div className="project-recovery-screen"><Alert type="error" message={cloudConfigurationError} /></div>
   if (state === 'ready') return children
-  if (state === 'loading') return <PostLoginLoading label="正在验证账号…" />
+  if (state === 'loading') return <PostLoginLoading label={t('auth:gate.verifying')} />
   return <div className="project-recovery-screen">
-    <h2>Pixel AIGC</h2>
+    <h2>{t('common:brand.name')}</h2>
     <Alert type="error" message={error} />
-    <Space><Button onClick={() => window.location.reload()}>重试</Button>
-      <Button onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>切换账号</Button></Space>
+    <Space><Button onClick={() => window.location.reload()}>{t('auth:gate.retry')}</Button>
+      <Button onClick={() => { void supabase?.auth.signOut({ scope: 'local' }).then(() => window.location.replace('/login')) }}>{t('auth:gate.switchAccount')}</Button></Space>
   </div>
 }

@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { suiteCompositionSchema, type SuiteComposition, type SuiteSlotDraft, type SuiteSlotVersion } from '@shared/ecommerce-suite'
 import { SUITE_RENDERER_VERSION } from '@shared/ecommerce-suite-annotations'
 import type { SuiteProjectDetail } from '@shared/ecommerce-suite-runtime'
 import type { SuiteClient } from './api'
 import { archiveSuiteDraft, readLocalSuiteDraft, saveLocalSuiteDraft } from './backup'
 
-interface RecordValue { value: SuiteSlotDraft; dirty: boolean; edit: number; error?: string }
+type SlotDraftErrorKind = 'local_save' | 'conflict' | 'sync'
+interface RecordValue { value: SuiteSlotDraft; dirty: boolean; edit: number; error?: string; errorKind?: SlotDraftErrorKind }
 export function suiteDraftComposition(value: SuiteSlotDraft, base?: SuiteSlotVersion): SuiteComposition | undefined {
   if (!base) return undefined
   return { ...base.composition, rendererVersion: SUITE_RENDERER_VERSION, layersSnapshot: value.layers,
@@ -28,6 +31,7 @@ function initialDraft(data: SuiteProjectDetail, slotId: string): SuiteSlotDraft 
 }
 /** 生成参数和图层共享同一草稿写入队列，避免两个页签覆盖彼此。 */
 export function useSuiteSlotEditor(data: SuiteProjectDetail | undefined, client: SuiteClient, signal: AbortSignal, offline: boolean) {
+  const { t } = useTranslation('ecommerce')
   const latest = useRef(data)
   useEffect(() => { latest.current = data }, [data])
   const [records] = useState(() => new Map<string, RecordValue>())
@@ -59,12 +63,16 @@ export function useSuiteSlotEditor(data: SuiteProjectDetail | undefined, client:
   const edit = useCallback((slotId: string, patch: Partial<SuiteSlotDraft>) => {
     const current = records.get(slotId), detail = latest.current
     if (!current || !detail) return
-    const next = { value: { ...current.value, ...patch }, dirty: true, edit: current.edit + 1, error: undefined }
+    const next: RecordValue = { value: { ...current.value, ...patch }, dirty: true, edit: current.edit + 1, error: undefined, errorKind: undefined }
     records.set(slotId, next); notify()
     void saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, next).catch(() => {
       // 只标记仍属于这次编辑的记录；若云端已保存成功，不能用过期的本机失败覆盖结果。
       const record = records.get(slotId)
-      if (record?.edit === next.edit && record.dirty) { record.error = '本机存储失败，请保持页面并保存云端或下载图层草稿'; notify() }
+      if (record?.edit === next.edit && record.dirty) {
+        record.errorKind = 'local_save'
+        record.error = i18n.t('ecommerce:slotEditor.localSaveFailed')
+        notify()
+      }
     })
   }, [notify, records])
   const flushSlot = useCallback(async (slotId: string) => {
@@ -72,19 +80,23 @@ export function useSuiteSlotEditor(data: SuiteProjectDetail | undefined, client:
     while (writes.current.has(slotId)) await writes.current.get(slotId)
     const record = records.get(slotId), detail = latest.current
     if (!record?.dirty || !detail) return
-    if (record.error?.includes('冲突')) throw new Error(record.error)
+    if (record.errorKind === 'conflict') throw new Error(record.error ?? i18n.t('ecommerce:slotEditor.draftConflict'))
     const action = (async () => {
       // 本机草稿只是降级能力：IndexedDB 写入失败时继续保存云端，避免因配额问题丢失编辑。
       try { await saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, record) } catch { /* 继续云端保存 */ }
       if (offline) return
       const saved = await client.draft(detail.project.id, slotId, record.value)
       const current = records.get(slotId)!
-      const next = { ...current, value: { ...current.value, expectedDraftRevision: saved.revision }, dirty: current.edit !== record.edit, error: undefined }
+      const next: RecordValue = { ...current, value: { ...current.value, expectedDraftRevision: saved.revision }, dirty: current.edit !== record.edit, error: undefined, errorKind: undefined }
       records.set(slotId, next)
       try { await saveLocalSuiteDraft(detail.project.actor, detail.project.id, slotId, next) } catch { /* 本机备份失败不影响云端结果 */ }
     })().catch(error => {
       const current = records.get(slotId)
-      if (current) current.error = error instanceof CloudError && error.status === 409 ? '草稿修订冲突，本机副本已保留，请读取云端或另存图层草稿' : '草稿未同步，请手动重试保存'
+      if (current) {
+        const isConflict = error instanceof CloudError && error.status === 409
+        current.errorKind = isConflict ? 'conflict' : 'sync'
+        current.error = i18n.t(isConflict ? 'ecommerce:slotEditor.draftConflict' : 'ecommerce:slotEditor.draftSyncFailed')
+      }
       throw error
     })
     writes.current.set(slotId, action)
@@ -94,7 +106,7 @@ export function useSuiteSlotEditor(data: SuiteProjectDetail | undefined, client:
     for (const id of records.keys()) await flushSlot(id)
   }, [flushSlot, records])
   useEffect(() => {
-    if (offline || ![...records.values()].some(record => record.dirty && (!record.error || record.error.includes('本机存储失败')))) return
+    if (offline || ![...records.values()].some(record => record.dirty && (!record.errorKind || record.errorKind === 'local_save'))) return
     const timer = setTimeout(() => { void flushAll().catch(() => undefined) }, 800)
     return () => clearTimeout(timer)
   }, [revision, flushAll, offline, records])
@@ -137,7 +149,7 @@ export function useSuiteSlotEditor(data: SuiteProjectDetail | undefined, client:
   const saveVersion = async (slotId: string) => {
     await flushSlot(slotId)
     const detail = latest.current!, record = records.get(slotId)!
-    if (offline) throw new Error('请联网保存图层版本，本机草稿仍保留')
+    if (offline) throw new Error(i18n.t('ecommerce:slotEditor.offlineSaveVersion'))
     const base = detail.versions.find(item => item.id === record.value.baseVersionId)
     const composition = suiteCompositionSchema.parse(suiteDraftComposition(record.value, base))
     const result = await client.saveVersion(detail.project.id, slotId, { requestId: crypto.randomUUID(), baseVersionId: base!.id,
@@ -145,5 +157,19 @@ export function useSuiteSlotEditor(data: SuiteProjectDetail | undefined, client:
     if (result.version.id !== base!.id) await reset(slotId, result.version)
     return result.version
   }
-  return { records: snapshot, revision, edit, flushSlot, flushAll, reset, readCloud, saveVersion }
+  const localizedRecords = useMemo(() => {
+    const next = new Map<string, RecordValue>()
+    for (const [slotId, record] of snapshot) {
+      const error = record.errorKind === 'local_save'
+        ? t('slotEditor.localSaveFailed')
+        : record.errorKind === 'conflict'
+          ? t('slotEditor.draftConflict')
+          : record.errorKind === 'sync'
+            ? t('slotEditor.draftSyncFailed')
+            : record.error
+      next.set(slotId, error === record.error ? record : { ...record, error })
+    }
+    return next
+  }, [snapshot, t])
+  return { records: localizedRecords, revision, edit, flushSlot, flushAll, reset, readCloud, saveVersion }
 }

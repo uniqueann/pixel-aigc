@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import type { BatchImage, RenderRequest, RenderResult, WatermarkSettings } from './types'
 
 export function invalidateBatch(items: BatchImage[]): BatchImage[] {
@@ -24,7 +25,7 @@ export async function processBatch({ images, settings, ids, render, update, shou
       update(item.id, { status: 'succeeded', output: result.blob, outputMime: result.mimeType, error: undefined })
     } catch (error) {
       if (shouldStop()) { update(item.id, { status: 'pending' }); break }
-      update(item.id, { status: 'failed', error: error instanceof Error ? error.message : '图片处理失败' })
+      update(item.id, { status: 'failed', error: error instanceof Error ? error.message : i18n.t('toolbox:errors.processFailed') })
     }
   }
 }

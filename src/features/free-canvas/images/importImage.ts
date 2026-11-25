@@ -5,6 +5,7 @@ import type { ImageAsset } from '@/editor/types'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
 import { isCurrentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
 import type { WorkstationHistoryListItem } from '@/features/assets/workstationHistory'
+import { i18n } from '@/i18n'
 import { readOwnedImage } from '@/services/api/ownedImages'
 import { uploadImage } from '@/services/api/upload'
 import { readResultImage } from '@/features/image-workstation/imageMetadata'
@@ -16,17 +17,17 @@ export interface CanvasImageImportContext {
 }
 
 function check(context: CanvasImageImportContext) {
-  if (context.signal.aborted) throw new DOMException('图片添加已取消', 'AbortError')
+  if (context.signal.aborted) throw new DOMException(i18n.t('canvas:import.cancelled'), 'AbortError')
   if (!isCurrentWorkstationHistoryOwner(context.ownerId) || useEditorStore.getState().project?.id !== context.projectId || usePersistenceStore.getState().epoch !== context.epoch)
-    throw new Error('账号或项目已切换，请重新添加图片')
-  if (!usePersistenceStore.getState().writable) throw new Error('当前页面没有画布编辑权')
+    throw new Error(i18n.t('canvas:import.scopeChanged'))
+  if (!usePersistenceStore.getState().writable) throw new Error(i18n.t('canvas:import.notWritable'))
 }
 
 function insert(asset: ImageAsset, context: CanvasImageImportContext) {
   check(context)
   const editor = useEditorStore.getState()
   const scene = editor.project?.document.scenes.find(item => item.id === context.sceneId)
-  if (!scene) throw new Error('当前画布不存在')
+  if (!scene) throw new Error(i18n.t('canvas:import.missingScene'))
   const existing = Object.values(editor.project!.assets).find(item => item.type === 'image' && (
     (asset.objectKey && item.objectKey === asset.objectKey)
     || (!asset.objectKey && asset.url.startsWith('data:') && item.url === asset.url)
@@ -62,8 +63,8 @@ export async function importCanvasHistory(record: WorkstationHistoryListItem, co
   const url = record.objectKey ? assetPlaceholder(id) : await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(new Error('读取资产图片失败'))
+    reader.onerror = () => reject(new Error(i18n.t('canvas:import.readAssetFailed')))
     reader.readAsDataURL(measured.blob)
   })
-  return insert(createImageAsset({ id, name: '资产图片', url, ...measured, objectKey: record.objectKey, createdAt: record.createdAt }), context)
+  return insert(createImageAsset({ id, name: i18n.t('canvas:import.defaultAssetName'), url, ...measured, objectKey: record.objectKey, createdAt: record.createdAt }), context)
 }

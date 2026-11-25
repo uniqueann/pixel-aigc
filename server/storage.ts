@@ -105,13 +105,13 @@ export async function getObjectLimited(key: string, maxBytes: number, signal?: A
 export async function verifyAndPromote(tempKey: string, key: string, expectedSize: number, mimeType: string) {
   const result = await s3().send(new GetObjectCommand({ Bucket: bucket(), Key: tempKey }))
   if (result.ContentLength !== expectedSize || expectedSize > 20 * 1024 * 1024 || !result.Body)
-    throw new HttpError(400, '上传文件大小不匹配')
+    throw new HttpError(400, '上传文件大小不匹配', 'UPLOAD_SIZE_MISMATCH')
   const bytes = await result.Body.transformToByteArray()
-  if (bytes.byteLength !== expectedSize) throw new HttpError(400, '上传文件不完整')
+  if (bytes.byteLength !== expectedSize) throw new HttpError(400, '上传文件不完整', 'UPLOAD_INCOMPLETE')
   const metadata = await sharp(bytes, { limitInputPixels: 40000000 }).metadata()
   const formats: Record<string, string> = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' }
   if (formats[metadata.format ?? ''] !== mimeType || !metadata.width || !metadata.height || (metadata.pages ?? 1) > 1)
-    throw new HttpError(400, '文件实际类型不匹配或图片无效，请使用静态图片')
+    throw new HttpError(400, '文件实际类型不匹配或图片无效，请使用静态图片', 'INVALID_IMAGE')
   // 保存经过核验的同一份字节，避免核验后临时对象被覆盖的竞态。
   await s3().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: bytes, ContentType: mimeType }))
   // 临时对象由桶生命周期清理，数据库提交失败时仍可重复核验。

@@ -8,6 +8,7 @@ const stageSource = readFileSync(resolve(process.cwd(), 'src/features/free-canva
 const addButtonSource = readFileSync(resolve(process.cwd(), 'src/pages/FreeCanvas/CanvasAddImageButton.tsx'), 'utf8')
 const textPanel = readFileSync(resolve(process.cwd(), 'src/features/free-canvas/generation/GenerationPanel.tsx'), 'utf8')
 const derivedPanel = readFileSync(resolve(process.cwd(), 'src/features/free-canvas/generation/DerivedGenerationPanel.tsx'), 'utf8')
+const zhCanvas = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/locales/zh-CN/canvas.json'), 'utf8'))
 
 function block(selector: string, source = css) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -85,10 +86,13 @@ describe('自由画布面板布局', () => {
   })
 
   it('添加图片浮在画布内，操作提示变淡并可在首次交互后隐藏', () => {
-    expect(addButtonSource).toContain('本地上传')
-    expect(addButtonSource).toContain('从我的资产')
-    expect(addButtonSource).toContain('aria-label="添加图片"')
-    expect(addButtonSource).toContain('title="添加图片"')
+    expect(addButtonSource).toContain("t('addImage.localUpload')")
+    expect(addButtonSource).toContain("t('addImage.fromAssets')")
+    expect(addButtonSource).toContain("aria-label={t('addImage.label')}")
+    expect(addButtonSource).toContain("title={t('addImage.label')}")
+    expect(zhCanvas.addImage.localUpload).toBe('本地上传')
+    expect(zhCanvas.addImage.fromAssets).toBe('从我的资产')
+    expect(zhCanvas.addImage.label).toBe('添加图片')
     expect(stageSource).toContain('free-canvas-stage-chrome')
     expect(stageSource).toContain('is-dismissed')
     expect(stageSource).toContain('dismissHintRef.current()')
