@@ -10,6 +10,7 @@ import type { ImageNode } from '@/editor/types'
 
 const pageSource = readFileSync(resolve(process.cwd(), 'src/pages/FreeCanvas/index.tsx'), 'utf8')
 const stageSource = readFileSync(resolve(process.cwd(), 'src/features/free-canvas/FreeCanvasStage.tsx'), 'utf8')
+const zhCanvas = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/locales/zh-CN/canvas.json'), 'utf8'))
 
 describe('损坏图片在画布上的显示与移除', () => {
   beforeEach(() => {
@@ -19,14 +20,17 @@ describe('损坏图片在画布上的显示与移除', () => {
 
   it('源码契约：FreeCanvasStage 包含图片损坏占位及删除引导，且不展示裂变/图生视频浮动条', () => {
     expect(stageSource).toContain("function createBrokenImageObject(node: ImageNode, accent: string)")
-    expect(stageSource).toContain("new FabricText('图片损坏'")
-    expect(stageSource).toContain("new FabricText('无法解码，可按 Delete 删除'")
+    expect(stageSource).toContain("new FabricText(i18n.t('canvas:stage.brokenImageTitle')")
+    expect(stageSource).toContain("new FabricText(i18n.t('canvas:stage.brokenImageDetail')")
+    expect(zhCanvas.stage.brokenImageTitle).toBe('图片损坏')
+    expect(zhCanvas.stage.brokenImageDetail).toBe('无法解码，可按 Delete 删除')
     expect(stageSource).toContain("brokenImageNodesRef.current.has(node.id)")
     expect(stageSource).toContain("const selectedImage = singleSelected?.type === 'image' && !brokenNodeIds.has(singleSelected.id) ? singleSelected : undefined")
   })
 
   it('源码契约：FreeCanvas/index.tsx 提供清理损坏图片按钮及清除派生草稿引用', () => {
-    expect(pageSource).toContain('清理损坏图片')
+    expect(pageSource).toContain("t('notices.cleanBrokenImages')")
+    expect(zhCanvas.notices.cleanBrokenImages).toBe('清理损坏图片')
     expect(pageSource).toContain('handleRemoveBrokenImages')
     expect(pageSource).toContain('images.brokenAssetIds')
     expect(pageSource).toContain('currentDraft.sourceAssetId === node.assetId')

@@ -1,6 +1,7 @@
 import { normalizeImageBlob } from '@shared/image-format'
 import { readHistoryImage } from '@/features/assets/workstationHistory'
 import { currentWorkstationHistoryOwner } from '@/features/assets/historyOwner'
+import { i18n } from '@/i18n'
 import { useUserStore } from '@/store/useUserStore'
 import { fetchOwnedObject, OwnedObjectError } from './objects'
 
@@ -21,7 +22,7 @@ const pending = new Map<string, PendingRead>()
 let cachedBytes = 0
 const queue: Array<{ start: () => void; signal: AbortSignal; reject: (error: unknown) => void }> = []
 let downloading = 0
-const abortError = () => new DOMException('读取已取消', 'AbortError')
+const abortError = () => new DOMException(i18n.t('errors:client.readCancelled'), 'AbortError')
 function check(signal?: AbortSignal) { if (signal?.aborted) throw signal.reason ?? abortError() }
 function keyFor(ownerId: string, key: string) { return JSON.stringify([ownerId, key]) }
 function ownedObjectStatus(error: unknown): number | undefined {
@@ -79,21 +80,21 @@ function queued<T>(signal: AbortSignal, run: () => Promise<T>): Promise<T> {
   })
 }
 async function remote(reference: OwnedImageReference, signal: AbortSignal): Promise<Blob> {
-  if (!reference.objectKey) throw new OwnedImageReadError(404, '本地历史图片不存在')
+  if (!reference.objectKey) throw new OwnedImageReadError(404, i18n.t('errors:client.localHistoryMissing'))
   const queuedAt = performance.now()
   return queued(signal, async () => {
     check(signal)
     const queueMs = Math.round(performance.now() - queuedAt)
     const timeout = new AbortController()
-    const timer = setTimeout(() => timeout.abort(new OwnedImageReadError(504, '读取结果超时，请重试读取')), 60_000)
+    const timer = setTimeout(() => timeout.abort(new OwnedImageReadError(504, i18n.t('errors:client.readResultTimeout'))), 60_000)
     const cancel = () => timeout.abort(signal.reason ?? abortError())
     signal.addEventListener('abort', cancel, { once: true })
     try {
-      // 私有对象字节走同源代理，避免浏览器直连 R2 签名地址触发 CORS。
-      console.debug('[图片读取]', { source: 'proxy', operation: 'request', queueMs })
+      // Private object bytes flow via same-origin proxy to avoid direct CORS issues on R2 signed URLs.
+      console.debug('[owned-image]', { source: 'proxy', operation: 'request', queueMs })
       const blob = await normalizeImageBlob(await fetchOwnedObject(reference.objectKey!, undefined, timeout.signal))
       check(signal)
-      console.debug('[图片读取]', { source: 'proxy', bytes: blob.size, queueMs })
+      console.debug('[owned-image]', { source: 'proxy', bytes: blob.size, queueMs })
       return blob
     } catch (error) {
       check(signal)
@@ -101,9 +102,14 @@ async function remote(reference: OwnedImageReference, signal: AbortSignal): Prom
       if (error instanceof OwnedImageReadError) throw error
       const status = ownedObjectStatus(error)
       if (status !== undefined) {
-        throw new OwnedImageReadError(status, status === 404 ? '结果对象不存在' : error instanceof Error ? error.message : '读取结果失败，请重试读取')
+        throw new OwnedImageReadError(
+          status,
+          status === 404
+            ? i18n.t('errors:client.resultNotFound')
+            : error instanceof Error ? error.message : i18n.t('errors:client.readResultFailed'),
+        )
       }
-      throw new OwnedImageReadError(502, '读取结果中断，请重试读取')
+      throw new OwnedImageReadError(502, i18n.t('errors:client.readResultInterrupted'))
     } finally {
       clearTimeout(timer)
       signal.removeEventListener('abort', cancel)
@@ -113,16 +119,16 @@ async function remote(reference: OwnedImageReference, signal: AbortSignal): Prom
 async function load(reference: OwnedImageReference, ownerId: string, signal: AbortSignal) {
   let local: Blob | undefined
   try { local = await readHistoryImage(ownerId, { id: reference.historyId, objectKey: reference.objectKey }) }
-  catch { /* 本地存储不可用时仍可读取远端结果。 */ }
+  catch { /* Remote object recovery still works when local IndexedDB is unavailable. */ }
   check(signal)
   if (local) {
     try {
       const blob = await normalizeImageBlob(local)
-      console.debug('[图片读取]', { source: 'history', bytes: blob.size })
+      console.debug('[owned-image]', { source: 'history', bytes: blob.size })
       return blob
-    } catch { /* 历史图片损坏时允许从对象键恢复。 */ }
+    } catch { /* Fall back to remote object key when history blob is corrupted. */ }
   }
-  if (!reference.objectKey) throw new OwnedImageReadError(404, '本地历史图片不存在')
+  if (!reference.objectKey) throw new OwnedImageReadError(404, i18n.t('errors:client.localHistoryMissing'))
   return remote(reference, signal)
 }
 function consume(item: PendingRead, signal?: AbortSignal) {
@@ -145,21 +151,21 @@ function consume(item: PendingRead, signal?: AbortSignal) {
 export async function readOwnedImage(reference: OwnedImageReference, options: { ownerId?: string; signal?: AbortSignal } = {}): Promise<Blob> {
   check(options.signal)
   const ownerId = options.ownerId ?? currentWorkstationHistoryOwner()
-  if (!ownerId.trim()) throw new Error('缺少图片所属账号')
+  if (!ownerId.trim()) throw new Error(i18n.t('errors:client.missingImageOwner'))
   if (reference.blob) {
     const blob = await normalizeImageBlob(reference.blob)
     check(options.signal)
-    if (reference.mimeType && blob.type !== reference.mimeType) throw new OwnedImageReadError(502, '结果图片格式不符合要求')
+    if (reference.mimeType && blob.type !== reference.mimeType) throw new OwnedImageReadError(502, i18n.t('errors:client.invalidResultFormat'))
     if (reference.objectKey) cacheBlob(keyFor(ownerId, reference.objectKey), blob)
-    console.debug('[图片读取]', { source: 'blob', bytes: blob.size })
+    console.debug('[owned-image]', { source: 'blob', bytes: blob.size })
     return blob
   }
   const key = keyFor(ownerId, reference.objectKey ?? `history:${reference.historyId}`)
   const cached = cache.get(key)
   if (cached) {
     cache.delete(key); cache.set(key, cached)
-    if (reference.mimeType && cached.type !== reference.mimeType) throw new OwnedImageReadError(502, '结果图片格式不符合要求')
-    console.debug('[图片读取]', { source: 'memory', bytes: cached.size })
+    if (reference.mimeType && cached.type !== reference.mimeType) throw new OwnedImageReadError(502, i18n.t('errors:client.invalidResultFormat'))
+    console.debug('[owned-image]', { source: 'memory', bytes: cached.size })
     return cached
   }
   let item = pending.get(key)
@@ -174,6 +180,6 @@ export async function readOwnedImage(reference: OwnedImageReference, options: { 
     pending.set(key, item)
   }
   const blob = await consume(item, options.signal)
-  if (reference.mimeType && blob.type !== reference.mimeType) throw new OwnedImageReadError(502, '结果图片格式不符合要求')
+  if (reference.mimeType && blob.type !== reference.mimeType) throw new OwnedImageReadError(502, i18n.t('errors:client.invalidResultFormat'))
   return blob
 }

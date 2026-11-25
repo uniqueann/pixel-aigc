@@ -42,7 +42,7 @@ export async function handleTaskInputFallback(user: User, method: string, body: 
     await requireActive(sql, user.id)
   })
   const bytes = Buffer.from(input.dataBase64, 'base64')
-  if (!bytes.length || bytes.length > 20 * 1024 * 1024) throw new HttpError(413, '图片大小不能超过 20 MB')
+  if (!bytes.length || bytes.length > 20 * 1024 * 1024) throw new HttpError(413, '图片大小不能超过 20 MB', 'IMAGE_TOO_LARGE')
   await putObject(input.objectKey, bytes, input.mimeType)
   return { objectKey: input.objectKey, ok: true }
 }

@@ -1,4 +1,5 @@
 import { cloudRequest, CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { useUserStore } from '@/store/useUserStore'
 import type {
   TaskCenterDetail,
@@ -39,14 +40,14 @@ async function read<T>(
   body?: unknown,
 ) {
   if (!sameTaskActor(actor))
-    throw new CloudError(401, '账号或环境已切换', 'ACCOUNT_CHANGED')
+    throw new CloudError(401, i18n.t('taskCenter:errors.accountOrScopeChanged'), 'ACCOUNT_CHANGED')
   const data = await cloudRequest<T>(path, method, body, {
     expectedUserId: actor.owner,
     signal,
     timeoutMs: 15000,
   })
   if (!sameTaskActor(actor))
-    throw new CloudError(401, '账号或环境已切换', 'ACCOUNT_CHANGED')
+    throw new CloudError(401, i18n.t('taskCenter:errors.accountOrScopeChanged'), 'ACCOUNT_CHANGED')
   return data
 }
 export const taskCenterKeys = {

@@ -1,4 +1,5 @@
 import { useEditorStore } from '@/editor/store'
+import { i18n } from '@/i18n'
 
 /**
  * 自由画布的项目入口：没有项目就建一个空项目。
@@ -7,5 +8,5 @@ import { useEditorStore } from '@/editor/store'
  */
 export function ensureFreeCanvasContent() {
   if (useEditorStore.getState().project) return
-  useEditorStore.getState().createProject('未命名画布', { width: 1280, height: 720 })
+  useEditorStore.getState().createProject(i18n.t('canvas:editor.defaultProjectName'), { width: 1280, height: 720 })
 }

@@ -1,6 +1,8 @@
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { message } from 'antd'
 import { Canvas, Circle, FabricImage, Line, PencilBrush, Rect } from 'fabric'
+import { useTranslation } from 'react-i18next'
+import { i18n } from '@/i18n'
 import { containRect } from '@shared/erase'
 import { invertContainedAlpha, MASK_PAINT_CSS, opaqueCount, sourcePoint, tintOverlayAsBrush } from '@shared/smart-select'
 import { applySmartSelectLookup, requestSmartSelect, SmartSelectRequestError, smartSelectErrorMessage, storeSmartSelectSession, type SmartSelectResult } from '@/services/api/smartSelect'
@@ -69,6 +71,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
   { imageUrl, previewImageUrl, comparing = false, imageObjectKey, imageNaturalSize, brushSize, tool, smartSelectEnabled, refineMode = false, disabled = false, hideDisabledHint = false, onHistoryChange, onMaskChange, onToolChange, onBrushSizeChange },
   ref,
 ) {
+  const { t } = useTranslation('workstation')
   const { hostRef, display } = useCanvasDisplay()
   const objectKeyRef = useRef(imageObjectKey)
   objectKeyRef.current = imageObjectKey
@@ -383,14 +386,14 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     const source = await new Promise<HTMLImageElement>((resolve, reject) => {
       const image = new Image()
       image.onload = () => resolve(image)
-      image.onerror = () => reject(new Error('读取选区蒙版失败'))
+      image.onerror = () => reject(new Error(i18n.t('workstation:errors.readSelectionMaskFailed')))
       image.src = result.maskDataUrl
     })
     const stamp = document.createElement('canvas')
     stamp.width = result.width
     stamp.height = result.height
     const stampContext = stamp.getContext('2d')
-    if (!stampContext) throw new Error('当前浏览器不支持画布蒙版导出')
+    if (!stampContext) throw new Error(i18n.t('workstation:errors.canvasMaskUnsupported'))
     stampContext.drawImage(source, 0, 0, result.width, result.height)
     const pixels = stampContext.getImageData(0, 0, result.width, result.height)
     tintOverlayAsBrush(pixels.data)
@@ -415,15 +418,15 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     const canvas = fabricCanvasRef.current
     const natural = naturalRef.current
     if (disabledRef.current) return
-    if (!canvas || !natural?.width || !natural.height) throw new Error('蒙版画布尚未准备好')
+    if (!canvas || !natural?.width || !natural.height) throw new Error(i18n.t('workstation:errors.maskCanvasNotReady'))
     canvas.renderAll()
     const surface = paintSurface(canvas, canvasElementRef.current)
     const context = surface?.getContext('2d')
-    if (!surface || !context) throw new Error('蒙版画布尚未准备好')
+    if (!surface || !context) throw new Error(i18n.t('workstation:errors.maskCanvasNotReady'))
     const pixels = context.getImageData(0, 0, surface.width, surface.height)
     const rect = containRect(natural.width, natural.height, surface.width, surface.height)
     if (opaqueCount(pixels.data, surface.width, surface.height, rect) === 0) {
-      throw new Error('请先创建选区后再反选')
+      throw new Error(i18n.t('workstation:errors.invertEmptySelection'))
     }
     const inverted = new Uint8ClampedArray(pixels.data)
     invertContainedAlpha(inverted, surface.width, surface.height, rect)
@@ -431,7 +434,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     snapshot.width = surface.width
     snapshot.height = surface.height
     const snapshotContext = snapshot.getContext('2d')
-    if (!snapshotContext) throw new Error('当前浏览器不支持画布蒙版导出')
+    if (!snapshotContext) throw new Error(i18n.t('workstation:errors.canvasMaskUnsupported'))
     snapshotContext.putImageData(new ImageData(inverted, surface.width, surface.height), 0, 0)
     canvas.clear()
     applyPaintClip(canvas)
@@ -447,10 +450,10 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
     () => ({
       exportMask: () => {
         const canvas = fabricCanvasRef.current
-        if (!canvas) throw new Error('蒙版画布尚未准备好')
+        if (!canvas) throw new Error(i18n.t('workstation:errors.maskCanvasNotReady'))
         canvas.renderAll()
         const surface = paintSurface(canvas, canvasElementRef.current)
-        if (!surface) throw new Error('蒙版画布尚未准备好')
+        if (!surface) throw new Error(i18n.t('workstation:errors.maskCanvasNotReady'))
         if (imageNaturalSize && imageNaturalSize.width > 0 && imageNaturalSize.height > 0) {
           return exportEraseMask(surface, imageNaturalSize)
         }
@@ -458,12 +461,12 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       },
       exportRefineMarks: () => {
         const canvas = fabricCanvasRef.current
-        if (!canvas) throw new Error('蒙版画布尚未准备好')
+        if (!canvas) throw new Error(i18n.t('workstation:errors.maskCanvasNotReady'))
         canvas.renderAll()
         const surface = paintSurface(canvas, canvasElementRef.current)
-        if (!surface) throw new Error('蒙版画布尚未准备好')
+        if (!surface) throw new Error(i18n.t('workstation:errors.maskCanvasNotReady'))
         const context = surface.getContext('2d')
-        if (!context) throw new Error('当前浏览器不支持画布蒙版导出')
+        if (!context) throw new Error(i18n.t('workstation:errors.canvasMaskUnsupported'))
         return context.getImageData(0, 0, surface.width, surface.height)
       },
       clear,
@@ -578,17 +581,17 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       if (disabledRef.current || comparingRef.current || !smartSelectRef.current || selectingRef.current || refineModeRef.current) return
       const natural = naturalRef.current
       if (!natural?.width || !natural.height) {
-        message.warning('无法读取原图尺寸')
+        message.warning(i18n.t('workstation:errors.sourceSizeUnreadable'))
         return
       }
       const scene = canvas.getScenePoint(e)
       const point = sourcePoint(scene.x, scene.y, natural.width, natural.height, CANVAS_WIDTH, CANVAS_HEIGHT)
       if (!point) {
-        message.warning('请点在图片上')
+        message.warning(i18n.t('workstation:errors.clickOnImage'))
         return
       }
       selectingRef.current = true
-      message.loading({ content: '正在识别商品轮廓…', duration: 0, key: SMART_SELECT_TOAST_KEY })
+      message.loading({ content: i18n.t('workstation:brush.detectingProduct'), duration: 0, key: SMART_SELECT_TOAST_KEY })
       try {
         const cached = sessionRef.current?.imageUrl === imageUrl ? sessionRef.current.session : null
         const lookup = await requestSmartSelect({
@@ -646,7 +649,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       className="workstation-paint-host"
       tabIndex={0}
       role="application"
-      aria-label="蒙版涂抹画布"
+      aria-label={t('canvas.maskAria')}
       aria-describedby={keyboardHelpId}
       onKeyDown={handleKeyboardKeyDown}
       onKeyUp={handleKeyboardKeyUp}
@@ -654,7 +657,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
       onBlur={handleKeyboardBlur}
     >
       <p id={keyboardHelpId} className="sr-only">
-        使用方向键移动笔刷，按住空格涂抹；B 切换画笔，E 切换橡皮擦；左右方括号调整笔刷大小；Ctrl 或 Command 加 Z 撤销，加 Shift 加 Z 重做；Esc 退出画布。
+        {t('canvas.maskKeyboardHelp')}
       </p>
       <div className="workstation-paint-frame" style={{ width: display.width, height: display.height }}>
         <div
@@ -667,7 +670,7 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         >
           <img
             src={comparing && previewImageUrl ? previewImageUrl : imageUrl}
-            alt={comparing ? '当前生成效果' : '待处理原图'}
+            alt={comparing ? t('canvas.currentGeneratedAlt') : t('canvas.sourcePendingAlt')}
             draggable={false}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
           />
@@ -697,15 +700,15 @@ const MaskPaintCanvas = forwardRef<MaskPaintCanvasHandle, MaskPaintCanvasProps>(
         </div>
         {keyboardCursor ? (
           <div className="workstation-paint-keyboard-hint">
-            方向键移动 · 空格涂抹 · B/E 切换 · [ ] 调笔刷 · Esc 退出
+            {t('canvas.maskKeyboardHint')}
           </div>
         ) : null}
         {disabled ? (
           hideDisabledHint ? null : (
-            <div className="workstation-paint-disabled-hint" role="status">正在生成，暂不可涂抹</div>
+            <div className="workstation-paint-disabled-hint" role="status">{t('canvas.paintDisabledGenerating')}</div>
           )
         ) : comparing ? (
-          <div className="workstation-paint-disabled-hint" role="status">正在查看生成效果，切回「原图」可继续涂抹</div>
+          <div className="workstation-paint-disabled-hint" role="status">{t('canvas.paintDisabledComparing')}</div>
         ) : null}
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { normalizeImageBlob } from '@shared/image-format'
 import { filenameWithMimeExtension } from '@/features/image-workstation/download'
 import type { CloudAsset } from '../../shared/cloud'
@@ -20,7 +21,7 @@ export async function uploadCloudImage(projectId: string, assetId: string, file:
   })
   if (result.asset) return result.asset
   const response = await fetch(result.uploadUrl!, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file, signal: AbortSignal.timeout(120000) })
-  if (!response.ok) throw new Error('上传素材失败，请重试')
+  if (!response.ok) throw new Error(i18n.t('errors:client.sourceUploadFailed'))
   return (await cloudRequest<{ asset: CloudAsset }>(`/assets/${encodeURIComponent(assetId)}/complete`, 'POST', { projectId })).asset
 }
 export const assetPlaceholder = (id: string) => `/__aigc_asset__/${encodeURIComponent(id)}`

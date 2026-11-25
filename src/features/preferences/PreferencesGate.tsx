@@ -1,10 +1,12 @@
 import { useEffect, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { authEnabled } from '@/cloud/client'
 import { useUserStore } from '@/store/useUserStore'
 import { usePreferencesStore } from './store'
 import PostLoginLoading from '@/components/brand/PostLoginLoading'
 
 export default function PreferencesGate({ children }: { children: ReactNode }) {
+  const { t } = useTranslation('settings')
   const userId = useUserStore(state => state.userId)
   const owner = authEnabled ? userId ?? 'local' : 'local'
   const ready = usePreferencesStore(state => state.ready && state.owner === owner)
@@ -21,6 +23,6 @@ export default function PreferencesGate({ children }: { children: ReactNode }) {
       window.removeEventListener('pagehide', save)
     }
   }, [])
-  if (!ready) return <PostLoginLoading label="正在加载个性化设置…" />
+  if (!ready) return <PostLoginLoading label={t('personalization.loadingGate')} />
   return <>{children}</>
 }

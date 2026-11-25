@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AudioMutedOutlined,
   BranchesOutlined,
@@ -24,6 +25,7 @@ import {
 import { Button, Dropdown, Tooltip } from 'antd'
 import { ActiveSelection, Canvas, Circle, FabricImage, FabricText, Group, Line, Point, Rect, Shadow, Triangle, type FabricObject } from 'fabric'
 import type { Asset, EditorNode, GenerationJob, GenerationNode, ImageNode, NodeId, VideoNode, ViewportState } from '@/editor/types'
+import { i18n } from '@/i18n'
 import type { TaskStatus } from '@/types'
 import {
   calculateFitViewport,
@@ -106,20 +108,27 @@ const LAYER_ICONS: Record<LayerKind, ReactNode> = {
   generation: <LoadingOutlined />,
 }
 
-const GENERATION_LABELS: Record<string, string> = {
-  failed: '生成失败的占位框',
-  cancelled: '已取消的生成占位框',
-  processing: '生成中的占位框',
-}
+const GENERATION_LABEL_KEYS = {
+  failed: 'canvas:stage.nodeList.placeholderFailed',
+  cancelled: 'canvas:stage.nodeList.placeholderCancelled',
+  processing: 'canvas:stage.nodeList.placeholderProcessing',
+} as const
 
 /** 读屏与键盘导航用的节点名称。 */
 function nodeLabel(node: EditorNode, generations: Record<string, GenerationJob>) {
   if (node.type === 'generation') {
     const status = generations[node.generationId]?.status
-    return (status && GENERATION_LABELS[status]) ?? '排队中的生成占位框'
+    const key = status && status in GENERATION_LABEL_KEYS
+      ? GENERATION_LABEL_KEYS[status as keyof typeof GENERATION_LABEL_KEYS]
+      : 'canvas:stage.nodeList.placeholderQueued'
+    return i18n.t(key)
   }
-  const kind = node.type === 'video' ? '视频' : node.type === 'image' ? '图片' : '节点'
-  return `${kind}：${node.name}`
+  const kind = node.type === 'video'
+    ? i18n.t('canvas:stage.nodeList.kinds.video')
+    : node.type === 'image'
+      ? i18n.t('canvas:stage.nodeList.kinds.image')
+      : i18n.t('canvas:stage.nodeList.kinds.node')
+  return i18n.t('canvas:stage.nodeList.named', { kind, name: node.name })
 }
 
 /** 多选框沿用单选图案，避免 Fabric 默认的浅蓝边框和品牌绿打架。 */
@@ -144,21 +153,22 @@ function styleActiveSelection(canvas: Canvas, accent: string) {
 }
 
 function ZOrderMenu({ onReorder, disabled }: { onReorder: (action: ZOrderAction) => void; disabled?: boolean }) {
+  const { t } = useTranslation('canvas')
   return (
     <Dropdown
       trigger={['click']}
       disabled={disabled}
       menu={{
         items: [
-          { key: 'front', label: '置顶' },
-          { key: 'forward', label: '上移一层' },
-          { key: 'backward', label: '下移一层' },
-          { key: 'back', label: '置底' },
+          { key: 'front', label: t('stage.zOrder.front') },
+          { key: 'forward', label: t('stage.zOrder.forward') },
+          { key: 'backward', label: t('stage.zOrder.backward') },
+          { key: 'back', label: t('stage.zOrder.back') },
         ],
         onClick: ({ key }) => onReorder(key as ZOrderAction),
       }}
     >
-      <Button size="small" type="text" icon={<AppstoreOutlined />} aria-label="调整层级">层级</Button>
+      <Button size="small" type="text" icon={<AppstoreOutlined />} aria-label={t('stage.zOrder.aria')}>{t('stage.zOrder.label')}</Button>
     </Dropdown>
   )
 }
@@ -243,14 +253,14 @@ function loadVideo(url: string, signal: AbortSignal) {
       settled = true
       cleanup()
       releaseVideo(video)
-      reject(new Error('浏览器无法解码该视频'))
+      reject(new Error(i18n.t('canvas:stage.media.videoDecodeFailed')))
     }
     const handleAbort = () => {
       if (settled) return
       settled = true
       cleanup()
       releaseVideo(video)
-      reject(new DOMException('视频加载已取消', 'AbortError'))
+      reject(new DOMException(i18n.t('canvas:stage.media.videoLoadCancelled'), 'AbortError'))
     }
     video.addEventListener('loadeddata', handleLoaded)
     video.addEventListener('error', handleError)
@@ -277,13 +287,13 @@ function readNodeTransform(object: FabricObject, node: EditorNode): NodeTransfor
 
 function generationAppearance(status: TaskStatus | undefined) {
   if (status === 'failed' || status === 'cancelled') {
-    return { fill: PLACEHOLDER_FAILED_FILL, stroke: PLACEHOLDER_FAILED_STROKE, label: '生成失败' }
+    return { fill: PLACEHOLDER_FAILED_FILL, stroke: PLACEHOLDER_FAILED_STROKE, label: i18n.t('canvas:stage.placeholder.failed') }
   }
   if (status === 'processing') {
     // 占位框底色始终是深色，边框要继续用亮薄荷绿，不跟随主题。
-    return { fill: PLACEHOLDER_ACTIVE_FILL, stroke: PLACEHOLDER_ACTIVE_STROKE, label: '生成中' }
+    return { fill: PLACEHOLDER_ACTIVE_FILL, stroke: PLACEHOLDER_ACTIVE_STROKE, label: i18n.t('canvas:stage.placeholder.processing') }
   }
-  return { fill: PLACEHOLDER_FILL, stroke: PLACEHOLDER_STROKE, label: '排队中' }
+  return { fill: PLACEHOLDER_FILL, stroke: PLACEHOLDER_STROKE, label: i18n.t('canvas:stage.placeholder.queued') }
 }
 
 function createGenerationObject(node: GenerationNode, status: TaskStatus | undefined, accent: string, detailText: string) {
@@ -381,7 +391,7 @@ function createBrokenImageObject(node: ImageNode, accent: string) {
     stroke: PLACEHOLDER_FAILED_STROKE,
     strokeWidth: 2,
   })
-  const label = new FabricText('图片损坏', {
+  const label = new FabricText(i18n.t('canvas:stage.brokenImageTitle'), {
     left: node.width / 2,
     top: node.height / 2 - 14,
     originX: 'center',
@@ -391,7 +401,7 @@ function createBrokenImageObject(node: ImageNode, accent: string) {
     fontSize: 17,
     fontWeight: 600,
   })
-  const detail = new FabricText('无法解码，可按 Delete 删除', {
+  const detail = new FabricText(i18n.t('canvas:stage.brokenImageDetail'), {
     left: node.width / 2,
     top: node.height / 2 + 17,
     originX: 'center',
@@ -476,6 +486,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   emptyState,
   children,
 }, ref) {
+  const { t, i18n: i18nInstance } = useTranslation('canvas')
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasElementRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = useRef<Canvas | null>(null)
@@ -781,8 +792,11 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         startVideoRendering()
       } catch (error) {
         const node = nodesByIdRef.current.get(nodeId)
-        const detail = error instanceof Error ? error.message : '未知错误'
-        callbacksRef.current.onAssetLoadError(`视频“${node?.name ?? '生成结果'}”播放失败：${detail}`)
+        const detail = error instanceof Error ? error.message : i18n.t('canvas:stage.media.unknownError')
+        callbacksRef.current.onAssetLoadError(i18n.t('canvas:stage.media.videoPlayFailed', {
+          name: node?.name ?? i18n.t('canvas:stage.media.defaultResultName'),
+          detail,
+        }))
       }
     } else {
       video.pause()
@@ -1244,7 +1258,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
     })
     canvas.requestRenderAll()
     if (droppedPlaceholder) setThemeVersion((version) => version + 1)
-  }, [palette])
+  }, [i18nInstance.language, palette])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -1425,8 +1439,8 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
             if (controller.signal.aborted || reportedLoadErrorsRef.current.has(asset.url)) return
             reportedLoadErrorsRef.current.add(asset.url)
             setMediaLoadVersion((version) => version + 1)
-            const detail = error instanceof Error ? error.message : '未知错误'
-            callbacksRef.current.onAssetLoadError(`图片“${asset.name}”加载失败：${detail}`)
+            const detail = error instanceof Error ? error.message : i18n.t('canvas:stage.media.unknownError')
+            callbacksRef.current.onAssetLoadError(i18n.t('canvas:stage.media.imageLoadFailed', { name: asset.name, detail }))
           })
         return
       }
@@ -1494,8 +1508,8 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           reportedLoadErrorsRef.current.add(asset.url)
           setMediaLoadVersion((version) => version + 1)
           setMediaErrorCount(reportedLoadErrorsRef.current.size)
-          const detail = error instanceof Error ? error.message : '未知错误'
-          callbacksRef.current.onAssetLoadError(`视频“${asset.name}”加载失败：${detail}`)
+          const detail = error instanceof Error ? error.message : i18n.t('canvas:stage.media.unknownError')
+          callbacksRef.current.onAssetLoadError(i18n.t('canvas:stage.media.videoLoadFailed', { name: asset.name, detail }))
         })
     })
 
@@ -1553,7 +1567,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
   const selectedImage = singleSelected?.type === 'image' && !brokenNodeIds.has(singleSelected.id) ? singleSelected : undefined
   const focusedNode = focusedNodeId ? scene.nodes.find((node) => node.id === focusedNodeId) : undefined
 
-  const layerItems = useMemo(() => buildLayerItems(scene.nodes, assets, generations), [assets, generations, scene.nodes])
+  const layerItems = useMemo(() => {
+    void i18nInstance.language
+    return buildLayerItems(scene.nodes, assets, generations)
+  }, [assets, generations, i18nInstance.language, scene.nodes])
 
   /** 把节点带进视野；已经可见时不移动视口（calculateRevealViewport 会原样返回）。 */
   const revealNode = useCallback((nodeId: NodeId) => {
@@ -1744,7 +1761,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       ref={containerRef}
       tabIndex={0}
       role="application"
-      aria-label="自由画布编辑区域"
+      aria-label={t('stage.regionAria')}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -1771,8 +1788,12 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
             <button
               type="button"
               aria-pressed={selectedNodeIds.includes(node.id)}
-              aria-label={`${nodeLabel(node, generations)}，${Math.round(node.width)}×${Math.round(node.height)}${
-                selectedNodeIds.includes(node.id) ? '，已选中' : ''}`}
+              aria-label={t('stage.nodeList.itemAria', {
+                label: nodeLabel(node, generations),
+                width: Math.round(node.width),
+                height: Math.round(node.height),
+                selected: selectedNodeIds.includes(node.id) ? t('stage.nodeList.selectedSuffix') : '',
+              })}
               onFocus={() => {
                 setFocusedNodeId(node.id)
                 const canvas = canvasRef.current
@@ -1803,23 +1824,23 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
         ))}
       </ul>
       {focusRingStyle && <div className="free-canvas-focus-ring" style={focusRingStyle} aria-hidden="true" />}
-      {dropActive && <div className="free-canvas-dropzone" aria-hidden="true"><span>松开添加到画布</span></div>}
+      {dropActive && <div className="free-canvas-dropzone" aria-hidden="true"><span>{t('stage.dropzone')}</span></div>}
 
       {scene.nodes.length === 0 && emptyState && <div className="free-canvas-empty-slot">{emptyState}</div>}
-      {layersOpen && <div className="free-canvas-layers" role="group" aria-label="图层">
+      {layersOpen && <div className="free-canvas-layers" role="group" aria-label={t('stage.layers.title')}>
         <div className="free-canvas-layers-head">
-          <span>图层</span>
+          <span>{t('stage.layers.title')}</span>
           <span className="free-canvas-layers-count">{layerItems.length}</span>
           <Button
             size="small"
             type="text"
             icon={<CloseOutlined />}
             onClick={() => setLayersOpen(false)}
-            aria-label="关闭图层面板"
+            aria-label={t('stage.layers.closeAria')}
           />
         </div>
         {layerItems.length === 0
-          ? <p className="free-canvas-layers-empty">画布上还没有内容</p>
+          ? <p className="free-canvas-layers-empty">{t('stage.layers.empty')}</p>
           : <ul>
             {layerItems.map((item) => {
               const selected = selectedNodeIds.includes(item.id)
@@ -1829,7 +1850,11 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
                     type="button"
                     className={`free-canvas-layer${selected ? ' is-selected' : ''}`}
                     aria-pressed={selected}
-                    aria-label={`${item.name}，${item.meta}${selected ? '，已选中' : ''}`}
+                    aria-label={t('stage.layers.itemAria', {
+                      name: item.name,
+                      meta: item.meta,
+                      selected: selected ? t('stage.nodeList.selectedSuffix') : '',
+                    })}
                     onClick={(event) => {
                       if (event.shiftKey) toggleLayerNode(item.id)
                       else onSelectNodes([item.id])
@@ -1867,19 +1892,19 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
           onMouseLeave={() => setHintHovered(false)}
           aria-hidden={hintDismissed && !hintHovered}
         >
-          <span className="free-canvas-help-desktop">滚轮平移 · ⌘/Ctrl + 滚轮缩放 · 空格拖动画布 · ⌥ 点击选中下层 · 双击视频播放</span>
-          <span className="free-canvas-help-touch">双指缩放 · 单指拖动画布 · 双击视频播放</span>
+          <span className="free-canvas-help-desktop">{t('stage.help.desktop')}</span>
+          <span className="free-canvas-help-touch">{t('stage.help.touch')}</span>
         </div>
         {children}
       </div>
       {mediaErrorCount > 0 && <div className="free-canvas-media-error" role="status">
-        部分媒体加载失败，节点数据已保留。
-        <Button size="small" onClick={reloadMedia}>重新加载媒体</Button>
+        {t('stage.media.partialError')}
+        <Button size="small" onClick={reloadMedia}>{t('stage.media.reload')}</Button>
       </div>}
       {selectedImage && nodeActionStyle && (
         <div className="free-canvas-selection-row" style={nodeActionStyle}>
-          <div className="free-canvas-node-actions" aria-label="图片派生操作">
-            <Tooltip title={variationEnabled ? '基于这张图再生成一版' : '请先确认登录与裂变模型配置'}>
+          <div className="free-canvas-node-actions" aria-label={t('stage.imageActions.aria')}>
+            <Tooltip title={variationEnabled ? t('stage.imageActions.variationTooltip') : t('stage.imageActions.variationDisabled')}>
               <span>
                 <Button
                   size="small"
@@ -1888,24 +1913,24 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
                   disabled={generationActive || !variationEnabled}
                   onClick={() => onNodeGenerationAction('variation', selectedImage.id)}
                 >
-                  裂变
+                  {t('stage.imageActions.variation')}
                 </Button>
               </span>
             </Tooltip>
             <span className="free-canvas-node-actions-divider" />
-            <Tooltip title={imageToVideoEnabled ? '让这张图片动起来' : `视频生成${capabilityAvailabilityLabel(imageToVideoState)}`}>
+            <Tooltip title={imageToVideoEnabled ? t('stage.imageActions.imageToVideoTooltip') : t('stage.imageActions.videoUnavailable', { status: capabilityAvailabilityLabel(imageToVideoState) })}>
               <span><Button
                 size="small"
                 type="text"
                 icon={<VideoCameraAddOutlined />}
                 disabled={generationActive || !imageToVideoEnabled}
                 onClick={() => onNodeGenerationAction('image-to-video', selectedImage.id)}
-              >图生视频</Button></span>
+              >{t('stage.imageActions.imageToVideo')}</Button></span>
             </Tooltip>
             <span className="free-canvas-node-actions-divider" />
             <ZOrderMenu onReorder={onReorderSelection} disabled={generationActive} />
             <span className="free-canvas-node-actions-divider" />
-            <Tooltip title={"删除图片（Delete / Backspace）"}>
+            <Tooltip title={t('stage.imageActions.deleteTooltip')}>
               <span>
                 <Button
                   size="small"
@@ -1915,7 +1940,7 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
                   disabled={generationActive || !canDeleteSelected}
                   onClick={onDeleteSelection}
                 >
-                  删除
+                  {t('stage.imageActions.delete')}
                 </Button>
               </span>
             </Tooltip>
@@ -1924,10 +1949,10 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
       )}
       {selectionActionStyle && (
         <div className="free-canvas-selection-row" style={selectionActionStyle}>
-          <div className="free-canvas-node-actions" aria-label="多选操作">
-            <span className="free-canvas-selection-count">已选 {selectedNodes.length} 项</span>
+          <div className="free-canvas-node-actions" aria-label={t('selectionSummary.aria')}>
+            <span className="free-canvas-selection-count">{t('selectionSummary.selectedCount', { count: selectedNodes.length })}</span>
             <span className="free-canvas-node-actions-divider" />
-            <Tooltip title={canDuplicateSelection ? '复制所选（⌘/Ctrl+D）' : selectionBlockedReason ?? '所选内容无法复制'}>
+            <Tooltip title={canDuplicateSelection ? t('selectionSummary.duplicateTooltip') : selectionBlockedReason ?? t('selectionSummary.duplicateBlocked')}>
               <span>
                 <Button
                   size="small"
@@ -1935,13 +1960,13 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
                   icon={<CopyOutlined />}
                   disabled={generationActive || !canDuplicateSelection}
                   onClick={onDuplicateSelection}
-                >复制</Button>
+                >{t('selectionSummary.duplicate')}</Button>
               </span>
             </Tooltip>
             <span className="free-canvas-node-actions-divider" />
             <ZOrderMenu onReorder={onReorderSelection} disabled={generationActive} />
             <span className="free-canvas-node-actions-divider" />
-            <Tooltip title={canDeleteSelection ? '删除所选（Delete）' : selectionBlockedReason ?? '所选内容无法删除'}>
+            <Tooltip title={canDeleteSelection ? t('selectionSummary.deleteTooltip') : selectionBlockedReason ?? t('selectionSummary.deleteBlocked')}>
               <span>
                 <Button
                   size="small"
@@ -1950,71 +1975,71 @@ const FreeCanvasStage = forwardRef<FreeCanvasStageHandle, FreeCanvasStageProps>(
                   icon={<DeleteOutlined />}
                   disabled={generationActive || !canDeleteSelection}
                   onClick={onDeleteSelection}
-                >删除</Button>
+                >{t('selectionSummary.delete')}</Button>
               </span>
             </Tooltip>
           </div>
         </div>
       )}
-      <div className="free-canvas-toolbar" aria-label="画布工具栏">
-        <Tooltip title="撤销（⌘/Ctrl+Z）"><Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} aria-label="撤销" /></Tooltip>
-        <Tooltip title="重做（⇧⌘/Ctrl+Z）"><Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} aria-label="重做" /></Tooltip>
+      <div className="free-canvas-toolbar" aria-label={t('stage.toolbar.aria')}>
+        <Tooltip title={t('stage.toolbar.undoTooltip')}><Button type="text" icon={<UndoOutlined />} disabled={!canUndo} onClick={onUndo} aria-label={t('stage.toolbar.undo')} /></Tooltip>
+        <Tooltip title={t('stage.toolbar.redoTooltip')}><Button type="text" icon={<RedoOutlined />} disabled={!canRedo} onClick={onRedo} aria-label={t('stage.toolbar.redo')} /></Tooltip>
         <span className="free-canvas-toolbar-divider" />
         {singleSelected?.type === 'video' && (
           <>
             {onUseVideoReference && <Button type="text" icon={<VideoCameraAddOutlined />} disabled={generationActive}
-              onClick={() => onUseVideoReference(singleSelected.id)}>用作复刻参考</Button>}
+              onClick={() => onUseVideoReference(singleSelected.id)}>{t('stage.toolbar.useAsReference')}</Button>}
             {onReuseVideoReplication && <Tooltip title={replicationSourceSummary}>
-              <Button type="text" disabled={generationActive} onClick={onReuseVideoReplication}>沿用设置</Button>
+              <Button type="text" disabled={generationActive} onClick={onReuseVideoReplication}>{t('stage.toolbar.reuseSettings')}</Button>
             </Tooltip>}
             <span className="free-canvas-toolbar-divider" />
-            <Tooltip title={selectedVideo?.paused ? '播放视频' : '暂停视频'}>
+            <Tooltip title={selectedVideo?.paused ? t('stage.toolbar.playVideo') : t('stage.toolbar.pauseVideo')}>
               <Button
                 type="text"
                 icon={selectedVideo?.paused ? <CaretRightOutlined /> : <PauseOutlined />}
                 disabled={!selectedVideo}
                 onClick={() => { void toggleVideo(singleSelected.id) }}
-                aria-label={selectedVideo?.paused ? '播放视频' : '暂停视频'}
+                aria-label={selectedVideo?.paused ? t('stage.toolbar.playVideo') : t('stage.toolbar.pauseVideo')}
               />
             </Tooltip>
-            <Tooltip title={selectedVideo?.muted ? '取消静音' : '静音'}>
+            <Tooltip title={selectedVideo?.muted ? t('stage.toolbar.unmute') : t('stage.toolbar.mute')}>
               <Button
                 type="text"
                 icon={selectedVideo?.muted ? <AudioMutedOutlined /> : <SoundOutlined />}
                 disabled={!selectedVideo}
                 onClick={() => toggleVideoMuted(singleSelected.id)}
-                aria-label={selectedVideo?.muted ? '取消静音' : '静音'}
+                aria-label={selectedVideo?.muted ? t('stage.toolbar.unmute') : t('stage.toolbar.mute')}
               />
             </Tooltip>
           </>
         )}
         <span className="free-canvas-toolbar-divider" />
-        <Tooltip title={layersOpen ? '关闭图层' : '图层（按叠放顺序列出画布内容）'}>
+        <Tooltip title={layersOpen ? t('stage.toolbar.closeLayers') : t('stage.toolbar.layersTooltip')}>
           <Button
             type="text"
             icon={<UnorderedListOutlined />}
             className={layersOpen ? 'is-active' : undefined}
             aria-pressed={layersOpen}
             onClick={() => setLayersOpen((value) => !value)}
-            aria-label="图层"
+            aria-label={t('stage.layers.title')}
           />
         </Tooltip>
         <span className="free-canvas-toolbar-divider" />
-        <Tooltip title="缩小"><Button type="text" icon={<MinusOutlined />} onClick={() => zoomBy(0.8)} aria-label="缩小画布" /></Tooltip>
+        <Tooltip title={t('stage.toolbar.zoomOut')}><Button type="text" icon={<MinusOutlined />} onClick={() => zoomBy(0.8)} aria-label={t('stage.toolbar.zoomOutAria')} /></Tooltip>
         <span className="free-canvas-zoom-label">{Math.round(viewport.zoom * 100)}%</span>
-        <Tooltip title="放大"><Button type="text" icon={<PlusOutlined />} onClick={() => zoomBy(1.25)} aria-label="放大画布" /></Tooltip>
-        <Tooltip title="适合工作面（⇧1）"><Button type="text" icon={<ExpandOutlined />} onClick={fitToScene} aria-label="适合工作面" /></Tooltip>
+        <Tooltip title={t('stage.toolbar.zoomIn')}><Button type="text" icon={<PlusOutlined />} onClick={() => zoomBy(1.25)} aria-label={t('stage.toolbar.zoomInAria')} /></Tooltip>
+        <Tooltip title={t('stage.toolbar.fitToSceneTooltip')}><Button type="text" icon={<ExpandOutlined />} onClick={fitToScene} aria-label={t('stage.toolbar.fitToScene')} /></Tooltip>
         <span className="free-canvas-toolbar-divider" />
         <Tooltip
           title={
             singleSelected?.type === 'generation'
-              ? (isSelectedTerminalGeneration ? '删除占位框' : '生成中的占位框暂不支持删除')
+              ? (isSelectedTerminalGeneration ? t('stage.toolbar.deletePlaceholder') : t('stage.toolbar.deletePlaceholderBlocked'))
               : selectedNodes.length > 1
-                ? (canDeleteSelection ? '删除所选节点' : selectionBlockedReason ?? '所选内容无法删除')
-                : '删除所选节点'
+                ? (canDeleteSelection ? t('stage.toolbar.deleteSelected') : selectionBlockedReason ?? t('selectionSummary.deleteBlocked'))
+                : t('stage.toolbar.deleteSelected')
           }
         >
-          <Button type="text" danger icon={<DeleteOutlined />} disabled={!deletableSelection} onClick={onDeleteSelection} aria-label="删除节点" />
+          <Button type="text" danger icon={<DeleteOutlined />} disabled={!deletableSelection} onClick={onDeleteSelection} aria-label={t('stage.toolbar.deleteNodes')} />
         </Tooltip>
       </div>
     </div>

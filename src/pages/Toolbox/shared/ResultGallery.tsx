@@ -1,4 +1,5 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Modal } from 'antd'
 import { CloseOutlined, DownloadOutlined, LeftOutlined, RetweetOutlined, RightOutlined } from '@ant-design/icons'
 import CompareViewer from '@/components/CompareViewer'
@@ -26,18 +27,22 @@ export default function ResultGallery({
   onClose,
   onChange,
   onDownload,
-  downloadLabel = '下载结果大图',
-  downloadTooltip = '下载抠图结果',
-  resultLabel = '抠图结果',
+  downloadLabel,
+  downloadTooltip,
+  resultLabel,
   checkerboard = false,
 }: Props) {
+  const { t } = useTranslation(['toolbox', 'common'])
   const [comparing, setComparing] = useState(false)
   const closeRef = useRef<HTMLButtonElement>(null)
   const item = items[current]
 
   if (!item) return null
 
-  const title = item.title ?? '图片'
+  const resolvedDownloadLabel = downloadLabel ?? t('bgRemove.downloadFull')
+  const resolvedDownloadTooltip = downloadTooltip ?? t('bgRemove.downloadTooltip')
+  const resolvedResultLabel = resultLabel ?? t('bgRemove.resultLabel')
+  const title = item.title ?? t('shared.defaultImageTitle')
   const canGoPrevious = current > 0
   const canGoNext = current < items.length - 1
 
@@ -66,7 +71,7 @@ export default function ResultGallery({
     <>
       <Modal
         open={open}
-        title={<span className="sr-only">{title} {resultLabel}预览</span>}
+        title={<span className="sr-only">{t('resultGallery.previewTitle', { title, resultLabel: resolvedResultLabel })}</span>}
         footer={null}
         closable={false}
         centered
@@ -87,25 +92,25 @@ export default function ResultGallery({
           <header className="result-gallery-head">
             <div>
               <strong>{title}</strong>
-              <span aria-live="polite">{current + 1} / {items.length} · {resultLabel}预览</span>
+              <span aria-live="polite">{t('resultGallery.counter', { current: current + 1, total: items.length, resultLabel: resolvedResultLabel })}</span>
             </div>
-            <Button ref={closeRef} type="text" icon={<CloseOutlined />} onClick={close}>关闭</Button>
+            <Button ref={closeRef} type="text" icon={<CloseOutlined />} onClick={close}>{t('common:actions.close')}</Button>
           </header>
           <div className={`result-gallery-stage${checkerboard ? ' is-transparent' : ''}`}>
-            <img src={item.fullSrc} alt={`${title} 的${resultLabel}`} />
+            <img src={item.fullSrc} alt={t('resultGallery.imageAlt', { title, resultLabel: resolvedResultLabel })} />
           </div>
           <footer className="result-gallery-actions">
             <div className="result-gallery-nav">
-              <Button icon={<LeftOutlined />} disabled={!canGoPrevious} onClick={() => change(current - 1)}>上一张</Button>
-              <Button icon={<RightOutlined />} disabled={!canGoNext} onClick={() => change(current + 1)}>下一张</Button>
+              <Button icon={<LeftOutlined />} disabled={!canGoPrevious} onClick={() => change(current - 1)}>{t('common:preview.prevImage')}</Button>
+              <Button icon={<RightOutlined />} disabled={!canGoNext} onClick={() => change(current + 1)}>{t('common:preview.nextImage')}</Button>
             </div>
             <div className="result-gallery-primary">
               {item.originalSrc && (
-                <Button icon={<RetweetOutlined />} onClick={() => setComparing(true)}>对比原图</Button>
+                <Button icon={<RetweetOutlined />} onClick={() => setComparing(true)}>{t('resultGallery.compareOriginal')}</Button>
               )}
               {onDownload && (
-                <Button type="primary" icon={<DownloadOutlined />} title={downloadTooltip} onClick={() => void onDownload(item)}>
-                  {downloadLabel}
+                <Button type="primary" icon={<DownloadOutlined />} title={resolvedDownloadTooltip} onClick={() => void onDownload(item)}>
+                  {resolvedDownloadLabel}
                 </Button>
               )}
             </div>

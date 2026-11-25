@@ -1,0 +1,323 @@
+{
+  "operations": {
+    "summarize": "总结",
+    "reply": "回复",
+    "polish": "润色",
+    "grammar": "检查语法"
+  },
+  "polishStyles": {
+    "clear": "提升表达清晰度",
+    "shorten": "缩短",
+    "lengthen": "增长",
+    "simplify": "简化"
+  },
+  "languages": {
+    "zh": "中文",
+    "en": "英语",
+    "en-US": "美式英语",
+    "en-GB": "英式英语",
+    "ja": "日语",
+    "fr": "法语",
+    "de": "德语",
+    "es": "西班牙语",
+    "pt": "葡萄牙语",
+    "it": "意大利语"
+  },
+  "modelHints": {
+    "zhBatch": "中文／批量推荐",
+    "langBatch": "该语种／批量推荐"
+  },
+  "pageTitle": "邮件助手",
+  "modes": {
+    "single": "单个",
+    "batch": "批量"
+  },
+  "errors": {
+    "loadTaskFailed": "邮件任务加载失败",
+    "modelSettingsLoadFailed": "模型设置加载失败，请重试",
+    "platformModelsUnavailable": "平台邮件模型暂不可用，请稍后重试"
+  },
+  "alerts": {
+    "batchUnresolved": "批量邮件等待确认原任务状态，确认后可继续单个生成",
+    "batchBusy": "批量邮件正在处理，暂停并等待当前邮件完成后可继续单个生成"
+  },
+  "validation": {
+    "sourceRequired": "请先粘贴需要处理的邮件内容"
+  },
+  "modelChoice": {
+    "ariaLabel": "本次使用的模型",
+    "placeholder": "选择平台模型",
+    "creditsLabel": "{{label}} · {{credits}} 积分",
+    "unavailable": "暂不可用"
+  },
+  "controller": {
+    "missingResultText": "任务已完成，但接口没有返回邮件文本",
+    "accountOrScopeChanged": "账号或环境已切换，已停止保存旧修改稿",
+    "saveEditFailed": "修改稿保存失败",
+    "saveEditFailedWithReason": "修改稿保存失败：{{reason}}",
+    "confirmPendingRequest": "请先确认原请求状态，避免重复生成",
+    "saveEditBeforeNewTask": "修改稿保存失败，请重试后新建任务",
+    "saveEditBeforeGenerate": "修改稿保存失败，请重试后生成",
+    "submitFailed": "邮件任务提交失败"
+  },
+  "single": {
+    "confirmLeaveUnsaved": "当前邮件内容尚未保存，离开后将清空草稿，是否继续？",
+    "confirmNewTask": "新建任务将清空当前邮件内容和生成结果，是否继续？",
+    "uncertainAlert": "原请求状态尚未确认，请查询后再生成",
+    "recoverSubmission": "查询或恢复原请求",
+    "sourceTitle": "原始邮件内容",
+    "sourcePlaceholder": "粘贴需要处理的邮件内容",
+    "instructionTitle": "编写指导",
+    "instructionPlaceholder": "输入回复重点，例如：委婉说明发货延迟并给出预计时间",
+    "settingsTitle": "生成设置",
+    "newTask": "新建任务",
+    "operationLabel": "操作类型",
+    "languageLabel": "语言",
+    "polishStylesLabel": "润色方式（可多选）",
+    "modelLabel": "本次使用的模型",
+    "balanceLoading": "读取中",
+    "billingSummary": "本次成功生成扣 {{credits}} 积分 · 当前余额 {{balance}}",
+    "rechargeCredits": "充值积分",
+    "billingHint": "仅成功生成扣费，失败自动退还；已根据所选模型调整最大字数。",
+    "generate": "生成",
+    "resultTitle": "生成结果",
+    "regenerate": "重新生成",
+    "resultGeneratingPlaceholder": "正在生成邮件内容…",
+    "resultPlaceholder": "生成结果将在这里显示",
+    "savingEdit": "正在保存修改稿…",
+    "legacyModel": "历史模型",
+    "billingRefundedSuffix": " · 已返还",
+    "billingReservedSuffix": " · 预扣 {{credits}}",
+    "taskCostSummary": "{{model}} · 实扣 {{credits}} 积分{{billingSuffix}}",
+    "tokenUsage": "本次使用 {{tokens}} tokens",
+    "recentTitle": "最近 7 天",
+    "historyPlaceholder": "选择历史任务",
+    "refreshHistory": "刷新",
+    "deleteConfirm": "删除这条邮件任务及其内容？",
+    "deleteTask": "删除当前任务",
+    "emptyHistory": "暂无邮件任务",
+    "status": {
+      "succeededReady": "邮件文本已生成，可继续编辑或复制",
+      "readingResult": "正在读取生成结果",
+      "failedFallback": "任务没有完成，请重试",
+      "processing": "AI 正在处理邮件内容"
+    },
+    "messages": {
+      "busyCannotSwitch": "当前邮件正在处理，请完成后再开始新的操作",
+      "cannotStartNew": "无法开始新的邮件操作",
+      "loadingModelSettings": "正在加载模型设置，请稍候",
+      "modelSettingsLoadFailed": "模型设置加载失败，请重试",
+      "gateBusy": "当前有邮件正在处理，请等待完成",
+      "generated": "邮件内容已生成",
+      "generateFailed": "邮件生成失败",
+      "submitFailed": "邮件任务提交失败",
+      "copied": "结果已复制",
+      "copyFailed": "复制失败，请手动选择文本复制",
+      "regenerated": "邮件内容已重新生成",
+      "retryFailed": "重试失败",
+      "taskRetryFailed": "任务重试失败",
+      "newTaskFailed": "新建任务失败",
+      "queryFailed": "查询失败",
+      "historyLoadFailed": "历史任务读取失败",
+      "historyLoadMoreFailed": "加载失败",
+      "deleteFailed": "删除失败"
+    },
+    "recovery": {
+      "blockedReason": "当前邮件正在处理或等待确认，请完成后再载入参数",
+      "incompleteParams": "原邮件参数不完整",
+      "invalidInstruction": "原邮件说明参数无效",
+      "confirmLoadParams": "载入原参数将覆盖当前邮件内容，建议先保存草稿，是否继续？",
+      "saveEditBeforeLoadFailed": "修改稿保存失败，请重试后再载入"
+    }
+  },
+  "csv": {
+    "listSeparator": "、",
+    "operationWithStyles": "{{operation}}：{{styles}}",
+    "headers": {
+      "source": "原始邮件内容",
+      "instruction": "编写指导",
+      "settings": "生成设置",
+      "language": "语言"
+    },
+    "exportHeaders": {
+      "result": "生成结果",
+      "status": "状态",
+      "error": "错误信息",
+      "model": "模型",
+      "credits": "实际扣减积分"
+    },
+    "errors": {
+      "sourceRequired": "原始邮件内容不能为空",
+      "sourceTooLong": "原始邮件内容最多 10,000 字符",
+      "instructionTooLong": "编写指导最多 1,000 字符",
+      "invalidOperation": "生成设置须为总结、回复、润色或检查语法",
+      "onlyPolishSupportsStyles": "只有润色支持指定润色方式",
+      "polishStyleFormat": "润色方式请填写为“润色：提升表达清晰度+缩短”",
+      "unsupportedPolishStyle": "润色方式支持提升表达清晰度、缩短、增长、简化，用 + 连接",
+      "invalidLanguage": "语言须为支持的语言名称或语言代码",
+      "malformedCsv": "CSV 格式错误，请检查引号、逗号和换行后重新上传",
+      "duplicateHeaders": "CSV 列名不能重复",
+      "missingColumns": "CSV 缺少列：{{columns}}",
+      "emptyRecords": "CSV 中没有邮件内容，请填写后重新上传",
+      "tooManyRows": "单批最多 {{max}} 条邮件，请拆分 CSV 后上传",
+      "columnCountMismatch": "本行列数与表头不一致，请检查逗号和引号",
+      "rowInvalidFallback": "本行填写错误",
+      "invalidFileType": "请上传 CSV 文件",
+      "fileTooLarge": "CSV 文件不能超过 {{limit}}",
+      "encodingUnsupported": "文件读取失败或编码不支持，请另存为 CSV UTF-8 后上传"
+    }
+  },
+  "runner": {
+    "errors": {
+      "requestFailed": "邮件任务请求失败，请稍后重试",
+      "mismatchedTask": "接口返回了不匹配的邮件任务",
+      "taskExpired": "原任务已删除或过期，请查看积分流水；重新生成会作为新任务扣费",
+      "pollFailed": "任务查询失败：{{reason}}",
+      "missingResultText": "任务已完成，但接口没有返回邮件文本",
+      "generateFailed": "邮件生成失败，请重试",
+      "findFailed": "原请求查询失败：{{reason}}",
+      "submitAndFindFailed": "{{submitReason}}；原请求查询失败：{{findReason}}",
+      "loadBlocked": "请先等待当前任务完成或重新查询，再替换 CSV"
+    },
+    "pauseMessages": {
+      "uncertain": "原任务状态尚未确认，请重新查询后继续，避免重复生成。",
+      "gateBusy": "当前有邮件正在处理，请完成后再开始批量生成。",
+      "paused": "已暂停，成功结果已保留，可继续待处理邮件。",
+      "pausing": "正在等待当前邮件完成，之后暂停后续提交…"
+    }
+  },
+  "batch": {
+    "locator": "第 {{sequence}} 条（CSV 第 {{csvLine}} 行）",
+    "errorWithLocator": "{{locator}}：{{message}}",
+    "status": {
+      "pending": "待处理",
+      "processing": "生成中",
+      "succeeded": "成功",
+      "failed": "失败",
+      "invalid": "填写错误",
+      "uncertain": "待确认"
+    },
+    "filters": {
+      "all": "全部",
+      "pending": "待处理",
+      "failed": "失败",
+      "succeeded": "已完成"
+    },
+    "columns": {
+      "index": "序号",
+      "status": "状态",
+      "result": "生成结果",
+      "actions": "操作"
+    },
+    "actions": {
+      "details": "详情",
+      "pause": "暂停",
+      "pausing": "正在暂停…",
+      "generate": "生成",
+      "resume": "继续生成",
+      "pendingCountSuffix": " {{count}} 条",
+      "retryFailed": "重试失败项",
+      "recover": "重新查询原任务",
+      "clearBatch": "清空批次",
+      "exportCsv": "导出 CSV",
+      "downloadTemplate": "下载模板",
+      "replaceFile": "替换文件",
+      "keepCurrentFile": "保留当前文件"
+    },
+    "files": {
+      "defaultPrefix": "批量邮件",
+      "exportName": "{{name}}-生成结果.csv",
+      "templateName": "邮件助手-批量模板.csv"
+    },
+    "summary": {
+      "defaultTitle": "当前批次",
+      "counts": "共 {{total}} 条 · 待处理 {{pending}} · 生成中 {{processing}} · 成功 {{succeeded}} · 失败 {{failed}} · 填写错误 {{invalid}} · 待确认 {{uncertain}}",
+      "eta": "按每小时 60 条估算，至少约 {{minutes}} 分钟"
+    },
+    "confirmRun": {
+      "retryTitle": "确认重试失败邮件",
+      "startTitle": "确认批量生成",
+      "eta": "按每小时 60 条估算，至少约 {{count}} 分钟。",
+      "balanceNote": "当前余额预计可完成 {{completable}} 条。",
+      "content": "{{model}}，每次成功 {{creditsPerRun}} 积分；本次 {{count}} 条，预计 {{estimatedCredits}} 积分。{{eta}}{{balanceNote}}失败返还，余额不足时暂停。",
+      "ok": "确认生成"
+    },
+    "replaceConfirm": {
+      "title": "替换当前批次？",
+      "content": "当前 {{count}} 条邮件将被替换，且无法恢复。"
+    },
+    "clearConfirm": {
+      "title": "清空当前批次？",
+      "succeededNote": "，其中 {{count}} 条已生成结果",
+      "content": "将移除 {{total}} 条邮件{{succeededNote}}，且无法恢复。",
+      "ok": "清空"
+    },
+    "messages": {
+      "imported": "已导入 {{total}} 条邮件，其中 {{valid}} 条可生成",
+      "importFailed": "CSV 导入失败",
+      "copied": "结果已复制",
+      "copyFailed": "复制失败，请打开详情手动选择文本复制",
+      "actionFailed": "批量操作失败",
+      "cleared": "已清空 {{count}} 条邮件",
+      "undoFailed": "撤销失败",
+      "clearFailed": "清空失败"
+    },
+    "importCard": {
+      "title": "导入邮件",
+      "hideGuide": "收起模板说明",
+      "showGuide": "查看模板说明",
+      "currentFile": "当前文件：{{name}}",
+      "rowCount": "共 {{count}} 条",
+      "readingCsv": "正在读取 CSV…",
+      "uploadText": "点击或拖入 CSV 文件",
+      "uploadHint": "CSV UTF-8 格式，最多 {{maxRows}} 条邮件，文件不超过 {{maxSize}}",
+      "retentionHint": "批次数据保留在当前页面，切换标签页不会丢失；刷新或离开页面将中断生成，请及时导出结果。",
+      "rateHint": "每次按顺序生成一封，每小时最多提交 60 条。已提交邮件在最近 7 天历史中可查询。",
+      "localModeHint": "本地模式不连接模型服务，批量生成不可用；仍可导入、预览和导出 CSV。",
+      "modelLockedHint": "本批次已固定使用所选模型，开始处理后不可更改。",
+      "mixedLanguageAlert": "包含多种语言，请手动指定统一模型，或拆分为单一语种批次",
+      "validSummary": "有效邮件 {{count}} 条{{costPart}}",
+      "validCostPart": " · 待处理预计 {{remaining}} 积分 · 已实扣 {{charged}} 积分",
+      "balanceLine": "当前余额 {{balance}}{{completablePart}}",
+      "completablePart": "，按此单价可完成 {{count}} 条"
+    },
+    "guide": {
+      "colHeader": "列名",
+      "rulesHeader": "填写规则",
+      "sourceRule": "必填，最多 10,000 字符，支持换行、逗号和引号。",
+      "instructionRule": "可空，最多 1,000 字符。",
+      "settingsRule": "总结、回复、检查语法、润色；润色可组合方式。",
+      "languageRule": "中文、英语、日语、法语、德语、西班牙语、葡萄牙语、意大利语。",
+      "settingsNotePrefix": "生成设置列填操作类型：总结、回复、检查语法、润色；例如“润色：提升表达清晰度+缩短”。可选方式还包括“增长”“简化”。设置或语言留空时使用导入时的",
+      "personalDefaults": "个人默认值",
+      "settingsNoteSuffix": "；仅填写“润色”时使用默认润色方式。",
+      "languageOptionItem": "{{label}}（{{code}}）",
+      "languageSeparator": "、",
+      "languageNote": "语言：{{options}}。"
+    },
+    "resultCard": {
+      "title": "批量结果"
+    },
+    "alerts": {
+      "singleBusy": "单个邮件正在处理，完成后可开始批量生成",
+      "invalidRows": "{{locators}}填写错误，只生成有效行；请修正 CSV 后重新上传。"
+    },
+    "filterCount": "显示 {{shown}} / {{total}} 条",
+    "emptyAll": "导入 CSV 后，可在这里预览邮件并生成",
+    "emptyFiltered": "没有符合条件的邮件",
+    "detail": {
+      "prev": "上一条",
+      "next": "下一条",
+      "copyResult": "复制生成结果",
+      "effectiveSettings": "生效设置",
+      "effectiveLanguage": "生效语言",
+      "creditsCost": "实际扣减积分",
+      "model": "使用模型",
+      "status": "状态",
+      "readonly": "只读",
+      "sourceReadonlyAria": "原始邮件内容（只读）",
+      "instructionReadonlyAria": "编写指导（只读）",
+      "resultReadonlyAria": "生成结果（只读）"
+    }
+  }
+}

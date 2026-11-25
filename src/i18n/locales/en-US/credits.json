@@ -1,0 +1,228 @@
+{
+  "drawer": {
+    "title": "Buy Credits · Balance {{balance}}",
+    "availableBalance": "Available Credits",
+    "unit": "credits",
+    "viewLedger": "View history",
+    "rechargeNow": "Top up",
+    "tabs": {
+      "ledger": "Credit History",
+      "recharge": "Top Up & Packs"
+    },
+    "filters": {
+      "all": "All",
+      "expense": "Spent",
+      "income": "Added",
+      "refund": "Refunds"
+    },
+    "loading": "Loading credit history...",
+    "loadFailed": "Failed to load credit history",
+    "emptyAll": "No credit transactions yet",
+    "emptyFiltered": "No matching transactions",
+    "endOfList": "No more records",
+    "balanceAfter": "Balance {{balance}}",
+    "queryResult": "Check result",
+    "queryPending": "Still processing; please check again shortly",
+    "queryRefunded": "Failed or timed out; credits refunded",
+    "queryRecovered": "Result recovered (kept temporarily for 7 days)",
+    "queryFailed": "Failed to query result",
+    "recoveredTitle": "Result recovered",
+    "recoveredTip": "Temporarily kept for 7 days",
+    "resultPreviewAlt": "Result preview",
+    "openResultImage": "Open result image ↗"
+  },
+  "ledger": {
+    "kinds": {
+      "grant": "Top Up / Bonus",
+      "reserve": "Reserved",
+      "settleRefund": "Settled & Refunded",
+      "settle": "Settled",
+      "refund": "Failed / Timeout Refund",
+      "adjust": "Admin Adjustment"
+    },
+    "freeBgRemove": {
+      "label": "Free Cutout",
+      "refundedSummary": "Free quota restored",
+      "usedSummary": "Monthly free quota",
+      "deltaText": "Free"
+    },
+    "status": {
+      "reserved": "Processing (reserved)",
+      "refunded": "Failed/timed out, refunded",
+      "settledWithRefund": "Charged {{charged}}, refunded {{refunded}}",
+      "settled": "Charged {{charged}}"
+    },
+    "email": {
+      "title": "Email {{operation}} · {{model}}",
+      "ops": {
+        "reply": "Reply",
+        "summarize": "Summarize",
+        "polish": "Polish",
+        "grammar": "Grammar Check",
+        "default": "Assist"
+      },
+      "legacyModel": "Legacy model"
+    },
+    "jobTitleWithSpec": "{{tool}} {{spec}}",
+    "videoTitle": "{{tool}}{{resolution}}{{duration}}",
+    "durationSeconds": "{{seconds}}s",
+    "tools": {
+      "image-to-video": "Image to Video",
+      "video-replication": "Video Replication",
+      "text-to-video": "Text to Video",
+      "retouch": "Retouch",
+      "relight": "Relight",
+      "fusion": "Fusion",
+      "variation": "Variations",
+      "smart-edit": "Smart Edit"
+    }
+  },
+  "packs": {
+    "starter": "Starter Pack",
+    "standard": "Standard Pack",
+    "studio": "Studio Pack"
+  },
+  "syncTools": {
+    "erase": "Erase",
+    "repaint": "Inpaint",
+    "outpaint": "Outpaint",
+    "bg-remove": "Product Cutout"
+  },
+  "recharge": {
+    "signInFirst": "Please sign in to buy credits",
+    "intro": "Pay as you go; credits never expire. New accounts receive 30 free credits.",
+    "loadingPacks": "Loading credit packs...",
+    "loadFailed": "Failed to load billing catalog",
+    "orderCheckFailed": "Failed to check order status",
+    "checkoutPending": "Checkout URL is not ready yet. Check order status shortly.",
+    "orderCreateFailed": "Failed to create top-up order",
+    "currencyLabel": "Currency: {{currency}}",
+    "currencies": {
+      "USD": "US Dollar (USD)",
+      "CNY": "Chinese Yuan (CNY)"
+    },
+    "paymentMethodAria": "Payment method",
+    "paymentMethodLabel": "Payment method: {{provider}}",
+    "paymentsClosed": "Top-ups are not open yet; you can continue using existing credits",
+    "paymentBlocked": "There is a payment record under review on your account. Please contact support.",
+    "refundPolicy": "Cash refunds apply only to unused purchased credits and return to the original payment method upon review. Bonus credits are non-refundable. Failed generations refund credits automatically.",
+    "ordersTitle": "Top-up Orders",
+    "estimatedPrefix": "Est. ",
+    "orderLine": "{{prefix}}{{price}} · {{credits}} credits · {{status}}",
+    "orderExpiredTag": "Expired",
+    "orderDiscountMeta": "Original {{originalPrice}} · Promo {{code}}",
+    "checkOrder": "Check status",
+    "continuePay": "Continue payment",
+    "dismissOrder": "Dismiss",
+    "refundSubmitted": "Refund requested",
+    "requestRefund": "Request refund",
+    "hideDismissed": "Hide dismissed orders ▴",
+    "showDismissed": "{{count}} dismissed unfinished order(s) ▾",
+    "restoreOrder": "Restore",
+    "refundModalTitle": "Request Cash Refund",
+    "refundModalOk": "Submit for review",
+    "refundModalNote": "Our team will review unused credits and eligible refund amount before processing to your original payment method.",
+    "refundModalFailed": "Refund request failed",
+    "refundReasonAria": "Refund reason",
+    "refundReasonPlaceholder": "Enter reason for refund",
+    "orderStatus": {
+      "pending": "Awaiting payment",
+      "paid": "Paid",
+      "failed": "Failed",
+      "refunded": "Refunded",
+      "review": "Under review"
+    }
+  },
+  "discount": {
+    "formatError": "Promo code must be 1–14 letters or digits",
+    "formatInvalid": "Invalid promo code: use 1–14 uppercase letters or digits.",
+    "channelChanged": "Payment method changed. Please verify again.",
+    "savings": "{{percent}}% discount applied. Final payable amount is confirmed at checkout.",
+    "enterCode": "Please enter a promo code.",
+    "catalogUpdated": "Catalog updated. Please verify the promo code again.",
+    "notApplicable": "This promo code does not apply to the selected pack",
+    "verifyUnavailable": "Unable to verify this promo code right now. Please try again later.",
+    "verifyFirst": "Please click Verify first.",
+    "purchaseFailed": "Checkout failed. Please verify the promo code again.",
+    "hasPromoPrompt": "Have a promo code?",
+    "usePromo": "Apply promo code",
+    "promoAria": "Promo code",
+    "promoPlaceholder": "Promo code",
+    "verifyButton": "Verify",
+    "packTitle": "{{name}} · {{credits}} credits",
+    "estimatedPrice": "Est. {{price}}",
+    "discountPercent": "{{percent}}% off",
+    "providerUnsupported": "Not supported by {{provider}}",
+    "providerSwitchHint": "; switch payment method",
+    "buyOriginal": "Buy at regular price",
+    "buy": "Buy"
+  },
+  "quotes": {
+    "loading": "Loading quote",
+    "unavailable": "Quote unavailable",
+    "mock": "Preview mode (0 credits)",
+    "estimatedFree": "Est. free",
+    "free": "Free",
+    "credits": "{{credits}} credits",
+    "maxCredits": "Up to {{credits}} credits",
+    "unavailableNotice": "Quote unavailable. Please reload.",
+    "reloadQuote": "Reload quote",
+    "settlementHint": "Charged only for successful outputs; failures refund automatically.",
+    "reconfirmHint": "Cost will be reconfirmed on submit.",
+    "insufficientBalance": "Insufficient credits ({{maxWord}}{{required}} required, {{balance}} available).",
+    "insufficientShort": "Insufficient credits",
+    "maxWord": "up to ",
+    "goRecharge": "Top up"
+  },
+  "spendGate": {
+    "title": "Confirm {{tool}} Cost",
+    "ok": "Confirm & Run",
+    "outpaintRange": "Outpaint charges 5 or 10 credits based on expansion passes (up to 10 credits reserved).",
+    "fixedAmount": "This action will reserve {{required}} credits.",
+    "balanceNote": "Current balance: {{balance}} credits. Settled on success; refunded automatically on failure or timeout."
+  },
+  "rulesNotice": {
+    "gift": "{{credits}} welcome credits have been added to your account; ",
+    "body": "{{gift}}credits are reserved on submit, settled only for successful outputs, and refunded automatically on failure or timeout."
+  },
+  "explanation": {
+    "summary": "Pay per use · {{remaining}} free {{tool}} left this month",
+    "expand": "Pricing details",
+    "collapse": "Hide details",
+    "monthYear": "{{year}}-{{month}}",
+    "slash": " / ",
+    "comma": ", ",
+    "sentenceComma": ", ",
+    "semicolon": "; ",
+    "period": ". ",
+    "colon": ": ",
+    "groups": {
+      "generation": "Generation",
+      "edit": "Editing",
+      "toolbox": "Cutout & Tools",
+      "refund": "Reserve & Refunds"
+    },
+    "resolutionCredits": "{{resolutions}} cost {{credits}} credits",
+    "modelResolutionGroup": "{{labels}}: {{phrase}}",
+    "downgrade4k": "Ratios unsupported in 4K fall back to 2K and charge {{credits}} credits.",
+    "unitPerImage": "per image",
+    "unitPerRequest": "per run",
+    "generationLead": "{{names}} are billed {{unit}} by resolution ({{priceText}}). Credits are reserved by requested count and settled only for successful outputs; failed slots are refunded. {{downgrades}}",
+    "videoDurationPart": "{{duration}}s: {{credits}} credits",
+    "videoResolutionParts": "{{resolution}} ({{parts}})",
+    "videoItem": "{{modes}} ({{model}}) billed per video: {{prices}}.",
+    "videoAudioNote": "Audio toggle does not change price. Availability depends on active models.",
+    "editSamePrice": "{{erase}} and {{repaint}} cost {{credits}} credits each.",
+    "editDiffPrice": "{{erase}} costs {{eraseCredits}} credits; {{repaint}} costs {{repaintCredits}} credits.",
+    "outpaintItem": "{{outpaint}} is billed by expansion passes: {{onePass}} credits for 1 pass, {{maxCredits}} credits for {{maxPasses}} passes (up to {{maxScale}}× per side per pass). Reserves up to {{maxCredits}} credits and refunds any unused pass.",
+    "mattingCombinedName": "{{billed}} ({{toolbox}} in Toolbox)",
+    "mattingWhenMonth": "{{remaining}} free remaining in {{month}}",
+    "mattingWhenCurrent": "{{remaining}} free remaining this month",
+    "mattingItem": "{{name}} includes {{monthlyFree}} free images/month (resets on the 1st). {{when}}. In-flight free requests hold quota and release it on failure/timeout. Beyond free quota: {{price}} credits/image.",
+    "emailModelCredit": "{{model}}: {{credits}} credit(s) per success",
+    "freeToolsItem": "{{subject}} and {{smartSelect}} have no separate credit charge. {{letterbox}}, {{watermark}}, and {{localTemplate}} run locally for free. {{crop}} (including {{pipeline}} crop) renders locally for free, though subject detection may upload thumbnails. {{outpaintStrategy}} in Aspect Ratio uploads images and bills as {{outpaint}}. {{email}} uses platform models ({{emailModels}}) and refunds on failure.",
+    "refundImage": "Image tasks refund reserved credits on failure or timeout and settle only successful outputs. Timed-out tasks are never charged.",
+    "refundVideo": "Video tasks refund reserved credits on failure or timeout. Timed-out tasks are never charged.",
+    "refundSync": "{{tools}} refund credits on failure or timeout (resubmit required). Free {{bgRemove}} restores monthly free quota on failure or timeout."
+  }
+}

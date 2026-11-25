@@ -153,7 +153,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (path.join('/') === 'internal/video-jobs-callback' && method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
-      if (Buffer.byteLength(JSON.stringify(body ?? null)) > 64 * 1024) throw new HttpError(413, '回调内容过大')
+      if (Buffer.byteLength(JSON.stringify(body ?? null)) > 64 * 1024) throw new HttpError(413, '回调内容过大', 'CALLBACK_TOO_LARGE')
       const jobId = await recordVideoCallback(query, body)
       res.status(202).json({ received: true })
       if (jobId) waitUntil(maintainVideoJobs(jobId).catch(() => console.error(JSON.stringify({ evt: 'video-maintenance', code: 'CALLBACK_ADVANCE_FAILED' }))))
@@ -255,7 +255,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const user = await authenticate(req.headers.authorization)
     userId = user.id
     const body: unknown = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
-    if (Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? null)) > maxBytes) throw new HttpError(413, '请求内容过大')
+    if (Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? null)) > maxBytes) throw new HttpError(413, '请求内容过大', 'REQUEST_TOO_LARGE')
     if (path[0]==='task-center') { res.status(200).json(await handleTaskCenterRoute(user,method,path,body,query)); return }
     if (path.join('/') === 'credits/catalog' && method === 'GET') { res.status(200).json(await billingCatalog(user)); return }
     if (path.join('/') === 'credits/discount-preview' && method === 'POST') { res.status(200).json(await previewCreditDiscount(user,body)); return }
@@ -331,7 +331,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const log = detectionObserver(metrics, user.id)
       const image = measureDetectionSync(log, 'inputParse', () => Buffer.from(input.dataBase64, 'base64'))
       metrics.inputBytes = image.length
-      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+      if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB', 'IMAGE_TOO_LARGE')
       log({ requestBytes: Buffer.byteLength(JSON.stringify(body)) })
       const result = await withSyncLimit(user, 'detection', () => detectionResponse(metrics, async () => ({ box: await detectGoodsSubject(image, input.width, input.height, undefined, undefined, log), requestId })), metrics)
       res.status(200).json(result)
@@ -385,7 +385,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           image = Buffer.from(input.dataBase64, 'base64')
         }
         metrics.inputBytes = image.length
-        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
+        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB', 'IMAGE_TOO_LARGE')
         const processStarted = Date.now()
         if (!objectTransport) {
           const validateStarted = Date.now()
@@ -474,8 +474,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         metrics.inputBytes = image.length
         metrics.maskBytes = mask.length
-        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-        if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
+        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB', 'IMAGE_TOO_LARGE')
+        if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB', 'MASK_TOO_LARGE')
         const processStarted = Date.now()
         const jpeg = await eraseWithBailian(image, mask, input.prompt ?? '', {
           requestId,
@@ -556,8 +556,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         metrics.inputBytes = image.length
         metrics.maskBytes = mask.length
-        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB')
-        if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB')
+        if (!image.length || image.length > 20 * 1024 * 1024) throw new HttpError(413, '单张图片不能超过 20 MB', 'IMAGE_TOO_LARGE')
+        if (!mask.length || mask.length > 20 * 1024 * 1024) throw new HttpError(413, '蒙版不能超过 20 MB', 'MASK_TOO_LARGE')
         const processStarted = Date.now()
         const jpeg = await repaintWithBailian(image, mask, input.prompt, {
           requestId, deadlineAt: start + SYNC_PROVIDER_DEADLINE_MS,
@@ -732,13 +732,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const input = { ...parsed, drafts: canonicalizeDraftModelIds(parsed.drafts) }
           // 创建接口只接收空素材文档；随后上传素材，再进行版本化保存。
           if (input.document.scenes.some(s => s.nodes.some(n => ['image','video','generation'].includes(n.type))) || input.drafts.derived)
-            throw new HttpError(400, '请先创建项目，再上传关联素材')
+            throw new HttpError(400, '请先创建项目，再上传关联素材', 'PROJECT_NOT_CREATED')
           const [space] = await sql`select id from aigc.workspaces where owner_id=${user.id}`
           if (!space) throw new HttpError(403, '个人工作空间不可用', 'WORKSPACE_UNAVAILABLE')
           const rows = await sql`insert into aigc.projects(id,user_id,workspace_id,name,document,drafts) values(${id},${user.id},${space.id},${input.name},${sql.json(input.document)},${sql.json(input.drafts)}) on conflict(id) do nothing returning id`
           if (!rows.length) {
             const existing = await requireProject(sql, id)
-            if (existing.revision !== 1) throw new HttpError(409, '项目已存在，请从云端打开或另存为新项目')
+            if (existing.revision !== 1) throw new HttpError(409, '项目已存在，请从云端打开或另存为新项目', 'PROJECT_EXISTS')
           }
           return readProject(sql, id)
         }
@@ -749,7 +749,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const { baseRevision, ...parsed } = projectWriteSchema.extend({ baseRevision: z.number().int().positive() }).parse(body)
             const input = { ...parsed, drafts: canonicalizeDraftModelIds(parsed.drafts) }
             const current = await requireProject(sql, id, true)
-            if (current.revision !== baseRevision) throw new HttpError(409, '云端项目已更新，请处理版本冲突')
+            if (current.revision !== baseRevision) throw new HttpError(409, '云端项目已更新，请处理版本冲突', 'PROJECT_CONFLICT')
             await validateReferences(sql, id, input)
             const [row] = await sql`update aigc.projects set name=${input.name},document=${sql.json(input.document)},drafts=${sql.json(input.drafts)},revision=revision+1,updated_at=now() where id=${id} returning revision`
             return { revision: row.revision }
@@ -768,7 +768,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const key = `media/${user.id}/${token}`
         await sql`insert into aigc.assets(id,project_id,user_id,name,mime_type,size,object_key,temp_key) values(${input.assetId},${input.projectId},${user.id},${input.name},${input.mimeType},${input.size},${key},${'temporary/' + token}) on conflict(project_id,id) do nothing`
         const [row] = await sql`select * from aigc.assets where project_id=${input.projectId} and id=${input.assetId}`
-        if (!row || row.size !== input.size || row.mime_type !== input.mimeType) throw new HttpError(409, '素材标识已用于其他文件')
+        if (!row || row.size !== input.size || row.mime_type !== input.mimeType) throw new HttpError(409, '素材标识已用于其他文件', 'ASSET_CONFLICT')
         if (row.status === 'ready') return { asset: toAsset(row) }
         return { uploadUrl: await signUpload(row.temp_key, row.mime_type, row.size), assetId: row.id }
       }
@@ -776,7 +776,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { projectId } = z.object({ projectId: identifier }).parse(body)
         await requireProject(sql, projectId)
         const [row] = await sql`select * from aigc.assets where project_id=${projectId} and id=${path[1]} for update`
-        if (!row) throw new HttpError(404, '素材不存在')
+        if (!row) throw new HttpError(404, '素材不存在', 'ASSET_NOT_FOUND')
         if (row.status !== 'ready') {
           const size = await verifyAndPromote(row.temp_key, row.object_key, row.size, row.mime_type)
           const [updated] = await sql`update aigc.assets set status='ready',width=${size.width},height=${size.height} where project_id=${projectId} and id=${row.id} returning *`
@@ -788,10 +788,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { projectId, assetIds } = z.object({ projectId: identifier, assetIds: z.array(identifier).min(1).max(100) }).parse(body)
         await requireProject(sql, projectId)
         const rows = await sql`select id,object_key from aigc.assets where project_id=${projectId} and status='ready' and id in ${sql([...new Set(assetIds)])}`
-        if (rows.length !== new Set(assetIds).size) throw new HttpError(404, '素材不存在或无权访问')
+        if (rows.length !== new Set(assetIds).size) throw new HttpError(404, '素材不存在或无权访问', 'ASSET_NOT_FOUND')
         return { items: await Promise.all(rows.map(async row => ({ id: row.id, ...await signRead(row.object_key) }))) }
       }
-      throw new HttpError(404, '接口不存在')
+      throw new HttpError(404, '接口不存在', 'NOT_FOUND')
     })
     res.status(200).json(result)
   } catch (error) {

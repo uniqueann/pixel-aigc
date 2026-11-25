@@ -1,4 +1,7 @@
 import { normalizeRetouchDirections } from '@shared/retouch'
+import { i18n } from '@/i18n'
+import zhCommon from '@/i18n/locales/zh-CN/common.json'
+import zhWorkstation from '@/i18n/locales/zh-CN/workstation.json'
 import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
 import type { InteractionMode, WorkstationToolDefinition } from '../types'
@@ -10,10 +13,34 @@ import { buildRelightRequest } from './requestBuilders/relight'
 import { buildRetouchRequest } from './requestBuilders/retouch'
 import { buildVariationRequest } from './requestBuilders/variation'
 
-export const COMING_SOON_LABEL = '即将上线'
-export const COMING_SOON_SUBMIT_MESSAGE = '该功能即将上线，敬请期待'
+export const COMING_SOON_LABEL = zhCommon.status.comingSoon
+export const COMING_SOON_SUBMIT_MESSAGE = zhWorkstation.toolsMeta.comingSoonSubmit
 /** 融合缺图时的唯一原因；页脚已按槽位给出下一步时不再重复展示。 */
-export const FUSION_INPUTS_REQUIRED_REASON = '请先上传商品图和场景图'
+export const FUSION_INPUTS_REQUIRED_REASON = zhWorkstation.errors.fusionInputsRequired
+
+export function comingSoonSubmitMessage() {
+  return i18n.t('workstation:toolsMeta.comingSoonSubmit')
+}
+
+export function fusionInputsRequiredReason() {
+  return i18n.t('workstation:errors.fusionInputsRequired')
+}
+
+const WORKSTATION_TOOL_KEYS = {
+  'smart-edit': 'workstation:tools.smart-edit',
+  relight: 'workstation:tools.relight',
+  remove: 'workstation:tools.remove',
+  repaint: 'workstation:tools.repaint',
+  variation: 'workstation:tools.variation',
+  fusion: 'workstation:tools.fusion',
+  outpaint: 'workstation:tools.outpaint',
+  retouch: 'workstation:tools.retouch',
+} as const
+
+export function workstationToolLabel(slug: string) {
+  const key = WORKSTATION_TOOL_KEYS[slug as keyof typeof WORKSTATION_TOOL_KEYS]
+  return key ? i18n.t(key) : i18n.t('nav:routes.imageWorkstation')
+}
 
 /** 扩图、消除和重绘走独立接口，不依赖 /tasks。其余工具是否可提交只看 liveCapabilityReady。 */
 export function isWorkstationToolReady(
@@ -35,67 +62,67 @@ export const WORKSTATION_TOOLS: WorkstationToolDefinition[] = [
   {
     slug: 'smart-edit',
     capability: Capability.ImageEdit,
-    label: '智能编辑',
+    label: zhWorkstation.tools['smart-edit'],
     interactionMode: 'params-only',
     validate: (context) => context.prompt?.trim()
       ? { valid: true }
-      : { valid: false, message: '请先填写编辑要求' },
+      : { valid: false, message: i18n.t('workstation:validation.smartEditPromptRequired') },
     buildRequest: buildImageEditRequest,
   },
   {
     slug: 'relight',
     capability: Capability.Relight,
-    label: '重新打光',
+    label: zhWorkstation.tools.relight,
     interactionMode: 'params-only',
     buildRequest: buildRelightRequest,
   },
   {
     slug: 'remove',
     capability: Capability.Inpaint,
-    label: '消除',
+    label: zhWorkstation.tools.remove,
     interactionMode: 'mask-paint',
     buildRequest: (ctx) => buildInpaintRequest(ctx, 'remove'),
   },
   {
     slug: 'repaint',
     capability: Capability.Inpaint,
-    label: '重绘',
+    label: zhWorkstation.tools.repaint,
     interactionMode: 'mask-paint',
-    validate: (ctx) => ctx.prompt?.trim() ? { valid: true } : { valid: false, message: '请先填写重绘描述' },
+    validate: (ctx) => ctx.prompt?.trim() ? { valid: true } : { valid: false, message: i18n.t('errors:client.repaintEmptyPrompt') },
     buildRequest: (ctx) => buildInpaintRequest(ctx, 'repaint'),
   },
   {
     slug: 'variation',
     capability: Capability.Variation,
-    label: '裂变',
+    label: zhWorkstation.tools.variation,
     interactionMode: 'params-only',
     buildRequest: buildVariationRequest,
   },
   {
     slug: 'fusion',
     capability: Capability.Fusion,
-    label: '融合',
+    label: zhWorkstation.tools.fusion,
     interactionMode: 'multi-source',
     validate: (context) => context.sourceAsset.url && context.referenceAsset?.url
       ? { valid: true }
-      : { valid: false, message: FUSION_INPUTS_REQUIRED_REASON },
+      : { valid: false, message: fusionInputsRequiredReason() },
     buildRequest: buildFusionRequest,
   },
   {
     slug: 'outpaint',
     capability: Capability.Outpaint,
-    label: '扩图',
+    label: zhWorkstation.tools.outpaint,
     interactionMode: 'drag-resize',
     buildRequest: buildOutpaintRequest,
   },
   {
     slug: 'retouch',
     capability: Capability.Retouch,
-    label: '精修',
+    label: zhWorkstation.tools.retouch,
     interactionMode: 'params-only',
     validate: (context) => normalizeRetouchDirections(context.retouchDirections).length
       ? { valid: true }
-      : { valid: false, message: '请先选择精修方向' },
+      : { valid: false, message: i18n.t('workstation:validation.retouchDirectionsRequired') },
     buildRequest: buildRetouchRequest,
   },
 ]

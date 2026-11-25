@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+import zhEmail from '@/i18n/locales/zh-CN/email.json'
 import type { EmailAssistTaskParams } from '@/types'
 import type { EMAIL_BATCH_HEADERS } from '../options'
 
@@ -30,7 +32,22 @@ export interface EmailBatchState {
   recovering: boolean
 }
 
+export function emailBatchStatusLabel(status: EmailBatchStatus): string {
+  switch (status) {
+    case 'pending': return i18n.t('email:batch.status.pending')
+    case 'processing': return i18n.t('email:batch.status.processing')
+    case 'succeeded': return i18n.t('email:batch.status.succeeded')
+    case 'failed': return i18n.t('email:batch.status.failed')
+    case 'invalid': return i18n.t('email:batch.status.invalid')
+    case 'uncertain': return i18n.t('email:batch.status.uncertain')
+  }
+}
+
 export const EMAIL_BATCH_STATUS_LABELS: Record<EmailBatchStatus, string> = {
-  pending: '待处理', processing: '生成中', succeeded: '成功',
-  failed: '失败', invalid: '填写错误', uncertain: '待确认',
+  pending: zhEmail.batch.status.pending,
+  processing: zhEmail.batch.status.processing,
+  succeeded: zhEmail.batch.status.succeeded,
+  failed: zhEmail.batch.status.failed,
+  invalid: zhEmail.batch.status.invalid,
+  uncertain: zhEmail.batch.status.uncertain,
 }

@@ -1,33 +1,43 @@
-// Supabase Auth 的英文错误不直接展示给用户；按错误码映射成中文，未知错误保留原始信息到控制台。
-const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  invalid_credentials: '邮箱或密码不正确，请检查后重试，或使用“忘记密码”。',
-  email_not_confirmed: '邮箱尚未验证，请查收验证邮件，或重新发送验证邮件。',
-  email_exists: '该邮箱已注册，请直接登录或找回密码。',
-  user_already_exists: '该邮箱已注册，请直接登录或找回密码。',
-  weak_password: '密码强度不足，请使用 8–128 位字符。',
-  same_password: '新密码不能与当前密码相同。',
-  otp_expired: '验证链接已过期，请重新申请。',
-  email_address_invalid: '邮箱地址无效，请检查后重试。',
-  email_address_not_authorized: '该邮箱地址不在允许注册的范围内。',
-  signup_disabled: '当前暂未开放注册，请联系管理员。',
-  email_provider_disabled: '邮箱登录暂未开放，请使用 Google 登录。',
-  provider_disabled: '该登录方式暂未开放，请使用其他方式登录。',
-  over_email_send_rate_limit: '发送过于频繁，请稍后再试。',
-  over_request_rate_limit: '操作过于频繁，请稍后再试。',
-  request_timeout: '请求超时，请检查网络后重试。',
-  session_expired: '登录状态已失效，请重新登录。',
-  session_not_found: '登录状态已失效，请重新登录。',
-  refresh_token_not_found: '登录状态已失效，请重新登录。',
-  user_banned: '当前账号已被停用，请联系管理员。',
-  user_not_found: '账号不存在，请检查邮箱或先注册。',
-  validation_failed: '提交的信息格式不正确，请检查后重试。',
-  captcha_failed: '人机验证失败，请重试。',
-  unexpected_failure: '服务暂时不可用，请稍后重试。',
-  bad_code_verifier: '登录链接无效，请重新申请。',
-  flow_state_not_found: '登录链接无效或已过期，请重新申请。',
-  flow_state_expired: '登录链接已过期，请重新申请。',
-  bad_oauth_state: '登录请求已失效，请重新发起登录。',
-  bad_oauth_callback: '登录回调无效，请重新发起登录。',
+import { i18n } from '@/i18n'
+
+const AUTH_ERROR_CODES = new Set([
+  'invalid_credentials',
+  'email_not_confirmed',
+  'email_exists',
+  'user_already_exists',
+  'weak_password',
+  'same_password',
+  'otp_expired',
+  'email_address_invalid',
+  'email_address_not_authorized',
+  'signup_disabled',
+  'email_provider_disabled',
+  'provider_disabled',
+  'over_email_send_rate_limit',
+  'over_request_rate_limit',
+  'request_timeout',
+  'session_expired',
+  'session_not_found',
+  'refresh_token_not_found',
+  'user_banned',
+  'user_not_found',
+  'validation_failed',
+  'captcha_failed',
+  'unexpected_failure',
+  'bad_code_verifier',
+  'flow_state_not_found',
+  'flow_state_expired',
+  'bad_oauth_state',
+  'bad_oauth_callback',
+  'recovery_session_expired',
+  'invalid_auth_link',
+])
+
+export class LocalAuthError extends Error {
+  constructor(public code: string, message: string) {
+    super(message)
+    this.name = 'LocalAuthError'
+  }
 }
 
 export type AuthField = 'email' | 'password' | 'confirm'
@@ -70,8 +80,6 @@ const MESSAGE_FIELD_PATTERNS: Array<[string, AuthField | AuthField[]]> = [
   ['for security purposes, you can only request this after', 'email'],
 ]
 
-const hasChinese = (value: string) => /[一-鿿]/.test(value)
-
 function errorCode(error: unknown): string {
   return typeof error === 'object' && error !== null && 'code' in error
     ? String((error as { code?: unknown }).code ?? '')
@@ -86,17 +94,21 @@ function toFields(value: AuthField | AuthField[]): AuthField[] {
   return Array.isArray(value) ? value : [value]
 }
 
+function translateAuthCode(code: string): string | undefined {
+  return AUTH_ERROR_CODES.has(code) ? i18n.t(`auth:errors.${code}` as never) : undefined
+}
+
 export function authErrorMessage(error: unknown, fallback: string): string {
   const code = errorCode(error)
   const message = errorMessage(error)
 
-  if (code && AUTH_ERROR_MESSAGES[code]) return AUTH_ERROR_MESSAGES[code]
-  // 本项目自己抛出的中文校验信息优先保留，例如密码长度与恢复会话失效。
-  if (hasChinese(message)) return message
+  const mapped = code ? translateAuthCode(code) : undefined
+  if (mapped) return mapped
+  if (error instanceof LocalAuthError) return translateAuthCode(error.code) ?? error.message
   const lower = message.toLowerCase()
   const matched = MESSAGE_PATTERNS.find(([pattern]) => lower.includes(pattern))
-  if (matched) return AUTH_ERROR_MESSAGES[matched[1]]
-  if (message) console.error('[auth] 未映射的错误：', error)
+  if (matched) return translateAuthCode(matched[1]) ?? fallback
+  if (message) console.error('[auth] Unmapped error:', error)
   return fallback
 }
 

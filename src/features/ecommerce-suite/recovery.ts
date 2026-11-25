@@ -1,4 +1,5 @@
 import { CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import type { SuiteActor, SuiteBatch, SuiteQuote } from '@shared/ecommerce-suite'
 import type { SuiteClient } from './api'
 import { clearPendingSuite, readPendingSuite, savePendingSuite } from './backup'
@@ -20,7 +21,7 @@ async function submit(client: SuiteClient, actor: SuiteActor, projectId: string,
   const pending = await readPendingSuite(actor, projectId)
   if (pending) {
     const original = await client.findBatch(projectId, pending.requestId)
-    if (!original) throw new Error('已有待确认的原请求，请先查询原批次，不要重新生成')
+    if (!original) throw new Error(i18n.t('ecommerce:submit.errors.pendingExists'))
     await clearPendingSuite(actor, projectId)
     return original
   }
@@ -38,7 +39,7 @@ async function submit(client: SuiteClient, actor: SuiteActor, projectId: string,
       throw error
     }
     const original = await client.findBatch(projectId, requestId)
-    if (!original) throw new Error('提交结果待确认，原请求已保存在本机。请查询原批次，不要重新生成', { cause: error })
+    if (!original) throw new Error(i18n.t('ecommerce:submit.errors.pendingConfirm'), { cause: error })
     await clearPendingSuite(actor, projectId)
     return original
   }

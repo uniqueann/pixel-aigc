@@ -3,30 +3,31 @@ import { assetPlaceholder } from '@/cloud/assets'
 import { deserializeCommand, type SerializedEditorCommand } from '@/editor/commands'
 import { MAX_PERSISTED_HISTORY } from '@/editor/store/historySlice'
 import type { Asset, EditorNode, PixelProject } from '@/editor/types'
+import { i18n } from '@/i18n'
 import { Capability } from '@/types'
 import { defaultDrafts, type ProjectHistory, type ProjectSnapshot } from './types'
 
 const MEDIA_PREFIX = '/__aigc_media__/'
 
 function object(value: unknown): asserts value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('项目字段必须是对象')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(i18n.t('canvas:snapshot.errors.expectedObject'))
 }
 function string(value: unknown): asserts value is string {
-  if (typeof value !== 'string' || !value.trim()) throw new Error('项目缺少必要的文本字段')
+  if (typeof value !== 'string' || !value.trim()) throw new Error(i18n.t('canvas:snapshot.errors.missingText'))
 }
 function finite(value: unknown, positive = false) {
-  if (typeof value !== 'number' || !Number.isFinite(value) || (positive && value <= 0)) throw new Error('项目含有无效尺寸或数值')
+  if (typeof value !== 'number' || !Number.isFinite(value) || (positive && value <= 0)) throw new Error(i18n.t('canvas:snapshot.errors.invalidNumber'))
 }
 function array(value: unknown): asserts value is unknown[] {
-  if (!Array.isArray(value)) throw new Error('项目字段必须是数组')
+  if (!Array.isArray(value)) throw new Error(i18n.t('canvas:snapshot.errors.expectedArray'))
 }
 function mediaUrl(value: unknown) {
   string(value)
-  if (value !== value.trim()) throw new Error('媒体地址不可恢复，请使用上传地址或内嵌媒体')
+  if (value !== value.trim()) throw new Error(i18n.t('canvas:snapshot.errors.invalidMediaUrl'))
   const hasScheme = /^[a-z][a-z\d+.-]*:/i.test(value)
   const allowedScheme = /^https?:/i.test(value) || /^data:(image|video|audio)\//i.test(value)
   if ((hasScheme && !allowedScheme) || (/^data:/i.test(value) && !/^data:(image|video|audio)\//i.test(value))) {
-    throw new Error('媒体地址不可恢复，请使用上传地址或内嵌媒体')
+    throw new Error(i18n.t('canvas:snapshot.errors.invalidMediaUrl'))
   }
 }
 function validateNode(value: unknown, project: PixelProject) {
@@ -34,63 +35,63 @@ function validateNode(value: unknown, project: PixelProject) {
   string(value.id)
   for (const key of ['x', 'y', 'rotation', 'zIndex', 'opacity']) finite(value[key])
   finite(value.width, true); finite(value.height, true)
-  if (typeof value.visible !== 'boolean' || typeof value.locked !== 'boolean') throw new Error('节点状态无效')
+  if (typeof value.visible !== 'boolean' || typeof value.locked !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidNodeState'))
   if (value.type === 'image' || value.type === 'video') {
     string(value.assetId)
-    if (project.assets[value.assetId]?.type !== value.type) throw new Error('节点引用的素材不存在或类型不匹配')
+    if (project.assets[value.assetId]?.type !== value.type) throw new Error(i18n.t('canvas:snapshot.errors.invalidNodeAssetRef'))
   } else if (value.type === 'generation') {
     string(value.generationId)
-    if (!project.generations[value.generationId]) throw new Error('占位引用的 Generation 不存在')
-    if (value.resultIndex !== undefined && (!Number.isInteger(value.resultIndex) || Number(value.resultIndex) < 0)) throw new Error('结果序号无效')
+    if (!project.generations[value.generationId]) throw new Error(i18n.t('canvas:snapshot.errors.missingNodeGeneration'))
+    if (value.resultIndex !== undefined && (!Number.isInteger(value.resultIndex) || Number(value.resultIndex) < 0)) throw new Error(i18n.t('canvas:snapshot.errors.invalidResultIndex'))
   } else if (value.type === 'text') {
-    if (typeof value.text !== 'string') throw new Error('文本节点无效')
+    if (typeof value.text !== 'string') throw new Error(i18n.t('canvas:snapshot.errors.invalidTextNode'))
     string(value.fontFamily); finite(value.fontSize, true)
   } else if (value.type === 'shape') {
-    if (!['rect', 'ellipse'].includes(String(value.shape))) throw new Error('形状节点无效')
+    if (!['rect', 'ellipse'].includes(String(value.shape))) throw new Error(i18n.t('canvas:snapshot.errors.invalidShapeNode'))
     string(value.fill)
-  } else throw new Error('不支持的节点类型')
+  } else throw new Error(i18n.t('canvas:snapshot.errors.unsupportedNodeType'))
 }
 
 function validateProject(value: unknown): asserts value is PixelProject {
   object(value)
   string(value.id)
-  if (typeof value.name !== 'string') throw new Error('项目名称无效')
+  if (typeof value.name !== 'string') throw new Error(i18n.t('canvas:snapshot.errors.invalidProjectName'))
   string(value.createdAt); string(value.updatedAt)
   object(value.document); object(value.assets); object(value.generations)
-  if (value.document.version !== 1) throw new Error('不支持的画布版本，请升级应用')
+  if (value.document.version !== 1) throw new Error(i18n.t('canvas:snapshot.errors.unsupportedDocumentVersion'))
   array(value.document.scenes)
   string(value.document.activeSceneId)
   const project = value as unknown as PixelProject
   for (const [id, asset] of Object.entries(value.assets)) {
     object(asset)
-    if (id !== asset.id) throw new Error('素材 ID 不一致')
+    if (id !== asset.id) throw new Error(i18n.t('canvas:snapshot.errors.assetIdMismatch'))
     string(asset.id); string(asset.name); string(asset.mimeType); string(asset.createdAt); mediaUrl(asset.url)
     if (asset.objectKey !== undefined) string(asset.objectKey)
     if (asset.storage !== undefined) {
       object(asset.storage)
-      if (asset.storage.provider !== 'r2') throw new Error('素材存储类型无效')
+      if (asset.storage.provider !== 'r2') throw new Error(i18n.t('canvas:snapshot.errors.invalidAssetStorage'))
       string(asset.storage.objectKey); string(asset.storage.projectId)
     }
-    if (!['upload', 'generation', 'derived'].includes(String(asset.source))) throw new Error('素材来源无效')
-    if (!['image', 'video', 'audio'].includes(String(asset.type))) throw new Error('素材类型无效')
+    if (!['upload', 'generation', 'derived'].includes(String(asset.source))) throw new Error(i18n.t('canvas:snapshot.errors.invalidAssetSource'))
+    if (!['image', 'video', 'audio'].includes(String(asset.type))) throw new Error(i18n.t('canvas:snapshot.errors.invalidAssetType'))
     if (asset.type !== 'audio') { finite(asset.width, true); finite(asset.height, true) }
-    if (asset.type !== 'image') { finite(asset.duration); if (Number(asset.duration) < 0) throw new Error('媒体时长无效') }
-    if (asset.generationId !== undefined && !project.generations[String(asset.generationId)]) throw new Error('素材的 Generation 引用不存在')
+    if (asset.type !== 'image') { finite(asset.duration); if (Number(asset.duration) < 0) throw new Error(i18n.t('canvas:snapshot.errors.invalidMediaDuration')) }
+    if (asset.generationId !== undefined && !project.generations[String(asset.generationId)]) throw new Error(i18n.t('canvas:snapshot.errors.missingAssetGeneration'))
   }
   for (const [id, job] of Object.entries(value.generations)) {
     object(job)
-    if (id !== job.id) throw new Error('Generation ID 不一致')
+    if (id !== job.id) throw new Error(i18n.t('canvas:snapshot.errors.generationIdMismatch'))
     string(job.id); string(job.createdAt); string(job.updatedAt)
     if (job.backendTaskId !== undefined) string(job.backendTaskId)
-    if (job.error !== undefined && typeof job.error !== 'string') throw new Error('任务错误信息无效')
-    if (!Object.values(Capability).includes(job.capability as Capability)) throw new Error('生成能力无效')
-    if (!['pending', 'queued', 'processing', 'succeeded', 'failed', 'cancelled'].includes(String(job.status))) throw new Error('生成状态无效')
+    if (job.error !== undefined && typeof job.error !== 'string') throw new Error(i18n.t('canvas:snapshot.errors.invalidGenerationError'))
+    if (!Object.values(Capability).includes(job.capability as Capability)) throw new Error(i18n.t('canvas:snapshot.errors.invalidGenerationCapability'))
+    if (!['pending', 'queued', 'processing', 'succeeded', 'failed', 'cancelled'].includes(String(job.status))) throw new Error(i18n.t('canvas:snapshot.errors.invalidGenerationStatus'))
     for (const key of ['inputAssetIds', 'outputAssetIds']) {
       array(job[key])
-      for (const assetId of job[key]) if (typeof assetId !== 'string' || !project.assets[assetId]) throw new Error('Generation 的素材引用不存在')
+      for (const assetId of job[key]) if (typeof assetId !== 'string' || !project.assets[assetId]) throw new Error(i18n.t('canvas:snapshot.errors.missingGenerationAssetRef'))
     }
     for (const key of ['parentGenerationId', 'retryOfGenerationId']) {
-      if (job[key] !== undefined && !project.generations[String(job[key])]) throw new Error('Generation 关联不存在')
+      if (job[key] !== undefined && !project.generations[String(job[key])]) throw new Error(i18n.t('canvas:snapshot.errors.missingGenerationLink'))
     }
   }
   for (const key of ['parentGenerationId', 'retryOfGenerationId'] as const) {
@@ -98,7 +99,7 @@ function validateProject(value: unknown): asserts value is PixelProject {
       const visited = new Set<string>()
       let current: typeof job | undefined = job
       while (current) {
-        if (visited.has(current.id)) throw new Error('Generation 关联存在循环')
+        if (visited.has(current.id)) throw new Error(i18n.t('canvas:snapshot.errors.generationCycle'))
         visited.add(current.id)
         const next: string | undefined = current[key]
         current = next ? project.generations[next] : undefined
@@ -109,7 +110,7 @@ function validateProject(value: unknown): asserts value is PixelProject {
   const nodeIds = new Set<string>()
   for (const scene of value.document.scenes) {
     object(scene); string(scene.id); string(scene.name)
-    if (sceneIds.has(scene.id)) throw new Error('场景 ID 重复')
+    if (sceneIds.has(scene.id)) throw new Error(i18n.t('canvas:snapshot.errors.duplicateSceneId'))
     sceneIds.add(scene.id)
     finite(scene.width, true); finite(scene.height, true)
     object(scene.viewport)
@@ -118,18 +119,18 @@ function validateProject(value: unknown): asserts value is PixelProject {
     for (const node of scene.nodes) {
       validateNode(node, project)
       const id = (node as { id: string }).id
-      if (nodeIds.has(id)) throw new Error('节点 ID 重复')
+      if (nodeIds.has(id)) throw new Error(i18n.t('canvas:snapshot.errors.duplicateNodeId'))
       nodeIds.add(id)
     }
   }
-  if (!sceneIds.has(value.document.activeSceneId)) throw new Error('活动场景不存在')
+  if (!sceneIds.has(value.document.activeSceneId)) throw new Error(i18n.t('canvas:snapshot.errors.missingActiveScene'))
 }
 
 /** 裸项目是历史格式；迁移时不推测自动重试额度。 */
 export function parseSnapshot(input: unknown): ProjectSnapshot {
   const value = typeof input === 'string' ? JSON.parse(input) as unknown : input
   object(value)
-  if ('schemaVersion' in value && value.schemaVersion !== 1) throw new Error('不支持的项目版本，请升级应用')
+  if ('schemaVersion' in value && value.schemaVersion !== 1) throw new Error(i18n.t('canvas:snapshot.errors.unsupportedProjectVersion'))
   const project = 'schemaVersion' in value ? value.project : value
   validateProject(project)
   const snapshot: ProjectSnapshot = {
@@ -143,20 +144,20 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
     for (const mode of ['text-to-image', 'text-to-video'] as const) {
       const draft = value.drafts[mode]
       object(draft)
-      if (typeof draft.prompt !== 'string' || !['1:1', '4:3', '3:4', '16:9', '9:16'].includes(String(draft.presetKey))) throw new Error('生成草稿无效')
-      if ((typeof draft.count !== 'number' || ![1, 2, 3, 4].includes(draft.count)) || (typeof draft.durationSeconds !== 'number' || ![5, 10].includes(draft.durationSeconds))) throw new Error('生成草稿参数无效')
+      if (typeof draft.prompt !== 'string' || !['1:1', '4:3', '3:4', '16:9', '9:16'].includes(String(draft.presetKey))) throw new Error(i18n.t('canvas:snapshot.errors.invalidGenerationDraft'))
+      if ((typeof draft.count !== 'number' || ![1, 2, 3, 4].includes(draft.count)) || (typeof draft.durationSeconds !== 'number' || ![5, 10].includes(draft.durationSeconds))) throw new Error(i18n.t('canvas:snapshot.errors.invalidGenerationDraftParams'))
       if (draft.modelProfileId !== undefined) string(draft.modelProfileId)
-      if (draft.resolution !== undefined && !(mode === 'text-to-video' ? ['720p'] : ['1k', '2k', '4k']).includes(String(draft.resolution))) throw new Error('生成草稿分辨率无效')
-      if ('videoResolution' in draft && draft.videoResolution !== undefined && (mode !== 'text-to-video' || !['720p', '768p', '2k'].includes(String(draft.videoResolution)))) throw new Error('视频草稿分辨率无效')
-      if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
-      if (draft.enableThinking !== undefined && typeof draft.enableThinking !== 'boolean') throw new Error('自动扩写设置无效')
+      if (draft.resolution !== undefined && !(mode === 'text-to-video' ? ['720p'] : ['1k', '2k', '4k']).includes(String(draft.resolution))) throw new Error(i18n.t('canvas:snapshot.errors.invalidGenerationDraftResolution'))
+      if ('videoResolution' in draft && draft.videoResolution !== undefined && (mode !== 'text-to-video' || !['720p', '768p', '2k'].includes(String(draft.videoResolution)))) throw new Error(i18n.t('canvas:snapshot.errors.invalidVideoDraftResolution'))
+      if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidVideoAudioSetting'))
+      if (draft.enableThinking !== undefined && typeof draft.enableThinking !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidAutoExpandSetting'))
     }
     if (value.drafts.videoReplication !== undefined) {
       const draft = value.drafts.videoReplication
       object(draft); string(draft.ownerId)
       if (typeof draft.prompt !== 'string' || !VIDEO_REPLICATION_RATIOS.some(ratio => ratio === draft.ratio)
         || typeof draft.durationSeconds !== 'number' || !Number.isInteger(draft.durationSeconds)
-        || draft.durationSeconds < 4 || draft.durationSeconds > 15) throw new Error('视频复刻草稿无效')
+        || draft.durationSeconds < 4 || draft.durationSeconds > 15) throw new Error(i18n.t('canvas:snapshot.errors.invalidReplicationDraft'))
       if (draft.productAssetId !== undefined) string(draft.productAssetId)
       if (draft.reference !== undefined) {
         const reference = draft.reference
@@ -165,7 +166,7 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
         if (typeof reference.durationSeconds !== 'number' || !Number.isFinite(reference.durationSeconds)
           || reference.durationSeconds < 2 || reference.durationSeconds > 15
           || typeof reference.retentionExpiresAt !== 'string' || !Number.isFinite(Date.parse(reference.retentionExpiresAt))) {
-          throw new Error('参考视频草稿无效')
+          throw new Error(i18n.t('canvas:snapshot.errors.invalidReferenceDraft'))
         }
         if (reference.assetId !== undefined) string(reference.assetId)
       }
@@ -173,53 +174,53 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
     if (value.drafts.derived !== undefined) {
       const draft = value.drafts.derived
       object(draft)
-      if (!['variation', 'image-to-video'].includes(String(draft.mode)) || typeof draft.prompt !== 'string') throw new Error('派生草稿无效')
+      if (!['variation', 'image-to-video'].includes(String(draft.mode)) || typeof draft.prompt !== 'string') throw new Error(i18n.t('canvas:snapshot.errors.invalidDerivedDraft'))
       validateNode(draft.sourceNode, project)
       object(draft.sourceNode)
-      if (draft.sourceNode.type !== 'image' || draft.sourceNode.assetId !== draft.sourceAssetId) throw new Error('派生源节点与素材不匹配')
-      if (project.assets[String(draft.sourceAssetId)]?.type !== 'image') throw new Error('派生源素材不存在')
-      if ((typeof draft.count !== 'number' || ![1, 2, 3, 4].includes(draft.count)) || (typeof draft.durationSeconds !== 'number' || ![5, 10].includes(draft.durationSeconds))) throw new Error('派生参数无效')
+      if (draft.sourceNode.type !== 'image' || draft.sourceNode.assetId !== draft.sourceAssetId) throw new Error(i18n.t('canvas:snapshot.errors.derivedNodeAssetMismatch'))
+      if (project.assets[String(draft.sourceAssetId)]?.type !== 'image') throw new Error(i18n.t('canvas:snapshot.errors.missingDerivedSourceAsset'))
+      if ((typeof draft.count !== 'number' || ![1, 2, 3, 4].includes(draft.count)) || (typeof draft.durationSeconds !== 'number' || ![5, 10].includes(draft.durationSeconds))) throw new Error(i18n.t('canvas:snapshot.errors.invalidDerivedParams'))
       if (draft.modelProfileId !== undefined) string(draft.modelProfileId)
-      if (draft.resolution !== undefined && !(draft.mode === 'image-to-video' ? ['720p', '1k', '2k', '4k'] : ['1k', '2k', '4k']).includes(String(draft.resolution))) throw new Error('派生分辨率无效')
-      if (draft.videoResolution !== undefined && (draft.mode !== 'image-to-video' || !['720p', '768p', '2k'].includes(String(draft.videoResolution)))) throw new Error('视频草稿分辨率无效')
-      if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
+      if (draft.resolution !== undefined && !(draft.mode === 'image-to-video' ? ['720p', '1k', '2k', '4k'] : ['1k', '2k', '4k']).includes(String(draft.resolution))) throw new Error(i18n.t('canvas:snapshot.errors.invalidDerivedResolution'))
+      if (draft.videoResolution !== undefined && (draft.mode !== 'image-to-video' || !['720p', '768p', '2k'].includes(String(draft.videoResolution)))) throw new Error(i18n.t('canvas:snapshot.errors.invalidVideoDraftResolution'))
+      if (draft.generateAudio !== undefined && typeof draft.generateAudio !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidVideoAudioSetting'))
     }
     for (const [id, record] of Object.entries(value.recoveries)) {
       object(record); object(record.request); object(record.context)
-      if (id !== record.request.requestId || record.projectId !== project.id || !project.document.scenes.some((scene) => scene.id === record.sceneId)) throw new Error('任务恢复归属无效')
+      if (id !== record.request.requestId || record.projectId !== project.id || !project.document.scenes.some((scene) => scene.id === record.sceneId)) throw new Error(i18n.t('canvas:snapshot.errors.invalidRecoveryOwnership'))
       string(record.request.requestId)
       if (record.ownerId !== undefined) string(record.ownerId)
       if (record.request.modelProfileId !== undefined) string(record.request.modelProfileId)
       if (record.request.priceVersion !== undefined) string(record.request.priceVersion)
-      if (![Capability.TextToImage, Capability.TextToVideo, Capability.Variation].includes(record.request.capability as Capability)) throw new Error('任务恢复能力无效')
+      if (![Capability.TextToImage, Capability.TextToVideo, Capability.Variation].includes(record.request.capability as Capability)) throw new Error(i18n.t('canvas:snapshot.errors.invalidRecoveryCapability'))
       object(record.request.params)
       const params = record.request.params
       object(params.size); finite(params.size.width, true); finite(params.size.height, true)
-      if ((typeof params.count !== 'number' || ![1, 2, 3, 4].includes(params.count))) throw new Error('任务恢复数量无效')
-      if (params.resolution !== undefined && !(record.request.capability === Capability.TextToVideo ? ['720p', '768p', '2k'] : ['1k', '2k', '4k']).includes(String(params.resolution))) throw new Error('任务恢复分辨率无效')
-      if (params.generateAudio !== undefined && typeof params.generateAudio !== 'boolean') throw new Error('视频声音设置无效')
-      if (params.enableThinking !== undefined && typeof params.enableThinking !== 'boolean') throw new Error('自动扩写设置无效')
+      if ((typeof params.count !== 'number' || ![1, 2, 3, 4].includes(params.count))) throw new Error(i18n.t('canvas:snapshot.errors.invalidRecoveryCount'))
+      if (params.resolution !== undefined && !(record.request.capability === Capability.TextToVideo ? ['720p', '768p', '2k'] : ['1k', '2k', '4k']).includes(String(params.resolution))) throw new Error(i18n.t('canvas:snapshot.errors.invalidRecoveryResolution'))
+      if (params.generateAudio !== undefined && typeof params.generateAudio !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidVideoAudioSetting'))
+      if (params.enableThinking !== undefined && typeof params.enableThinking !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidAutoExpandSetting'))
       if (record.request.capability === Capability.Variation) {
         if (params.sourceImageKey !== undefined) {
           string(params.sourceImageKey)
-          if (!['1k', '2k', '4k'].includes(String(params.resolution))) throw new Error('真实裂变缺少有效分辨率')
+          if (!['1k', '2k', '4k'].includes(String(params.resolution))) throw new Error(i18n.t('canvas:snapshot.errors.missingVariationResolution'))
         } else mediaUrl(params.sourceImageUrl)
-        if (params.prompt !== undefined && typeof params.prompt !== 'string') throw new Error('裂变提示词无效')
-      } else if (typeof params.prompt !== 'string' || (params.mode !== 'video_replication' && !params.prompt.trim())) throw new Error('任务恢复提示词无效')
+        if (params.prompt !== undefined && typeof params.prompt !== 'string') throw new Error(i18n.t('canvas:snapshot.errors.invalidVariationPrompt'))
+      } else if (typeof params.prompt !== 'string' || (params.mode !== 'video_replication' && !params.prompt.trim())) throw new Error(i18n.t('canvas:snapshot.errors.invalidRecoveryPrompt'))
       if (record.request.capability === Capability.TextToVideo) {
-        if (params.count !== 1 || typeof params.durationSeconds !== 'number') throw new Error('视频任务参数无效')
+        if (params.count !== 1 || typeof params.durationSeconds !== 'number') throw new Error(i18n.t('canvas:snapshot.errors.invalidVideoTaskParams'))
         if (params.mode === 'video_replication') {
           string(params.referenceVideoKey); string(params.sourceImageKey)
           if (params.resolution !== '720p' || params.generateAudio !== false || !Number.isInteger(params.durationSeconds)
             || params.durationSeconds < 4 || params.durationSeconds > 15
-            || !VIDEO_REPLICATION_RATIOS.some(ratio => ratio === params.ratio)) throw new Error('视频复刻任务参数无效')
-        } else if (![5, 10].includes(params.durationSeconds)) throw new Error('视频任务参数无效')
+            || !VIDEO_REPLICATION_RATIOS.some(ratio => ratio === params.ratio)) throw new Error(i18n.t('canvas:snapshot.errors.invalidReplicationTaskParams'))
+        } else if (![5, 10].includes(params.durationSeconds)) throw new Error(i18n.t('canvas:snapshot.errors.invalidVideoTaskParams'))
       }
       if (params.sourceImageUrl !== undefined) mediaUrl(params.sourceImageUrl)
-      if ((typeof record.context.autoRetryRemaining !== 'number' || ![0, 1].includes(record.context.autoRetryRemaining)) || typeof record.context.automaticRetry !== 'boolean' || typeof record.applied !== 'boolean') throw new Error('重试恢复状态无效')
+      if ((typeof record.context.autoRetryRemaining !== 'number' || ![0, 1].includes(record.context.autoRetryRemaining)) || typeof record.context.automaticRetry !== 'boolean' || typeof record.applied !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidRetryRecoveryState'))
       array(record.context.inputAssetIds)
       if (record.context.referenceLabel !== undefined) string(record.context.referenceLabel)
-      if (record.abandoned !== undefined && typeof record.abandoned !== 'boolean') throw new Error('恢复记录状态无效')
+      if (record.abandoned !== undefined && typeof record.abandoned !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidRecoveryState'))
       if (record.backendTaskId !== undefined) string(record.backendTaskId)
       array(record.placements); array(record.replacedPlaceholderIds)
       for (const id of record.replacedPlaceholderIds) string(id)
@@ -242,7 +243,7 @@ export function parseSnapshot(input: unknown): ProjectSnapshot {
   }
   if ('schemaVersion' in value && value.cloud !== undefined) {
     object(value.cloud)
-    if (!Number.isInteger(value.cloud.revision) || Number(value.cloud.revision) < 1 || typeof value.cloud.pending !== 'boolean') throw new Error('云端同步版本无效')
+    if (!Number.isInteger(value.cloud.revision) || Number(value.cloud.revision) < 1 || typeof value.cloud.pending !== 'boolean') throw new Error(i18n.t('canvas:snapshot.errors.invalidCloudSyncVersion'))
     snapshot.cloud = { revision: Number(value.cloud.revision), pending: value.cloud.pending, conflict: value.cloud.conflict === true }
   }
   if ('schemaVersion' in value && value.history !== undefined) {
@@ -267,8 +268,8 @@ function validateSerializedCommand(value: unknown, project: PixelProject, depth 
   object(value)
   string(value.id)
   string(value.sceneId)
-  if (depth > 4) throw new Error('历史命令嵌套过深')
-  if (!project.document.scenes.some(scene => scene.id === value.sceneId)) throw new Error('历史命令的场景不存在')
+  if (depth > 4) throw new Error(i18n.t('canvas:snapshot.errors.historyTooDeep'))
+  if (!project.document.scenes.some(scene => scene.id === value.sceneId)) throw new Error(i18n.t('canvas:snapshot.errors.missingHistoryScene'))
   if (value.type === 'composite') {
     array(value.commands)
     for (const command of value.commands) validateSerializedCommand(command, project, depth + 1)
@@ -294,7 +295,7 @@ function validateSerializedCommand(value: unknown, project: PixelProject, depth 
     string((value.asset as { id?: string }).id)
     if (project.assets[(value.asset as { id: string }).id]?.type !== (value.asset as { type?: string }).type
       && !['image', 'video', 'audio'].includes(String((value.asset as { type?: string }).type))) {
-      throw new Error('历史命令的素材无效')
+      throw new Error(i18n.t('canvas:snapshot.errors.invalidHistoryAsset'))
     }
     validateNode(value.node, { ...project, assets: { ...project.assets, [(value.asset as { id: string }).id]: value.asset as unknown as Asset } })
     return value as SerializedEditorCommand
@@ -313,7 +314,7 @@ function validateSerializedCommand(value: unknown, project: PixelProject, depth 
     }
     return value as SerializedEditorCommand
   }
-  throw new Error('不支持的历史命令')
+  throw new Error(i18n.t('canvas:snapshot.errors.unsupportedHistoryCommand'))
 }
 
 function contentHash(payload: string) {

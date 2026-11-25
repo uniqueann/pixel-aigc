@@ -86,7 +86,7 @@ export async function handleVideoReferenceRoute(user: User, method: string, path
   }
   if (path[1] === 'complete') {
     const { uploadId, size } = z.object({ uploadId: z.string().regex(uploadIdPattern), size: sizeSchema }).strict().parse(body)
-    if (Date.now() - Number(uploadId.slice(0, 13)) > 15 * 60_000) throw new HttpError(410, '上传已过期，请重新上传参考片')
+    if (Date.now() - Number(uploadId.slice(0, 13)) > 15 * 60_000) throw new HttpError(410, '上传已过期，请重新上传参考片', 'VIDEO_REFERENCE_UPLOAD_EXPIRED')
     const bytes = await readReferenceBytes(`${base}pending/${uploadId}`)
     if (bytes.byteLength !== size) throw invalid()
     const video = measure(bytes)

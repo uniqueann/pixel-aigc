@@ -1,27 +1,49 @@
-import { referenceImageLimitMessage } from '@shared/image-models'
-import { INSUFFICIENT_CREDITS_REASON } from '@/features/credits/imageCredits'
-import { COMING_SOON_SUBMIT_MESSAGE, FUSION_INPUTS_REQUIRED_REASON } from '@/features/image-workstation/tools/registry'
+import { i18n } from '@/i18n'
+import zhWorkstation from '@/i18n/locales/zh-CN/workstation.json'
+import { insufficientCreditsReason } from '@/features/credits/imageCredits'
+import {
+  COMING_SOON_SUBMIT_MESSAGE,
+  FUSION_INPUTS_REQUIRED_REASON,
+  comingSoonSubmitMessage,
+  fusionInputsRequiredReason,
+} from '@/features/image-workstation/tools/registry'
 import { emptyMaskMessage } from './maskExport'
 
-export const TASK_RUNNING_REASON = '请等待当前任务完成'
+export const TASK_RUNNING_REASON = zhWorkstation.blockReasons.taskRunning
 
-/** 零扩图时服务端会直接返回原图副本，提交前按当前目标给出可执行的下一步。 */
+/** Empty-operation prompt when outpaint dimensions match source. */
 export const OUTPAINT_IDLE_REASONS = {
-  // 结果生成后当前图就是结果，再说「尚未扩图」会与结果条矛盾。
-  free: '当前目标与当前图片尺寸相同：请拖拽绿色边框或输入更大的目标尺寸',
-  preset: '当前平台输出与源图尺寸相同，请更换平台或返回自由扩展',
+  free: zhWorkstation.blockReasons.outpaintIdleFree,
+  preset: zhWorkstation.blockReasons.outpaintIdlePreset,
 } as const
 
 export type OutpaintIdleMode = keyof typeof OUTPAINT_IDLE_REASONS
 
 /**
- * 能力未接入时的唯一文案来源：右卡 CapabilityStatus 与页脚禁用原因共用，
- * 避免同一句话在页面上出现两次（之前消除重复两遍、重绘两处说法还不一致）。
+ * Sync inpaint unavailable notices shown directly in generate block reason.
  */
 export const UNAVAILABLE_SERVICE_MESSAGES = {
-  remove: '消除服务暂不可用，请稍后重试或联系客服。',
-  repaint: '重绘服务暂不可用，请稍后重试或联系客服。',
+  remove: zhWorkstation.blockReasons.removeUnavailable,
+  repaint: zhWorkstation.blockReasons.repaintUnavailable,
 } as const
+
+export function taskRunningReason() {
+  return i18n.t('workstation:blockReasons.taskRunning')
+}
+
+export function outpaintIdleReason(mode: OutpaintIdleMode) {
+  return mode === 'free'
+    ? i18n.t('workstation:blockReasons.outpaintIdleFree')
+    : i18n.t('workstation:blockReasons.outpaintIdlePreset')
+}
+
+export function unavailableServiceMessage(mode: 'remove' | 'repaint') {
+  return mode === 'remove'
+    ? i18n.t('workstation:blockReasons.removeUnavailable')
+    : i18n.t('workstation:blockReasons.repaintUnavailable')
+}
+
+export { COMING_SOON_SUBMIT_MESSAGE, FUSION_INPUTS_REQUIRED_REASON }
 
 export function workstationGenerateBlockReason(input: {
   toolReady: boolean
@@ -46,26 +68,28 @@ export function workstationGenerateBlockReason(input: {
   mode?: 'remove' | 'repaint'
 }): string | undefined {
   if (input.submitting) return undefined
-  if (input.configurationPending) return '正在加载功能配置，请稍候'
-  if (input.configurationError) return '功能配置加载失败，请重试'
-  if (!input.toolReady) return COMING_SOON_SUBMIT_MESSAGE
-  if (input.fusionBlocked) return FUSION_INPUTS_REQUIRED_REASON
-  if (!input.hasInput) return '请先上传需要处理的图片'
+  if (input.configurationPending) return i18n.t('workstation:blockReasons.loadingConfig')
+  if (input.configurationError) return i18n.t('workstation:blockReasons.configLoadFailed')
+  if (!input.toolReady) return comingSoonSubmitMessage()
+  if (input.fusionBlocked) return fusionInputsRequiredReason()
+  if (!input.hasInput) return i18n.t('workstation:blockReasons.uploadImageFirst')
   if (
     typeof input.maxRefImages === 'number'
     && typeof input.referenceCount === 'number'
     && input.referenceCount > input.maxRefImages
-  ) return referenceImageLimitMessage(input.maxRefImages)
-  if (input.formLocked) return TASK_RUNNING_REASON
+  ) return i18n.t('workstation:errors.maxReferenceImages', { max: input.maxRefImages })
+  if (input.formLocked) return taskRunningReason()
   if (input.outpaintLimitError) return input.outpaintLimitError
-  if (input.outpaintIdle) return OUTPAINT_IDLE_REASONS[input.outpaintIdle]
-  if (input.retouchBlocked) return '请先选择精修方向'
-  if (input.repaintBlocked) return UNAVAILABLE_SERVICE_MESSAGES.repaint
-  if (input.removeBlocked) return UNAVAILABLE_SERVICE_MESSAGES.remove
+  if (input.outpaintIdle) return outpaintIdleReason(input.outpaintIdle)
+  if (input.retouchBlocked) return i18n.t('workstation:validation.retouchDirectionsRequired')
+  if (input.repaintBlocked) return unavailableServiceMessage('repaint')
+  if (input.removeBlocked) return unavailableServiceMessage('remove')
   if (input.maskRequired && !input.hasMaskPaint) return emptyMaskMessage(input.mode)
   if (input.promptRequired && input.promptEmpty) {
-    return input.mode === 'repaint' ? '请先填写重绘描述' : '请先填写编辑要求'
+    return input.mode === 'repaint'
+      ? i18n.t('errors:client.repaintEmptyPrompt')
+      : i18n.t('workstation:validation.smartEditPromptRequired')
   }
-  if (input.insufficientCredits) return INSUFFICIENT_CREDITS_REASON
+  if (input.insufficientCredits) return insufficientCreditsReason()
   return undefined
 }

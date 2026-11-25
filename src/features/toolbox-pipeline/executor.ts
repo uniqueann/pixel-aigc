@@ -1,4 +1,5 @@
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
+import { i18n } from '@/i18n'
 import { cropFocusForImage } from '@/pages/Toolbox/aspect-ratio/subjectFocus'
 import type { RenderRequest as RatioRequest, RenderResult, SubjectDetection } from '@/pages/Toolbox/aspect-ratio/types'
 import type { RenderRequest as WatermarkRequest } from '@/pages/Toolbox/watermark/types'
@@ -13,15 +14,15 @@ export interface PipelineProcessors {
 }
 
 function artifact(result: RenderResult, width: number, height: number, mime: PipelineArtifact['mimeType']): PipelineArtifact {
-  if (result.width !== width || result.height !== height) throw new Error('输出尺寸与目标平台不一致')
-  if (!result.blob.size || (result.blob.type || result.mimeType) !== mime) throw new Error('图片编码格式与预期不一致')
+  if (result.width !== width || result.height !== height) throw new Error(i18n.t('toolbox:errors.outputSizeMismatch'))
+  if (!result.blob.size || (result.blob.type || result.mimeType) !== mime) throw new Error(i18n.t('toolbox:errors.outputFormatMismatch'))
   return { ...result, mimeType: mime }
 }
 
 export function validatePipeline(settings: PipelineSettings) {
-  if (!['letterbox', 'crop'].includes(settings.aspectRatio.strategy)) throw new Error('流水线仅支持留白填充与智能裁剪')
-  if (!PLATFORM_SIZE_PRESETS.some(preset => preset.id === settings.aspectRatio.selectedPresetId)) throw new Error('请选择有效的目标平台')
-  if (settings.watermarkEnabled && !hasWatermark(settings.watermark)) throw new Error('请先填写水印文字或选择 Logo')
+  if (!['letterbox', 'crop'].includes(settings.aspectRatio.strategy)) throw new Error(i18n.t('toolbox:pipeline.onlyLetterboxAndCrop'))
+  if (!PLATFORM_SIZE_PRESETS.some(preset => preset.id === settings.aspectRatio.selectedPresetId)) throw new Error(i18n.t('toolbox:pipeline.invalidPlatform'))
+  if (settings.watermarkEnabled && !hasWatermark(settings.watermark)) throw new Error(i18n.t('toolbox:pipeline.watermarkRequired'))
 }
 
 /** 每张图片从最近的成功步骤继续，步骤之间只传递真实结果。 */
@@ -70,9 +71,17 @@ export async function executePipeline(input: PipelineProcessors & {
       update(item.id, { output, watermarkStatus: settings.watermarkEnabled ? 'succeeded' : 'skipped', phase: undefined, error: undefined, failedStep: undefined })
     } catch (error) {
       if (isStopped()) return
+      const stepLabel = failedStep === 'ratio'
+        ? i18n.t('toolbox:pipeline.stepRatio')
+        : settings.watermarkEnabled
+          ? i18n.t('toolbox:pipeline.stepWatermark')
+          : i18n.t('toolbox:pipeline.stepEncode')
       update(item.id, { [failedStep === 'ratio' ? 'ratioStatus' : 'watermarkStatus']: 'failed',
         failedStep, phase: undefined, output: undefined,
-        error: `${failedStep === 'ratio' ? '转比例' : settings.watermarkEnabled ? '加水印' : '成品编码'}失败：${error instanceof Error ? error.message : '图片处理失败'}` })
+        error: i18n.t('toolbox:pipeline.stepFailed', {
+          step: stepLabel,
+          error: error instanceof Error ? error.message : i18n.t('toolbox:errors.processFailed'),
+        }) })
     }
   }
 }

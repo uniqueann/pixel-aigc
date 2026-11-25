@@ -1,5 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   AppstoreOutlined, CheckOutlined, DownloadOutlined, DeleteOutlined, MailOutlined, MoreOutlined, PictureOutlined, SearchOutlined, UnorderedListOutlined,
 } from '@ant-design/icons'
@@ -28,6 +29,10 @@ import {
   type WorkstationHistoryListItem,
 } from '@/features/assets/workstationHistory'
 import { downloadFailureMessage, downloadImageSource, filenameForWorkstationResult } from '@/features/image-workstation/download'
+import { i18n } from '@/i18n'
+import { translateApiError } from '@/i18n/apiErrors'
+import { activeLocale, formatShortDateTime } from '@/i18n/format'
+import type { Locale } from '@/i18n/types'
 import { runtimeImageBlob } from '@/services/api/imageRuntime'
 import { readOwnedImage } from '@/services/api/ownedImages'
 import { listTasks, type TaskSummary } from '@/services/api/task'
@@ -38,7 +43,6 @@ import { usePreferencesStore } from '@/features/preferences/store'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { capabilityAvailability } from '@/components/capabilityAvailability'
 import VideoAvailabilityNotice from '@/features/free-canvas/generation/VideoAvailabilityNotice'
-import { formatShortDateTime } from '@/utils/datetime'
 import { groupAssetsByDay } from './groupByDay'
 
 type Filter = 'all' | 'workstation' | 'video' | 'email'
@@ -46,6 +50,9 @@ type ViewMode = 'grid' | 'list'
 type SortOrder = 'newest' | 'oldest'
 /** 批量删除的 toast 用一个固定 key，撤销后手动关闭。 */
 const BATCH_DELETE_KEY = 'asset-deleted-batch'
+const UNKNOWN_MODEL_DISPLAY = modelDisplayName('__unknown__')
+const NA_MODEL_DISPLAY = modelDisplayName(null)
+
 function initialViewMode(): ViewMode {
   const { workbench, recent } = usePreferencesStore.getState().preferences
   return workbench.assetsView === 'remember' ? recent.assetsView : workbench.assetsView
@@ -55,8 +62,36 @@ function initialSort(): SortOrder {
 }
 
 /** 搜索文本：整段提示词参与匹配（展示标题会被截断），统一全角与大小写。 */
-function normalizeSearchText(...parts: Array<string | undefined>) {
-  return parts.filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase('zh-CN')
+function normalizeSearchText(locale: Locale, ...parts: Array<string | undefined>) {
+  return parts.filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase(locale)
+}
+
+function formatAssetsError(error: unknown, fallback: string) {
+  const apiErr = error as { code?: string; extra?: Record<string, unknown>; status?: number } | undefined
+  return translateApiError({
+    code: apiErr?.code,
+    extra: apiErr?.extra,
+    status: apiErr?.status,
+    message: error instanceof Error ? error.message : undefined,
+    fallback,
+  })
+}
+
+function historyLoadError(error: unknown) {
+  const apiErr = error as { code?: string; status?: number } | undefined
+  if (apiErr?.code || typeof apiErr?.status === 'number') {
+    return formatAssetsError(error, i18n.t('assets:errors.loadFailed'))
+  }
+  return i18n.t('assets:errors.loadFailed')
+}
+
+function localizeDownloadError(error: unknown) {
+  if (activeLocale() === 'zh-CN') return downloadFailureMessage(error)
+  const raw = error instanceof Error ? error.message.trim() : ''
+  if (!raw || /failed to fetch|networkerror|load failed|err_failed/i.test(raw)) {
+    return i18n.t('assets:errors.downloadFailed')
+  }
+  return formatAssetsError(error, i18n.t('assets:errors.downloadFailed'))
 }
 
 interface LibraryItem {
@@ -81,18 +116,21 @@ function assetDisplayName(item: LibraryItem) {
 }
 
 export default function Assets() {
+  const { t } = useTranslation('assets')
   const userId = useUserStore((state) => state.userId)
   let ownerId: string
   try {
     ownerId = resolveWorkstationHistoryOwner(authEnabled, userId)
   } catch {
-    return <EmptyState description="请先登录后再查看作品历史" />
+    return <EmptyState description={t('empty.signInRequired')} />
   }
   return <AssetsForOwner key={ownerId} ownerId={ownerId} />
 }
 
 function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const navigate = useNavigate()
+  const { t, i18n: i18nInstance } = useTranslation(['assets', 'common'])
+  const locale = activeLocale(i18nInstance.language === 'en-US' ? 'en-US' : 'zh-CN')
   const { message, modal } = App.useApp()
   const { capabilities, error: capabilityError, refetch: reloadCapabilities } = useCapabilities()
   const videoEnabled = capabilities.textToVideo === true || capabilities.imageToVideo === true
@@ -223,7 +261,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       setEmailTotal(response.total)
       setEmailPage(nextPage)
     } catch (error) {
-      const text = error instanceof Error ? error.message : '邮件任务加载失败'
+      const text = formatAssetsError(error, i18n.t('assets:errors.emailLoadFailed'))
       message.error(text)
       setAnnouncement(text)
     } finally {
@@ -238,15 +276,15 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     const isActive = () => active && isCurrentWorkstationHistoryOwner(ownerId)
     queueMicrotask(() => {
       if (!isActive()) return
-      void refresh(isActive).catch(() => { if (isActive()) setHistoryError('作品加载失败，请重新加载') })
+      void refresh(isActive).catch((error: unknown) => { if (isActive()) setHistoryError(historyLoadError(error)) })
       if (authEnabled) {
         void Promise.all([hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: abort.signal }), hydrateVideoJobs(ownerId, abort.signal)])
           .then(([result]) => {
             if (!isActive()) return
-            if (result.failed) setHistoryError(`有 ${result.failed} 项作品加载失败，请重新加载`)
+            if (result.failed) setHistoryError(i18n.t('assets:errors.partialLoadFailed', { count: result.failed }))
             return refresh(isActive, false)
           })
-          .catch(() => { if (isActive()) setHistoryError('作品加载失败，请重新加载') })
+          .catch((error: unknown) => { if (isActive()) setHistoryError(historyLoadError(error)) })
           .finally(() => { if (isActive()) setHydrating(false) })
       }
     })
@@ -272,20 +310,33 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       await refresh(isActive)
       if (authEnabled && isActive()) {
         const [result] = await Promise.all([hydrateWorkstationHistoryFromImageJobs(ownerId, { signal: lifetimeAbortRef.current.signal }), hydrateVideoJobs(ownerId, lifetimeAbortRef.current.signal)])
-        if (isActive() && result.failed) setHistoryError(`有 ${result.failed} 项作品加载失败，请重新加载`)
+        if (isActive() && result.failed) setHistoryError(i18n.t('assets:errors.partialLoadFailed', { count: result.failed }))
         if (isActive()) await refresh(isActive, false)
       }
-    } catch { if (isActive()) setHistoryError('作品加载失败，请重新加载') }
+    } catch (error) { if (isActive()) setHistoryError(historyLoadError(error)) }
     finally { if (isActive()) setHydrating(false) }
   }
 
   const items = useMemo<LibraryItem[]>(() => {
     const workstation = workstationItems.map((record) => {
+      const rawModel = record.modelProfileId ? modelDisplayName(record.modelProfileId) : undefined
+      const videoModelLabel = rawModel && rawModel !== UNKNOWN_MODEL_DISPLAY && rawModel !== NA_MODEL_DISPLAY
+        ? rawModel
+        : record.modelProfileId
+          ? t('assets:video.legacyModel')
+          : undefined
       const title = record.mediaType === 'video'
-        ? record.modelProfileId ? `${modelDisplayName(record.modelProfileId)} 视频` : 'Seedance 视频'
+        ? videoModelLabel
+          ? t('assets:video.modelTitle', { model: videoModelLabel })
+          : t('assets:video.defaultTitle')
         : workstationToolLabel(record.toolSlug)
       const subtitle = record.video
-        ? `${record.video.durationSeconds.toFixed(1)} 秒 · ${record.width}×${record.height} · ${formatShortDateTime(record.video.retentionExpiresAt)} 到期`
+        ? t('assets:video.subtitle', {
+          duration: record.video.durationSeconds.toFixed(1),
+          width: record.width,
+          height: record.height,
+          expiresAt: formatShortDateTime(record.video.retentionExpiresAt, locale),
+        })
         : `${record.width}×${record.height}${record.prompt ? ` · ${record.prompt}` : ''}`
       return {
         id: record.id,
@@ -294,15 +345,15 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
         subtitle,
         status: 'succeeded',
         createdAt: record.createdAt,
-        searchText: normalizeSearchText(record.prompt, title, subtitle),
+        searchText: normalizeSearchText(locale, record.prompt, title, subtitle),
         previewUrl: previewUrls[record.id],
         prompt: record.prompt,
         record,
       }
     })
     const emails = emailItems.map((item) => {
-      const title = `邮件助手 · ${emailOperationLabel(item.operation)}`
-      const subtitle = item.preview || '邮件任务'
+      const title = t('assets:email.title', { operation: emailOperationLabel(item.operation) })
+      const subtitle = item.preview || t('assets:email.fallbackSubtitle')
       return {
         id: item.id,
         kind: 'email' as const,
@@ -310,12 +361,12 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
         subtitle,
         status: item.status,
         createdAt: item.createdAt,
-        searchText: normalizeSearchText(item.preview, title, subtitle),
+        searchText: normalizeSearchText(locale, item.preview, title, subtitle),
         email: item,
       }
     })
     return [...workstation, ...emails]
-  }, [emailItems, previewUrls, workstationItems])
+  }, [emailItems, locale, previewUrls, t, workstationItems])
 
   const ordered = useMemo(() => {
     const direction = sort === 'newest' ? -1 : 1
@@ -325,7 +376,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
 
   /** 空白切成多个关键词，全部命中才算匹配（「融合 耳机」也能找到）。 */
   const searchTokens = useMemo(() => deferredQuery.trim().normalize('NFKC')
-    .toLocaleLowerCase('zh-CN').split(/\s+/).filter(Boolean), [deferredQuery])
+    .toLocaleLowerCase(locale).split(/\s+/).filter(Boolean), [deferredQuery, locale])
 
   const visible = useMemo(() => ordered.filter((item) =>
     (filter === 'all' || item.kind === filter)
@@ -361,7 +412,14 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   const downloadRecord = async (record: WorkstationHistoryListItem, currentBlob?: Blob) => {
     setDownloadingId(record.id)
     try {
-      if (record.video) { await downloadOwnedVideo(record.video, `Seedance_${record.video.durationSeconds.toFixed(1)}秒.mp4`, ownerId); return }
+      if (record.video) {
+        await downloadOwnedVideo(
+          record.video,
+          i18n.t('assets:video.downloadFilename', { seconds: record.video.durationSeconds.toFixed(1) }),
+          ownerId,
+        )
+        return
+      }
       await downloadImageSource(currentBlob ?? await readOwnedImage({ historyId: record.id, objectKey: record.objectKey }, { ownerId }), filenameForWorkstationResult({
         toolLabel: capabilityLabel(record.capability, record.toolSlug),
         width: record.width,
@@ -369,7 +427,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
         mimeType: record.mimeType,
       }))
     } catch (error) {
-      const text = downloadFailureMessage(error)
+      const text = localizeDownloadError(error)
       message.error({ content: text, duration: 4 })
       setAnnouncement(text)
     } finally {
@@ -470,14 +528,17 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       // 恢复已完成，刷新失败不改变结果提示
     }
     if (restored === ids.length) {
-      setAnnouncement(`已恢复 ${restored} 条作品`)
-      message.success(`已恢复 ${restored} 条作品`)
+      const text = i18n.t('assets:undo.batchRestored', { count: restored })
+      setAnnouncement(text)
+      message.success(text)
     } else if (restored > 0) {
-      setAnnouncement(`已恢复 ${restored} 条，其余撤销记录已满或已过期`)
-      message.warning(`已恢复 ${restored} 条，其余撤销记录已满或已过期`)
+      const text = i18n.t('assets:undo.batchPartialRestored', { count: restored })
+      setAnnouncement(text)
+      message.warning(text)
     } else {
-      setAnnouncement('撤销窗口已结束，作品无法恢复')
-      message.warning('撤销窗口已结束，作品无法恢复')
+      const text = i18n.t('assets:undo.expired')
+      setAnnouncement(text)
+      message.warning(text)
     }
   }
 
@@ -493,8 +554,9 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       }
     }
     if (!deleted.length) {
-      message.error('删除失败，请重试')
-      setAnnouncement('删除失败，请重试')
+      const text = i18n.t('assets:delete.failedRetry')
+      message.error(text)
+      setAnnouncement(text)
       return
     }
     if (!isCurrentWorkstationHistoryOwner(ownerId)) return
@@ -502,28 +564,28 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     setSelecting(false)
     setSelectedIds(new Set())
     focusAfterDeleteRef.current = 0
-    setAnnouncement(`已删除 ${deleted.length} 条作品，可撤销`)
+    setAnnouncement(i18n.t('assets:delete.batchAnnouncement', { count: deleted.length }))
     message.open({
       key: BATCH_DELETE_KEY,
       type: 'success',
       duration: 5,
       content: (
         <span>
-          已删除 {deleted.length} 条作品
+          {i18n.t('assets:delete.batchDone', { count: deleted.length })}
           <Button
             className="assets-undo-link"
             type="text"
             size="small"
-            aria-label={`撤销删除 ${deleted.length} 条作品`}
+            aria-label={i18n.t('assets:undo.batchAria', { count: deleted.length })}
             onClick={() => void undoBatchDelete(deleted)}
           >
-            撤销
+            {i18n.t('common:actions.undo')}
           </Button>
         </span>
       ),
     })
     if (deleted.length < targets.length) {
-      const text = `${targets.length - deleted.length} 条删除失败，请重试`
+      const text = i18n.t('assets:delete.batchPartialFailed', { count: targets.length - deleted.length })
       message.warning(text)
       setAnnouncement(text)
     }
@@ -534,11 +596,11 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     if (!targets.length) return
     modal.confirm({
       className: 'assets-delete-confirm',
-      title: `删除选中的 ${targets.length} 条作品？`,
-      content: '选中的作品将从本机作品历史中删除，5 秒内可撤销。',
-      okText: '删除',
+      title: t('assets:delete.batchConfirmTitle', { count: targets.length }),
+      content: t('assets:delete.batchConfirmContent'),
+      okText: t('common:actions.delete'),
       okButtonProps: { danger: true },
-      cancelText: '取消',
+      cancelText: t('common:actions.cancel'),
       onOk: () => removeSelected(targets),
     })
   }
@@ -548,15 +610,16 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     try {
       const restored = await restoreWorkstationHistory(ownerId, id)
       if (!restored) {
-        message.warning('撤销窗口已结束，作品无法恢复')
-        setAnnouncement('撤销窗口已结束，作品无法恢复')
+        const text = i18n.t('assets:undo.expired')
+        message.warning(text)
+        setAnnouncement(text)
         return
       }
       await refresh(() => isCurrentWorkstationHistoryOwner(ownerId), false)
-      setAnnouncement(`已恢复「${name}」`)
-      message.success('已恢复作品')
+      setAnnouncement(i18n.t('assets:undo.singleAnnouncement', { name }))
+      message.success(i18n.t('assets:undo.singleSuccess'))
     } catch (error) {
-      const text = error instanceof Error ? error.message : '恢复失败'
+      const text = formatAssetsError(error, i18n.t('assets:errors.restoreFailed'))
       message.error(text)
       setAnnouncement(text)
     }
@@ -573,28 +636,28 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       if (!isCurrentWorkstationHistoryOwner(ownerId)) return
       applyRemoved([record.id])
       focusAfterDeleteRef.current = removedIndex
-      setAnnouncement(`已删除「${name}」，剩余 ${Math.max(0, visible.length - 1)} 项，可撤销`)
+      setAnnouncement(i18n.t('assets:delete.singleAnnouncement', { name, remaining: Math.max(0, visible.length - 1) }))
       message.open({
         key: `asset-deleted-${record.id}`,
         type: 'success',
         duration: 5,
         content: (
           <span>
-            已删除「{name}」
+            {i18n.t('assets:delete.singleDone', { name })}
             <Button
               className="assets-undo-link"
               type="text"
               size="small"
-              aria-label={`撤销删除「${name}」`}
+              aria-label={i18n.t('assets:undo.singleAria', { name })}
               onClick={() => void undoDelete(record.id, name)}
             >
-              撤销
+              {i18n.t('common:actions.undo')}
             </Button>
           </span>
         ),
       })
     } catch (error) {
-      const text = error instanceof Error ? error.message : '删除失败'
+      const text = formatAssetsError(error, i18n.t('assets:errors.deleteFailed'))
       message.error(text)
       setAnnouncement(text)
     }
@@ -604,11 +667,11 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     const name = assetDisplayName(item)
     modal.confirm({
       className: 'assets-delete-confirm',
-      title: '删除这条作品？',
-      content: `「${name}」将从本机作品历史中删除，5 秒内可撤销。`,
-      okText: '删除',
+      title: t('assets:delete.singleConfirmTitle'),
+      content: t('assets:delete.singleConfirmContent', { name }),
+      okText: t('common:actions.delete'),
       okButtonProps: { danger: true },
-      cancelText: '取消',
+      cancelText: t('common:actions.cancel'),
       onOk: () => removeRecord(item),
     })
   }
@@ -634,8 +697,12 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
     const selected = selecting && selectable && selectedIds.has(item.id)
     const inSelection = selecting && selectable
     const coverLabel = inSelection
-      ? `${selected ? '取消选择' : '选择'}${name}`
-      : isVideo ? `播放${name}` : `查看${name}大图`
+      ? selected
+        ? t('assets:card.deselectAria', { name })
+        : t('assets:card.selectAria', { name })
+      : isVideo
+        ? t('assets:card.playVideoAria', { name })
+        : t('assets:card.viewImageAria', { name })
     return (
       <article
         key={item.id}
@@ -647,13 +714,19 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
             type="button"
             aria-label={coverLabel}
             aria-pressed={inSelection ? selected : undefined}
-            title={inSelection ? (selected ? '取消选择' : '选择') : isVideo ? '播放视频' : '查看大图'}
+            title={
+              inSelection
+                ? (selected ? t('assets:selection.deselect') : t('assets:selection.select'))
+                : isVideo
+                  ? t('assets:card.playVideoTitle')
+                  : t('assets:card.viewImageTitle')
+            }
             onClick={() => (inSelection ? toggleSelect(item.id) : openAt(item.id))}
           >
             {item.record.video ? (
               <>
                 <VideoPoster posterKey={item.record.video.posterKey} retentionExpiresAt={item.record.video.retentionExpiresAt} ownerId={ownerId} variant="cover" />
-                <span className="assets-video-duration">{item.record.video.durationSeconds} 秒</span>
+                <span className="assets-video-duration">{t('common:time.seconds', { count: item.record.video.durationSeconds })}</span>
               </>
             ) : item.previewUrl ? (
               <>
@@ -677,10 +750,10 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
           <button
             className={`assets-cover assets-cover-email${selecting ? ' assets-cover-unselectable' : ''}`}
             type="button"
-            aria-label={`查看邮件任务：${name}`}
+            aria-label={t('assets:card.viewEmailAria', { name })}
             aria-disabled={selecting || undefined}
             disabled={selecting}
-            title={selecting ? '邮件任务暂不支持批量操作' : '查看邮件任务'}
+            title={selecting ? t('assets:card.emailBatchUnsupported') : t('assets:card.viewEmailTitle')}
             onClick={() => navigate(`/email?mode=single&taskId=${encodeURIComponent(item.email?.id ?? item.id)}`)}
           >
             <CoverPlaceholder icon={<MailOutlined />} />
@@ -689,11 +762,13 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
         <div className="assets-card-details">
           <div className="assets-card-title" title={item.prompt || name}>{name}</div>
           <div className="assets-card-meta" title={item.subtitle}>
-            {item.title} · <time dateTime={item.createdAt}>{formatShortDateTime(item.createdAt)}</time>
+            {item.title} · <time dateTime={item.createdAt}>{formatShortDateTime(item.createdAt, locale)}</time>
             {item.status === 'succeeded' ? '' : ` · ${taskStatusLabel(item.status)}`}
           </div>
           {item.record?.video ? (
-            <div className="assets-card-expiry">{formatShortDateTime(item.record.video.retentionExpiresAt)} 到期</div>
+            <div className="assets-card-expiry">
+              {t('assets:video.expiresAt', { time: formatShortDateTime(item.record.video.retentionExpiresAt, locale) })}
+            </div>
           ) : null}
         </div>
         {item.record && !selecting ? (
@@ -709,8 +784,8 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
                   icon: <DownloadOutlined />,
                   label: (
                     <span>
-                      {downloadingId === item.id ? '正在下载…' : '下载'}
-                      <span className="sr-only">「{name}」</span>
+                      {downloadingId === item.id ? t('assets:card.downloading') : t('common:actions.download')}
+                      <span className="sr-only">{t('assets:card.srName', { name })}</span>
                     </span>
                   ),
                   disabled: downloadingId === item.id,
@@ -719,7 +794,12 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
                   key: 'delete',
                   danger: true,
                   icon: <DeleteOutlined />,
-                  label: <>删除<span className="sr-only">「{name}」</span></>,
+                  label: (
+                    <>
+                      {t('common:actions.delete')}
+                      <span className="sr-only">{t('assets:card.srName', { name })}</span>
+                    </>
+                  ),
                 },
               ],
               onClick: ({ key, domEvent }) => {
@@ -733,7 +813,7 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
               size="small"
               className="assets-card-more"
               icon={<MoreOutlined />}
-              aria-label={`更多操作：${name}`}
+              aria-label={t('assets:card.moreAria', { name })}
               aria-haspopup="menu"
               aria-expanded={openMenuId === item.id}
             />
@@ -746,35 +826,35 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
   return (
     <div className="assets-page">
       <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
-      <h1 className="sr-only">我的资产</h1>
+      <h1 className="sr-only">{t('assets:title')}</h1>
       <div className="assets-page-header">
         <div className="page-tab-row">
           <Segmented
-            aria-label="筛选作品类型"
+            aria-label={t('assets:filters.ariaLabel')}
             value={filter}
             onChange={(value) => setFilter(value as Filter)}
             options={[
-              { label: '全部', value: 'all' },
-              { label: '图片', value: 'workstation' },
-              { label: '视频', value: 'video' },
-              { label: '邮件助手', value: 'email' },
+              { label: t('assets:filters.all'), value: 'all' },
+              { label: t('assets:filters.images'), value: 'workstation' },
+              { label: t('assets:filters.videos'), value: 'video' },
+              { label: t('assets:filters.email'), value: 'email' },
             ]}
           />
         </div>
-        <Space.Compact className="assets-view-switch" role="group" aria-label="展示样式">
-          <Tooltip title="列表视图">
+        <Space.Compact className="assets-view-switch" role="group" aria-label={t('assets:view.groupAria')}>
+          <Tooltip title={t('assets:view.list')}>
             <Button
               icon={<UnorderedListOutlined />}
-              aria-label="列表视图"
+              aria-label={t('assets:view.list')}
               aria-pressed={viewMode === 'list'}
               type={viewMode === 'list' ? 'primary' : 'default'}
               onClick={() => changeViewMode('list')}
             />
           </Tooltip>
-          <Tooltip title="网格视图">
+          <Tooltip title={t('assets:view.grid')}>
             <Button
               icon={<AppstoreOutlined />}
-              aria-label="网格视图"
+              aria-label={t('assets:view.grid')}
               aria-pressed={viewMode === 'grid'}
               type={viewMode === 'grid' ? 'primary' : 'default'}
               onClick={() => changeViewMode('grid')}
@@ -799,17 +879,20 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
                 event.preventDefault()
                 clearSearch()
               }}
-              placeholder="搜索提示词、工具或邮件内容"
-              aria-label="搜索作品"
+              placeholder={t('assets:search.placeholder')}
+              aria-label={t('assets:search.ariaLabel')}
               autoComplete="off"
               enterKeyHint="search"
             />
             <Select
               className="assets-sort"
-              aria-label="排序方式"
+              aria-label={t('assets:sort.ariaLabel')}
               value={sort}
               onChange={(value) => changeSort(value as SortOrder)}
-              options={[{ value: 'newest', label: '最近优先' }, { value: 'oldest', label: '最早优先' }]}
+              options={[
+                { value: 'newest', label: t('assets:sort.newest') },
+                { value: 'oldest', label: t('assets:sort.oldest') },
+              ]}
             />
             {canSelect && !selecting ? (
               <Button
@@ -818,33 +901,33 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
                 className="assets-select-toggle"
                 onClick={enterSelection}
               >
-                选择
+                {t('assets:selection.select')}
               </Button>
             ) : null}
           </div>
           {searching
-            ? <p className="assets-search-count" role="status">找到 {visible.length} 个作品</p>
+            ? <p className="assets-search-count" role="status">{t('assets:search.resultCount', { count: visible.length })}</p>
             : null}
         </div>
       ) : null}
       {filter === 'video' && videoState !== 'ready' ? <VideoAvailabilityNotice state={videoState} onRetry={() => void reloadCapabilities()} /> : null}
-      {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>重新加载</Button>} /> : null}
+      {historyError ? <Alert type="warning" showIcon message={historyError} action={<Button size="small" loading={hydrating} onClick={() => void retryHistory()}>{t('assets:actions.reload')}</Button>} /> : null}
       {loading ? (
-        <div className="assets-loading" role="status"><Spin /> 正在加载作品…</div>
+        <div className="assets-loading" role="status"><Spin /> {t('assets:loading')}</div>
       ) : hydrating && visible.length === 0 && filter !== 'email' ? (
-        <div className="assets-loading" role="status"><Spin /> 正在加载作品…</div>
+        <div className="assets-loading" role="status"><Spin /> {t('assets:loading')}</div>
       ) : visible.length === 0 ? (
         searching ? (
           <EmptyState
-            description={`没有找到匹配「${trimmedQuery.length > 24 ? `${trimmedQuery.slice(0, 24)}…` : trimmedQuery}」的作品`}
-            action={<Button onClick={clearSearch}>清除搜索</Button>}
+            description={t('assets:search.empty', { query: trimmedQuery.length > 24 ? `${trimmedQuery.slice(0, 24)}…` : trimmedQuery })}
+            action={<Button onClick={clearSearch}>{t('assets:search.clear')}</Button>}
           />
         ) : (
           <EmptyState
             description={filter === 'email'
-              ? '暂无邮件任务'
-              : filter === 'video' ? '暂无视频作品' : '暂无作品，完成的图片和视频会显示在这里。'}
-            action={filter === 'video' && videoState !== 'ready' ? undefined : <Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : filter === 'video' ? capabilities.textToVideo === true ? '/canvas/text-to-video' : '/canvas/text-to-image' : '/image-workstation/repaint')}>{filter === 'video' && capabilities.textToVideo !== true ? '打开画布' : '去生成'}</Button>}
+              ? t('assets:empty.email')
+              : filter === 'video' ? t('assets:empty.video') : t('assets:empty.all')}
+            action={filter === 'video' && videoState !== 'ready' ? undefined : <Button type="primary" onClick={() => navigate(filter === 'email' ? '/email' : filter === 'video' ? capabilities.textToVideo === true ? '/canvas/text-to-video' : '/canvas/text-to-image' : '/image-workstation/repaint')}>{filter === 'video' && capabilities.textToVideo !== true ? t('assets:empty.openCanvas') : t('assets:empty.goCreate')}</Button>}
           />
         )
       ) : (
@@ -862,20 +945,20 @@ function AssetsForOwner({ ownerId }: { ownerId: string }) {
       {canLoadMoreEmails ? (
         <div className="assets-load-more">
           <Button loading={loadingMoreEmails} aria-busy={loadingMoreEmails} onClick={() => void loadMoreEmails()}>
-            加载更多邮件任务
+            {t('assets:email.loadMore')}
           </Button>
           <p className="assets-load-more-hint" role="status">
-            已加载 {emailItems.length} / 共 {emailTotal} 个邮件任务
+            {t('assets:email.loadedHint', { loaded: emailItems.length, total: emailTotal })}
           </p>
         </div>
       ) : null}
       {selecting ? (
-        <div className="assets-selection-bar" role="group" aria-label="批量操作">
-          <span className="assets-selection-count" aria-live="polite">已选 {selectedCount} 项</span>
+        <div className="assets-selection-bar" role="group" aria-label={t('assets:selection.barAria')}>
+          <span className="assets-selection-count" aria-live="polite">{t('assets:selection.selectedCount', { count: selectedCount })}</span>
           <div className="assets-selection-actions">
-            <Button type="text" onClick={toggleSelectAll}>{allVisibleSelected ? '取消全选' : '全选'}</Button>
-            <Button danger disabled={selectedCount === 0} onClick={confirmBatchDelete}>删除</Button>
-            <Button type="text" onClick={exitSelection}>取消</Button>
+            <Button type="text" onClick={toggleSelectAll}>{allVisibleSelected ? t('assets:selection.deselectAll') : t('assets:selection.selectAll')}</Button>
+            <Button danger disabled={selectedCount === 0} onClick={confirmBatchDelete}>{t('common:actions.delete')}</Button>
+            <Button type="text" onClick={exitSelection}>{t('common:actions.cancel')}</Button>
           </div>
         </div>
       ) : null}

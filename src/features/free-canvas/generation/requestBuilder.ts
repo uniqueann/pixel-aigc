@@ -9,8 +9,9 @@ import {
 } from '@/types'
 import type { ImageSizePreset } from './config'
 import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
-import { VARIATION_USER_PROMPT_MAX, variationPromptLimitMessage } from '@shared/variation'
+import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import { scaleToLongEdge } from '@/features/image-workstation/tools/requestBuilders/imageEdit'
+import { i18n } from '@/i18n'
 import { videoGenerateAudio, type VideoModelProfile, type VideoRatio, type VideoResolution } from '@shared/video-models'
 
 export type CanvasGenerationTaskParams =
@@ -44,7 +45,7 @@ export function buildTextToImageRequest(
   options?: { resolution: '1k' | '2k' | '4k'; modelProfileId?: string; enableThinking?: boolean },
 ): CanvasGenerationRequest {
   const normalizedPrompt = prompt.trim()
-  if (!normalizedPrompt) throw new Error('请输入画面描述')
+  if (!normalizedPrompt) throw new Error(i18n.t('canvas:errors.promptRequired'))
 
   const params: TextToImageTaskParams = {
     prompt: normalizedPrompt,
@@ -68,8 +69,8 @@ export function buildTextToVideoRequest(
   options?: { model: VideoModelProfile; generateAudio: boolean; resolution?: VideoResolution },
 ): CanvasGenerationRequest {
   const normalizedPrompt = prompt.trim()
-  if (!normalizedPrompt) throw new Error('请输入画面描述')
-  if (normalizedPrompt.length > VIDEO_PROMPT_MAX) throw new Error(`视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`)
+  if (!normalizedPrompt) throw new Error(i18n.t('canvas:errors.promptRequired'))
+  if (normalizedPrompt.length > VIDEO_PROMPT_MAX) throw new Error(i18n.t('canvas:errors.videoPromptTooLong', { max: VIDEO_PROMPT_MAX }))
 
   const params: TextToVideoTaskParams = {
     ...(options ? { mode: 'text_to_video' as const, ratio: preset.key as VideoRatio, resolution: options.resolution ?? options.model.resolution, generateAudio: videoGenerateAudio(options.model, options.generateAudio) } : {}),
@@ -92,9 +93,9 @@ export function buildVariationRequest(
   count: number,
   options?: { resolution: '1k' | '2k' | '4k'; modelProfileId?: string },
 ): CanvasGenerationRequest {
-  if (!source.url) throw new Error('源图片不可用')
+  if (!source.url) throw new Error(i18n.t('canvas:errors.sourceImageUnavailable'))
   const normalizedPrompt = prompt.trim()
-  if (normalizedPrompt.length > VARIATION_USER_PROMPT_MAX) throw new Error(variationPromptLimitMessage())
+  if (normalizedPrompt.length > VARIATION_USER_PROMPT_MAX) throw new Error(i18n.t('canvas:errors.variationPromptTooLong', { max: VARIATION_USER_PROMPT_MAX }))
   const params: VariationTaskParams = {
     sourceImageUrl: source.url,
     size: options ? scaleToLongEdge(source.width, source.height, { '1k': 1024, '2k': 2048, '4k': 4096 }[options.resolution]) : { width: source.width, height: source.height },
@@ -116,10 +117,10 @@ export function buildImageToVideoRequest(
   durationSeconds: number,
   options?: { model: VideoModelProfile; generateAudio: boolean; resolution?: VideoResolution },
 ): CanvasGenerationRequest {
-  if (!source.url) throw new Error('源图片不可用')
+  if (!source.url) throw new Error(i18n.t('canvas:errors.sourceImageUnavailable'))
   const normalizedPrompt = prompt.trim()
-  if (!normalizedPrompt) throw new Error('请输入动态描述')
-  if (normalizedPrompt.length > VIDEO_PROMPT_MAX) throw new Error(`视频描述不能超过 ${VIDEO_PROMPT_MAX} 字`)
+  if (!normalizedPrompt) throw new Error(i18n.t('canvas:errors.motionPromptRequired'))
+  if (normalizedPrompt.length > VIDEO_PROMPT_MAX) throw new Error(i18n.t('canvas:errors.videoPromptTooLong', { max: VIDEO_PROMPT_MAX }))
   const params: ImageToVideoTaskParams = {
     ...(options ? { mode: 'image_to_video' as const, ratio: 'adaptive' as const, resolution: options.resolution ?? options.model.resolution, generateAudio: videoGenerateAudio(options.model, options.generateAudio) } : {}),
     sourceImageUrl: source.url,

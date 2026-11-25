@@ -1,11 +1,13 @@
-import { responseErrorText } from '@/services/api/apiErrorText'
+import { i18n } from '@/i18n'
+import { extractErrorExtra, extractRequestId, translateApiError } from '@/i18n/apiErrors'
+import { apiErrorCode, responseErrorText } from '@/services/api/apiErrorText'
 import { imageAuthHeader, fileToBase64 } from '@/services/api/image-transfer'
 import { checkDetectionSignal, detectionDeadline, measureClientDetection } from '@/services/api/detectionTiming'
 import type { DetectionClientTiming } from '@shared/detection'
 import { liveCapabilityReady } from '@/services/api/task'
 import { Capability } from '@/types'
 import { detectionPixelSize, mockDetectSubject } from './subjectFocus'
-import { SUBJECT_DETECTION_LABEL } from './subjectLabels'
+import { getSubjectDetectionLabel, SUBJECT_DETECTION_LABEL } from './subjectLabels'
 import type { BatchImage, SubjectBox, SubjectDetection } from './types'
 
 async function loadOriented(file: File, width: number, height: number) {
@@ -29,13 +31,13 @@ async function orientedJpeg(file: File, width: number, height: number, timings: 
     canvas.width = width
     canvas.height = height
     const context = canvas.getContext('2d')
-    if (!context) throw new Error('无法读取图片')
+    if (!context) throw new Error(i18n.t('toolbox:errors.cannotReadImage'))
     const blob = await measureClientDetection(timings, 'encode', async () => {
       context.drawImage(bitmap, 0, 0, width, height)
       return new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8))
     })
     checkDetectionSignal(signal)
-    if (!blob) throw new Error('读取图片失败')
+    if (!blob) throw new Error(i18n.t('toolbox:errors.readImageFailed'))
     return blob
   } finally { bitmap.close(); canvas.width = 0; canvas.height = 0 }
 }
@@ -71,15 +73,24 @@ export async function detectImageSubject(image: Pick<BatchImage, 'file' | 'width
     })
     metric.status = response.status
     const readStarted = performance.now()
-    let payload: { box?: SubjectBox | null; error?: string; requestId?: string } | null
+    let payload: { box?: SubjectBox | null; error?: string; code?: string; requestId?: string } | null
     try { payload = await response.json() }
     finally { metric.responseReadMs = Math.round(performance.now() - readStarted) }
     if (payload?.requestId) metric.requestId = payload.requestId
     checkDetectionSignal(deadline.signal)
     if (!response.ok) {
-      throw new Error(responseErrorText(payload) || `${SUBJECT_DETECTION_LABEL}失败`)
+      throw new Error(translateApiError({
+        code: apiErrorCode(payload),
+        extra: extractErrorExtra(payload),
+        message: responseErrorText(payload),
+        status: response.status,
+        requestId: extractRequestId(payload),
+        fallback: i18n.t('toolbox:aspectRatio.subjectDetectionFailed', { label: getSubjectDetectionLabel() }),
+      }))
     }
-    if (!payload || !validBox(payload.box)) throw new Error(`${SUBJECT_DETECTION_LABEL}返回了无效结果`)
+    if (!payload || !validBox(payload.box)) {
+      throw new Error(i18n.t('toolbox:aspectRatio.subjectDetectionInvalid', { label: getSubjectDetectionLabel() }))
+    }
     metric.outcome = 'success'
     return { box: payload.box }
   } catch (error) {
@@ -88,6 +99,6 @@ export async function detectImageSubject(image: Pick<BatchImage, 'file' | 'width
     throw error
   } finally {
     deadline.dispose()
-    console.debug('[主体检测]', { ...metric, clientTimingMs: timings, elapsedMs: Math.round(performance.now() - started) })
+    console.debug(`[${SUBJECT_DETECTION_LABEL}]`, { ...metric, clientTimingMs: timings, elapsedMs: Math.round(performance.now() - started) })
   }
 }

@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { DEFAULT_BG_REMOVE_SETTINGS, type BgRemoveSettings } from './types'
 
 const DATABASE_NAME = 'pixel-aigc-bg-remove-prefs'
@@ -59,7 +60,7 @@ function openDatabase(): Promise<IDBDatabase> {
       request.result.createObjectStore(STORE_NAME, { keyPath: 'scope' })
     }
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error('无法打开抠图设置'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:errors.prefsOpenBgRemove')))
   })
 }
 
@@ -69,8 +70,8 @@ async function transact<T>(mode: IDBTransactionMode, action: (store: IDBObjectSt
     const transaction = db.transaction(STORE_NAME, mode)
     let result: T
     transaction.oncomplete = () => { db.close(); resolve(result) }
-    transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error('读取抠图设置失败')) }
-    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('抠图设置操作已中止')) }
+    transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error(i18n.t('toolbox:errors.prefsReadBgRemove'))) }
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error(i18n.t('toolbox:errors.prefsAbortBgRemove'))) }
     action(transaction.objectStore(STORE_NAME), value => { result = value }, reject)
   })
 }
@@ -79,7 +80,7 @@ async function readRecord(scope: string): Promise<StoredPrefs | undefined> {
   return transact<StoredPrefs | undefined>('readonly', (store, resolve, reject) => {
     const request = store.get(scope)
     request.onsuccess = () => resolve(request.result as StoredPrefs | undefined)
-    request.onerror = () => reject(request.error ?? new Error('读取抠图设置失败'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:errors.prefsReadBgRemove')))
   })
 }
 
@@ -94,7 +95,7 @@ async function mergeRecord(scope: string, patch: Partial<Omit<StoredPrefs, 'scop
   await transact<void>('readwrite', (store, resolve, reject) => {
     const request = store.put(record)
     request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error('保存抠图设置失败'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:errors.prefsSaveBgRemove')))
   })
 }
 

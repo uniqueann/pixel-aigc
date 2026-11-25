@@ -1,0 +1,20 @@
+{
+  "groups": {
+    "quickstart": "Getting Started",
+    "guides": "User Guides",
+    "billing": "Credits & Account",
+    "more": "More"
+  },
+  "articles": {
+    "quickstart": "Quick Start",
+    "credits": "Credits & Billing",
+    "ecommerce-suite": "E-commerce Suite Guide",
+    "bg-remove": "Background Removal Guide",
+    "workstation": "Image Studio Overview",
+    "toolbox": "Toolbox Guide",
+    "canvas": "Free Canvas Guide",
+    "email-assistant": "Email Assistant & Billing",
+    "faq": "FAQ",
+    "contact": "Contact Support"
+  }
+}

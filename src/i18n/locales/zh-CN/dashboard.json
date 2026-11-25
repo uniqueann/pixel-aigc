@@ -1,0 +1,94 @@
+{
+  "quickStart": {
+    "title": "快速开始",
+    "subtitle": "选择一个工具，开始工作",
+    "configLoadFailed": "功能配置加载失败",
+    "retryConfig": "重试配置",
+    "openToolAria": "打开{{label}}",
+    "continueToolAria": "继续使用{{label}}",
+    "groups": {
+      "image": {
+        "title": "图片处理",
+        "description": "编辑与整理商品图片"
+      },
+      "batch": {
+        "title": "批量出图",
+        "description": "生成变体、融合场景与批量处理"
+      },
+      "generate": {
+        "title": "从零生成",
+        "description": "在画布中生成图片或视频"
+      },
+      "email": {
+        "title": "邮件处理",
+        "description": "处理单封邮件或批量邮件"
+      }
+    },
+    "entries": {
+      "pipeline": "流水线",
+      "batchEmail": "批量邮件",
+      "singleEmail": "单个邮件"
+    }
+  },
+  "continueWork": {
+    "title": "继续工作",
+    "subtitle": "接着完成上次的工作",
+    "recentCanvases": "最近画布",
+    "untitledCanvas": "未命名画布",
+    "localSave": "本机存档",
+    "cloudProject": "云端项目",
+    "continueEdit": "继续编辑",
+    "continueEditAria": "继续编辑{{name}}",
+    "noCanvases": "暂无可继续的画布",
+    "cloudLoadFailed": "云端项目读取失败",
+    "recentTools": "最近工具",
+    "lastVisited": "上次访问 {{time}}",
+    "noTools": "访问工具后，可从这里继续使用",
+    "accountSwitched": "账号已切换"
+  },
+  "recentWorks": {
+    "title": "最近作品",
+    "syncing": "正在同步最近作品…",
+    "listAria": "最近作品列表",
+    "videoWork": "视频作品",
+    "imageWork": "图片作品",
+    "readFailed": "作品读取失败",
+    "partialSyncFailed": "有 {{count}} 项作品没有同步",
+    "cloudSyncFailed": "云端作品暂时没有同步",
+    "playAria": "播放{{label}} {{time}}",
+    "previewAria": "预览{{label}} {{time}}",
+    "durationSeconds": "{{seconds}} 秒"
+  },
+  "emptyWorks": {
+    "title": "还没有最近作品",
+    "subtitle": "生成的图片和视频会出现在这里",
+    "action": "去画布创作"
+  },
+  "newUserCard": {
+    "regionAria": "开始创作第一张作品",
+    "closeAria": "关闭新用户卡片",
+    "title": "从第一张商品图开始",
+    "description": "新账号赠送的 {{credits}} 积分已到账。推荐先试试智能抠图，每月 {{freeCount}} 张免费。",
+    "action": "开始智能抠图"
+  },
+  "projectOpen": {
+    "needEditAccess": "请先取得项目编辑权",
+    "unfinishedTasks": "当前画布有未完成任务，请先返回处理",
+    "saveFailed": "当前画布保存失败，请先返回重新保存",
+    "conflict": "当前画布有版本冲突，请先返回处理",
+    "syncing": "当前正在同步，请完成后重试",
+    "accountSwitched": "账号已切换，已取消项目打开",
+    "invalidParams": "项目打开参数无效，请从首页重新选择",
+    "cloudDisabled": "当前环境未启用云端项目",
+    "openFailed": "项目打开失败",
+    "confirmTitle": "保留当前画布并打开其他项目？",
+    "confirmDescription": "当前内容尚未同步到云端。继续后会先保存本机存档，可从首页最近画布返回。",
+    "confirmOk": "保留存档并打开",
+    "errorTitle": "无法打开项目",
+    "retryOpen": "重试打开",
+    "backToCanvas": "返回当前画布",
+    "backToHome": "返回首页",
+    "opening": "正在打开画布…",
+    "cancelOpen": "取消打开"
+  }
+}

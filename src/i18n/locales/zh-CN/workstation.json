@@ -1,0 +1,742 @@
+{
+  "tools": {
+    "smart-edit": "智能编辑",
+    "relight": "重新打光",
+    "remove": "消除",
+    "repaint": "重绘",
+    "variation": "裂变",
+    "fusion": "融合",
+    "outpaint": "扩图",
+    "retouch": "精修"
+  },
+  "models": {
+    "hints": {
+      "fast26": "更快请选 2.6",
+      "supports4k": "支持 4K",
+      "faster": "生成更快",
+      "lowestCost": "最省积分",
+      "value1k": "1K 划算",
+      "samePrice2k": "2K 同价",
+      "maxRef10": "最多 10 张参考图",
+      "fastGoodText": "速度快 · 画面文字准",
+      "highDetail": "高清细节 · 多图融合"
+    }
+  },
+  "projectDefaultName": "图片工作台",
+  "pageHeading": "图片工作站 · {{tool}}",
+  "toolSwitcherAria": "切换图片工具",
+  "common": {
+    "listSeparator": "、",
+    "semicolon": "；"
+  },
+  "toolsMeta": {
+    "comingSoonSubmit": "该功能即将上线，敬请期待",
+    "comingSoonUnavailable": "该功能即将上线，敬请期待。"
+  },
+  "validation": {
+    "smartEditPromptRequired": "请先填写编辑要求",
+    "retouchDirectionsRequired": "请先选择精修方向"
+  },
+  "limits": {
+    "fusionNote": "补充说明最多 {{max}} 字",
+    "variationPrompt": "补充要求最多 {{max}} 字",
+    "relightNote": "补充说明最多 {{max}} 字",
+    "retouchNote": "补充说明最多 {{max}} 字"
+  },
+  "platforms": {
+    "amazon-main": "Amazon 主图",
+    "temu-main": "Temu 主图",
+    "shopee-main": "Shopee 主图",
+    "tiktok-main": "抖音商品图"
+  },
+  "relight": {
+    "directions": {
+      "left": "左侧",
+      "right": "右侧",
+      "top": "顶部",
+      "bottom": "底部",
+      "front": "正面光",
+      "back": "逆光",
+      "top-left": "左上",
+      "top-right": "右上",
+      "bottom-left": "左下",
+      "bottom-right": "右下"
+    },
+    "directionHints": {
+      "top": "主光从正上方来，投影落在正下方。",
+      "left": "主光从画面左侧来，投影落向右侧。",
+      "right": "主光从画面右侧来，投影落向左侧。",
+      "front": "主光从镜头方向来，投影落在商品后方。",
+      "bottom": "主光从下方来，投影向上落在商品上方。",
+      "back": "主光从商品背后而来，轮廓发光，投影铺向镜头。",
+      "top-left": "主光从左上方来，投影落向右下方。",
+      "top-right": "主光从右上方来，投影落向左下方。",
+      "bottom-left": "主光从左下方来，投影落向右上方。",
+      "bottom-right": "主光从右下方来，投影落向左上方。"
+    },
+    "qualities": {
+      "soft": "柔光",
+      "hard": "硬光"
+    },
+    "temperatures": {
+      "warm": "暖色",
+      "neutral": "中性",
+      "cool": "冷色"
+    },
+    "presets": {
+      "studioSoft": "棚拍柔光",
+      "sunsetWarm": "日落暖光",
+      "coolRim": "冷调轮廓光"
+    },
+    "qualityLabel": "光线质感",
+    "temperatureLabel": "色温",
+    "qualityHint": "柔光过渡柔和；硬光对比更强。",
+    "disclaimer": "模拟光影重绘效果，最终画面以生成效果为准。",
+    "compass": {
+      "label": "光线方向",
+      "presetsAria": "光线预设",
+      "directionAria": "光线方向",
+      "product": "商品",
+      "summary": "主光：{{direction}} · {{quality}} · {{temperature}}",
+      "backHint": "{{hint}} 点任一平面方向可切回平面光。",
+      "cellAria": "{{label}}光：{{hint}}",
+      "depthAria": "{{label}}：{{hint}}",
+      "srAnnouncement": "{{summary}}。{{hint}}"
+    },
+    "overlay": {
+      "toggleLabel": "方向示意",
+      "toggleTitle": "实线箭头 = 主光；镜头/辉光徽标 = 正面/逆光；虚线 = 投影",
+      "dragHint": "拖动光源可微调",
+      "dragHandleTitle": "拖动光源调整方向"
+    }
+  },
+  "retouch": {
+    "directions": {
+      "blemish": {
+        "label": "去瑕疵",
+        "hint": "去掉灰尘、划痕和小脏点，不改形状"
+      },
+      "brighten": {
+        "label": "提亮",
+        "hint": "提高曝光和亮度，减轻过暗阴影"
+      },
+      "sharpen": {
+        "label": "边缘锐化",
+        "hint": "只锐化已有边缘，不新造细节"
+      },
+      "texture": {
+        "label": "统一质感",
+        "hint": "均匀表面光影和质地，不换材质"
+      }
+    },
+    "presets": {
+      "standard": {
+        "label": "一键精修",
+        "description": "去瑕疵 + 提亮"
+      }
+    },
+    "continueResultLabel": "继续精修此结果",
+    "continueConfirmTitle": "在这张结果上继续精修？",
+    "continueConfirmContent": "将把这张结果设为新的原图，后续精修基于它进行；原图仍保留在项目中。",
+    "continueConfirmOk": "继续精修"
+  },
+  "settings": {
+    "fusionSubtitle": "保留商品，把背景换成第二张图的场景。",
+    "retouchSubtitle": "轻微修图，保留颜色、文字和构图。"
+  },
+  "preview": {
+    "heading": "图片与预览",
+    "waitingUpload": "等待上传",
+    "readingResults": "正在读取结果",
+    "readingResultsWait": "正在读取结果，请稍候",
+    "generating": "正在生成",
+    "generatedCount": "已生成 {{count}} 张",
+    "inpaintProcessing": "正在{{tool}}，完成后会显示效果",
+    "inpaintSummaryReady": "蒙版已就绪，可继续涂抹或生成",
+    "inpaintSummaryEmpty": "尚未涂抹，回到画布继续涂抹",
+    "retouchSelectedSummary": "已选：{{summary}}",
+    "retouchNoneSelected": "未选择方向"
+  },
+  "upload": {
+    "success": "图片已上传"
+  },
+  "credits": {
+    "calculatingQuote": "正在计算所需积分，请稍候..."
+  },
+  "notifications": {
+    "taskSubmitted": "任务已提交",
+    "generationCancelled": "已取消生成",
+    "retriedRead": "已重试读取已有结果",
+    "resubmitted": "已按原参数重新提交",
+    "retouchSucceeded": "已生成 {{count}} 个结果，原图已保留，可对比后下载或继续精修。",
+    "repaintSucceeded": "已生成 {{count}} 个结果，原图与蒙版已保留，可调整描述再生成一版。",
+    "genericSucceeded": "已生成 {{count}} 个结果，可在预览区查看。"
+  },
+  "tasks": {
+    "succeededCount": "已生成 {{count}} 个图片结果",
+    "cancelledHint": "可调整参数后重新生成",
+    "failedFallback": "任务没有完成，请重试",
+    "processingWait": "正在处理中，请稍候..."
+  },
+  "fusion": {
+    "productSlot": "商品图",
+    "referenceSlot": "场景图",
+    "uploadProductHint": "请上传商品图",
+    "uploadReferenceHint": "请上传场景图",
+    "productLoaded": "商品图已载入",
+    "referenceLoaded": "场景图已载入",
+    "lastSceneUnavailable": "上次场景已不可用，请重新上传",
+    "waitingImageLoad": "请等待图片载入完成",
+    "stages": {
+      "preparing": "正在准备图片",
+      "signing": "正在准备上传",
+      "uploading": "正在上传",
+      "ready": "图片已就绪",
+      "failed": "图片准备失败",
+      "cancelled": "已取消"
+    },
+    "phases": {
+      "submitting": "正在提交融合任务",
+      "cancelled": "输入准备已取消",
+      "preparing": "正在准备商品图与场景图"
+    },
+    "slotStatusLine": "{{slot}}：{{stage}}",
+    "retryFailedAndSubmit": "重试失败图片并提交",
+    "cancelPreparation": "取消准备"
+  },
+  "logs": {
+    "fusionInput": "融合输入"
+  },
+  "bridge": {
+    "restoreInputFirst": "请先恢复本会话输入；如需改用其他图片，请返回套图重新创建会话",
+    "restoreBeforeSubmit": "请恢复本会话输入后再提交，已有结果可以显式回填",
+    "suiteVersionName": "套图版本 {{version}}"
+  },
+  "recovery": {
+    "unsavedDraftConfirm": "当前包含未保存的提示词或涂抹蒙版，切换后将放弃草稿，是否继续？",
+    "readingInputsBlocked": "正在读取输入图片，请完成后再切换",
+    "replaceImageClearMaskConfirm": "替换图片将清除当前蒙版，是否继续？",
+    "switchResultClearMaskConfirm": "切换到该结果将清空当前蒙版，是否继续？",
+    "syncingTask": "正在同步任务，请稍候...",
+    "recoveredAssetName": "生成结果",
+    "blockedBusy": "当前工作站正在处理任务或读取输入，请完成后再载入；已有结果仍可查看。",
+    "useImageConfirm": "基于此图继续编辑将替换当前原图和蒙版，是否继续？",
+    "cacheSyncFailed": "图片已载入，但未同步本地缓存，刷新后可从历史任务中重新载入",
+    "missingSourceOrRef": "原输入或参考图缺失，不能完整载入",
+    "incompleteParams": "原生成参数不完整",
+    "invalidPromptParam": "原提示词参数无效",
+    "invalidOutputSizeParam": "原输出尺寸参数无效",
+    "loadParamsConfirm": "载入原参数将替换当前原图、蒙版和表单，是否继续？"
+  },
+  "footer": {
+    "fusionInputDescription": "{{product}} · {{reference}}",
+    "fusionProductSize": "商品 {{width}}×{{height}}",
+    "fusionReferenceSize": "场景图 {{width}}×{{height}}",
+    "comingSoonNoPreviousInput": "当前工具即将上线，不会使用上一工具的图片",
+    "readPartialFailedAgain": "已就绪 {{ready}} 张，仍无法读取 {{failed}} 张：{{reason}} · 可免费重试，或重新生成（会再次计费）",
+    "readPartialFailed": "已就绪 {{ready}} 张，{{failed}} 张读取失败：{{reason}} · 重试读取免费；重新生成会再次计费",
+    "readFailedAgain": "仍无法读取：{{reason}} · 可免费重试，或重新生成（会再次计费）",
+    "readFailed": "结果暂时无法读取：{{reason}} · 重试读取免费；重新生成会再次计费",
+    "generatingWait": "正在生成 · 请稍候",
+    "generatedWithInput": "已生成 {{count}} 张 · {{input}}",
+    "shortcutHint": "⌘/Ctrl + Enter 生成",
+    "downloadResult": "下载结果",
+    "reading": "正在读取",
+    "retryRead": "重试读取",
+    "cancelGeneration": "取消生成",
+    "generateAgain": "再生成一版",
+    "generateCount": "生成 {{count}} 张",
+    "generate": "生成",
+    "downloadImage": "下载图片"
+  },
+  "edgeRefine": {
+    "cancel": "取消精修",
+    "finish": "完成精修"
+  },
+  "blockReasons": {
+    "taskRunning": "请等待当前任务完成",
+    "outpaintIdleFree": "当前目标与当前图片尺寸相同：请拖拽绿色边框或输入更大的目标尺寸",
+    "outpaintIdlePreset": "当前平台输出与源图尺寸相同，请更换平台或返回自由扩展",
+    "removeUnavailable": "消除服务暂不可用，请稍后重试或联系客服。",
+    "repaintUnavailable": "重绘服务暂不可用，请稍后重试或联系客服。",
+    "loadingConfig": "正在加载功能配置，请稍候",
+    "configLoadFailed": "功能配置加载失败，请重试",
+    "uploadImageFirst": "请先上传需要处理的图片"
+  },
+  "files": {
+    "defaultImageName": "图片",
+    "defaultResultName": "结果",
+    "variationZipName": "{{tool}}_{{count}}张变体.zip",
+    "resultZipName": "{{tool}}_{{count}}张结果.zip"
+  },
+  "errors": {
+    "providerForbidden": "图片服务暂不可用（上游权限限制）",
+    "downloadReadFailed": "下载失败：无法读取结果图片",
+    "downloadFailedPrefix": "下载失败：",
+    "downloadFailedWord": "下载失败",
+    "fusionInputsRequired": "请先上传商品图和场景图",
+    "fusionPrepCancelled": "输入准备已取消",
+    "fusionSlotFailureEntry": "{{slot}}：{{error}}",
+    "fusionImageTimeout": "图片准备超时，请重试失败图片",
+    "fusionSignTimeout": "申请上传地址超时，请重试失败图片",
+    "fusionPhaseSigning": "申请上传地址",
+    "fusionPhaseReading": "图片读取",
+    "fusionPhaseUploading": "图片上传",
+    "fusionPhaseInterrupted": "{{phase}}中断，请重试失败图片",
+    "fusionImagePrepFailed": "图片准备失败，请重试",
+    "openLastSceneFailed": "无法打开上次场景",
+    "lastSceneOpFailed": "上次场景操作失败",
+    "resultDecodeFailed": "生成结果无法解码",
+    "resultSizeInvalid": "生成结果尺寸无效",
+    "sourceEcho": "任务已完成，但没有返回新的生成结果",
+    "resultEmpty": "任务已完成，但接口没有返回图片结果",
+    "createMaskFirst": "请先在图片上创建蒙版",
+    "outpaintCanvasNotReady": "扩图画布尚未准备好",
+    "imageUploadFailed": "图片上传失败",
+    "historyQuotaExceeded": "浏览器存储空间不足，历史未保存；当前图片仍可下载",
+    "historySaveFailed": "历史未保存，请重试保存",
+    "sourceImageReadFailed": "读取原图失败",
+    "resultSizeMismatch": "结果尺寸与声明不一致",
+    "outpaintResultSizeMismatch": "扩图结果尺寸与目标不一致，请重试读取",
+    "processingFailed": "处理失败",
+    "readFailedRetry": "读取失败，请重试读取",
+    "waitCurrentSubmission": "请等待当前提交完成",
+    "taskSubmitFailed": "生成任务提交失败",
+    "taskSubmitFailedWithReason": "任务提交失败：{{reason}}",
+    "uploadSourceFirst": "请先上传需要编辑的图片",
+    "incompleteParams": "当前参数不完整",
+    "maskCanvasNotReady": "蒙版画布尚未准备好",
+    "canvasNotReadyFallback": "当前工具的画布交互仍在后续迭代中",
+    "repaintRemaskRequired": "请重新涂抹后再试",
+    "taskNotCancellable": "当前任务尚不可取消",
+    "maskExportFailed": "蒙版导出失败",
+    "canvasMaskUnsupported": "当前浏览器不支持画布蒙版导出",
+    "sourceSizeUnreadable": "无法读取原图尺寸",
+    "readSelectionMaskFailed": "读取选区蒙版失败",
+    "invertEmptySelection": "请先创建选区后再反选",
+    "invertFailed": "反选失败",
+    "clickOnImage": "请点在图片上",
+    "edgeRefineFailed": "边缘精修失败",
+    "checkApiService": "请检查 API 服务是否已启动",
+    "cancelFailed": "取消生成失败，请稍后重试",
+    "retryQuoteUnavailable": "原任务报价暂不可用，请修改参数后重新生成",
+    "taskRetryFailed": "任务重试失败",
+    "inputRetryFailed": "输入重试失败",
+    "resultReadFailed": "结果读取失败",
+    "resultReadFailedRetry": "结果读取失败，请重试读取",
+    "maxReferenceImages": "当前模型最多 {{max}} 张参考图",
+    "accountOrScopeChanged": "账号或环境已切换"
+  },
+  "outpaint": {
+    "errors": {
+      "invalidTargetSize": "扩图目标尺寸无效",
+      "invalidSize": "扩图尺寸无效",
+      "exceedsMaxPixels": "扩图结果不能超过 6400 万像素，请缩小扩图范围或选择按平台尺寸输出",
+      "invalidSourceSize": "原图尺寸无效",
+      "noEdgesToExpand": "没有需要扩展的边缘",
+      "aspectRatioOutOfRange": "原图宽高比超出扩图服务可接受的范围",
+      "exceedsExpandRange": "目标尺寸超出扩图服务可扩展范围（每边最多扩到 2 倍，最多两次），请先把原图裁得更接近目标比例",
+      "exceedsServiceLimit": "扩图范围超出服务限制"
+    }
+  },
+  "brush": {
+    "pen": "画笔",
+    "eraser": "橡皮擦",
+    "refineUsePen": "边缘精修请用画笔",
+    "smartSelectReadyHint": "点击商品以选中轮廓",
+    "smartSelectComingSoon": "智能选区即将上线",
+    "smartSelectLoadFailed": "智能选区配置加载失败，请重试",
+    "smartSelectLoading": "正在加载智能选区配置…",
+    "invert": "反选",
+    "invertHint": "反选商品以外的区域",
+    "size": "笔刷大小",
+    "sizePixels": "{{value}} 像素",
+    "redo": "重做",
+    "clearMask": "清空蒙版",
+    "detectingProduct": "正在识别商品轮廓…"
+  },
+  "canvas": {
+    "activitySyncing": "正在同步进行中的任务...",
+    "activityGenerating": "正在处理生成任务...",
+    "processingFusion": "正在生成，完成后在这里查看结果",
+    "processingDefault": "正在生成，结果会显示在下方",
+    "compareEffectTab": "效果",
+    "compareOriginalEffectAria": "对比原图与效果",
+    "compareOriginalResultAria": "对比原图与结果",
+    "replaceImage": "替换图片",
+    "loadingMaskCanvas": "正在加载蒙版画布…",
+    "maskComparingFootnote": "正在查看生成效果；切回「原图」可继续涂抹。",
+    "smartSelectFootnote": "点击主体自动选取轮廓；文字、水印或细节建议使用画笔涂抹。",
+    "originalImageAlt": "原始图片",
+    "openOriginalLargeAria": "打开原图大图",
+    "openEffectLargeAria": "打开效果大图",
+    "maskAria": "蒙版涂抹画布",
+    "maskKeyboardHelp": "使用方向键移动笔刷，按住空格涂抹；B 切换画笔，E 切换橡皮擦；左右方括号调整笔刷大小；Ctrl 或 Command 加 Z 撤销，加 Shift 加 Z 重做；Esc 退出画布。",
+    "maskKeyboardHint": "方向键移动 · 空格涂抹 · B/E 切换 · [ ] 调笔刷 · Esc 退出",
+    "currentGeneratedAlt": "当前生成效果",
+    "sourcePendingAlt": "待处理原图",
+    "paintDisabledGenerating": "正在生成，暂不可涂抹",
+    "paintDisabledComparing": "正在查看生成效果，切回「原图」可继续涂抹",
+    "outpaintAria": "扩图边界画布",
+    "outpaintComparingHelp": "正在查看扩图前原图；切回「结果」可继续扩图。Esc 退出画布。",
+    "outpaintPresetHelpWithSize": "平台预设目标 {{width}} × {{height}} 像素，边框不可拖拽；Esc 退出画布。",
+    "outpaintPresetHelpLocked": "平台预设目标已锁定，边框不可拖拽；Esc 退出画布。",
+    "outpaintFreeHelpWithSize": "当前目标 {{width}} × {{height}} 像素。使用左右方向键调整目标宽度，上下方向键调整目标高度；按住 Shift 每次调整 {{step}} 像素；Esc 退出画布。",
+    "outpaintFreeHelpPending": "当前目标尚未确定。使用左右方向键调整目标宽度，上下方向键调整目标高度；按住 Shift 每次调整 {{step}} 像素；Esc 退出画布。",
+    "outpaintPresetLockedHint": "平台预设已锁定",
+    "outpaintKeyboardHint": "方向键调整 · Shift 加速",
+    "upload": {
+      "loading": "正在载入图片…",
+      "prompt": "上传需要处理的商品图片",
+      "formatLimit": "支持 PNG、JPEG、WebP，单张不超过 {{mb}}",
+      "removeHint": "上传图片后，涂抹需要消除的区域",
+      "repaintHint": "上传后先涂抹要重绘的区域，再填写描述",
+      "outpaintHint": "上传后拖拽绿色边框向外扩展，商品主体保持不变"
+    },
+    "fusion": {
+      "viewLargeAria": "查看{{label}}大图",
+      "replaceAria": "替换{{label}}",
+      "remove": "移除",
+      "removeAria": "移除{{label}}",
+      "loadingSlot": "正在载入{{label}}…",
+      "uploadSlot": "上传{{label}}",
+      "slotHintWithLimit": "{{hint}}。支持 PNG、JPEG、WebP，单张不超过 {{mb}}",
+      "reuseLastSceneTitle": "使用上次场景：{{name}}",
+      "reuseLastSceneAria": "使用上次场景 {{width}}×{{height}}",
+      "reuseLastScene": "使用上次场景",
+      "compareSwitchAria": "切换融合输入与效果",
+      "inputTab": "输入",
+      "resultAlt": "融合结果",
+      "openResultLargeAria": "打开融合结果大图",
+      "productLabel": "商品",
+      "productHint": "要保留的商品图，商品本身不会改变",
+      "referenceLabel": "场景图",
+      "referenceHint": "提供新背景的场景图，只作背景",
+      "swapAria": "交换商品图与场景图",
+      "footnote": "正在查看融合结果；切回「输入」可替换商品图或场景图。"
+    },
+    "outpaint": {
+      "comparingOriginal": "正在查看扩图前原图",
+      "presetCentered": "已按平台预设自动居中，边框不可拖拽",
+      "idleAfterResult": "已生成结果 · 拖拽边框或输入更大尺寸继续扩图",
+      "idleBeforeStart": "尚未扩图 · 拖拽边框或输入更大的目标尺寸",
+      "dragHint": "拖拽绿色边框的控制点调整扩图范围",
+      "limitSize": "已达单边 {{maxScale}} 倍上限",
+      "limitPixels": "已达总像素上限",
+      "resetTitle": "恢复到原图尺寸",
+      "loadingCanvas": "正在加载扩图画布…",
+      "comparingFootnote": "正在查看扩图前原图；切回「结果」可继续扩图。"
+    },
+    "footnotes": {
+      "splitCompare": "拖动分割线对比细节；选中结果后可继续精修",
+      "selectToEdit": "选择满意的结果后，可继续进行二次编辑",
+      "adjustAndGenerate": "调整右侧参数后生成，结果会显示在这里"
+    }
+  },
+  "compare": {
+    "afterAlt": "当前编辑效果",
+    "sliderAria": "对比原图与结果",
+    "valueText": "原图 {{before}}%，精修后 {{after}}%",
+    "afterLabel": "精修后",
+    "fitCanvas": "适应画布",
+    "actualSize": "按实际像素查看（1:1）"
+  },
+  "results": {
+    "continueEdit": "继续编辑",
+    "downloadAll": "下载全部",
+    "countOne": "{{count}} 张",
+    "countOther": "{{count}} 张",
+    "strip": {
+      "itemResult": "结果",
+      "itemCandidate": "候选结果",
+      "titleResult": "本次结果",
+      "titleCandidate": "候选结果",
+      "selectAria": "选择{{label}} {{index}}{{suffix}}",
+      "itemAlt": "{{label}} {{index}}",
+      "zoomAria": "放大{{label}} {{index}}",
+      "downloadAria": "下载{{label}} {{index}}",
+      "hints": {
+        "selectedInpaint": "第 {{index}} 张已作为当前原图，可继续编辑",
+        "selectedOutpaint": "第 {{index}} 张已在画布显示，可继续扩图",
+        "selectedResult": "第 {{index}} 张已在预览区显示",
+        "selectedNextInput": "第 {{index}} 张将作为下一轮输入",
+        "unselectedInpaint": "点击缩略图可基于该结果继续编辑，或直接下载",
+        "unselectedOutpaint": "点击缩略图切换画布中的结果，或直接下载",
+        "unselectedResultGrid": "并排查看多张结果，点击图片在预览区查看",
+        "unselectedResult": "点击缩略图在预览区查看，或直接下载",
+        "unselectedNextInput": "选中一张作为下一轮输入"
+      },
+      "badges": {
+        "inpaint": "当前原图",
+        "outpaint": "画布中",
+        "result": "预览中",
+        "nextInput": "下一轮输入"
+      },
+      "selectedSuffix": {
+        "inpaint": "，当前作为原图",
+        "outpaint": "，已在画布显示",
+        "result": "，已在预览区显示",
+        "nextInput": "，当前作为下一轮输入"
+      }
+    },
+    "variationGrid": {
+      "title": "本次变体",
+      "selectedHint": "第 {{index}} 张已选为下一轮输入",
+      "unselectedHint": "点击图片放大对比；选一张可继续编辑",
+      "previewAria": "查看变体 {{index}} 大图",
+      "selectedBadge": "已选中",
+      "selectedButton": "已选",
+      "selectAria": "基于变体 {{index}} 继续编辑",
+      "downloadAria": "下载变体 {{index}}"
+    }
+  },
+  "inpaintGuide": {
+    "stepLabels": {
+      "remove": "消除步骤",
+      "repaint": "重绘步骤"
+    },
+    "steps": {
+      "remove": {
+        "step1": "涂抹区域",
+        "step2": "补充说明（可选）",
+        "step3": "生成"
+      },
+      "repaint": {
+        "step1": "涂抹区域",
+        "step2": "填写描述",
+        "step3": "生成"
+      }
+    },
+    "status": {
+      "remove": {
+        "1": "先在左侧图片上涂抹要消除的区域",
+        "2": "已涂抹 · 可补充背景描述，留空也能生成",
+        "3": "蒙版已就绪，只会修改涂抹区域，可以生成"
+      },
+      "repaint": {
+        "1": "先在左侧图片上涂抹要重绘的区域",
+        "2": "已涂抹 · 请填写重绘描述",
+        "3": "蒙版与描述已就绪，可以生成"
+      }
+    }
+  },
+  "params": {
+    "inpaintModelLabel": "通义万相 2.1 图像编辑",
+    "modelLabel": "模型",
+    "editPromptLabel": "编辑要求",
+    "optionalNoteLabel": "补充说明（可选）",
+    "addOptionalNoteLabel": "添加补充说明（可选）",
+    "optionalNoteAria": "补充说明",
+    "variationNoteOpen": "补充要求（可选）",
+    "variationNoteClosed": "添加补充要求（可选）",
+    "variationNotePlaceholder": "例如：户外露营场景，俯拍",
+    "variationNoteAria": "补充要求",
+    "fusionNotePlaceholder": "例如：放在木质餐桌上，午后自然光",
+    "retouchNotePlaceholder": "例如：保留吊牌文字",
+    "smartEditPlaceholder": "例如：换成纯白电商背景，保留商品细节",
+    "smartEditTemplatesAria": "提示词模板",
+    "variationTemplatesAria": "裂变方向模板",
+    "quickFillLabel": "快速填写",
+    "restoreLastPrompt": "恢复上次要求",
+    "outputSizeLabel": "输出尺寸",
+    "renderResolutionLabel": "渲染分辨率",
+    "fourKUnsupportedRatio": "当前比例不支持 4K",
+    "fourKFallbackSuffix": " · 当前比例不支持 4K，按 2K 生成",
+    "fourKFallbackSentence": "当前比例不支持 4K，按 2K 生成。",
+    "keepSourceSize": "保持原尺寸",
+    "uploadSourceFirstTitle": "请先上传原图",
+    "sourceTooLargeTitle": "原图尺寸过大，无法保持原尺寸",
+    "retouchOutputSource": "输出 {{width}}×{{height}}（原图尺寸）· 按 {{resolution}} 计费",
+    "retouchOutputTier": "输出 {{width}}×{{height}}（长边 {{resolution}}）",
+    "predictedOutput": "预计输出 {{size}} · {{resolution}}",
+    "retouchUpscaleToSourceSameTier": " · 原图长边超过 {{resolution}}，生成后放大到原尺寸",
+    "retouchUpscaleToSourceDiffTier": " · 原图长边需要 {{derived}}，按 {{resolution}} 生成后缩放到原尺寸",
+    "retouchUpscaleNotice": "原图 {{sourceWidth}}×{{sourceHeight}}，将放大到 {{targetWidth}}×{{targetHeight}}；精修不会重绘，但尺寸会变化。",
+    "retouchDirectionsLegend": "精修方向",
+    "requiredSrOnly": "（必选）",
+    "recommendedBadge": "推荐",
+    "retouchSelectAtLeastOne": "请选择至少一个方向",
+    "retouchAllSelected": "已选全部 {{count}} 项",
+    "retouchSelectedSummary": "已选：{{directions}}",
+    "selectAll": "全选",
+    "clearSelection": "清空",
+    "relightNotePlaceholder": "例如：让投影更柔和，保留杯身高光",
+    "repaintPromptMissingHint": "请填写重绘描述后再生成。",
+    "repaintPromptHint": "描述会应用到涂抹区域，未涂抹的部分保持不变。",
+    "repaintMaskReady": "蒙版已就绪，只会重绘涂抹区域",
+    "repaintMaskEmpty": "尚未涂抹，在左侧图片上涂抹要重绘的区域",
+    "repaintPromptLabel": "重绘描述",
+    "repaintPromptPlaceholder": "描述选区里要出现的内容，例如：桌面上的透明玻璃花瓶",
+    "removeMaskReady": "蒙版已就绪，只会修改涂抹区域",
+    "removeMaskEmpty": "尚未涂抹，在左侧图片上涂抹要消除的区域",
+    "removeSmartSelectHint": "智能选区不消耗积分；也可以直接用画笔涂抹。",
+    "removePromptLabel": "背景描述（可选）",
+    "removePromptPlaceholder": "消除小物体可留空；大面积消除建议描述期望补充的背景（请勿输入「删除某某」）",
+    "outputLabel": "输出",
+    "sizeLabel": "尺寸",
+    "sameAsOriginalSize": "与原图同尺寸",
+    "countLabel": "数量",
+    "onePerRun": "每次 1 张",
+    "creditsLabel": "积分",
+    "repaintContractNote": "重绘使用固定模型，暂不支持切换模型、调整分辨率或张数。",
+    "removeContractNote": "消除使用固定模型，暂不支持切换模型、调整分辨率或张数。",
+    "smartEditTemplates": {
+      "whiteBg": {
+        "label": "纯白背景",
+        "prompt": "换成纯白电商背景，保留商品细节和阴影"
+      },
+      "outdoor": {
+        "label": "户外场景",
+        "prompt": "换成户外自然场景，保持商品颜色和材质"
+      },
+      "lightingOnly": {
+        "label": "只调光线",
+        "prompt": "只调整光线和氛围，不改变商品结构和颜色"
+      },
+      "cleanClutter": {
+        "label": "清理杂物",
+        "prompt": "去除背景杂物，保持商品主体完整"
+      }
+    },
+    "variationTemplates": {
+      "outdoor": {
+        "label": "户外场景",
+        "prompt": "换成户外自然场景，保留商品主体和细节"
+      },
+      "indoor": {
+        "label": "室内场景",
+        "prompt": "换成明亮室内场景，保留商品主体和细节"
+      },
+      "topDown": {
+        "label": "俯拍构图",
+        "prompt": "改为俯拍构图，商品居中并留出空间"
+      },
+      "minimalist": {
+        "label": "极简留白",
+        "prompt": "改为极简留白构图，突出商品主体"
+      }
+    },
+    "contracts": {
+      "variation": {
+        "keepLabel": "保留",
+        "keepText": "商品主体与可识别性",
+        "changeLabel": "改变",
+        "changeText": "场景或构图",
+        "outputLabel": "输出",
+        "outputOne": "一次生成 {{count}} 张变体",
+        "outputOther": "一次生成 {{count}} 张变体"
+      },
+      "retouch": {
+        "keepLabel": "保留",
+        "keepText": "商品颜色、材质与整体色相",
+        "unchangedLabel": "不改",
+        "unchangedText": "文字、Logo、铭牌与构图",
+        "onlyDoLabel": "只做",
+        "onlyDoText": "去瑕疵、提亮、边缘锐化和统一质感"
+      },
+      "fusion": {
+        "keepLabel": "保留",
+        "keepText": "商品形状、颜色、表面纹理、印刷文字和 Logo",
+        "sceneLabel": "场景",
+        "sceneText": "只提供背景与氛围，不会把场景物体画进商品",
+        "noAddLabel": "不添加",
+        "noAddText": "不改商品本身，不加文字和水印"
+      }
+    },
+    "outpaint": {
+      "targetLabel": "输出目标",
+      "modes": {
+        "free": "自由扩展",
+        "platformRatio": "平台比例",
+        "platformSize": "平台尺寸"
+      },
+      "modeHints": {
+        "free": "原图保持原尺寸，向外延伸画面。",
+        "platformRatio": "沿用原图分辨率，只把画幅改成平台比例。",
+        "platformSize": "按平台精确像素缩放原图并补全背景。"
+      },
+      "predictedSize": "预计输出 {{width}} × {{height}} 像素。",
+      "uploadToShowSize": "上传图片后显示预计尺寸。",
+      "freeSizeLabel": "目标尺寸",
+      "decreaseSize": "缩小目标尺寸",
+      "targetWidthAria": "目标宽度",
+      "targetHeightAria": "目标高度",
+      "increaseSize": "放大目标尺寸",
+      "maxScaleHint": "单边最多扩到 {{maxScale}} 倍；超出会自动收住到合法尺寸。",
+      "platformLabel": "目标平台",
+      "platformSizeOption": "{{platform}} · {{width}}×{{height}}",
+      "platformRatioOption": "{{platform}} · 仅使用比例"
+    }
+  },
+  "examples": {
+    "summary": "示例",
+    "fusion": {
+      "productAria": "商品示意：单独给出的商品图，形状颜色纹理保持不变",
+      "productCaption": "商品",
+      "sceneAria": "场景示意：虚线框标出场景图只提供背景，场景里的物件不会画进商品",
+      "sceneCaption": "场景",
+      "compositeAria": "合成示意：商品原样放进新场景，场景里的物件只留在背景",
+      "compositeCaption": "合成",
+      "note": "实线框 = 商品原样保留；虚线框 = 场景图只提供背景，场景里的物件不会画进商品。"
+    },
+    "inpaint": {
+      "sourceAria": "原图示意：商品旁边有一处杂物",
+      "sourceCaption": "原图",
+      "removeMaskAria": "涂抹示意：蒙版盖住杂物，商品保持原样",
+      "repaintMaskAria": "涂抹并描述示意：蒙版盖住杂物，气泡里的描述只作用在这块区域",
+      "removeMaskCaption": "涂抹",
+      "repaintMaskCaption": "涂抹 + 描述",
+      "removeResultAria": "补背景示意：杂物消失，虚线框标出由 AI 补齐的背景",
+      "repaintResultAria": "按描述生成示意：蒙版位置变成描述里的事物",
+      "removeResultCaption": "背景被补齐",
+      "repaintResultCaption": "按描述生成",
+      "removeNote": "红色 = 涂抹的蒙版；虚线框 = AI 补齐的背景，其余保持原样。",
+      "repaintNote": "红色 = 涂抹区域；气泡 = 只作用在这块区域的描述，其余保持原样。"
+    },
+    "outpaint": {
+      "sourceAria": "原图示意：画面到这里就截止了，实线框外没有内容",
+      "sourceCaption": "原图",
+      "dragAria": "拖拽示意：绿色虚线框向外拖，框外的浅绿区域就是要由 AI 补齐的部分",
+      "dragCaption": "向外拖绿框",
+      "resultAria": "补齐示意：框外补出了背景，商品位置和大小没有变化",
+      "resultCaption": "框外补背景",
+      "note": "绿色虚线框 = 目标画布，向外拖多少就补多少；实线框 = 原图像素边界，框内原样保留。"
+    },
+    "relight": {
+      "frontAria": "正面光示意：光源在镜头方向，影子落在商品后方",
+      "frontCaption": "正面：影子在后",
+      "leftAria": "左光示意：光从左侧来，影子落向右侧",
+      "leftCaption": "左光：影子向右",
+      "backAria": "逆光示意：光源在商品背后，轮廓发光，影子朝镜头",
+      "backCaption": "逆光：影子朝镜头",
+      "note": "实线箭头 = 主光来向；虚线 = 投影。镜头徽标 = 正面光，商品背后的辉光 = 逆光。"
+    },
+    "retouch": {
+      "sourceAria": "原图示意：商品表面有灰尘和暗部",
+      "sourceCaption": "原图",
+      "retouchedAria": "精修后示意：灰尘去掉，暗部提亮",
+      "retouchedCaption": "精修后",
+      "lockedAria": "文字与颜色保持不变示意",
+      "lockedCaption": "文字与颜色不变",
+      "note": "只处理灰尘、暗部和已有边缘；文字、Logo 与商品颜色保持不变。"
+    },
+    "smartEdit": {
+      "bgAria": "换背景示意：保留商品，把背景换成新场景",
+      "bgCaption": "换背景",
+      "colorAria": "换颜色示意：只改变商品的颜色或材质",
+      "colorCaption": "换颜色",
+      "propsAria": "加元素示意：在商品周围补充道具或装饰",
+      "propsCaption": "加元素",
+      "note": "虚线框与高亮 = 描述里要改的部分；其余内容在提示词里说明保留。"
+    },
+    "variation": {
+      "sourceAria": "原图示意：白底商品图",
+      "sourceCaption": "原图",
+      "sceneAria": "变体示意：保留商品，背景换成户外木桌",
+      "sceneCaption": "换场景",
+      "layoutAria": "变体示意：保留商品，构图改为俯拍留白",
+      "layoutCaption": "换构图",
+      "note": "示意：保留商品主体，改变场景或构图；一次可生成多张变体。"
+    }
+  }
+}

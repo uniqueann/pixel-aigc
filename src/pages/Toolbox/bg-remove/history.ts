@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { Capability } from '@/types'
 import { authEnabled } from '@/cloud/client'
 import { resolveWorkstationHistoryOwner } from '@/features/assets/historyOwner'
@@ -77,7 +78,7 @@ function sourceMime(type: string): BatchImage['sourceMime'] {
 function refsFromHistory(items: Awaited<ReturnType<typeof listHistoryMetadata>>): BgRemoveQueueSnapshot[] {
   return items.filter(item => item.toolSlug === BG_REMOVE_HISTORY_SLUG).slice(0, MAX_FILES).map(item => ({
     id: item.id,
-    name: item.prompt?.trim() || '图片.png',
+    name: item.prompt?.trim() || i18n.t('toolbox:shared.defaultPngName'),
     width: item.width,
     height: item.height,
     objectKey: item.objectKey,

@@ -8,7 +8,7 @@ import {
   SwapOutlined,
   UndoOutlined,
 } from '@ant-design/icons'
-import { SMART_SELECT_LABEL } from '@/services/api/smartSelectLabels'
+import { useTranslation } from 'react-i18next'
 
 export type PaintTool = 'brush' | 'eraser'
 
@@ -49,6 +49,17 @@ export default function BrushToolbar({
   onRedo,
   onClear,
 }: Props) {
+  const { t } = useTranslation(['workstation', 'toolbox', 'common'])
+  const smartSelectTooltip = refineMode
+    ? t('brush.refineUsePen')
+    : smartSelectReady
+      ? t('brush.smartSelectReadyHint')
+      : smartSelectReady === false
+        ? t('brush.smartSelectComingSoon')
+        : smartSelectError
+          ? t('brush.smartSelectLoadFailed')
+          : t('brush.smartSelectLoading')
+
   return (
     <Space
       size={4}
@@ -61,10 +72,10 @@ export default function BrushToolbar({
         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
       }}
     >
-      <Tooltip title="画笔">
+      <Tooltip title={t('brush.pen')}>
         <Button
           size="small"
-          aria-label="画笔"
+          aria-label={t('brush.pen')}
           aria-pressed={tool === 'brush' && !smartSelectEnabled}
           type={tool === 'brush' && !smartSelectEnabled ? 'primary' : 'text'}
           icon={<EditOutlined />}
@@ -72,10 +83,10 @@ export default function BrushToolbar({
           onClick={() => onToolChange('brush')}
         />
       </Tooltip>
-      <Tooltip title="橡皮擦">
+      <Tooltip title={t('brush.eraser')}>
         <Button
           size="small"
-          aria-label="橡皮擦"
+          aria-label={t('brush.eraser')}
           aria-pressed={tool === 'eraser' && !smartSelectEnabled}
           type={tool === 'eraser' && !smartSelectEnabled ? 'primary' : 'text'}
           icon={<DeleteOutlined />}
@@ -83,13 +94,11 @@ export default function BrushToolbar({
           onClick={() => onToolChange('eraser')}
         />
       </Tooltip>
-      <Tooltip title={refineMode ? '边缘精修请用画笔' : smartSelectReady ? '点击商品以选中轮廓'
-        : smartSelectReady === false ? '智能选区即将上线'
-        : smartSelectError ? '智能选区配置加载失败，请重试' : '正在加载智能选区配置…'}>
+      <Tooltip title={smartSelectTooltip}>
         <span>
           <Button
             size="small"
-            aria-label={SMART_SELECT_LABEL}
+            aria-label={t('toolbox:aspectRatio.smartSelect')}
             aria-pressed={smartSelectEnabled}
             type={smartSelectEnabled ? 'primary' : 'text'}
             icon={<AimOutlined />}
@@ -98,11 +107,11 @@ export default function BrushToolbar({
           />
         </span>
       </Tooltip>
-      <Tooltip title={refineMode ? '边缘精修请用画笔' : '反选商品以外的区域'}>
+      <Tooltip title={refineMode ? t('brush.refineUsePen') : t('brush.invertHint')}>
         <span>
           <Button
             size="small"
-            aria-label="反选"
+            aria-label={t('brush.invert')}
             type="text"
             icon={<SwapOutlined />}
             disabled={disabled || refineMode}
@@ -114,8 +123,8 @@ export default function BrushToolbar({
       <span className="workstation-brush-size">
         <span className="workstation-brush-size-slider">
           <Slider
-            ariaLabelForHandle="笔刷大小"
-            ariaValueTextFormatterForHandle={(value) => `${value} 像素`}
+            ariaLabelForHandle={t('brush.size')}
+            ariaValueTextFormatterForHandle={(value) => t('brush.sizePixels', { value })}
             min={4}
             max={80}
             value={brushSize}
@@ -126,14 +135,14 @@ export default function BrushToolbar({
         </span>
         <span className="workstation-brush-size-value" aria-hidden="true">{brushSize}px</span>
       </span>
-      <Tooltip title="撤销">
-        <Button size="small" aria-label="撤销" type="text" icon={<UndoOutlined />} disabled={disabled || !canUndo} onClick={onUndo} />
+      <Tooltip title={t('common:actions.undo')}>
+        <Button size="small" aria-label={t('common:actions.undo')} type="text" icon={<UndoOutlined />} disabled={disabled || !canUndo} onClick={onUndo} />
       </Tooltip>
-      <Tooltip title="重做">
-        <Button size="small" aria-label="重做" type="text" icon={<RedoOutlined />} disabled={disabled || !canRedo} onClick={onRedo} />
+      <Tooltip title={t('brush.redo')}>
+        <Button size="small" aria-label={t('brush.redo')} type="text" icon={<RedoOutlined />} disabled={disabled || !canRedo} onClick={onRedo} />
       </Tooltip>
-      <Tooltip title="清空蒙版">
-        <Button size="small" aria-label="清空蒙版" type="text" danger icon={<ClearOutlined />} disabled={disabled} onClick={onClear} />
+      <Tooltip title={t('brush.clearMask')}>
+        <Button size="small" aria-label={t('brush.clearMask')} type="text" danger icon={<ClearOutlined />} disabled={disabled} onClick={onClear} />
       </Tooltip>
     </Space>
   )

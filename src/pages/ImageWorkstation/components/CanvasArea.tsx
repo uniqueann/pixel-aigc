@@ -1,6 +1,9 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, Segmented, Spin, Upload, message } from 'antd'
 import { BulbOutlined, HistoryOutlined, InboxOutlined, SwapOutlined, UploadOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
+import { MAX_SCALE, type OutpaintOutputMode } from '@shared/outpaint'
+import { formatMegabytes } from '@/i18n/format'
 import { lazyWithRetry } from '@/utils/lazyWithRetry'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { imageFileError } from '@/services/api/upload'
@@ -10,7 +13,6 @@ import CompareSlider from './CompareSlider'
 import { compareAspectCompatible } from '../utils/compareSlider'
 import type { MaskPaintCanvasHandle } from './canvas/MaskPaintCanvas'
 import type { OutpaintCanvasHandle } from './canvas/OutpaintCanvas'
-import type { OutpaintOutputMode } from '@shared/outpaint'
 import { outpaintLimitReason } from '../utils/outpaintGeometry'
 
 const MaskPaintCanvas = lazyWithRetry(() => import('./canvas/MaskPaintCanvas'))
@@ -110,6 +112,8 @@ function FusionSlot({
   onReuseLastScene?: () => void
   reusingLastScene?: boolean
 }) {
+  const { t } = useTranslation(['workstation', 'common'])
+  const maxFileMb = formatMegabytes(20 * 1024 * 1024)
   const beforeUpload = (file: File) => {
     const invalid = imageFileError(file)
     if (invalid) {
@@ -128,8 +132,8 @@ function FusionSlot({
             <button
               type="button"
               className="workstation-fusion-slot-image"
-              title={`查看${label}大图`}
-              aria-label={`查看${label}大图`}
+              title={t('canvas.fusion.viewLargeAria', { label })}
+              aria-label={t('canvas.fusion.viewLargeAria', { label })}
               onClick={onPreviewImage}
             >
               <img src={imageUrl} alt={label} />
@@ -137,10 +141,10 @@ function FusionSlot({
           ) : <img src={imageUrl} alt={label} />}
           <div className="workstation-fusion-slot-actions">
             <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} disabled={uploading || disabled} beforeUpload={beforeUpload}>
-              <Button size="small" icon={<UploadOutlined />} disabled={disabled} loading={uploading} aria-label={`替换${label}`}>替换</Button>
+              <Button size="small" icon={<UploadOutlined />} disabled={disabled} loading={uploading} aria-label={t('canvas.fusion.replaceAria', { label })}>{t('common:actions.replace')}</Button>
             </Upload>
             {onRemove ? (
-              <Button size="small" type="text" danger disabled={disabled || uploading} aria-label={`移除${label}`} onClick={onRemove}>移除</Button>
+              <Button size="small" type="text" danger disabled={disabled || uploading} aria-label={t('canvas.fusion.removeAria', { label })} onClick={onRemove}>{t('canvas.fusion.remove')}</Button>
             ) : null}
           </div>
         </>
@@ -154,8 +158,8 @@ function FusionSlot({
             beforeUpload={beforeUpload}
           >
             <div className="ant-upload-drag-icon">{uploading ? <Spin /> : <InboxOutlined />}</div>
-            <p className="ant-upload-text">{uploading ? `正在载入${label}…` : `上传${label}`}</p>
-            {uploading ? null : <p className="ant-upload-hint">{hint}。支持 PNG、JPEG、WebP，单张不超过 20 MB</p>}
+            <p className="ant-upload-text">{uploading ? t('canvas.fusion.loadingSlot', { label }) : t('canvas.fusion.uploadSlot', { label })}</p>
+            {uploading ? null : <p className="ant-upload-hint">{t('canvas.fusion.slotHintWithLimit', { hint, mb: maxFileMb })}</p>}
           </Upload.Dragger>
           {!uploading && lastScene && onReuseLastScene ? (
             <Button
@@ -165,11 +169,11 @@ function FusionSlot({
               icon={<HistoryOutlined />}
               loading={reusingLastScene}
               disabled={disabled}
-              title={`使用上次场景：${lastScene.name}`}
-              aria-label={`使用上次场景 ${lastScene.width}×${lastScene.height}`}
+              title={t('canvas.fusion.reuseLastSceneTitle', { name: lastScene.name })}
+              aria-label={t('canvas.fusion.reuseLastSceneAria', { width: lastScene.width, height: lastScene.height })}
               onClick={onReuseLastScene}
             >
-              使用上次场景
+              {t('canvas.fusion.reuseLastScene')}
               <span className="workstation-fusion-last-scene-meta">{lastScene.width}×{lastScene.height}</span>
             </Button>
           ) : null}
@@ -227,6 +231,8 @@ export default function CanvasArea({
   resultNaturalSize,
   footnote,
 }: Props) {
+  const { t } = useTranslation(['workstation', 'common'])
+  const maxFileMb = formatMegabytes(20 * 1024 * 1024)
   const maskHandleRef = useRef<MaskPaintCanvasHandle | null>(null)
   const outpaintHandleRef = useRef<OutpaintCanvasHandle | null>(null)
   const [brushSize, setBrushSize] = useState(28)
@@ -291,9 +297,12 @@ export default function CanvasArea({
           <div className="workstation-canvas-controls">
             <div className="workstation-canvas-toolbar">
               <Segmented
-                aria-label="切换融合输入与效果"
+                aria-label={t('canvas.fusion.compareSwitchAria')}
                 value={compareMode}
-                options={[{ label: '输入', value: 'original' }, { label: '效果', value: 'effect' }]}
+                options={[
+                  { label: t('canvas.fusion.inputTab'), value: 'original' },
+                  { label: t('canvas.compareEffectTab'), value: 'effect' },
+                ]}
                 onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
               />
             </div>
@@ -303,11 +312,11 @@ export default function CanvasArea({
           <div className="workstation-preview-stage">
             <img
               src={resultImageUrl}
-              alt="融合结果"
+              alt={t('canvas.fusion.resultAlt')}
               className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
               tabIndex={onPreview ? 0 : undefined}
               role={onPreview ? 'button' : undefined}
-              aria-label={onPreview ? '打开融合结果大图' : undefined}
+              aria-label={onPreview ? t('canvas.fusion.openResultLargeAria') : undefined}
               onClick={onPreview ? () => onPreview('effect') : undefined}
               onKeyDown={onPreview ? event => {
                 if (event.key !== 'Enter' && event.key !== ' ') return
@@ -319,8 +328,8 @@ export default function CanvasArea({
         ) : (
           <div className="workstation-fusion-sources">
             <FusionSlot
-              label="商品"
-              hint="要保留的商品图，商品本身不会改变"
+              label={t('canvas.fusion.productLabel')}
+              hint={t('canvas.fusion.productHint')}
               imageUrl={imageUrl}
               uploading={fusionUploading?.product ?? uploading}
               disabled={uploadDisabled}
@@ -335,15 +344,15 @@ export default function CanvasArea({
                 size="small"
                 type="text"
                 icon={<SwapOutlined />}
-                aria-label="交换商品图与场景图"
-                title="交换商品图与场景图"
+                aria-label={t('canvas.fusion.swapAria')}
+                title={t('canvas.fusion.swapAria')}
                 disabled={uploadDisabled || Boolean(fusionUploading?.product) || Boolean(fusionUploading?.reference)}
                 onClick={onSwapImages}
               />
             ) : null}
             <FusionSlot
-              label="场景图"
-              hint="提供新背景的场景图，只作背景"
+              label={t('canvas.fusion.referenceLabel')}
+              hint={t('canvas.fusion.referenceHint')}
               imageUrl={referenceImageUrl}
               uploading={fusionUploading?.reference ?? uploading}
               disabled={uploadDisabled}
@@ -364,7 +373,7 @@ export default function CanvasArea({
           </div>
         ) : null}
         {viewingResult && footnote !== null ? (
-          <div className="workstation-canvas-footnote">正在查看融合结果；切回「输入」可替换商品图或场景图。</div>
+          <div className="workstation-canvas-footnote">{t('canvas.fusion.footnote')}</div>
         ) : null}
       </div>
     )
@@ -385,9 +394,9 @@ export default function CanvasArea({
           beforeUpload={interceptUpload}
         >
           <div className="ant-upload-drag-icon">{uploading ? <Spin /> : <InboxOutlined />}</div>
-          <p className="ant-upload-text">{uploading ? '正在载入图片…' : '上传需要处理的商品图片'}</p>
+          <p className="ant-upload-text">{uploading ? t('canvas.upload.loading') : t('canvas.upload.prompt')}</p>
           {uploading ? null : uploadHint ? <p className="ant-upload-hint">{uploadHint}</p> : null}
-          {uploading ? null : <p className="ant-upload-hint">支持 PNG、JPEG、WebP，单张不超过 20 MB</p>}
+          {uploading ? null : <p className="ant-upload-hint">{t('canvas.upload.formatLimit', { mb: maxFileMb })}</p>}
         </Upload.Dragger>
       </div>
     )
@@ -400,7 +409,7 @@ export default function CanvasArea({
       disabled={uploading || uploadDisabled}
       beforeUpload={interceptUpload}
     >
-      <Button size="small" icon={<UploadOutlined />} loading={uploading}>替换图片</Button>
+      <Button size="small" icon={<UploadOutlined />} loading={uploading}>{t('canvas.replaceImage')}</Button>
     </Upload>
   )
 
@@ -432,7 +441,7 @@ export default function CanvasArea({
               onSmartSelectToggle={() => setSmartSelectEnabled((enabled) => !enabled)}
               onInvert={() => {
                 void maskHandleRef.current?.invertSelection().catch(error => {
-                  message.error(error instanceof Error ? error.message : '反选失败')
+                  message.error(error instanceof Error ? error.message : t('errors.invertFailed'))
                 })
               }}
               onUndo={() => maskHandleRef.current?.undo()}
@@ -444,16 +453,19 @@ export default function CanvasArea({
             {compareAvailable ? (
               <Segmented
                 size="small"
-                aria-label="对比原图与效果"
+                aria-label={t('canvas.compareOriginalEffectAria')}
                 value={compareMode}
-                options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
+                options={[
+                  { label: t('common:preview.originalShort'), value: 'original' },
+                  { label: t('canvas.compareEffectTab'), value: 'effect' },
+                ]}
                 onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
               />
             ) : null}
             {!refineMode && <div className="workstation-canvas-replace">{replaceButton}</div>}
           </div>
         </div>
-        <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载蒙版画布…</div>}>
+        <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>{t('canvas.loadingMaskCanvas')}</div>}>
           <MaskPaintCanvas
             ref={setMaskHandle}
             imageUrl={imageUrl}
@@ -480,9 +492,9 @@ export default function CanvasArea({
           </div>
         ) : null}
         {paintStatus ? null : comparingResult ? (
-          <div className="workstation-canvas-footnote">正在查看生成效果；切回「原图」可继续涂抹。</div>
+          <div className="workstation-canvas-footnote">{t('canvas.maskComparingFootnote')}</div>
         ) : smartSelectEnabled ? (
-          <div className="workstation-canvas-footnote">点击主体自动选取轮廓；文字、水印或细节建议使用画笔涂抹。</div>
+          <div className="workstation-canvas-footnote">{t('canvas.smartSelectFootnote')}</div>
         ) : null}
       </div>
     )
@@ -498,26 +510,31 @@ export default function CanvasArea({
         <div className="workstation-canvas-controls">
           <div className="workstation-canvas-hint">
             {comparingOriginal
-              ? '正在查看扩图前原图'
+              ? t('canvas.outpaint.comparingOriginal')
               : presetTargetSize
-                ? '已按平台预设自动居中，边框不可拖拽'
+                ? t('canvas.outpaint.presetCentered')
                 : outpaintIdle
                   ? compareAvailable
-                    ? '已生成结果 · 拖拽边框或输入更大尺寸继续扩图'
-                    : '尚未扩图 · 拖拽边框或输入更大的目标尺寸'
-                  : '拖拽绿色边框的控制点调整扩图范围'}
+                    ? t('canvas.outpaint.idleAfterResult')
+                    : t('canvas.outpaint.idleBeforeStart')
+                  : t('canvas.outpaint.dragHint')}
             {limit ? (
               <span className="workstation-canvas-limit">
-                {limit === 'size' ? '已达单边 2 倍上限' : '已达总像素上限'}
+                {limit === 'size'
+                  ? t('canvas.outpaint.limitSize', { maxScale: MAX_SCALE })
+                  : t('canvas.outpaint.limitPixels')}
               </span>
             ) : null}
           </div>
           {compareAvailable ? (
             <Segmented
               size="small"
-              aria-label="对比原图与结果"
+              aria-label={t('canvas.compareOriginalResultAria')}
               value={compareMode}
-              options={[{ label: '原图', value: 'original' }, { label: '结果', value: 'effect' }]}
+              options={[
+                { label: t('common:preview.originalShort'), value: 'original' },
+                { label: t('results.strip.itemResult'), value: 'effect' },
+              ]}
               onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
             />
           ) : null}
@@ -525,16 +542,16 @@ export default function CanvasArea({
             {presetTargetSize || comparingOriginal ? null : (
               <Button
                 size="small"
-                title="恢复到原图尺寸"
+                title={t('canvas.outpaint.resetTitle')}
                 onClick={() => outpaintHandleRef.current?.reset()}
               >
-                重置
+                {t('common:actions.reset')}
               </Button>
             )}
             {replaceButton}
           </div>
         </div>
-        <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>正在加载扩图画布…</div>}>
+        <Suspense fallback={<div style={{ color: 'var(--color-text-muted)' }}>{t('canvas.outpaint.loadingCanvas')}</div>}>
           <OutpaintCanvas
             ref={setOutpaintHandle}
             imageUrl={imageUrl}
@@ -548,7 +565,7 @@ export default function CanvasArea({
           />
         </Suspense>
         {comparingOriginal ? (
-          <div className="workstation-canvas-footnote">正在查看扩图前原图；切回「结果」可继续扩图。</div>
+          <div className="workstation-canvas-footnote">{t('canvas.outpaint.comparingFootnote')}</div>
         ) : null}
       </div>
     )
@@ -563,12 +580,12 @@ export default function CanvasArea({
     && compareAspectCompatible(imageNaturalSize, resultNaturalSize)
   const viewingOriginal = compareMode === 'original' || !compareAvailable
   const defaultFootnote = splitCompareReady
-    ? '拖动分割线对比细节；选中结果后可继续精修'
+    ? t('canvas.footnotes.splitCompare')
     : interactionMode === 'params-only'
       ? compareAvailable
-        ? '选择满意的结果后，可继续进行二次编辑'
-        : '调整右侧参数后生成，结果会显示在这里'
-      : '该功能即将上线，敬请期待'
+        ? t('canvas.footnotes.selectToEdit')
+        : t('canvas.footnotes.adjustAndGenerate')
+      : t('toolsMeta.comingSoonSubmit')
 
   return (
     <div className={canvasShellClass}>
@@ -576,9 +593,12 @@ export default function CanvasArea({
         <div className="workstation-canvas-toolbar">
           {compareAvailable && !splitCompareReady ? (
             <Segmented
-              aria-label="对比原图与效果"
+              aria-label={t('canvas.compareOriginalEffectAria')}
               value={compareMode}
-              options={[{ label: '原图', value: 'original' }, { label: '效果', value: 'effect' }]}
+              options={[
+                { label: t('common:preview.originalShort'), value: 'original' },
+                { label: t('canvas.compareEffectTab'), value: 'effect' },
+              ]}
               onChange={(value) => onCompareModeChange(value as 'original' | 'effect')}
             />
           ) : null}
@@ -588,7 +608,7 @@ export default function CanvasArea({
                 type="button"
                 className="workstation-overlay-toggle"
                 aria-pressed={overlayToggle.pressed}
-                title="实线箭头 = 主光；镜头/辉光徽标 = 正面/逆光；虚线 = 投影"
+                title={t('relight.overlay.toggleTitle')}
                 onClick={overlayToggle.onChange}
               >
                 <BulbOutlined aria-hidden="true" />
@@ -611,11 +631,11 @@ export default function CanvasArea({
         ) : (
           <img
             src={viewingOriginal ? originalImageUrl ?? imageUrl : resultImageUrl ?? imageUrl}
-            alt={viewingOriginal ? '原始图片' : '当前编辑效果'}
+            alt={viewingOriginal ? t('canvas.originalImageAlt') : t('compare.afterAlt')}
             className={`workstation-preview-image${onPreview ? ' is-previewable' : ''}`}
             tabIndex={onPreview ? 0 : undefined}
             role={onPreview ? 'button' : undefined}
-            aria-label={onPreview ? `打开${viewingOriginal ? '原图' : '效果'}大图` : undefined}
+            aria-label={onPreview ? t(viewingOriginal ? 'canvas.openOriginalLargeAria' : 'canvas.openEffectLargeAria') : undefined}
             onClick={onPreview ? () => onPreview(viewingOriginal ? 'original' : 'effect') : undefined}
             onKeyDown={onPreview ? event => {
               if (event.key !== 'Enter' && event.key !== ' ') return

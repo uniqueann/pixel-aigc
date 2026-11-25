@@ -1,0 +1,160 @@
+{
+  "brand": {
+    "name": "Pixel AIGC",
+    "workbenchTitle": "AIGC Workbench",
+    "loadingAria": "Pixel AIGC loading"
+  },
+  "actions": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved",
+    "retry": "Retry",
+    "retryLoad": "Retry",
+    "refetch": "Check again",
+    "close": "Close",
+    "delete": "Delete",
+    "open": "Open",
+    "download": "Download",
+    "upload": "Upload",
+    "uploadImage": "Upload image",
+    "addImage": "Add image",
+    "loadMore": "Load more",
+    "refreshPage": "Refresh page",
+    "viewAll": "View all",
+    "edit": "Edit",
+    "replace": "Replace",
+    "reset": "Reset",
+    "undo": "Undo",
+    "copy": "Copy",
+    "copySuffix": " (Copy)"
+  },
+  "status": {
+    "loading": "Loading...",
+    "loadingConfig": "Loading configuration...",
+    "configLoadFailed": "Failed to load configuration. Please retry.",
+    "comingSoon": "Coming soon",
+    "loadFailed": "Failed to load",
+    "preparingAccount": "Preparing account...",
+    "ready": "Ready"
+  },
+  "time": {
+    "unknown": "Unknown time",
+    "seconds": "{{count}}s"
+  },
+  "units": {
+    "mb": "{{value}} MB"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "chunkUpdated": "A new version is available. Refresh the page to continue.",
+    "genericSubTitle": "Try refreshing the page. If this persists, contact support."
+  },
+  "taskStatus": {
+    "warnings": {
+      "RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO": "4K is not supported for this ratio; generated at 2K instead",
+      "PARTIAL": "Some images succeeded",
+      "LATE_RESULT_NO_CHARGE": "Result arrived after timeout; no credits charged"
+    },
+    "states": {
+      "pending": "Preparing",
+      "queued": "Queued",
+      "processing": "Generating",
+      "succeeded": "Completed",
+      "failed": "Generation failed",
+      "cancelled": "Cancelled"
+    },
+    "phases": {
+      "submitting": "Submitting",
+      "queued": "Queued",
+      "generating": "Generating video",
+      "transferring": "Transferring video"
+    },
+    "readingResults": "Loading results",
+    "submitting": "Submitting",
+    "retryDefault": "Retry with same parameters",
+    "modifyParameters": "Edit parameters",
+    "videoSaved": "Video saved to My Assets (retained for 30 days)",
+    "imageSaved": "Full image saved to local history",
+    "videoHistoryError": "Video ready, but failed to save to Assets",
+    "imageHistoryError": "Image ready, but failed to save to local history",
+    "retrySave": "Retry save",
+    "submitFailed": "Submission failed",
+    "protocolError": "Unexpected result",
+    "pollErrorTitle": "Failed to check task status",
+    "pollErrorDescription": "The task is still preserved; you can check again."
+  },
+  "preview": {
+    "onCanvasCaption": "On canvas · {{count}} item(s), click thumbnail to zoom or download",
+    "videoRetentionSuffix": " · Video retained 30 days",
+    "stripAria": "Generated result preview",
+    "resultTitle": "Result {{index}}",
+    "playResultAria": "Play result {{index}}",
+    "zoomResultAria": "Zoom result {{index}}",
+    "imageLoadFailed": "Failed to load image",
+    "videoPreviewTitle": "Video preview",
+    "imagePreviewTitle": "Image preview",
+    "currentVideo": "Current video",
+    "videoAlt": "video",
+    "imageAlt": "image",
+    "mediaAlt": "Media preview",
+    "closePreview": "Close preview",
+    "downloadVideo": "Download video",
+    "downloadOriginalDefault": "Download full-size image",
+    "downloadOriginalTooltip": "Download original",
+    "compareOriginalAndResult": "Compare original and result",
+    "compareModalTitle": "Original / Result Comparison",
+    "compareLegend": "Left: Original · Right: Result",
+    "holdToViewOriginal": "Hold to view original (Space)",
+    "resetView": "Reset view",
+    "compareStageAria": "Drag divider to compare original and result; double-click to reset view",
+    "resultImageLabel": "Result image",
+    "originalImageLabel": "Original image",
+    "compareLoadFailed": "Failed to load {{label}}",
+    "originalShort": "Original",
+    "resultShort": "Result",
+    "prevImage": "Previous",
+    "nextImage": "Next",
+    "videoPosterBadge": "Video",
+    "videoPosterAlt": "Video poster",
+    "videoLoadFailed": "Failed to load video",
+    "videoPlayFailed": "Video playback failed, please retry",
+    "videoPreviewAria": "Video preview",
+    "accountSwitchedRead": "Account switched; unable to read another account's image",
+    "accountNotReady": "Account is not ready yet",
+    "imageReadFailed": "Failed to load image",
+    "accountSwitchedDownload": "Account switched; unable to download another account's image"
+  },
+  "taskPolling": {
+    "aborted": "Query cancelled",
+    "accountSwitched": "Account switched",
+    "succeededTitle": "Task Completed",
+    "succeededDescription": "Your results are ready to view below.",
+    "failedTitle": "Task Failed",
+    "failedFallback": "Please retry or adjust parameters"
+  },
+  "controls": {
+    "generationCount": "Output count",
+    "helpLinkAria": "Help for current tool",
+    "helpLinkTitle": "Help"
+  },
+  "files": {
+    "defaultVideoName": "video.mp4"
+  },
+  "mock": {
+    "variation": "Image Variations",
+    "outpaint": "Outpaint",
+    "capabilityResult": "{{capability}} mock result",
+    "smartEdit": "Smart Edit",
+    "smartEditCandidate": "Smart Edit Candidate {{index}}",
+    "emailOps": {
+      "summarize": "Email Summary",
+      "reply": "Suggested Reply",
+      "polish": "Polished Draft",
+      "grammar": "Grammar Check Result"
+    },
+    "emailGuidance": "\n\nApplied guidance: {{instruction}}",
+    "emailResult": "{{operation}} ({{language}})\n\n{{source}}{{ellipsis}}{{guidance}}"
+  }
+}

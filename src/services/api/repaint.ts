@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { authorizeSyncQuote } from './billing'
 import { postBilledSyncImage } from './billed-sync'
 import type { ImageResultReadOptions } from './image-transfer'
@@ -12,11 +13,11 @@ import { uploadTaskInput } from './upload'
 /** 原图加同尺寸黑白蒙版，返回未涂抹区域保持原像素的 JPEG。 */
 export async function requestRepaint(image: Blob | null, mask: Blob | string, prompt: string, sourceObjectKey?: string, resultOptions: ImageResultReadOptions = {}) {
   const text = prompt.trim().slice(0, BAILIAN_IMAGEEDIT_PROMPT_MAX)
-  if (!text) throw new Error('请先填写重绘描述')
+  if (!text) throw new Error(i18n.t('errors:client.repaintEmptyPrompt'))
   const prepareStarted = performance.now()
-  const painted = pngMaskBlob(mask, '请先涂抹要重绘的区域', '重绘蒙版无效，请重新涂抹')
-  if (!painted.size || painted.size > MAX_IMAGE_BYTES) throw new Error('重绘蒙版不能超过 20 MB')
-  if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error('单张图片不能超过 20 MB')
+  const painted = pngMaskBlob(mask, i18n.t('errors:client.repaintEmptyMask'), i18n.t('errors:client.repaintInvalidMask'))
+  if (!painted.size || painted.size > MAX_IMAGE_BYTES) throw new Error(i18n.t('errors:client.repaintMaskTooLarge'))
+  if (!sourceObjectKey && (!image?.size || image.size > MAX_IMAGE_BYTES)) throw new Error(i18n.t('errors:generic.singleImageTooLarge'))
   const quote = await authorizeSyncQuote('repaint', 5)
   if (image && !sourceObjectKey) image = await normalizeImageBlob(image)
   const inline = image && shouldUseInlineImageTransport(image.size, painted.size, text, sourceObjectKey)
@@ -39,5 +40,5 @@ export async function requestRepaint(image: Blob | null, mask: Blob | string, pr
   if (resultOptions.origin) body.origin = resultOptions.origin
   resultOptions.onTaskIdentity?.(quote.requestId)
   const response = await postBilledSyncImage('repaint', body, quote,resultOptions.signal)
-  return readImageResult(response, '重绘', resultOptions)
+  return readImageResult(response, i18n.t('credits:syncTools.repaint'), resultOptions)
 }

@@ -1,7 +1,7 @@
+import { i18n } from '@/i18n'
 import { WORKSTATION_TOOLS } from '@/pages/ImageWorkstation/tools'
 import { TOOLBOX_TOOLS } from '@/pages/Toolbox/tools'
 import { CANVAS_MODES } from '@/pages/FreeCanvas/modes'
-import { EMAIL_OPERATIONS } from '@/features/email-assistant/options'
 import type { CapabilityFlags } from '@/services/api/capabilities'
 import { normalizeToolHref } from './recentWork'
 
@@ -12,36 +12,82 @@ const workstationCapabilities: Record<string, keyof CapabilityFlags> = {
   'smart-edit': 'imageEdit', relight: 'imageEdit', remove: 'erase', repaint: 'repaint',
   variation: 'variation', fusion: 'imageEdit', outpaint: 'outpaint', retouch: 'imageEdit',
 }
-const workstation = (slugs: string[]): QuickStartEntry[] => slugs.map(slug => ({
-  href: `/image-workstation/${slug}`, label: WORKSTATION_TOOLS.find(tool => tool.slug === slug)!.label,
-  capability: workstationCapabilities[slug],
-}))
-const toolbox = TOOLBOX_TOOLS.filter(tool => tool.slug !== 'pipeline').map(tool => ({
-  href: `/toolbox/${tool.slug}`, label: tool.label, ...(tool.slug === 'bg-remove' ? { capability: 'bgRemove' as const } : {}),
-}))
 
-export const QUICK_START_GROUPS: QuickStartGroup[] = [
-  { id: 'image', title: '图片处理', description: '编辑与整理商品图片', entries: [
-    ...workstation(['smart-edit', 'relight', 'remove', 'repaint', 'outpaint', 'retouch']), ...toolbox,
-  ] },
-  { id: 'batch', title: '批量出图', description: '生成变体、融合场景与批量处理', entries: [
-    ...workstation(['variation', 'fusion']), { href: '/toolbox/pipeline', label: '流水线' },
-  ] },
-  { id: 'generate', title: '从零生成', description: '在画布中生成图片或视频', entries: CANVAS_MODES.map(mode => ({
-    href: `/canvas/${mode.slug}`, label: mode.label, capability: mode.slug === 'text-to-image' ? 'textToImage' : 'textToVideo',
-  })) },
-  { id: 'email', title: '邮件处理', description: '处理单封邮件或批量邮件', entries: [
-    ...['reply', 'summarize', 'polish', 'grammar'].map(operation => ({
-      href: `/email?mode=single&operation=${operation}`, label: EMAIL_OPERATIONS.find(item => item.value === operation)!.label,
-    })), { href: '/email?mode=batch', label: '批量邮件' },
-  ] },
-]
+function workstationEntries(slugs: string[]): QuickStartEntry[] {
+  return slugs.map(slug => {
+    const tool = WORKSTATION_TOOLS.find(item => item.slug === slug)!
+    return {
+      href: `/image-workstation/${tool.slug}`,
+      label: i18n.t(`workstation:tools.${tool.slug}` as never),
+      capability: workstationCapabilities[slug],
+    }
+  })
+}
 
-const allEntries = QUICK_START_GROUPS.flatMap(group => group.entries)
+function toolboxEntries(): QuickStartEntry[] {
+  return TOOLBOX_TOOLS.filter(tool => tool.slug !== 'pipeline').map(tool => ({
+    href: `/toolbox/${tool.slug}`,
+    label: i18n.t(`toolbox:tools.${tool.slug}` as never),
+    ...(tool.slug === 'bg-remove' ? { capability: 'bgRemove' as const } : {}),
+  }))
+}
+
+export function getQuickStartGroups(): QuickStartGroup[] {
+  return [
+    {
+      id: 'image',
+      title: i18n.t('dashboard:quickStart.groups.image.title'),
+      description: i18n.t('dashboard:quickStart.groups.image.description'),
+      entries: [
+        ...workstationEntries(['smart-edit', 'relight', 'remove', 'repaint', 'outpaint', 'retouch']),
+        ...toolboxEntries(),
+      ],
+    },
+    {
+      id: 'batch',
+      title: i18n.t('dashboard:quickStart.groups.batch.title'),
+      description: i18n.t('dashboard:quickStart.groups.batch.description'),
+      entries: [
+        ...workstationEntries(['variation', 'fusion']),
+        { href: '/toolbox/pipeline', label: i18n.t('dashboard:quickStart.entries.pipeline') },
+      ],
+    },
+    {
+      id: 'generate',
+      title: i18n.t('dashboard:quickStart.groups.generate.title'),
+      description: i18n.t('dashboard:quickStart.groups.generate.description'),
+      entries: CANVAS_MODES.map(mode => ({
+        href: `/canvas/${mode.slug}`,
+        label: i18n.t(`canvas:modes.${mode.slug}` as never),
+        capability: mode.slug === 'text-to-image' ? 'textToImage' : 'textToVideo',
+      })),
+    },
+    {
+      id: 'email',
+      title: i18n.t('dashboard:quickStart.groups.email.title'),
+      description: i18n.t('dashboard:quickStart.groups.email.description'),
+      entries: [
+        ...(['reply', 'summarize', 'polish', 'grammar'] as const).map(operation => ({
+          href: `/email?mode=single&operation=${operation}`,
+          label: i18n.t(`email:operations.${operation}` as never),
+        })),
+        { href: '/email?mode=batch', label: i18n.t('dashboard:quickStart.entries.batchEmail') },
+      ],
+    },
+  ]
+}
+
 export function findToolEntry(href: string): QuickStartEntry | undefined {
   const normalized = normalizeToolHref(href)
-  if (normalized?.startsWith('/email')) return { href: normalized, label: normalized.endsWith('batch') ? '批量邮件' : '单个邮件' }
-  return allEntries.find(entry => entry.href === normalized)
+  if (normalized?.startsWith('/email')) {
+    return {
+      href: normalized,
+      label: normalized.endsWith('batch')
+        ? i18n.t('dashboard:quickStart.entries.batchEmail')
+        : i18n.t('dashboard:quickStart.entries.singleEmail'),
+    }
+  }
+  return getQuickStartGroups().flatMap(group => group.entries).find(entry => entry.href === normalized)
 }
 
 export function entryReady(entry: QuickStartEntry, capabilities: Partial<Record<keyof CapabilityFlags, boolean | undefined>>) {

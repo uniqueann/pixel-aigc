@@ -6,7 +6,7 @@ export async function requireProject(sql: Transaction, id: string, lock = false)
   const rows = lock
     ? await sql`select * from aigc.projects where id=${id} and deleted_at is null for update`
     : await sql`select * from aigc.projects where id=${id} and deleted_at is null`
-  if (!rows[0]) throw new HttpError(404, '项目不存在或无权访问')
+  if (!rows[0]) throw new HttpError(404, '项目不存在或无权访问', 'PROJECT_NOT_FOUND')
   return rows[0]
 }
 export function toAsset(row: Record<string, unknown>): CloudAsset {
@@ -19,18 +19,18 @@ export async function validateReferences(sql: Transaction, projectId: string, in
   const assets = nodes.flatMap(node => node.type === 'image' || node.type === 'video' ? [node.assetId] : node.type === 'generation' && node.outputAssetId ? [node.outputAssetId] : [])
   const derived = input.drafts.derived
   if (derived) {
-    if (derived.sourceNode.assetId !== derived.sourceAssetId) throw new HttpError(400, '派生草稿素材不一致')
+    if (derived.sourceNode.assetId !== derived.sourceAssetId) throw new HttpError(400, '派生草稿素材不一致', 'INVALID_DERIVED_DRAFT')
     assets.push(derived.sourceAssetId)
   }
   if (assets.length) {
     const rows = await sql`select id from aigc.assets where project_id=${projectId} and status='ready' and id in ${sql([...new Set(assets)])}`
-    if (rows.length !== new Set(assets).size) throw new HttpError(400, '画布引用了未上传或无权访问的素材')
+    if (rows.length !== new Set(assets).size) throw new HttpError(400, '画布引用了未上传或无权访问的素材', 'PROJECT_ASSET_UNAVAILABLE')
   }
-  if (nodes.some(n => n.type === 'video')) throw new HttpError(400, '本轮云端暂不支持视频素材')
+  if (nodes.some(n => n.type === 'video')) throw new HttpError(400, '本轮云端暂不支持视频素材', 'PROJECT_VIDEO_UNSUPPORTED')
   const generations = nodes.flatMap(n => n.type === 'generation' ? [n.generationId] : [])
   if (generations.length) {
     const rows = await sql`select id from aigc.generations where project_id=${projectId} and id in ${sql([...new Set(generations)])}`
-    if (rows.length !== new Set(generations).size) throw new HttpError(400, '不能保存本地模拟任务占位')
+    if (rows.length !== new Set(generations).size) throw new HttpError(400, '不能保存本地模拟任务占位', 'PROJECT_MOCK_GENERATION_UNSUPPORTED')
   }
 }
 export async function readProject(sql: Transaction, id: string): Promise<CloudProject> {

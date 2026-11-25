@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { normalizeSettings } from './prefs'
 import type { AspectRatioSettings } from './types'
 
@@ -19,7 +20,7 @@ function openDatabase(): Promise<IDBDatabase> {
       request.result.createObjectStore(STORE_NAME, { keyPath: 'id' })
     }
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error('无法打开本地模板库'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:presets.openDbFailed')))
   })
 }
 
@@ -29,8 +30,8 @@ async function transact<T>(mode: IDBTransactionMode, action: (store: IDBObjectSt
     const transaction = db.transaction(STORE_NAME, mode)
     let result: T
     transaction.oncomplete = () => { db.close(); resolve(result) }
-    transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error('本地模板操作失败')) }
-    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error('本地模板操作已中止')) }
+    transaction.onerror = () => { db.close(); reject(transaction.error ?? new Error(i18n.t('toolbox:presets.txFailed'))) }
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error(i18n.t('toolbox:presets.txAborted'))) }
     action(transaction.objectStore(STORE_NAME), value => { result = value }, reject)
   })
 }
@@ -39,7 +40,7 @@ export async function listPresets(scope: string): Promise<AspectRatioPreset[]> {
   const records = await transact<AspectRatioPreset[]>('readonly', (store, resolve, reject) => {
     const request = store.getAll()
     request.onsuccess = () => resolve(request.result as AspectRatioPreset[])
-    request.onerror = () => reject(request.error ?? new Error('读取模板失败'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:presets.listFailed')))
   })
   return records.filter(record => record.scope === scope)
     .map(record => ({ ...record, settings: normalizeSettings(record.settings) }))
@@ -57,7 +58,7 @@ export async function savePreset(scope: string, name: string, settings: AspectRa
   await transact<void>('readwrite', (store, resolve, reject) => {
     const request = store.put(preset)
     request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error('保存模板失败'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:presets.saveFailed')))
   })
   return preset
 }
@@ -66,6 +67,6 @@ export async function deletePreset(id: string): Promise<void> {
   await transact<void>('readwrite', (store, resolve, reject) => {
     const request = store.delete(id)
     request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error('删除模板失败'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('toolbox:presets.removeFailed')))
   })
 }

@@ -1,4 +1,5 @@
 import { authEnabled, supabase } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { readOwnedImage, OwnedImageReadError } from './ownedImages'
 import type { SyncImageObjectResult } from '@shared/sync-image'
 import type { TaskOrigin } from '@shared/task-center'
@@ -18,7 +19,7 @@ export function fileToBase64(blob: Blob): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
-      reader.onerror = () => reject(new Error('读取图片失败'))
+      reader.onerror = () => reject(new Error(i18n.t('errors:client.imageReadFailed')))
       reader.readAsDataURL(blob)
     })
   }
@@ -76,15 +77,15 @@ export class ImageResultError extends Error {
 }
 
 export function throwIfImageRequestAborted(signal?: AbortSignal) {
-  if (signal?.aborted) throw new DOMException('处理已取消', 'AbortError')
+  if (signal?.aborted) throw new DOMException(i18n.t('errors:client.processingCancelled'), 'AbortError')
 }
 
-/** 读取失败保留对象描述，只读取已有结果，不重新生成。 */
+/** Reads the existing image result on demand without triggering a re-generation. */
 export async function downloadImageResult(payload: SyncImageObjectResult, tool: string, signal?: AbortSignal, ownerId?: string) {
   try { return await readOwnedImage(payload, { signal, ownerId }) }
   catch (error) {
-    if (error instanceof OwnedImageReadError) throw new ImageResultError(error.status, `读取${tool}结果失败：${error.message}`)
-    if (error && typeof error === 'object' && 'status' in error && typeof error.status === 'number') throw new ImageResultError(error.status, `读取${tool}结果地址失败，请重试读取`)
+    if (error instanceof OwnedImageReadError) throw new ImageResultError(error.status, i18n.t('errors:client.readToolResultFailed', { tool, reason: error.message }))
+    if (error && typeof error === 'object' && 'status' in error && typeof error.status === 'number') throw new ImageResultError(error.status, i18n.t('errors:client.readToolResultUrlFailed', { tool }))
     throw error
   }
 }
@@ -104,10 +105,10 @@ export async function readImageResult(response: Response, tool: string, options:
   const expectedMime = options.expectedMime ?? 'image/jpeg'
   if (response.headers.get('Content-Type')?.split(';')[0].trim() === expectedMime) {
     try { return await response.blob() }
-    catch { throwIfImageRequestAborted(options.signal); throw new Error('内联结果读取中断，无法恢复图片；请主动重新生成') }
+    catch { throwIfImageRequestAborted(options.signal); throw new Error(i18n.t('errors:client.inlineResultInterrupted')) }
   }
   const payload = await response.json().catch(() => null) as SyncImageObjectResult | null
-  if (!payload?.objectKey || !payload.url || payload.mimeType !== expectedMime) throw new Error(`${tool}没有返回图片`)
+  if (!payload?.objectKey || !payload.url || payload.mimeType !== expectedMime) throw new Error(i18n.t('errors:client.toolReturnedNoImage', { tool }))
   options.onObjectResult?.(payload)
   return downloadImageResult(payload, tool, options.signal, options.ownerId)
 }

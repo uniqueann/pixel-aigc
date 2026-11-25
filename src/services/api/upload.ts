@@ -1,7 +1,7 @@
 import { normalizeImageBlob } from '@shared/image-format'
-import {
-  base64FitsTaskInputFallback, FALLBACK_TOO_LARGE_MESSAGE, IMAGE_TOO_LARGE_MESSAGE, MAX_IMAGE_BYTES,
-} from '@shared/upload-limits'
+import { base64FitsTaskInputFallback, MAX_IMAGE_BYTES } from '@shared/upload-limits'
+import { i18n } from '@/i18n'
+import { formatMegabytes } from '@/i18n/format'
 import { filenameWithMimeExtension } from '@/features/image-workstation/download'
 import { authEnabled, cloudEnabled } from '@/cloud/client'
 import { apiClient } from './client'
@@ -80,7 +80,7 @@ export interface TaskInputUploadOptions {
 export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image/jpeg', signal?: AbortSignal, options: TaskInputUploadOptions = {}) {
   const started = performance.now()
   const metrics: TaskInputUploadMetrics = { validateMs: 0, signMs: 0, uploadMs: 0, inputBytes: file.size, uploadedBytes: 0, outcome: 'failed' }
-  const check = () => { if (signal?.aborted) throw signal.reason ?? new DOMException('上传已取消', 'AbortError') }
+  const check = () => { if (signal?.aborted) throw signal.reason ?? new DOMException(i18n.t('errors:client.uploadCancelled'), 'AbortError') }
   const stage = async <T>(phase: TaskInputUploadPhase, operation: () => Promise<T>) => {
     check()
     options.onPhase?.(phase)
@@ -94,15 +94,15 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
   }
   try {
     check()
-    if (!file.size) throw new Error('图片文件不能为空')
-    if (file.size > MAX_IMAGE_BYTES) throw new Error('图片大小不能超过 20 MB')
+    if (!file.size) throw new Error(i18n.t('errors:client.imageEmpty'))
+    if (file.size > MAX_IMAGE_BYTES) throw new Error(i18n.t('errors:generic.imageTooLarge', { mb: formatMegabytes(MAX_IMAGE_BYTES) }))
     file = await stage('validating', () => normalizeImageBlob(file))
     mimeType = file.type
     const signed = await stage('signing', () => apiClient.post<unknown, { uploadUrl: string; objectKey: string }>('/task-inputs', {
       mimeType, size: file.size,
     }, ...(signal ? [{ signal }] : [])))
     check()
-    if (!signed.uploadUrl || !signed.objectKey) throw new Error('未获得原图上传地址')
+    if (!signed.uploadUrl || !signed.objectKey) throw new Error(i18n.t('errors:client.missingUploadUrl'))
     let uploaded: Response | undefined
     let directError: unknown
     metrics.transport = 'direct'
@@ -123,12 +123,12 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
       metrics.networkTiming = uploadNetworkTiming(signed.uploadUrl, directStarted)
     }
     if (uploaded) {
-      if (!uploaded.ok) throw new Error('原图上传失败，请重试')
+      if (!uploaded.ok) throw new Error(i18n.t('errors:client.sourceUploadFailed'))
     } else {
-      // 原图仍可能在业务上限内；仅备用 JSON 请求受更小的服务端预算约束。
+      // Source image is within limit; fallback JSON upload has a stricter platform payload ceiling.
       if (!base64FitsTaskInputFallback(file.size)) {
         metrics.fallbackBlockedReason = 'body-limit'
-        throw Object.assign(new Error(FALLBACK_TOO_LARGE_MESSAGE), { cause: directError })
+        throw Object.assign(new Error(i18n.t('errors:generic.fallbackTooLarge')), { cause: directError })
       }
       metrics.transport = 'fallback'
       const encodeStarted = performance.now()
@@ -148,7 +148,7 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
     metrics.uploadedBytes = file.size
     return signed.objectKey
   } catch (error) {
-    if (signal?.aborted) { metrics.outcome = 'cancelled'; throw signal.reason ?? new DOMException('上传已取消', 'AbortError') }
+    if (signal?.aborted) { metrics.outcome = 'cancelled'; throw signal.reason ?? new DOMException(i18n.t('errors:client.uploadCancelled'), 'AbortError') }
     throw error
   } finally {
     metrics.elapsedMs = Math.round(performance.now() - started)
@@ -156,11 +156,11 @@ export async function uploadTaskInput(file: Blob, mimeType = file.type || 'image
   }
 }
 
-/** 上传图片并返回可注册到 AssetRegistry 的元数据。 */
+/** Upload image and return metadata suitable for AssetRegistry. */
 export async function uploadImage(file: File, options: { local?: boolean } = {}): Promise<UploadedImage> {
   const owner = useUserStore.getState().userId
   const tool = uploadToolForPath()
-  if (file.size > MAX_IMAGE_BYTES) throw new Error(IMAGE_TOO_LARGE_MESSAGE)
+  if (file.size > MAX_IMAGE_BYTES) throw new Error(i18n.t('errors:generic.imageTooLarge', { mb: formatMegabytes(MAX_IMAGE_BYTES) }))
   const normalized = await normalizeImageBlob(file)
   file = new File([normalized], filenameWithMimeExtension(file.name, normalized.type), { type: normalized.type, lastModified: file.lastModified })
   validateImageFile(file)
@@ -174,25 +174,24 @@ export async function uploadImage(file: File, options: { local?: boolean } = {})
   const formData = new FormData()
   formData.append('file', file)
   const uploaded = await apiClient.post<unknown, { url: string }>('/uploads', formData)
-  if (!uploaded.url) throw new Error('上传接口没有返回图片地址')
+  if (!uploaded.url) throw new Error(i18n.t('errors:client.uploadResponseMissingUrl'))
   trackFirstUpload(owner, tool)
   return { url: uploaded.url, name: file.name, mimeType: file.type, ...size }
 }
 
 export function validateImageFile(file: Pick<File, 'type' | 'size'>) {
-  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) throw new Error('仅支持 PNG、JPEG 和 WebP 图片')
-  if (file.size > MAX_IMAGE_BYTES) throw new Error(IMAGE_TOO_LARGE_MESSAGE)
+  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) throw new Error(i18n.t('errors:client.imageTypesOnly'))
+  if (file.size > MAX_IMAGE_BYTES) throw new Error(i18n.t('errors:generic.imageTooLarge', { mb: formatMegabytes(MAX_IMAGE_BYTES) }))
 }
 
 /**
- * 选图瞬间的同步体积检查。
- * 只看 size 与 type，不读文件内容，因此能在 beforeUpload 里立即给结果，
- * 不让用户先看到载入中的转圈再收到失败。返回错误文案，null 表示可以继续。
+ * Synchronous validation at selection time before reading file contents,
+ * returning an error string immediately (or null when valid).
  */
 export function imageFileError(file: Pick<File, 'type' | 'size'>) {
-  if (!file.size) return '图片文件不能为空'
-  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) return '仅支持 PNG、JPEG 和 WebP 图片'
-  if (file.size > MAX_IMAGE_BYTES) return IMAGE_TOO_LARGE_MESSAGE
+  if (!file.size) return i18n.t('errors:client.imageEmpty')
+  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) return i18n.t('errors:client.imageTypesOnly')
+  if (file.size > MAX_IMAGE_BYTES) return i18n.t('errors:generic.imageTooLarge', { mb: formatMegabytes(MAX_IMAGE_BYTES) })
   return null
 }
 
@@ -200,7 +199,7 @@ function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(new Error('读取图片失败'))
+    reader.onerror = () => reject(new Error(i18n.t('errors:client.imageReadFailed')))
     reader.readAsDataURL(file)
   })
 }
@@ -209,7 +208,7 @@ function readImageSize(url: string) {
   return new Promise<{ width: number; height: number }>((resolve, reject) => {
     const image = new Image()
     image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
-    image.onerror = () => reject(new Error('无法解析图片尺寸'))
+    image.onerror = () => reject(new Error(i18n.t('errors:client.imageDimensionsFailed')))
     image.src = url
   })
 }

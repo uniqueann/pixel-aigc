@@ -1,4 +1,5 @@
 import { authEnabled, cloudEnabled, cloudRequest } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { useUserStore, type AccountContext } from '@/store/useUserStore'
 import { apiClient } from './client'
 import type { TaskOrigin } from '@shared/task-center'
@@ -53,7 +54,7 @@ export function canCreateLiveTask(capability: Capability, mockGateway = useMockG
 
 export function createTask<TParams>(payload: CreateTaskPayload<TParams>, options?: { signal?: AbortSignal }) {
   if (!canCreateLiveTask(payload.capability))
-    return Promise.reject(new Error('该生成能力尚未接入真实服务'))
+    return Promise.reject(new Error(i18n.t('errors:generic.capabilityNotWired')))
   if (useMockGateway) return createMockTask(payload)
   const origin=payload.origin??defaultTaskOrigin(payload.capability,payload.params)
   const receipt=saveReceipt(payload.capability===Capability.EmailAssist?'email_task':'image_job',payload.requestId,origin,origin?.entry!=='canvas')

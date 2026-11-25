@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import type { WatermarkAnchor } from './types'
 
 export function watermarkPosition(
@@ -57,7 +58,7 @@ export function outputNames(files: { name: string; mimeType: string }[]) {
   const used = new Set<string>()
   return files.map(({ name, mimeType }) => {
     const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png'
-    const base = (name.replace(/\.[^.]+$/, '').replace(/[\\/]/g, '_').split('').map(char => char.charCodeAt(0) < 32 ? '_' : char).join('').trim() || '图片') + '_watermarked'
+    const base = (name.replace(/\.[^.]+$/, '').replace(/[\\/]/g, '_').split('').map(char => char.charCodeAt(0) < 32 ? '_' : char).join('').trim() || i18n.t('toolbox:shared.defaultImageName')) + '_watermarked'
     let candidate = `${base}.${extension}`
     let index = 2
     while (used.has(candidate.toLowerCase())) candidate = `${base}_${index++}.${extension}`

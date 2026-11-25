@@ -1,6 +1,7 @@
 import { hydrateAssets } from '@/cloud/assets'
 import { authEnabled } from '@/cloud/client'
 import { useEditorStore } from '@/editor/store'
+import { i18n } from '@/i18n'
 import { useTaskStore } from '@/store/useTaskStore'
 import { useUserStore } from '@/store/useUserStore'
 import { readCurrentSnapshot, writeCurrentSnapshot, persistenceScope } from './database'
@@ -31,7 +32,7 @@ let editLockBus: BroadcastChannel | undefined
 
 export function currentSnapshot(): ProjectSnapshot {
   const editor = useEditorStore.getState()
-  if (!editor.project) throw new Error('当前没有项目')
+  if (!editor.project) throw new Error(i18n.t('canvas:persistence.errors.noProject'))
   const { drafts, recoveries, cloud } = usePersistenceStore.getState()
   return {
     schemaVersion: 1,
@@ -47,11 +48,11 @@ export function currentSnapshot(): ProjectSnapshot {
 }
 
 export async function copyProjectLocally() {
-  if (hasUnfinishedGeneration()) throw new Error('请先等待当前生成完成')
+  if (hasUnfinishedGeneration()) throw new Error(i18n.t('canvas:persistence.errors.waitGeneration'))
   await flushProject()
   const copy = parseSnapshot(currentSnapshot())
   copy.project.id = crypto.randomUUID()
-  copy.project.name = `${copy.project.name.slice(0, 80)}（本地副本）`
+  copy.project.name = i18n.t('canvas:persistence.localCopyName', { name: copy.project.name.slice(0, 80) })
   copy.cloud = undefined
   for (const record of Object.values(copy.recoveries)) record.projectId = copy.project.id
   await replaceSnapshot(copy)
@@ -74,7 +75,7 @@ export function flushProject(): Promise<void> {
     const state = usePersistenceStore.getState()
     if (!state.writable || state.phase !== 'ready') {
       if (!state.writable && state.phase === 'ready' && revision === savedRevision) return
-      throw new Error('当前页面没有项目编辑权')
+      throw new Error(i18n.t('canvas:persistence.errors.noEditAccess'))
     }
     if (!useEditorStore.getState().project) return
     const savingRevision = revision
@@ -84,7 +85,7 @@ export function flushProject(): Promise<void> {
     savedRevision = savingRevision
     usePersistenceStore.setState({ status: revision === savedRevision ? 'saved' : 'dirty', error: undefined })
   }).catch((error: unknown) => {
-    usePersistenceStore.setState({ status: 'error', error: error instanceof Error ? error.message : '保存失败' })
+    usePersistenceStore.setState({ status: 'error', error: error instanceof Error ? error.message : i18n.t('canvas:persistence.errors.saveFailed') })
     throw error
   })
   queue = operation
@@ -235,7 +236,7 @@ async function releaseHeldLock(next: 'idle' | 'blocked') {
 
 function requestBrowserLock(steal: boolean) {
   const locks = navigator.locks
-  if (!locks) return Promise.reject(new Error('此浏览器不支持安全的本地项目编辑锁，请使用新版浏览器'))
+  if (!locks) return Promise.reject(new Error(i18n.t('canvas:persistence.errors.locksUnsupported')))
   return new Promise<boolean>((resolve, reject) => {
     void locks.request(lockName(), steal ? { steal: true } : { ifAvailable: true }, async (lock) => {
       if (!lock) { resolve(false); return }
@@ -322,7 +323,7 @@ function finishLoad(error?: unknown) {
     phase: 'error',
     writable: hasLock,
     lockPhase: hasLock ? 'held' : 'idle',
-    error: error instanceof Error ? error.message : '读取项目失败',
+    error: error instanceof Error ? error.message : i18n.t('canvas:persistence.errors.readFailed'),
   })
 }
 
@@ -352,7 +353,7 @@ export function reclaimEditAccess(): Promise<void> {
     try {
       if (!hasLock) {
         const granted = await requestEditLock(true)
-        if (!granted) throw new Error('无法取得项目编辑权')
+        if (!granted) throw new Error(i18n.t('canvas:persistence.errors.acquireLockFailed'))
       }
       await readAndApply(hasLock)
       usePersistenceStore.setState({
@@ -367,7 +368,7 @@ export function reclaimEditAccess(): Promise<void> {
         phase: 'error',
         writable: hasLock,
         lockPhase: hasLock ? 'held' : 'blocked',
-        error: error instanceof Error ? error.message : '读取项目失败',
+        error: error instanceof Error ? error.message : i18n.t('canvas:persistence.errors.readFailed'),
       })
     }
   }).finally(() => { initialization = undefined })
@@ -413,11 +414,11 @@ export async function replaceSnapshot(snapshot: ProjectSnapshot, options?: { sig
     return scope === undefined || (persistenceScope() === scope && (projectOwner === undefined || projectOwner === scope)
       && (!authEnabled || useUserStore.getState().userId === scope))
   }
-  const assertScope = () => { if (!scopeIsCurrent()) throw new Error('账号已切换，已取消项目打开') }
+  const assertScope = () => { if (!scopeIsCurrent()) throw new Error(i18n.t('canvas:persistence.errors.accountSwitchedOpen')) }
   const assertActive = () => { assertScope(); options?.signal?.throwIfAborted() }
   assertActive()
-  if (!usePersistenceStore.getState().writable) throw new Error('当前页面没有项目编辑权')
-  if (hasUnfinishedGeneration()) throw new Error('请先处理未完成的任务')
+  if (!usePersistenceStore.getState().writable) throw new Error(i18n.t('canvas:persistence.errors.noEditAccess'))
+  if (hasUnfinishedGeneration()) throw new Error(i18n.t('canvas:persistence.errors.unfinishedTasks'))
   const valid = parseSnapshot(snapshot)
   if (useEditorStore.getState().project && usePersistenceStore.getState().phase === 'ready') await flushProject()
   assertActive()
@@ -437,7 +438,7 @@ export async function replaceSnapshot(snapshot: ProjectSnapshot, options?: { sig
     usePersistenceStore.setState({ phase: 'ready' })
   }).catch((error: unknown) => {
     if (scopeIsCurrent())
-      usePersistenceStore.setState({ phase: previousPhase, status: options?.signal?.aborted ? 'saved' : 'error', error: options?.signal?.aborted ? undefined : error instanceof Error ? error.message : '替换项目失败' })
+      usePersistenceStore.setState({ phase: previousPhase, status: options?.signal?.aborted ? 'saved' : 'error', error: options?.signal?.aborted ? undefined : error instanceof Error ? error.message : i18n.t('canvas:persistence.errors.replaceFailed') })
     throw error
   })
   queue = operation
@@ -450,8 +451,8 @@ export async function newProject() {
   await replaceSnapshot({
     schemaVersion: 1,
     project: {
-      id: crypto.randomUUID(), name: '未命名画布', createdAt, updatedAt: createdAt,
-      document: { version: 1, activeSceneId: sceneId, scenes: [{ id: sceneId, name: '场景 1', width: 1280, height: 720, nodes: [], viewport: { zoom: 1, panX: 0, panY: 0 } }] },
+      id: crypto.randomUUID(), name: i18n.t('canvas:editor.defaultProjectName'), createdAt, updatedAt: createdAt,
+      document: { version: 1, activeSceneId: sceneId, scenes: [{ id: sceneId, name: i18n.t('canvas:editor.defaultSceneName'), width: 1280, height: 720, nodes: [], viewport: { zoom: 1, panX: 0, panY: 0 } }] },
       assets: {}, generations: {},
     },
     drafts: defaultDrafts(), recoveries: {},
@@ -459,7 +460,7 @@ export async function newProject() {
 }
 
 export async function restartAfterLoadError() {
-  if (!hasLock) throw new Error('请先取得项目编辑权')
+  if (!hasLock) throw new Error(i18n.t('canvas:persistence.errors.acquireEditAccessFirst'))
   // 原始损坏数据由错误页面提供下载；只有用户确认后才替换。
   usePersistenceStore.setState({ recoveries: {} })
   useEditorStore.setState({ project: null })

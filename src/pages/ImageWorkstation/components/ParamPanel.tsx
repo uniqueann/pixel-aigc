@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { Button, Checkbox, Input, InputNumber, Segmented, Select, Space } from 'antd'
 import { DownOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
 import ModelChoice from '@/components/ModelChoice'
 import { PLATFORM_SIZE_PRESETS } from '@/constants/platformSizes'
@@ -17,7 +18,7 @@ import {
 } from '@shared/relight'
 import RelightCompass from './RelightCompass'
 import { outputPreview } from '../utils/outputPreview'
-import { RETOUCH_DIRECTIONS, RETOUCH_MAX_SOURCE_PIXELS, RETOUCH_NOTE_MAX, RETOUCH_PRESETS, RETOUCH_TARGET_LONG_EDGE, normalizeRetouchDirections, retouchDirectionLabel, retouchOutputSize, retouchResolutionForSource, type RetouchDirection } from '@shared/retouch'
+import { RETOUCH_DIRECTIONS, RETOUCH_MAX_SOURCE_PIXELS, RETOUCH_NOTE_MAX, RETOUCH_PRESETS, RETOUCH_TARGET_LONG_EDGE, normalizeRetouchDirections, retouchOutputSize, retouchResolutionForSource, type RetouchDirection } from '@shared/retouch'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
 import { MAX_SCALE, type OutpaintOutputMode } from '@shared/outpaint'
 import type { CountTool } from '@shared/preferences'
@@ -86,40 +87,53 @@ function numberOrNull(value: number | string | null) {
 const labelStyle = { display: 'block', marginBottom: 6, fontSize: 12, color: 'var(--color-text-secondary)' }
 const tallPromptSize = { minRows: 10, maxRows: 16 }
 const repaintPromptSize = { minRows: 4, maxRows: 8 }
-/** 消除与重绘都由服务端固定使用 wanx2.1-imageedit；这里只展示用户可读名称。 */
-const INPAINT_MODEL_LABEL = '通义万相 2.1 图像编辑'
 
-/** 智能编辑的起步模板，避免用户面对空框自己发明 prompt。 */
-const SMART_EDIT_PROMPT_TEMPLATES = [
-  { label: '纯白背景', prompt: '换成纯白电商背景，保留商品细节和阴影' },
-  { label: '户外场景', prompt: '换成户外自然场景，保持商品颜色和材质' },
-  { label: '只调光线', prompt: '只调整光线和氛围，不改变商品结构和颜色' },
-  { label: '清理杂物', prompt: '去除背景杂物，保持商品主体完整' },
+const SMART_EDIT_TEMPLATE_KEYS = [
+  { id: 'whiteBg', labelKey: 'params.smartEditTemplates.whiteBg.label', promptKey: 'params.smartEditTemplates.whiteBg.prompt' },
+  { id: 'outdoor', labelKey: 'params.smartEditTemplates.outdoor.label', promptKey: 'params.smartEditTemplates.outdoor.prompt' },
+  { id: 'lightingOnly', labelKey: 'params.smartEditTemplates.lightingOnly.label', promptKey: 'params.smartEditTemplates.lightingOnly.prompt' },
+  { id: 'cleanClutter', labelKey: 'params.smartEditTemplates.cleanClutter.label', promptKey: 'params.smartEditTemplates.cleanClutter.prompt' },
 ] as const
 
-/** 裂变的快速方向只围绕「换场景 / 换构图」，与页面承诺保持一致。 */
-const VARIATION_PROMPT_TEMPLATES = [
-  { label: '户外场景', prompt: '换成户外自然场景，保留商品主体和细节' },
-  { label: '室内场景', prompt: '换成明亮室内场景，保留商品主体和细节' },
-  { label: '俯拍构图', prompt: '改为俯拍构图，商品居中并留出空间' },
-  { label: '极简留白', prompt: '改为极简留白构图，突出商品主体' },
+const VARIATION_TEMPLATE_KEYS = [
+  { id: 'outdoor', labelKey: 'params.variationTemplates.outdoor.label', promptKey: 'params.variationTemplates.outdoor.prompt' },
+  { id: 'indoor', labelKey: 'params.variationTemplates.indoor.label', promptKey: 'params.variationTemplates.indoor.prompt' },
+  { id: 'topDown', labelKey: 'params.variationTemplates.topDown.label', promptKey: 'params.variationTemplates.topDown.prompt' },
+  { id: 'minimalist', labelKey: 'params.variationTemplates.minimalist.label', promptKey: 'params.variationTemplates.minimalist.prompt' },
 ] as const
+
+const RETOUCH_DIRECTION_KEYS = {
+  blemish: { label: 'retouch.directions.blemish.label', hint: 'retouch.directions.blemish.hint' },
+  brighten: { label: 'retouch.directions.brighten.label', hint: 'retouch.directions.brighten.hint' },
+  sharpen: { label: 'retouch.directions.sharpen.label', hint: 'retouch.directions.sharpen.hint' },
+  texture: { label: 'retouch.directions.texture.label', hint: 'retouch.directions.texture.hint' },
+} as const satisfies Record<RetouchDirection, { label: string; hint: string }>
+
+const PLATFORM_LABEL_KEYS = {
+  'amazon-main': 'platforms.amazon-main',
+  'temu-main': 'platforms.temu-main',
+  'shopee-main': 'platforms.shopee-main',
+  'tiktok-main': 'platforms.tiktok-main',
+} as const
+
+type PlatformLabelKey = (typeof PLATFORM_LABEL_KEYS)[keyof typeof PLATFORM_LABEL_KEYS]
 
 /** 裂变的核心承诺：保留什么、改变什么、一次出几张。 */
 function VariationContract({ count }: { count: number }) {
+  const { t } = useTranslation('workstation')
   return (
     <dl className="workstation-variation-contract">
       <div>
-        <dt>保留</dt>
-        <dd>商品主体与可识别性</dd>
+        <dt>{t('params.contracts.variation.keepLabel')}</dt>
+        <dd>{t('params.contracts.variation.keepText')}</dd>
       </div>
       <div>
-        <dt>改变</dt>
-        <dd>场景或构图</dd>
+        <dt>{t('params.contracts.variation.changeLabel')}</dt>
+        <dd>{t('params.contracts.variation.changeText')}</dd>
       </div>
       <div>
-        <dt>输出</dt>
-        <dd>一次生成 {count} 张变体</dd>
+        <dt>{t('params.contracts.variation.outputLabel')}</dt>
+        <dd>{t(count === 1 ? 'params.contracts.variation.outputOne' : 'params.contracts.variation.outputOther', { count })}</dd>
       </div>
     </dl>
   )
@@ -127,19 +141,20 @@ function VariationContract({ count }: { count: number }) {
 
 /** 精修的核心承诺：只做轻微修图，颜色、文字和构图都不动。 */
 function RetouchContract() {
+  const { t } = useTranslation('workstation')
   return (
     <dl className="workstation-retouch-contract">
       <div>
-        <dt>保留</dt>
-        <dd>商品颜色、材质与整体色相</dd>
+        <dt>{t('params.contracts.retouch.keepLabel')}</dt>
+        <dd>{t('params.contracts.retouch.keepText')}</dd>
       </div>
       <div>
-        <dt>不改</dt>
-        <dd>文字、Logo、铭牌与构图</dd>
+        <dt>{t('params.contracts.retouch.unchangedLabel')}</dt>
+        <dd>{t('params.contracts.retouch.unchangedText')}</dd>
       </div>
       <div>
-        <dt>只做</dt>
-        <dd>去瑕疵、提亮、边缘锐化和统一质感</dd>
+        <dt>{t('params.contracts.retouch.onlyDoLabel')}</dt>
+        <dd>{t('params.contracts.retouch.onlyDoText')}</dd>
       </div>
     </dl>
   )
@@ -147,19 +162,20 @@ function RetouchContract() {
 
 /** 把固定提示词里的约束摊到界面上，避免用户写出与商品保真冲突的说明。 */
 function FusionContract() {
+  const { t } = useTranslation('workstation')
   return (
     <dl className="workstation-fusion-contract">
       <div>
-        <dt>保留</dt>
-        <dd>商品形状、颜色、表面纹理、印刷文字和 Logo</dd>
+        <dt>{t('params.contracts.fusion.keepLabel')}</dt>
+        <dd>{t('params.contracts.fusion.keepText')}</dd>
       </div>
       <div>
-        <dt>场景</dt>
-        <dd>只提供背景与氛围，不会把场景物体画进商品</dd>
+        <dt>{t('params.contracts.fusion.sceneLabel')}</dt>
+        <dd>{t('params.contracts.fusion.sceneText')}</dd>
       </div>
       <div>
-        <dt>不添加</dt>
-        <dd>不改商品本身，不加文字和水印</dd>
+        <dt>{t('params.contracts.fusion.noAddLabel')}</dt>
+        <dd>{t('params.contracts.fusion.noAddText')}</dd>
       </div>
     </dl>
   )
@@ -205,6 +221,7 @@ export default function ParamPanel({
   variationLastPrompt,
   onRestoreVariationPrompt,
 }: Props) {
+  const { t } = useTranslation(['workstation', 'common'])
   const repaintPromptId = useId()
   const repaintHintId = useId()
   const erasePromptId = useId()
@@ -251,7 +268,7 @@ export default function ParamPanel({
     : undefined
   const countHeading = (
     <div className="workstation-count-heading">
-      <div style={{ ...labelStyle, marginBottom: 0 }}>生成数量</div>
+      <div style={{ ...labelStyle, marginBottom: 0 }}>{t('common:controls.generationCount')}</div>
       {countTool ? <CountMemoryHint tool={countTool} disabled={disabled} /> : null}
     </div>
   )
@@ -261,7 +278,7 @@ export default function ParamPanel({
     const fusion = capability === Capability.Fusion
     const model = matchImageModel(models, modelProfileId) ?? models[0]
     const promptRequired = !variation && !retouch && !fusion
-    const promptLabel = retouch ? '补充说明（可选）' : '编辑要求'
+    const promptLabel = retouch ? t('params.optionalNoteLabel') : t('params.editPromptLabel')
     const promptMaxLength = fusion ? FUSION_NOTE_MAX : retouch ? RETOUCH_NOTE_MAX : variation ? VARIATION_USER_PROMPT_MAX : model?.ui.promptMaxLength ?? PROMPT_MAX_LENGTH
     const maxCount = model?.ui.maxCount ?? 4
     const resolutions = model?.ui.resolutions ?? ['2k', '4k']
@@ -273,8 +290,10 @@ export default function ParamPanel({
     const selectedDirections = normalizeRetouchDirections(retouchDirections)
     const presetActive = selectedDirections.length === retouchPreset.directions.length
       && retouchPreset.directions.every(direction => selectedDirections.includes(direction))
-    const selectedDirectionLabel = selectedDirections.map(retouchDirectionLabel).join('、')
-    const resolutionLabel = retouch ? '输出尺寸' : '渲染分辨率'
+    const selectedDirectionLabel = selectedDirections
+      .map(direction => t(RETOUCH_DIRECTION_KEYS[direction].label))
+      .join(t('common.listSeparator'))
+    const resolutionLabel = retouch ? t('params.outputSizeLabel') : t('params.renderResolutionLabel')
     const keepSource = retouch && keepSourceSize && Boolean(sourceSize)
     const sourcePixelsTooLarge = Boolean(sourceSize && sourceSize.width * sourceSize.height > RETOUCH_MAX_SOURCE_PIXELS)
     const derivedResolution = sourceSize
@@ -290,7 +309,7 @@ export default function ParamPanel({
       label: value.toUpperCase(),
       disabled: value === '4k' && !fourKAllowed,
       'aria-disabled': value === '4k' && !fourKAllowed ? true : undefined,
-      title: value === '4k' && !fourKAllowed ? '当前比例不支持 4K' : undefined,
+      title: value === '4k' && !fourKAllowed ? t('params.fourKUnsupportedRatio') : undefined,
     }))
     const requested = requestedResolution ?? resolution
     // 比例不在 4K 白名单只说明 4K 选项不可用。精修的「按 2K 生成」仅在用户要了 4K、
@@ -299,10 +318,14 @@ export default function ParamPanel({
     const resolutionOptions = retouch
       ? [...tierOptions, {
           value: 'source' as const,
-          label: '保持原尺寸',
+          label: t('params.keepSourceSize'),
           disabled: !sourceSize || sourcePixelsTooLarge,
           'aria-disabled': !sourceSize || sourcePixelsTooLarge ? true : undefined,
-          title: !sourceSize ? '请先上传原图' : sourcePixelsTooLarge ? '原图尺寸过大，无法保持原尺寸' : undefined,
+          title: !sourceSize
+            ? t('params.uploadSourceFirstTitle')
+            : sourcePixelsTooLarge
+              ? t('params.sourceTooLargeTitle')
+              : undefined,
         }]
       : tierOptions
     // 裂变与融合的补充说明是可选项：默认收起，已有内容时自动展开，接近上限才显示字数。
@@ -338,44 +361,55 @@ export default function ParamPanel({
           <p className="toolbox-hint" role="status" aria-live="polite" style={{ margin: '8px 0 0', fontSize: 12 }}>
             {retouch && retouchOutput
               ? keepSource
-                ? `输出 ${retouchOutput.width}×${retouchOutput.height}（原图尺寸）· 按 ${resolution.toUpperCase()} 计费`
-                : `输出 ${retouchOutput.width}×${retouchOutput.height}（长边 ${resolution.toUpperCase()}）`
-              : `预计输出 ${mapped.size} · ${mapped.resolution.toUpperCase()}`}
+                ? t('params.retouchOutputSource', { width: retouchOutput.width, height: retouchOutput.height, resolution: resolution.toUpperCase() })
+                : t('params.retouchOutputTier', { width: retouchOutput.width, height: retouchOutput.height, resolution: resolution.toUpperCase() })
+              : t('params.predictedOutput', { size: mapped.size, resolution: mapped.resolution.toUpperCase() })}
             {showFourKFallback
-              ? ' · 当前比例不支持 4K，按 2K 生成'
+              ? t('params.fourKFallbackSuffix')
               : keepSource && needsUpscale
                 ? derivedResolution === resolution
-                  ? ` · 原图长边超过 ${resolution.toUpperCase()}，生成后放大到原尺寸`
-                  : ` · 原图长边需要 ${derivedResolution.toUpperCase()}，按 ${resolution.toUpperCase()} 生成后缩放到原尺寸`
+                  ? t('params.retouchUpscaleToSourceSameTier', { resolution: resolution.toUpperCase() })
+                  : t('params.retouchUpscaleToSourceDiffTier', {
+                      derived: derivedResolution.toUpperCase(),
+                      resolution: resolution.toUpperCase(),
+                    })
                 : ''}
           </p>
         ) : null}
         {retouch && sourceSize && retouchOutput && !keepSource && Math.max(sourceSize.width, sourceSize.height) < 1024 ? (
           <p className="toolbox-hint" style={{ margin: '4px 0 0', fontSize: 12 }}>
-            原图 {sourceSize.width}×{sourceSize.height}，将放大到 {retouchOutput.width}×{retouchOutput.height}；精修不会重绘，但尺寸会变化。
+            {t('params.retouchUpscaleNotice', {
+              sourceWidth: sourceSize.width,
+              sourceHeight: sourceSize.height,
+              targetWidth: retouchOutput.width,
+              targetHeight: retouchOutput.height,
+            })}
           </p>
         ) : null}
       </div>
     )
     const variationQuickFill = variation ? (
       <div className="workstation-variation-quickfill">
-        <div style={{ ...labelStyle, marginBottom: 0 }}>快速填写</div>
-        <div className="workstation-prompt-templates workstation-variation-templates" role="group" aria-label="裂变方向模板">
-          {VARIATION_PROMPT_TEMPLATES.map(template => (
-            <Button
-              key={template.label}
-              size="small"
-              disabled={disabled}
-              onClick={() => {
-                const current = smartEditPrompt.trim()
-                const next = current ? `${current}；${template.prompt}` : template.prompt
-                onSmartEditPromptChange(next.slice(0, promptMaxLength))
-                setVariationNoteOpen(true)
-              }}
-            >
-              {template.label}
-            </Button>
-          ))}
+        <div style={{ ...labelStyle, marginBottom: 0 }}>{t('params.quickFillLabel')}</div>
+        <div className="workstation-prompt-templates workstation-variation-templates" role="group" aria-label={t('params.variationTemplatesAria')}>
+          {VARIATION_TEMPLATE_KEYS.map(template => {
+            const templatePrompt = t(template.promptKey)
+            return (
+              <Button
+                key={template.id}
+                size="small"
+                disabled={disabled}
+                onClick={() => {
+                  const current = smartEditPrompt.trim()
+                  const next = current ? `${current}${t('common.semicolon')}${templatePrompt}` : templatePrompt
+                  onSmartEditPromptChange(next.slice(0, promptMaxLength))
+                  setVariationNoteOpen(true)
+                }}
+              >
+                {t(template.labelKey)}
+              </Button>
+            )
+          })}
         </div>
         {variationLastPrompt && onRestoreVariationPrompt && variationLastPrompt !== smartEditPrompt ? (
           <button
@@ -389,7 +423,7 @@ export default function ParamPanel({
               setVariationNoteOpen(true)
             }}
           >
-            恢复上次要求
+            {t('params.restoreLastPrompt')}
           </button>
         ) : null}
       </div>
@@ -405,7 +439,7 @@ export default function ParamPanel({
           disabled={disabled}
           onClick={() => setVariationNoteOpen(!variationNoteExpanded)}
         >
-          <span>{variationNoteExpanded ? '补充要求（可选）' : '添加补充要求（可选）'}</span>
+          <span>{variationNoteExpanded ? t('params.variationNoteOpen') : t('params.variationNoteClosed')}</span>
           <DownOutlined rotate={variationNoteExpanded ? 180 : 0} aria-hidden="true" />
         </button>
         {variationNoteExpanded ? (
@@ -414,10 +448,10 @@ export default function ParamPanel({
             value={smartEditPrompt}
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
-            placeholder="例如：户外露营场景，俯拍"
+            placeholder={t('params.variationNotePlaceholder')}
             autoSize={{ minRows: 2, maxRows: 3 }}
             maxLength={promptMaxLength}
-            aria-label="补充要求"
+            aria-label={t('params.variationNoteAria')}
             showCount={variationNoteNearLimit ? {
               formatter: ({ count: current, maxLength }) => `${current} / ${maxLength ?? promptMaxLength}`,
             } : false}
@@ -434,7 +468,7 @@ export default function ParamPanel({
           disabled={disabled}
           onClick={() => setFusionNoteOpen(!fusionNoteExpanded)}
         >
-          <span>{fusionNoteExpanded ? '补充说明（可选）' : '添加补充说明（可选）'}</span>
+          <span>{fusionNoteExpanded ? t('params.optionalNoteLabel') : t('params.addOptionalNoteLabel')}</span>
           <DownOutlined rotate={fusionNoteExpanded ? 180 : 0} aria-hidden="true" />
         </button>
         {fusionNoteExpanded ? (
@@ -443,10 +477,10 @@ export default function ParamPanel({
             value={smartEditPrompt}
             disabled={disabled}
             onChange={(event) => onSmartEditPromptChange(event.target.value)}
-            placeholder="例如：放在木质餐桌上，午后自然光"
+            placeholder={t('params.fusionNotePlaceholder')}
             autoSize={{ minRows: 2, maxRows: 4 }}
             maxLength={promptMaxLength}
-            aria-label="补充说明"
+            aria-label={t('params.optionalNoteAria')}
             showCount={fusionNoteNearLimit ? {
               formatter: ({ count: current, maxLength }) => `${current} / ${maxLength ?? promptMaxLength}`,
             } : false}
@@ -463,7 +497,7 @@ export default function ParamPanel({
           value={smartEditPrompt}
           disabled={disabled}
           onChange={(event) => onSmartEditPromptChange(event.target.value)}
-          placeholder={retouch ? '例如：保留吊牌文字' : '例如：换成纯白电商背景，保留商品细节'}
+          placeholder={retouch ? t('params.retouchNotePlaceholder') : t('params.smartEditPlaceholder')}
           autoSize={retouch ? { minRows: 3, maxRows: 6 } : { minRows: 4, maxRows: 8 }}
           styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
           style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
@@ -473,21 +507,24 @@ export default function ParamPanel({
           showCount
         />
         {promptRequired ? (
-          <div className="workstation-prompt-templates" role="group" aria-label="提示词模板">
-            {SMART_EDIT_PROMPT_TEMPLATES.map(template => (
-              <Button
-                key={template.label}
-                size="small"
-                disabled={disabled}
-                onClick={() => {
-                  const current = smartEditPrompt.trim()
-                  const next = current ? `${current}；${template.prompt}` : template.prompt
-                  onSmartEditPromptChange(next.slice(0, promptMaxLength))
-                }}
-              >
-                {template.label}
-              </Button>
-            ))}
+          <div className="workstation-prompt-templates" role="group" aria-label={t('params.smartEditTemplatesAria')}>
+            {SMART_EDIT_TEMPLATE_KEYS.map(template => {
+              const templatePrompt = t(template.promptKey)
+              return (
+                <Button
+                  key={template.id}
+                  size="small"
+                  disabled={disabled}
+                  onClick={() => {
+                    const current = smartEditPrompt.trim()
+                    const next = current ? `${current}${t('common.semicolon')}${templatePrompt}` : templatePrompt
+                    onSmartEditPromptChange(next.slice(0, promptMaxLength))
+                  }}
+                >
+                  {t(template.labelKey)}
+                </Button>
+              )
+            })}
           </div>
         ) : null}
       </div>
@@ -499,9 +536,9 @@ export default function ParamPanel({
         {fusion ? <FusionContract /> : null}
         {models.length > 1 ? (
           <div>
-            <div style={labelStyle}>模型</div>
+            <div style={labelStyle}>{t('params.modelLabel')}</div>
             <ModelChoice
-              ariaLabel="模型"
+              ariaLabel={t('params.modelLabel')}
               models={models}
               value={model?.id}
               disabled={disabled}
@@ -515,8 +552,8 @@ export default function ParamPanel({
             <RetouchContract />
             <fieldset className="retouch-direction-fieldset" aria-describedby="retouch-direction-summary">
               <legend style={{ ...labelStyle, marginTop: 12 }} className="retouch-direction-legend">
-                精修方向<span className="param-required" aria-hidden="true">*</span>
-                <span className="sr-only">（必选）</span>
+                {t('params.retouchDirectionsLegend')}<span className="param-required" aria-hidden="true">*</span>
+                <span className="sr-only">{t('params.requiredSrOnly')}</span>
               </legend>
               <button
                 type="button"
@@ -526,18 +563,18 @@ export default function ParamPanel({
                 onClick={() => onRetouchDirectionsChange?.(normalizeRetouchDirections(retouchPreset.directions))}
               >
                 <span className="retouch-preset-main">
-                  <span className="retouch-preset-name">{retouchPreset.label}</span>
-                  <span className="retouch-preset-badge">推荐</span>
+                  <span className="retouch-preset-name">{t('retouch.presets.standard.label')}</span>
+                  <span className="retouch-preset-badge">{t('params.recommendedBadge')}</span>
                 </span>
-                <span className="retouch-preset-desc">{retouchPreset.description}</span>
+                <span className="retouch-preset-desc">{t('retouch.presets.standard.description')}</span>
               </button>
               <div className="retouch-direction-summary">
                 <span id="retouch-direction-summary" className="retouch-direction-selected" aria-live="polite">
                   {selectedDirections.length === 0
-                    ? '请选择至少一个方向'
+                    ? t('params.retouchSelectAtLeastOne')
                     : selectedDirections.length === RETOUCH_DIRECTIONS.length
-                      ? `已选全部 ${RETOUCH_DIRECTIONS.length} 项`
-                      : `已选：${selectedDirectionLabel}`}
+                      ? t('params.retouchAllSelected', { count: RETOUCH_DIRECTIONS.length })
+                      : t('params.retouchSelectedSummary', { directions: selectedDirectionLabel })}
                 </span>
                 <span className="retouch-direction-actions">
                   <button
@@ -545,14 +582,14 @@ export default function ParamPanel({
                     disabled={disabled || selectedDirections.length === RETOUCH_DIRECTIONS.length}
                     onClick={() => onRetouchDirectionsChange?.(normalizeRetouchDirections(RETOUCH_DIRECTIONS.map(item => item.id)))}
                   >
-                    全选
+                    {t('params.selectAll')}
                   </button>
                   <button
                     type="button"
                     disabled={disabled || selectedDirections.length === 0}
                     onClick={() => onRetouchDirectionsChange?.([])}
                   >
-                    清空
+                    {t('params.clearSelection')}
                   </button>
                 </span>
               </div>
@@ -566,8 +603,8 @@ export default function ParamPanel({
                   value: item.id,
                   label: (
                     <span className="retouch-direction-option">
-                      <span className="retouch-direction-name">{item.label}</span>
-                      <span className="retouch-direction-hint">{item.hint}</span>
+                      <span className="retouch-direction-name">{t(RETOUCH_DIRECTION_KEYS[item.id].label)}</span>
+                      <span className="retouch-direction-hint">{t(RETOUCH_DIRECTION_KEYS[item.id].hint)}</span>
                     </span>
                   ),
                 }))}
@@ -600,9 +637,9 @@ export default function ParamPanel({
         {intro}
         {models.length > 1 ? (
           <div>
-            <div style={labelStyle}>模型</div>
+            <div style={labelStyle}>{t('params.modelLabel')}</div>
             <ModelChoice
-              ariaLabel="模型"
+              ariaLabel={t('params.modelLabel')}
               models={models}
               value={model?.id}
               disabled={disabled}
@@ -614,34 +651,37 @@ export default function ParamPanel({
         <RelightCompass value={relight} disabled={disabled} onChange={next => onRelightChange?.(next)} />
         <div className="relight-pair">
           <div>
-            <div style={labelStyle}>光线质感</div>
+            <div style={labelStyle}>{t('relight.qualityLabel')}</div>
             <Segmented
               block
-              aria-label="光线质感"
+              aria-label={t('relight.qualityLabel')}
               disabled={disabled}
               value={relight.quality}
               onChange={(value) => update({ quality: value as RelightOptions['quality'] })}
-              options={[{ label: '柔光', value: 'soft' }, { label: '硬光', value: 'hard' }]}
+              options={[
+                { label: t('relight.qualities.soft'), value: 'soft' },
+                { label: t('relight.qualities.hard'), value: 'hard' },
+              ]}
             />
           </div>
           <div>
-            <div style={labelStyle}>色温</div>
+            <div style={labelStyle}>{t('relight.temperatureLabel')}</div>
             <Segmented
               block
-              aria-label="色温"
+              aria-label={t('relight.temperatureLabel')}
               disabled={disabled}
               value={relight.temperature}
               onChange={(value) => update({ temperature: value as RelightOptions['temperature'] })}
               options={[
-                { label: '暖色', value: 'warm' },
-                { label: '中性', value: 'neutral' },
-                { label: '冷色', value: 'cool' },
+                { label: t('relight.temperatures.warm'), value: 'warm' },
+                { label: t('relight.temperatures.neutral'), value: 'neutral' },
+                { label: t('relight.temperatures.cool'), value: 'cool' },
               ]}
             />
           </div>
         </div>
         <p className="toolbox-hint relight-quality-hint" style={{ margin: 0, fontSize: 12 }}>
-          柔光过渡柔和；硬光对比更强。
+          {t('relight.qualityHint')}
         </p>
         <div>
           {countHeading}
@@ -649,9 +689,9 @@ export default function ParamPanel({
         </div>
         <div>
           <div className="relight-resolution-row">
-            <div style={{ ...labelStyle, marginBottom: 0 }}>渲染分辨率</div>
+            <div style={{ ...labelStyle, marginBottom: 0 }}>{t('params.renderResolutionLabel')}</div>
             <Select
-              aria-label="渲染分辨率"
+              aria-label={t('params.renderResolutionLabel')}
               style={{ width: 120 }}
               value={resolution}
               disabled={disabled}
@@ -661,13 +701,13 @@ export default function ParamPanel({
                 label: value.toUpperCase(),
                 disabled: value === '4k' && !fourKAllowed,
                 'aria-disabled': value === '4k' && !fourKAllowed ? true : undefined,
-                title: value === '4k' && !fourKAllowed ? '当前比例不支持 4K' : undefined,
+                title: value === '4k' && !fourKAllowed ? t('params.fourKUnsupportedRatio') : undefined,
               }))}
             />
           </div>
           {!fourKAllowed ? (
             <p className="toolbox-hint" style={{ margin: '6px 0 0', fontSize: 12 }}>
-              当前比例不支持 4K，按 2K 生成。
+              {t('params.fourKFallbackSentence')}
             </p>
           ) : null}
         </div>
@@ -680,7 +720,7 @@ export default function ParamPanel({
             disabled={disabled}
             onClick={() => setRelightNoteOpen(!noteExpanded)}
           >
-            <span>{noteExpanded ? '补充说明（可选）' : '添加补充说明（可选）'}</span>
+            <span>{noteExpanded ? t('params.optionalNoteLabel') : t('params.addOptionalNoteLabel')}</span>
             <DownOutlined rotate={noteExpanded ? 180 : 0} aria-hidden="true" />
           </button>
           {noteExpanded ? (
@@ -689,12 +729,12 @@ export default function ParamPanel({
               value={smartEditPrompt}
               disabled={disabled}
               onChange={(event) => onSmartEditPromptChange(event.target.value)}
-              placeholder="例如：让投影更柔和，保留杯身高光"
+              placeholder={t('params.relightNotePlaceholder')}
               autoSize={{ minRows: 3, maxRows: 6 }}
               styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
               style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
               maxLength={noteMax}
-              aria-label="补充说明"
+              aria-label={t('params.optionalNoteAria')}
               onFocus={(event) => {
                 const target = event.currentTarget
                 // 吸底操作栏会盖住输入框底部；聚焦时主动把备注滚到视口中间。
@@ -711,7 +751,7 @@ export default function ParamPanel({
             />
           ) : null}
         </div>
-        <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>模拟光影重绘效果，最终画面以生成效果为准。</p>
+        <p className="toolbox-hint" style={{ margin: 0, fontSize: 12 }}>{t('relight.disclaimer')}</p>
       </Space>
     )
   }
@@ -720,8 +760,8 @@ export default function ParamPanel({
     const promptMissing = hasMaskPaint && !repaintPrompt.trim()
     // 未涂抹的引导由上方状态块和步骤条负责，这里只解释描述的作用，避免同一句话出现四次。
     const repaintHint = promptMissing
-      ? '请填写重绘描述后再生成。'
-      : '描述会应用到涂抹区域，未涂抹的部分保持不变。'
+      ? t('params.repaintPromptMissingHint')
+      : t('params.repaintPromptHint')
     return (
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         {intro}
@@ -731,11 +771,11 @@ export default function ParamPanel({
           aria-live="polite"
         >
           <span className="workstation-inpaint-mask-dot" aria-hidden="true" />
-          <span>{hasMaskPaint ? '蒙版已就绪，只会重绘涂抹区域' : '尚未涂抹，在左侧图片上涂抹要重绘的区域'}</span>
+          <span>{hasMaskPaint ? t('params.repaintMaskReady') : t('params.repaintMaskEmpty')}</span>
         </div>
         <div>
           <label htmlFor={repaintPromptId} style={labelStyle}>
-            重绘描述<span className="param-required" aria-hidden="true">*</span>
+            {t('params.repaintPromptLabel')}<span className="param-required" aria-hidden="true">*</span>
           </label>
           <Input.TextArea
             id={repaintPromptId}
@@ -744,7 +784,7 @@ export default function ParamPanel({
             value={repaintPrompt}
             disabled={disabled}
             onChange={(event) => onRepaintPromptChange(event.target.value)}
-            placeholder="描述选区里要出现的内容，例如：桌面上的透明玻璃花瓶"
+            placeholder={t('params.repaintPromptPlaceholder')}
             autoSize={repaintPromptSize}
             maxLength={MAX_ERASE_PROMPT_LENGTH}
             showCount
@@ -754,29 +794,29 @@ export default function ParamPanel({
           </p>
         </div>
         <div>
-          <div style={labelStyle}>输出</div>
+          <div style={labelStyle}>{t('params.outputLabel')}</div>
           <dl className="workstation-inpaint-contract">
             <div>
-              <dt>模型</dt>
-              <dd>{INPAINT_MODEL_LABEL}</dd>
+              <dt>{t('params.modelLabel')}</dt>
+              <dd>{t('params.inpaintModelLabel')}</dd>
             </div>
             <div>
-              <dt>尺寸</dt>
-              <dd>与原图同尺寸</dd>
+              <dt>{t('params.sizeLabel')}</dt>
+              <dd>{t('params.sameAsOriginalSize')}</dd>
             </div>
             <div>
-              <dt>数量</dt>
-              <dd>每次 1 张</dd>
+              <dt>{t('params.countLabel')}</dt>
+              <dd>{t('params.onePerRun')}</dd>
             </div>
             {inpaintCreditLabel ? (
               <div>
-                <dt>积分</dt>
+                <dt>{t('params.creditsLabel')}</dt>
                 <dd>{inpaintCreditLabel}</dd>
               </div>
             ) : null}
           </dl>
           <p className="workstation-inpaint-contract-note">
-            重绘使用固定模型，暂不支持切换模型、调整分辨率或张数。
+            {t('params.repaintContractNote')}
           </p>
         </div>
       </Space>
@@ -794,17 +834,17 @@ export default function ParamPanel({
             aria-live="polite"
           >
             <span className="workstation-inpaint-mask-dot" aria-hidden="true" />
-            <span>{hasMaskPaint ? '蒙版已就绪，只会修改涂抹区域' : '尚未涂抹，在左侧图片上涂抹要消除的区域'}</span>
+            <span>{hasMaskPaint ? t('params.removeMaskReady') : t('params.removeMaskEmpty')}</span>
           </div>
           <div>
-            <p className="toolbox-hint" style={{ margin: '0 0 8px', fontSize: 12 }}>智能选区不消耗积分；也可以直接用画笔涂抹。</p>
-            <label htmlFor={erasePromptId} style={labelStyle}>背景描述（可选）</label>
+            <p className="toolbox-hint" style={{ margin: '0 0 8px', fontSize: 12 }}>{t('params.removeSmartSelectHint')}</p>
+            <label htmlFor={erasePromptId} style={labelStyle}>{t('params.removePromptLabel')}</label>
             <Input.TextArea
               id={erasePromptId}
               value={erasePrompt}
               disabled={disabled}
               onChange={(event) => onErasePromptChange(event.target.value)}
-              placeholder="消除小物体可留空；大面积消除建议描述期望补充的背景（请勿输入「删除某某」）"
+              placeholder={t('params.removePromptPlaceholder')}
               autoSize={tallPromptSize}
               styles={promptMinHeight ? { textarea: { minHeight: promptMinHeight } } : undefined}
               style={promptMinHeight ? { minHeight: promptMinHeight } : undefined}
@@ -813,29 +853,29 @@ export default function ParamPanel({
             />
           </div>
           <div>
-            <div style={labelStyle}>输出</div>
+            <div style={labelStyle}>{t('params.outputLabel')}</div>
             <dl className="workstation-inpaint-contract">
               <div>
-                <dt>模型</dt>
-                <dd>{INPAINT_MODEL_LABEL}</dd>
+                <dt>{t('params.modelLabel')}</dt>
+                <dd>{t('params.inpaintModelLabel')}</dd>
               </div>
               <div>
-                <dt>尺寸</dt>
-                <dd>与原图同尺寸</dd>
+                <dt>{t('params.sizeLabel')}</dt>
+                <dd>{t('params.sameAsOriginalSize')}</dd>
               </div>
               <div>
-                <dt>数量</dt>
-                <dd>每次 1 张</dd>
+                <dt>{t('params.countLabel')}</dt>
+                <dd>{t('params.onePerRun')}</dd>
               </div>
               {inpaintCreditLabel ? (
                 <div>
-                  <dt>积分</dt>
+                  <dt>{t('params.creditsLabel')}</dt>
                   <dd>{inpaintCreditLabel}</dd>
                 </div>
               ) : null}
             </dl>
             <p className="workstation-inpaint-contract-note">
-              消除使用固定模型，暂不支持切换模型、调整分辨率或张数。
+              {t('params.removeContractNote')}
             </p>
           </div>
         </>
@@ -843,14 +883,14 @@ export default function ParamPanel({
       {capability === Capability.Outpaint ? (
         <>
           <div>
-            <div style={labelStyle}>输出目标</div>
+            <div style={labelStyle}>{t('params.outpaint.targetLabel')}</div>
             <Segmented
               block
-              aria-label="输出目标"
+              aria-label={t('params.outpaint.targetLabel')}
               options={[
-                { label: '自由扩展', value: 'free' },
-                { label: '平台比例', value: 'platform-ratio' },
-                { label: '平台尺寸', value: 'platform-size' },
+                { label: t('params.outpaint.modes.free'), value: 'free' },
+                { label: t('params.outpaint.modes.platformRatio'), value: 'platform-ratio' },
+                { label: t('params.outpaint.modes.platformSize'), value: 'platform-size' },
               ]}
               value={outpaintTarget}
               disabled={disabled}
@@ -858,31 +898,34 @@ export default function ParamPanel({
             />
             <p className="toolbox-hint" style={{ margin: '8px 0 0', fontSize: 12 }}>
               {outpaintTarget === 'free'
-                ? '原图保持原尺寸，向外延伸画面。'
+                ? t('params.outpaint.modeHints.free')
                 : outpaintTarget === 'platform-ratio'
-                  ? '沿用原图分辨率，只把画幅改成平台比例。'
-                  : '按平台精确像素缩放原图并补全背景。'}
+                  ? t('params.outpaint.modeHints.platformRatio')
+                  : t('params.outpaint.modeHints.platformSize')}
               {/* 尺寸变化用 polite 播报，键盘调整时读屏能听到新目标。 */}
               <span aria-live="polite">
-                {sourceSize && outpaintTargetSize ? ` 预计输出 ${outpaintTargetSize.width} × ${outpaintTargetSize.height} 像素。` : ' 上传图片后显示预计尺寸。'}
+                {' '}
+                {sourceSize && outpaintTargetSize
+                  ? t('params.outpaint.predictedSize', { width: outpaintTargetSize.width, height: outpaintTargetSize.height })
+                  : t('params.outpaint.uploadToShowSize')}
               </span>
             </p>
           </div>
           {outpaintTarget === 'free' && sourceSize && outpaintTargetSize ? (
             <div>
-              <div style={labelStyle}>目标尺寸</div>
+              <div style={labelStyle}>{t('params.outpaint.freeSizeLabel')}</div>
               <div className="workstation-outpaint-size">
                 <Button
                   className="workstation-outpaint-step"
                   size="small"
-                  aria-label="缩小目标尺寸"
-                  title="缩小目标尺寸"
+                  aria-label={t('params.outpaint.decreaseSize')}
+                  title={t('params.outpaint.decreaseSize')}
                   icon={<MinusOutlined aria-hidden="true" />}
                   disabled={disabled || !canStepOutpaintDown}
                   onClick={() => stepOutpaintSize(-1)}
                 />
                 <InputNumber
-                  aria-label="目标宽度"
+                  aria-label={t('params.outpaint.targetWidthAria')}
                   precision={0}
                   value={outpaintDraft ? outpaintDraft.width : outpaintTargetSize.width}
                   disabled={disabled}
@@ -895,7 +938,7 @@ export default function ParamPanel({
                 />
                 <span className="workstation-outpaint-size-sep" aria-hidden="true">×</span>
                 <InputNumber
-                  aria-label="目标高度"
+                  aria-label={t('params.outpaint.targetHeightAria')}
                   precision={0}
                   value={outpaintDraft ? outpaintDraft.height : outpaintTargetSize.height}
                   disabled={disabled}
@@ -909,33 +952,41 @@ export default function ParamPanel({
                 <Button
                   className="workstation-outpaint-step"
                   size="small"
-                  aria-label="放大目标尺寸"
-                  title="放大目标尺寸"
+                  aria-label={t('params.outpaint.increaseSize')}
+                  title={t('params.outpaint.increaseSize')}
                   icon={<PlusOutlined aria-hidden="true" />}
                   disabled={disabled || !canStepOutpaintUp}
                   onClick={() => stepOutpaintSize(1)}
                 />
               </div>
               <p className="toolbox-hint" style={{ margin: '6px 0 0', fontSize: 12 }}>
-                单边最多扩到 {MAX_SCALE} 倍；超出会自动收住到合法尺寸。
+                {t('params.outpaint.maxScaleHint', { maxScale: MAX_SCALE })}
               </p>
             </div>
           ) : null}
           {outpaintTarget !== 'free' ? (
             <div>
-              <div style={labelStyle}>目标平台</div>
+              <div style={labelStyle}>{t('params.outpaint.platformLabel')}</div>
               <Select
-                aria-label="目标平台"
+                aria-label={t('params.outpaint.platformLabel')}
                 style={{ width: '100%' }}
                 value={presetPlatform}
                 disabled={disabled}
                 onChange={onPresetPlatformChange}
-                options={PLATFORM_SIZE_PRESETS.map((preset) => ({
-                  value: preset.platform,
-                  label: outpaintTarget === 'platform-size'
-                    ? `${preset.label} · ${preset.width}×${preset.height}`
-                    : `${preset.label} · 仅使用比例`,
-                }))}
+                options={PLATFORM_SIZE_PRESETS.map((preset) => {
+                  const key = (PLATFORM_LABEL_KEYS as Record<string, PlatformLabelKey | undefined>)[preset.id]
+                  const platformLabel = key ? t(key) : preset.label
+                  return {
+                    value: preset.platform,
+                    label: outpaintTarget === 'platform-size'
+                      ? t('params.outpaint.platformSizeOption', {
+                          platform: platformLabel,
+                          width: preset.width,
+                          height: preset.height,
+                        })
+                      : t('params.outpaint.platformRatioOption', { platform: platformLabel }),
+                  }
+                })}
               />
             </div>
           ) : null}

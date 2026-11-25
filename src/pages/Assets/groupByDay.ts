@@ -1,12 +1,12 @@
+import { i18n } from '@/i18n'
+import { formatDayMonthLabel } from '@/i18n/format'
+
 /** 作品墙的日期分组：按本地日历日聚合，保留传入顺序（组顺序由当前排序决定）。 */
 export interface AssetDayGroup<T> {
   key: string
   label: string
   items: T[]
 }
-
-const monthDay = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' })
-const fullDate = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
 
 /** 本地日键：不能截 ISO 字符串，UTC 与本地时区可能差一天。 */
 function localDayKey(date: Date) {
@@ -15,9 +15,9 @@ function localDayKey(date: Date) {
 
 function dayLabel(date: Date, now: Date, todayKey: string, yesterdayKey: string) {
   const key = localDayKey(date)
-  if (key === todayKey) return '今天'
-  if (key === yesterdayKey) return '昨天'
-  return date.getFullYear() === now.getFullYear() ? monthDay.format(date) : fullDate.format(date)
+  if (key === todayKey) return i18n.t('assets:days.today')
+  if (key === yesterdayKey) return i18n.t('assets:days.yesterday')
+  return formatDayMonthLabel(date, date.getFullYear() === now.getFullYear())
 }
 
 export function groupAssetsByDay<T extends { createdAt: string }>(
@@ -34,7 +34,11 @@ export function groupAssetsByDay<T extends { createdAt: string }>(
     const key = valid ? localDayKey(date) : 'unknown'
     let group = byKey.get(key)
     if (!group) {
-      group = { key, label: valid ? dayLabel(date, now, todayKey, yesterdayKey) : '时间未知', items: [] }
+      group = {
+        key,
+        label: valid ? dayLabel(date, now, todayKey, yesterdayKey) : i18n.t('common:time.unknown'),
+        items: [],
+      }
       byKey.set(key, group)
       groups.push(group)
     }

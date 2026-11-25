@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ProductSilhouette } from './exampleArt'
 
 /**
@@ -5,13 +6,14 @@ import { ProductSilhouette } from './exampleArt'
  * 用示意图代替照片，避免把「换色」误当成裂变的主能力。
  */
 export default function VariationExample() {
+  const { t } = useTranslation('workstation')
   return (
     <details className="tool-example concept-example variation-example" open>
-      <summary>示例</summary>
+      <summary>{t('examples.summary')}</summary>
       <div className="tool-example-row">
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="原图示意：白底商品图">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.variation.sourceAria')}>
               <rect
                 x="8"
                 y="8"
@@ -24,12 +26,12 @@ export default function VariationExample() {
               <ProductSilhouette />
             </svg>
           </div>
-          <figcaption>原图</figcaption>
+          <figcaption>{t('examples.variation.sourceCaption')}</figcaption>
         </figure>
         <span className="tool-example-arrow" aria-hidden="true">→</span>
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="变体示意：保留商品，背景换成户外木桌">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.variation.sceneAria')}>
               <rect
                 x="8"
                 y="8"
@@ -54,11 +56,11 @@ export default function VariationExample() {
               <ProductSilhouette />
             </svg>
           </div>
-          <figcaption>换场景</figcaption>
+          <figcaption>{t('examples.variation.sceneCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="变体示意：保留商品，构图改为俯拍留白">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.variation.layoutAria')}>
               <rect
                 x="8"
                 y="8"
@@ -77,10 +79,10 @@ export default function VariationExample() {
               </g>
             </svg>
           </div>
-          <figcaption>换构图</figcaption>
+          <figcaption>{t('examples.variation.layoutCaption')}</figcaption>
         </figure>
       </div>
-      <p className="concept-example-note">示意：保留商品主体，改变场景或构图；一次可生成多张变体。</p>
+      <p className="concept-example-note">{t('examples.variation.note')}</p>
     </details>
   )
 }

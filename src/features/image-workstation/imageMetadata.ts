@@ -1,4 +1,5 @@
 import { normalizeImageBlob } from '@shared/image-format'
+import { i18n } from '@/i18n'
 
 export async function readResultImage(blob: Blob) {
   const normalized = await normalizeImageBlob(blob)
@@ -12,10 +13,10 @@ export async function readResultImage(blob: Blob) {
       const url = URL.createObjectURL(normalized)
       const image = new Image()
       image.onload = () => { URL.revokeObjectURL(url); resolve({ width: image.naturalWidth, height: image.naturalHeight }) }
-      image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('生成结果无法解码')) }
+      image.onerror = () => { URL.revokeObjectURL(url); reject(new Error(i18n.t('workstation:errors.resultDecodeFailed'))) }
       image.src = url
     })
   }
-  if (!size.width || !size.height) throw new Error('生成结果尺寸无效')
+  if (!size.width || !size.height) throw new Error(i18n.t('workstation:errors.resultSizeInvalid'))
   return { blob: normalized, mimeType: normalized.type, ...size }
 }

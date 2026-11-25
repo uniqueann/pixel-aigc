@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from 'zustand'
 import { CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import type { SuiteActor, SuiteProjectConfig, SuiteQuote } from '@shared/ecommerce-suite'
 import type { SuiteProjectDetail } from '@shared/ecommerce-suite-runtime'
 import type { SuiteClient } from './api'
 import { clearPendingSuite, readPendingSuite, readSuiteBackup, saveSuiteBackup, saveSuiteBlob, type PendingSuiteSubmission } from './backup'
+import { formatSuiteError } from './i18n'
 import { createSuiteEditorStore } from './store'
 import { submitSuiteOnce } from './recovery'
 import { backupAssetBlob, loadFullSuite } from './recoveryPackage'
@@ -15,7 +18,32 @@ export const suiteWorkspacePoll = { initialMs: 3_000, fastMs: 5_000, slowMs: 120
 const activeBatch = (batch: { state: string }) => batch.state === 'queued' || batch.state === 'running'
 const blockedBatch = (batch: { state: string }) => batch.state === 'blocked'
 
+type SaveStateKey =
+  | 'loading'
+  | 'localConflictFound'
+  | 'savedToCloud'
+  | 'usingLocalBackup'
+  | 'readFailed'
+  | 'savedLocalPendingSync'
+  | 'localStorageUnavailable'
+  | 'saving'
+  | 'dirtyRemaining'
+  | 'cloudUpdatedLocalKept'
+  | 'cloudSaveFailedLocalKept'
+  | 'abandonedPending'
+  | 'reconnectedSynced'
+  | 'loadedCloud'
+
+type BackupStateKey =
+  | 'initial'
+  | 'complete'
+  | 'metadataOnly'
+  | 'storageUnavailableDownload'
+  | 'storageUnavailableSaveCloud'
+  | 'storageUnavailableKeepPage'
+
 export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteClient, signal: AbortSignal, focusedBatchId?: string) {
+  const { t } = useTranslation('ecommerce')
   const [store] = useState(createSuiteEditorStore)
   const editor = useStore(store)
   const [detail, setDetail] = useState<SuiteProjectDetail>()
@@ -23,15 +51,15 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [offline, setOffline] = useState(false)
-  const [saveState, setSaveState] = useState('正在读取')
+  const [saveStateKey, setSaveStateKey] = useState<SaveStateKey>('loading')
   const [conflict, setConflict] = useState(false)
-  const [backupState, setBackupState] = useState('尚未完成图片备份')
+  const [backupStateKey, setBackupStateKey] = useState<BackupStateKey>('initial')
   const [pending, setPending] = useState<PendingSuiteSubmission>()
   const saving = useRef<Promise<void>>()
   const loading = useRef(0)
   const accept = useCallback((data: SuiteProjectDetail, replace = false) => {
     client.assertCurrent()
-    if (data.project.actor.userId !== actor.userId || data.project.actor.runtimeScope !== actor.runtimeScope) throw new Error('项目归属与当前账号环境不一致')
+    if (data.project.actor.userId !== actor.userId || data.project.actor.runtimeScope !== actor.runtimeScope) throw new Error(i18n.t('ecommerce:workspace.errors.actorMismatch'))
     // 修订号单调递增：保存刚返回的新修订不能被仍在途的旧读取回退，否则下一次保存会用旧修订制造假冲突。
     if (latest.current?.project.id === data.project.id && data.project.revision < latest.current.project.revision) return false
     latest.current = data
@@ -54,8 +82,8 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     // 被丢弃的过期快照不能作为调用方后续操作的依据，也不能回写本机备份；返回当前最新详情。
     if (!accept(data, replace)) return latest.current
     void saveSuiteBackup(actor, data).then(() => readSuiteBackup(actor, id)).then(backup => {
-      if (!signal.aborted) setBackupState(backup?.complete ? '本地完整备份已就绪' : '元数据已备份，部分图片尚未落盘')
-    }).catch(() => { if (!signal.aborted) setBackupState('本地存储不可用，可下载恢复包') })
+      if (!signal.aborted) setBackupStateKey(backup?.complete ? 'complete' : 'metadataOnly')
+    }).catch(() => { if (!signal.aborted) setBackupStateKey('storageUnavailableDownload') })
     return data
   }, [accept, actor, client, focusedBatchId, id, signal])
   useEffect(() => {
@@ -66,40 +94,40 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
       setPending(receipt)
       if (backup) {
         accept(backup.detail)
-        setBackupState(backup.complete ? '本地完整备份已就绪' : '元数据已备份，部分图片尚未落盘')
+        setBackupStateKey(backup.complete ? 'complete' : 'metadataOnly')
       }
       try {
         const data = await load()
         if (backup?.conflictConfig || store.getState().dirty) {
           if (!store.getState().dirty && backup?.conflictConfig) store.getState().setConfig(backup.conflictConfig)
-          setConflict(true); setSaveState('发现本机未同步副本，请选择读取云端或另存副本')
-        } else if (data) { store.getState().setConfig(data.project.config, false); setSaveState('已保存到云端') }
+          setConflict(true); setSaveStateKey('localConflictFound')
+        } else if (data) { store.getState().setConfig(data.project.config, false); setSaveStateKey('savedToCloud') }
       } catch (error) {
-        if (!signal.aborted) { setOffline(Boolean(backup)); setError(error instanceof Error ? error.message : '读取失败'); setSaveState(backup ? '正在使用本地备份' : '读取失败') }
+        if (!signal.aborted) { setOffline(Boolean(backup)); setError(formatSuiteError(error, 'ecommerce:workspace.errors.readFailed')); setSaveStateKey(backup ? 'usingLocalBackup' : 'readFailed') }
       }
-    })().catch(error => { if (!signal.aborted) setError(error.message) })
+    })().catch(error => { if (!signal.aborted) setError(formatSuiteError(error, 'ecommerce:workspace.errors.readFailed')) })
   }, [accept, actor, client, id, load, signal, store])
   useEffect(() => store.subscribe(state => {
     if (!state.dirty || !state.config || !latest.current) return
-    void saveSuiteBackup(actor, latest.current, false, state.config).catch(() => { if (!signal.aborted) setBackupState('本地存储不可用，请先保存云端或下载恢复包') })
+    void saveSuiteBackup(actor, latest.current, false, state.config).catch(() => { if (!signal.aborted) setBackupStateKey('storageUnavailableSaveCloud') })
   }), [actor, signal, store])
   const flush = useCallback(async (online = !offline): Promise<void> => {
     if (saving.current) await saving.current
     const state = store.getState(), data = latest.current
     if (!state.dirty || !state.config || !data) return
     const config = state.config, editRevision = state.editRevision
-    if (conflict) throw new Error('云端存在修订冲突，请先处理本机副本')
+    if (conflict) throw new Error(i18n.t('ecommerce:workspace.errors.conflictMustResolve'))
     const action = (async () => {
       // 本机备份只是降级能力：IndexedDB 配额不足或不可用时，不能阻断云端保存。
       let localSaved = true
       try { await saveSuiteBackup(actor, data, false, config) }
-      catch { localSaved = false; if (!signal.aborted) setBackupState('本地存储不可用，请保持页面或下载恢复包') }
+      catch { localSaved = false; if (!signal.aborted) setBackupStateKey('storageUnavailableKeepPage') }
       client.assertCurrent()
       if (!online) {
-        setSaveState(localSaved ? '已保存本机，联网后需要同步' : '本机存储不可用，联网前请勿关闭页面')
+        setSaveStateKey(localSaved ? 'savedLocalPendingSync' : 'localStorageUnavailable')
         return
       }
-      setSaveState('正在保存…')
+      setSaveStateKey('saving')
       try {
         const project = await client.update(id, data.project.revision, config)
         const next = { ...latest.current!, project }
@@ -108,11 +136,11 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
         // 成功保存后清除待同步标记，仍保留新编辑产生的本机副本；本机写失败不能反过来报云端失败。
         const current = store.getState()
         try { await saveSuiteBackup(actor, next, false, current.dirty ? current.config! : null) }
-        catch { if (!signal.aborted) setBackupState('本地存储不可用，请保持页面或下载恢复包') }
-        if (!signal.aborted) setSaveState(current.dirty ? '还有编辑待保存' : '已保存到云端')
+        catch { if (!signal.aborted) setBackupStateKey('storageUnavailableKeepPage') }
+        if (!signal.aborted) setSaveStateKey(current.dirty ? 'dirtyRemaining' : 'savedToCloud')
       } catch (error) {
         if (!signal.aborted) {
-          setSaveState(error instanceof CloudError && error.status === 409 ? '云端有更新，本机副本已保留' : '云端保存失败，本机副本已保留')
+          setSaveStateKey(error instanceof CloudError && error.status === 409 ? 'cloudUpdatedLocalKept' : 'cloudSaveFailedLocalKept')
           if (error instanceof CloudError && error.status === 409) setConflict(true)
         }
         throw error
@@ -123,7 +151,7 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
   }, [actor, client, conflict, id, offline, signal, store])
   useEffect(() => {
     if (!editor.dirty || conflict) return
-    const timer = setTimeout(() => { void flush().catch(error => { if (!signal.aborted) setError(error.message) }) }, 800)
+    const timer = setTimeout(() => { void flush().catch(error => { if (!signal.aborted) setError(formatSuiteError(error, 'ecommerce:workspace.errors.saveFailed')) }) }, 800)
     return () => clearTimeout(timer)
   }, [editor.editRevision, editor.dirty, conflict, flush, signal])
   useEffect(() => {
@@ -135,7 +163,7 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     const receipt = pending ?? await readPendingSuite(actor, id)
     if (!receipt) return
     const batch = await client.findBatch(id, receipt.requestId)
-    if (!batch) throw new Error('尚未查到已接收的原批次；继续保留原编号，暂不允许重新提交')
+    if (!batch) throw new Error(i18n.t('ecommerce:workspace.errors.pendingBatchNotFound'))
     await clearPendingSuite(actor, id)
     setPending(undefined)
     await load()
@@ -148,7 +176,7 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     await clearPendingSuite(actor, id)
     setPending(undefined)
     if (batch) { await load(); return 'recovered' }
-    if (!signal.aborted) setSaveState('已放弃原编号，可重新提交')
+    if (!signal.aborted) setSaveStateKey('abandonedPending')
     return 'abandoned'
   }, [actor, client, id, load, pending, signal])
   const settleOriginals = useCallback(async () => {
@@ -190,7 +218,7 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
             mode = running ? 'fast' : 'slow'
           }
         }
-        catch (error) { if (!disposed && !signalRef.current.aborted) { failures++; setError(error instanceof Error ? error.message : '原结果读取失败，可手动重试读取') } }
+        catch (error) { if (!disposed && !signalRef.current.aborted) { failures++; setError(formatSuiteError(error, 'ecommerce:workspace.errors.pollReadFailed')) } }
       }
       if (!disposed && !signalRef.current.aborted && failures < 3) schedule(failures ? suiteWorkspacePoll.failureMs : mode === 'slow' ? suiteWorkspacePoll.slowMs : suiteWorkspacePoll.fastMs)
     }
@@ -200,12 +228,12 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
   const run = useCallback(async <T,>(action: () => Promise<T>) => {
     setBusy(true); setError('')
     try { client.assertCurrent(); return await action() }
-    catch (error) { if (!signal.aborted) setError(error instanceof Error ? error.message : '操作失败'); throw error }
+    catch (error) { if (!signal.aborted) setError(formatSuiteError(error, 'ecommerce:errors.actionFailed')); throw error }
     finally { if (!signal.aborted) setBusy(false) }
   }, [client, signal])
   const submit = async (quote: SuiteQuote) => {
     await flush()
-    if (store.getState().dirty) throw new Error('请先保存所有编辑再提交')
+    if (store.getState().dirty) throw new Error(i18n.t('ecommerce:workspace.errors.saveBeforeSubmit'))
     try {
       await submitSuiteOnce(client, actor, id, quote)
       client.assertCurrent()
@@ -223,7 +251,7 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
       await saveSuiteBlob(actor, id, asset.assetId, await backupAssetBlob(actor, asset, signal))
     }
     await saveSuiteBackup(actor, all, true)
-    setBackupState('本地完整备份已就绪')
+    setBackupStateKey('complete')
     return all
   }
   const reloadCloud = async (discardLocal = false) => {
@@ -234,15 +262,17 @@ export function useSuiteWorkspace(id: string, actor: SuiteActor, client: SuiteCl
     setConflict(false); setError('')
     if (keepLocal) {
       await flush(true)
-      setSaveState('已重新连接并同步本机编辑')
+      setSaveStateKey('reconnectedSynced')
     } else {
-      setSaveState('已读取云端')
+      setSaveStateKey('loadedCloud')
     }
     const data = latest.current!
     try { await saveSuiteBackup(actor, data, false, null) }
-    catch { if (!signal.aborted) setBackupState('本地存储不可用，请保持页面或下载恢复包') }
+    catch { if (!signal.aborted) setBackupStateKey('storageUnavailableKeepPage') }
   }
   const edit = (config: SuiteProjectConfig) => store.getState().setConfig(config)
+  const saveState = t(`workspace.saveStates.${saveStateKey}`)
+  const backupState = t(`workspace.backupStates.${backupStateKey}`)
   return { detail, editor, store, error, busy, offline, conflict, pending, saveState, backupState, client, run, load, flush, edit,
     submit, recoverPending, abandonPending, settleOriginals, completeBackup, reloadCloud }
 }

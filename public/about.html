@@ -6,6 +6,22 @@
     <meta name="google-site-verification" content="XI55njDX2gu9wrLq5PrFZczEwzv1jG_eaftykFcm1Zs" />
     <meta name="description" content="ContentUp Pixel AIGC 是 ContentUp 的 AI 创作工作台，提供电商图片创作、邮件文案、图片工具与自由画布。" />
     <title>ContentUp Pixel AIGC · AI 创作工作台</title>
+    <script>
+      (function () {
+        try {
+          var q = new URLSearchParams(window.location.search).get('lang');
+          var stored = window.localStorage.getItem('pixel:locale');
+          var nav = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+          var lng = (q === 'en-US' || q === 'zh-CN') ? q
+            : (stored === 'en-US' || stored === 'zh-CN') ? stored
+            : (/^zh\b/i.test(nav) ? 'zh-CN' : 'en-US');
+          document.documentElement.lang = lng;
+          document.documentElement.dataset.initialLocale = lng;
+        } catch (e) {
+          document.documentElement.lang = 'zh-CN';
+        }
+      })();
+    </script>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/brand/pixel-aigc-icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
@@ -16,7 +32,7 @@
   <body>
     <div class="wrap">
       <header>
-        <a class="brand" href="/about" aria-label="ContentUp Pixel AIGC 产品介绍">
+        <a class="brand" href="/about" data-lang-link data-i18n-aria="brandAria" aria-label="ContentUp Pixel AIGC 产品介绍">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 48" width="176" height="48" role="img" aria-label="Pixel AIGC">
   <defs>
     <linearGradient id="pa-side-bg" x1="0" y1="0" x2="1" y2="1">
@@ -47,34 +63,151 @@
   </text>
 </svg>
         </a>
-        <a class="parent" href="https://contentup.cc/">ContentUp 官网 ↗</a>
+        <div class="header-actions">
+          <a class="parent" href="https://contentup.cc/" data-i18n="parentLink">ContentUp 官网 ↗</a>
+          <button type="button" class="lang-toggle" id="lang-toggle" aria-label="Switch language">English</button>
+        </div>
       </header>
       <main>
         <section class="hero" aria-labelledby="product-name">
-          <p class="eyebrow">CONTENTUP · AI 创作工作台</p>
+          <p class="eyebrow" data-i18n="eyebrow">CONTENTUP · AI 创作工作台</p>
           <h1 id="product-name">ContentUp Pixel AIGC</h1>
-          <p class="lead">从商品图片到邮件文案，把创意变成可用的内容。</p>
-          <p class="intro">Pixel AIGC 是 ContentUp 的 AI 创作产品，为电商与内容团队提供图片生成、图片处理、文案编写和画布编辑工具，让常用创作流程集中在一个工作台中。</p>
+          <p class="lead" data-i18n="lead">从商品图片到邮件文案，把创意变成可用的内容。</p>
+          <p class="intro" data-i18n="intro">Pixel AIGC 是 ContentUp 的 AI 创作产品，为电商与内容团队提供图片生成、图片处理、文案编写和画布编辑工具，让常用创作流程集中在一个工作台中。</p>
           <div class="actions">
-            <a class="primary" href="/">进入创作工作台 →</a>
-            <a class="secondary" href="/privacy">了解隐私政策</a>
+            <a class="primary" href="/" data-i18n="primaryCta">进入创作工作台 →</a>
+            <a class="secondary" href="/privacy" data-lang-link data-i18n="privacyCta">了解隐私政策</a>
           </div>
         </section>
-        <section class="features" aria-label="产品功能">
-          <article class="feature"><span class="number">01 / 图像</span><h2>电商图片创作</h2><p>生成创意图片，进行图片变体与商品场景融合，为商品展示准备视觉素材。</p></article>
-          <article class="feature"><span class="number">02 / 文案</span><h2>邮件助手</h2><p>根据原始内容、编写指导和语言要求生成邮件文案，支持 CSV 批量编写。</p></article>
-          <article class="feature"><span class="number">03 / 工具</span><h2>图片工具箱</h2><p>使用比例转换、水印等常用图片工具，完成素材处理与导出。</p></article>
-          <article class="feature"><span class="number">04 / 画布</span><h2>自由画布</h2><p>在画布上组织图片与文字，调整布局，并将 AI 生成的图片加入创作。</p></article>
+        <section class="features" data-i18n-aria="featuresAria" aria-label="产品功能">
+          <article class="feature"><span class="number" data-i18n="f1Num">01 / 图像</span><h2 data-i18n="f1Title">电商图片创作</h2><p data-i18n="f1Desc">生成创意图片，进行图片变体与商品场景融合，为商品展示准备视觉素材。</p></article>
+          <article class="feature"><span class="number" data-i18n="f2Num">02 / 文案</span><h2 data-i18n="f2Title">邮件助手</h2><p data-i18n="f2Desc">根据原始内容、编写指导和语言要求生成邮件文案，支持 CSV 批量编写。</p></article>
+          <article class="feature"><span class="number" data-i18n="f3Num">03 / 工具</span><h2 data-i18n="f3Title">图片工具箱</h2><p data-i18n="f3Desc">使用比例转换、水印等常用图片工具，完成素材处理与导出。</p></article>
+          <article class="feature"><span class="number" data-i18n="f4Num">04 / 画布</span><h2 data-i18n="f4Title">自由画布</h2><p data-i18n="f4Desc">在画布上组织图片与文字，调整布局，并将 AI 生成的图片加入创作。</p></article>
         </section>
-        <section class="account" aria-label="账号与登录说明">
-          <strong>一个 ContentUp 账号，连接你的创作。</strong><br />
-          ContentUp、Pixel AIGC 和 Pixel EDM 共用账号登录。使用 Google 登录时，我们请求邮箱地址及基本个人资料，用于识别账号和提供登录服务。具体数据处理方式请查看隐私政策。
+        <section class="account" data-i18n-aria="accountAria" aria-label="账号与登录说明">
+          <strong data-i18n="accountTitle">一个 ContentUp 账号，连接你的创作。</strong><br />
+          <span data-i18n="accountDesc">ContentUp、Pixel AIGC 和 Pixel EDM 共用账号登录。使用 Google 登录时，我们请求邮箱地址及基本个人资料，用于识别账号和提供登录服务。具体数据处理方式请查看隐私政策。</span>
         </section>
       </main>
       <footer>
-        <span>ContentUp Pixel AIGC · ContentUp 旗下产品</span>
-        <nav aria-label="政策链接"><a href="/privacy">隐私政策</a><a href="https://contentup.cc/terms">服务条款</a><a href="https://contentup.cc/">ContentUp</a></nav>
+        <span data-i18n="footerCopy">ContentUp Pixel AIGC · ContentUp 旗下产品</span>
+        <nav data-i18n-aria="footerAria" aria-label="政策链接"><a href="/privacy" data-lang-link data-i18n="footerPrivacy">隐私政策</a><a href="https://contentup.cc/terms" data-i18n="footerTerms">服务条款</a><a href="https://contentup.cc/">ContentUp</a></nav>
       </footer>
     </div>
+    <script>
+      (function () {
+        var COPY = {
+          'zh-CN': {
+            title: 'ContentUp Pixel AIGC · AI 创作工作台',
+            description: 'ContentUp Pixel AIGC 是 ContentUp 的 AI 创作工作台，提供电商图片创作、邮件文案、图片工具与自由画布。',
+            brandAria: 'ContentUp Pixel AIGC 产品介绍',
+            parentLink: 'ContentUp 官网 ↗',
+            toggleLabel: 'English',
+            eyebrow: 'CONTENTUP · AI 创作工作台',
+            lead: '从商品图片到邮件文案，把创意变成可用的内容。',
+            intro: 'Pixel AIGC 是 ContentUp 的 AI 创作产品，为电商与内容团队提供图片生成、图片处理、文案编写和画布编辑工具，让常用创作流程集中在一个工作台中。',
+            primaryCta: '进入创作工作台 →',
+            privacyCta: '了解隐私政策',
+            featuresAria: '产品功能',
+            f1Num: '01 / 图像',
+            f1Title: '电商图片创作',
+            f1Desc: '生成创意图片，进行图片变体与商品场景融合，为商品展示准备视觉素材。',
+            f2Num: '02 / 文案',
+            f2Title: '邮件助手',
+            f2Desc: '根据原始内容、编写指导和语言要求生成邮件文案，支持 CSV 批量编写。',
+            f3Num: '03 / 工具',
+            f3Title: '图片工具箱',
+            f3Desc: '使用比例转换、水印等常用图片工具，完成素材处理与导出。',
+            f4Num: '04 / 画布',
+            f4Title: '自由画布',
+            f4Desc: '在画布上组织图片与文字，调整布局，并将 AI 生成的图片加入创作。',
+            accountAria: '账号与登录说明',
+            accountTitle: '一个 ContentUp 账号，连接你的创作。',
+            accountDesc: 'ContentUp、Pixel AIGC 和 Pixel EDM 共用账号登录。使用 Google 登录时，我们请求邮箱地址及基本个人资料，用于识别账号和提供登录服务。具体数据处理方式请查看隐私政策。',
+            footerCopy: 'ContentUp Pixel AIGC · ContentUp 旗下产品',
+            footerAria: '政策链接',
+            footerPrivacy: '隐私政策',
+            footerTerms: '服务条款'
+          },
+          'en-US': {
+            title: 'ContentUp Pixel AIGC · AI Creative Studio',
+            description: 'ContentUp Pixel AIGC is an AI creative workspace by ContentUp for e-commerce imagery, email copywriting, image utilities, and Free Canvas.',
+            brandAria: 'About ContentUp Pixel AIGC',
+            parentLink: 'ContentUp Website ↗',
+            toggleLabel: '简体中文',
+            eyebrow: 'CONTENTUP · AI CREATIVE STUDIO',
+            lead: 'From product visuals to outreach emails, turn ideas into ready-to-publish assets.',
+            intro: 'Pixel AIGC is an AI creative suite by ContentUp offering image generation, editing utilities, email drafting, and an interactive canvas workspace in one place.',
+            primaryCta: 'Open Creative Studio →',
+            privacyCta: 'Read Privacy Policy',
+            featuresAria: 'Product features',
+            f1Num: '01 / IMAGERY',
+            f1Title: 'E-commerce Visuals',
+            f1Desc: 'Generate listing photography, creative variations, and product scene fusion visuals ready for store catalogs.',
+            f2Num: '02 / COPY',
+            f2Title: 'Email Assistant',
+            f2Desc: 'Draft, reply, and polish outreach emails from source text and instructions, with CSV batch processing.',
+            f3Num: '03 / UTILITIES',
+            f3Title: 'Image Toolbox',
+            f3Desc: 'Prepare marketplace-ready images with smart cutouts, aspect ratio presets, and local watermarking.',
+            f4Num: '04 / CANVAS',
+            f4Title: 'Free Canvas',
+            f4Desc: 'Organize product images and layouts on an infinite board and branch directly into AI image and video outputs.',
+            accountAria: 'Account and sign-in notice',
+            accountTitle: 'One ContentUp account across your workflow.',
+            accountDesc: 'ContentUp, Pixel AIGC, and Pixel EDM share a unified account system. When signing in with Google, we request your email address and basic profile to authenticate your account. See the Privacy Policy for details.',
+            footerCopy: 'ContentUp Pixel AIGC · A Product of ContentUp',
+            footerAria: 'Policy links',
+            footerPrivacy: 'Privacy Policy',
+            footerTerms: 'Terms of Service'
+          }
+        };
+
+        var currentLocale = document.documentElement.dataset.initialLocale === 'en-US' ? 'en-US' : 'zh-CN';
+        var toggleBtn = document.getElementById('lang-toggle');
+
+        function applyLocale(lng, persist) {
+          currentLocale = lng === 'en-US' ? 'en-US' : 'zh-CN';
+          var dict = COPY[currentLocale];
+          document.documentElement.lang = currentLocale;
+          document.title = dict.title;
+          var metaDesc = document.querySelector('meta[name="description"]');
+          if (metaDesc) metaDesc.setAttribute('content', dict.description);
+          var textEls = document.querySelectorAll('[data-i18n]');
+          for (var i = 0; i < textEls.length; i++) {
+            var k = textEls[i].getAttribute('data-i18n');
+            if (dict[k]) textEls[i].textContent = dict[k];
+          }
+          var ariaEls = document.querySelectorAll('[data-i18n-aria]');
+          for (var j = 0; j < ariaEls.length; j++) {
+            var ak = ariaEls[j].getAttribute('data-i18n-aria');
+            if (dict[ak]) ariaEls[j].setAttribute('aria-label', dict[ak]);
+          }
+          if (toggleBtn) toggleBtn.textContent = dict.toggleLabel;
+          var links = document.querySelectorAll('[data-lang-link]');
+          for (var m = 0; m < links.length; m++) {
+            var base = links[m].getAttribute('href').split('?')[0];
+            links[m].setAttribute('href', currentLocale === 'en-US' ? base + '?lang=en-US' : base);
+          }
+          if (persist) {
+            try { window.localStorage.setItem('pixel:locale', currentLocale); } catch (e) {}
+            try {
+              var url = new URL(window.location.href);
+              if (currentLocale === 'en-US') url.searchParams.set('lang', 'en-US');
+              else url.searchParams.delete('lang');
+              window.history.replaceState(null, '', url.toString());
+            } catch (e) {}
+          }
+        }
+
+        if (toggleBtn) {
+          toggleBtn.addEventListener('click', function () {
+            applyLocale(currentLocale === 'zh-CN' ? 'en-US' : 'zh-CN', true);
+          });
+        }
+        applyLocale(currentLocale, false);
+      })();
+    </script>
   </body>
 </html>

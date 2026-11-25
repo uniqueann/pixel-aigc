@@ -1,0 +1,127 @@
+{
+  "title": "我的资产",
+  "loading": "正在加载作品…",
+  "days": {
+    "today": "今天",
+    "yesterday": "昨天"
+  },
+  "filters": {
+    "ariaLabel": "筛选作品类型",
+    "all": "全部",
+    "images": "图片",
+    "videos": "视频",
+    "email": "邮件助手"
+  },
+  "view": {
+    "groupAria": "展示样式",
+    "list": "列表视图",
+    "grid": "网格视图"
+  },
+  "search": {
+    "ariaLabel": "搜索作品",
+    "placeholder": "搜索提示词、工具或邮件内容",
+    "resultCount": "找到 {{count}} 个作品",
+    "empty": "没有找到匹配「{{query}}」的作品",
+    "clear": "清除搜索"
+  },
+  "sort": {
+    "ariaLabel": "排序方式",
+    "newest": "最近优先",
+    "oldest": "最早优先"
+  },
+  "actions": {
+    "reload": "重新加载"
+  },
+  "selection": {
+    "select": "选择",
+    "deselect": "取消选择",
+    "barAria": "批量操作",
+    "selectedCount": "已选 {{count}} 项",
+    "selectAll": "全选",
+    "deselectAll": "取消全选"
+  },
+  "empty": {
+    "signInRequired": "请先登录后再查看作品历史",
+    "email": "暂无邮件任务",
+    "video": "暂无视频作品",
+    "all": "暂无作品，完成的图片和视频会显示在这里。",
+    "openCanvas": "打开画布",
+    "goCreate": "去生成"
+  },
+  "card": {
+    "selectAria": "选择{{name}}",
+    "deselectAria": "取消选择{{name}}",
+    "playVideoAria": "播放{{name}}",
+    "viewImageAria": "查看{{name}}大图",
+    "playVideoTitle": "播放视频",
+    "viewImageTitle": "查看大图",
+    "viewEmailAria": "查看邮件任务：{{name}}",
+    "viewEmailTitle": "查看邮件任务",
+    "emailBatchUnsupported": "邮件任务暂不支持批量操作",
+    "downloading": "正在下载…",
+    "moreAria": "更多操作：{{name}}",
+    "srName": "「{{name}}」"
+  },
+  "video": {
+    "modelTitle": "{{model}} 视频",
+    "defaultTitle": "Seedance 视频",
+    "legacyModel": "历史模型",
+    "subtitle": "{{duration}} 秒 · {{width}}×{{height}} · {{expiresAt}} 到期",
+    "expiresAt": "{{time}} 到期",
+    "downloadFilename": "Seedance_{{seconds}}秒.mp4"
+  },
+  "email": {
+    "title": "邮件助手 · {{operation}}",
+    "fallbackSubtitle": "邮件任务",
+    "loadMore": "加载更多邮件任务",
+    "loadedHint": "已加载 {{loaded}} / 共 {{total}} 个邮件任务"
+  },
+  "delete": {
+    "singleConfirmTitle": "删除这条作品？",
+    "singleConfirmContent": "「{{name}}」将从本机作品历史中删除，5 秒内可撤销。",
+    "batchConfirmTitle": "删除选中的 {{count}} 条作品？",
+    "batchConfirmContent": "选中的作品将从本机作品历史中删除，5 秒内可撤销。",
+    "singleAnnouncement": "已删除「{{name}}」，剩余 {{remaining}} 项，可撤销",
+    "singleDone": "已删除「{{name}}」",
+    "batchAnnouncement": "已删除 {{count}} 条作品，可撤销",
+    "batchDone": "已删除 {{count}} 条作品",
+    "failedRetry": "删除失败，请重试",
+    "batchPartialFailed": "{{count}} 条删除失败，请重试"
+  },
+  "undo": {
+    "singleAria": "撤销删除「{{name}}」",
+    "batchAria": "撤销删除 {{count}} 条作品",
+    "singleAnnouncement": "已恢复「{{name}}」",
+    "singleSuccess": "已恢复作品",
+    "batchRestored": "已恢复 {{count}} 条作品",
+    "batchPartialRestored": "已恢复 {{count}} 条，其余撤销记录已满或已过期",
+    "expired": "撤销窗口已结束，作品无法恢复"
+  },
+  "labels": {
+    "generationTask": "生成任务"
+  },
+  "taskStatus": {
+    "succeeded": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "queued": "排队中",
+    "processing": "进行中"
+  },
+  "errors": {
+    "loadFailed": "作品加载失败，请重新加载",
+    "partialLoadFailed": "有 {{count}} 项作品加载失败，请重新加载",
+    "emailLoadFailed": "邮件任务加载失败",
+    "downloadFailed": "下载失败：无法读取结果文件",
+    "restoreFailed": "恢复失败",
+    "deleteFailed": "删除失败",
+    "accountNotReady": "登录账号尚未就绪，无法读取本地历史",
+    "hydrateAborted": "补记已取消",
+    "hydrateAccountSwitched": "账号已切换，停止补记历史",
+    "videoSyncCancelled": "视频资产读取已取消",
+    "missingHistoryOwner": "缺少历史记录所属账号",
+    "indexedDbUnsupported": "浏览器不支持本地历史，当前图片尚未保存",
+    "openHistoryFailed": "无法打开本地历史",
+    "historyUpgradeBlocked": "本地历史正在升级，请关闭其他页面后重试",
+    "historyTxFailed": "本地历史操作失败，当前图片尚未保存"
+  }
+}

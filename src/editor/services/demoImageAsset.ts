@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { createImageAsset } from './assetService'
 
 const DEMO_IMAGE_SVG = `
@@ -24,7 +25,7 @@ const DEMO_IMAGE_SVG = `
 
 export const DEMO_IMAGE_ASSET = createImageAsset({
   id: 'asset:demo-image',
-  name: '示例商品图',
+  name: i18n.t('canvas:editor.demoProductName'),
   url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(DEMO_IMAGE_SVG)}`,
   width: 1280,
   height: 960,

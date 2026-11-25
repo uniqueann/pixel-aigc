@@ -1,7 +1,9 @@
 import { Alert, Button } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { usePreferencesStore } from './store'
 
 export default function PreferencesSyncAlert({ className = 'preferences-global-error' }: { className?: string }) {
+  const { t } = useTranslation('settings')
   const error = usePreferencesStore(state => state.error)
   if (!error) return null
   return (
@@ -10,7 +12,7 @@ export default function PreferencesSyncAlert({ className = 'preferences-global-e
       type="warning"
       showIcon
       message={error}
-      action={<Button size="small" onClick={() => void usePreferencesStore.getState().retry()}>重试同步</Button>}
+      action={<Button size="small" onClick={() => void usePreferencesStore.getState().retry()}>{t('personalization.syncRetry')}</Button>}
     />
   )
 }

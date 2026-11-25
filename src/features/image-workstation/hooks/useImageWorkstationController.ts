@@ -31,11 +31,14 @@ import { currentWorkstationHistoryOwner, isCurrentWorkstationHistoryOwner } from
 import { fusionHistoryText, readReferenceImageKey } from '@shared/fusion'
 import { readRelight, relightHistoryText, type RelightOptions } from '@shared/relight'
 import { readRetouchDirections, retouchHistoryText } from '@shared/retouch'
+import { i18n } from '@/i18n'
+import { translateApiError } from '@/i18n/apiErrors'
 import { blobFromImageSource } from '../download'
-import { remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
-import { isExactlySameImage, SOURCE_ECHO_ERROR } from '../sourceEcho'
+import { emptyMaskMessage, remapMaskExportError } from '@/pages/ImageWorkstation/utils/maskExport'
+import { translateSharedOutpaintError } from '@/pages/ImageWorkstation/utils/outpaintGeometry'
+import { isExactlySameImage, sourceEchoError } from '../sourceEcho'
 import { finalizeWorkstationResults } from '../results'
-import { COMING_SOON_SUBMIT_MESSAGE, isWorkstationToolReady } from '../tools/registry'
+import { comingSoonSubmitMessage, fusionInputsRequiredReason, isWorkstationToolReady } from '../tools/registry'
 import { FusionInputPreparation, fusionAbortError, isFusionInputPreparationError, isPreparationCancelled, sameFusionInput, type FusionPreparationState } from '../fusionInputs'
 import type {
   WorkstationCanvasHandle,
@@ -84,9 +87,38 @@ interface InputRetryContext {
 const ACTIVE_STATUSES = new Set<TaskStatus>(['pending', 'queued', 'processing'])
 const useMockGateway = import.meta.env.VITE_GENERATION_MODE === 'mock' && !cloudEnabled
 
+function controllerErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback
+  const apiError = error as Error & {
+    code?: string
+    status?: number
+    requestId?: string
+    extra?: Record<string, unknown>
+  }
+  return translateApiError({
+    code: typeof apiError.code === 'string' ? apiError.code : undefined,
+    status: typeof apiError.status === 'number' ? apiError.status : undefined,
+    requestId: typeof apiError.requestId === 'string' ? apiError.requestId : undefined,
+    extra: apiError.extra && typeof apiError.extra === 'object' ? apiError.extra : undefined,
+    message: error.message,
+    fallback,
+  })
+}
+
 function historyFailureMessage(error: unknown) {
-  if (error && typeof error === 'object' && 'name' in error && error.name === 'QuotaExceededError') return '浏览器存储空间不足，历史未保存；当前图片仍可下载'
-  return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : '历史未保存，请重试保存'
+  if (error && typeof error === 'object' && 'name' in error && error.name === 'QuotaExceededError') {
+    return i18n.t('workstation:errors.historyQuotaExceeded')
+  }
+  if (error instanceof Error) {
+    return controllerErrorMessage(error, i18n.t('workstation:errors.historySaveFailed'))
+  }
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return translateApiError({
+      message: error.message,
+      fallback: i18n.t('workstation:errors.historySaveFailed'),
+    })
+  }
+  return i18n.t('workstation:errors.historySaveFailed')
 }
 
 function isInlineUrl(url?: string) {
@@ -110,7 +142,7 @@ async function prepareImageEditRequest(
   const uploadsSource = request.capability === Capability.ImageEdit || request.capability === Capability.Variation
   if (!uploadsSource || useMockGateway) return request
   const params = { ...(request.params as ImageEditTaskParams) }
-  params.sourceImageKey ??= await taskInputKey(sourceAsset, '读取原图失败', options)
+  params.sourceImageKey ??= await taskInputKey(sourceAsset, i18n.t('workstation:errors.sourceImageReadFailed'), options)
   params.sourceWidth = sourceAsset.width
   params.sourceHeight = sourceAsset.height
   if (isInlineUrl(params.sourceImageUrl)) delete params.sourceImageUrl
@@ -218,7 +250,7 @@ export function useImageWorkstationController({
   }, [activeTool.slug, beginOperation, productAsset, referenceAsset])
 
   useEffect(() => {
-    if (!useEditorStore.getState().project) createProject('图片工作台')
+    if (!useEditorStore.getState().project) createProject(i18n.t('workstation:projectDefaultName'))
   }, [createProject])
 
   useEffect(() => {
@@ -308,7 +340,9 @@ export function useImageWorkstationController({
           const blob = inlineBlobs?.[index] ?? (runtimeImageBlob(withRuntimeImage(asset).url)
             ?? await (asset.objectKey ? readOwnedImage({ objectKey: asset.objectKey, url: asset.url, expiresAt: image?.expiresAt, mimeType: asset.mimeType }, { ownerId, signal }) : blobFromImageSource(asset.url)))
           const measured = await readResultImage(blob)
-          if (image?.width && image?.height && (measured.width !== image.width || measured.height !== image.height)) throw new Error('结果尺寸与声明不一致')
+          if (image?.width && image?.height && (measured.width !== image.width || measured.height !== image.height)) {
+            throw new Error(i18n.t('workstation:errors.resultSizeMismatch'))
+          }
           if (!current()) return
           const available = { ...asset, width: measured.width, height: measured.height, mimeType: measured.mimeType }
           registerAsset(available)
@@ -326,7 +360,7 @@ export function useImageWorkstationController({
         } catch (error) {
           if (asset.objectKey) invalidateOwnedImage(ownerId, asset.objectKey)
           failures++
-          if (current()) setResultReadError(error instanceof Error ? error.message : '结果读取失败，请重试读取')
+          if (current()) setResultReadError(controllerErrorMessage(error, i18n.t('workstation:errors.resultReadFailedRetry')))
         }
       }))
       if (current() && failures === 0) appliedTaskVersionsRef.current.add(version)
@@ -366,15 +400,20 @@ export function useImageWorkstationController({
     let descriptor: SyncImageObjectResult | undefined
     const current = () => epoch === epochRef.current && isCurrentWorkstationHistoryOwner(ownerId)
     try {
-      const original = await blobFromAsset(input.sourceAsset, '读取原图失败', { ownerId, signal })
+      const original = await blobFromAsset(input.sourceAsset, i18n.t('workstation:errors.sourceImageReadFailed'), { ownerId, signal })
       const prepared = await input.prepare(original)
-      if (!current() || signal.aborted) throw new DOMException('处理已取消', 'AbortError')
+      if (!current() || signal.aborted) throw new DOMException(i18n.t('errors:client.processingCancelled'), 'AbortError')
       const completed: GenerationTask<unknown> = { id, capability: input.capability, status: 'succeeded', params: input.params, creditsCost: 0, createdAt: now, updatedAt: now }
       const complete = async (result: Blob) => {
         const measured = await readResultImage(result)
         if (!current()) return completed
-        if (prepared.targetSize && (measured.width !== prepared.targetSize.width || measured.height !== prepared.targetSize.height)) throw new Error('扩图结果尺寸与目标不一致，请重试读取')
-        if (prepared.compare && await isExactlySameImage(prepared.compare, measured.blob)) { setProtocolError(SOURCE_ECHO_ERROR); return completed }
+        if (prepared.targetSize && (measured.width !== prepared.targetSize.width || measured.height !== prepared.targetSize.height)) {
+          throw new Error(i18n.t('workstation:errors.outpaintResultSizeMismatch'))
+        }
+        if (prepared.compare && await isExactlySameImage(prepared.compare, measured.blob)) {
+          setProtocolError(sourceEchoError())
+          return completed
+        }
         // 项目只保存可恢复的对象身份；本地展示地址由运行时租约持有。
         const url = descriptor?.url ?? `/local-image/${encodeURIComponent(id)}`
         completed.resultUrls = [url]
@@ -400,7 +439,7 @@ export function useImageWorkstationController({
       return await complete(result)
     } catch (error) {
       if (current()) {
-        const message = error instanceof Error ? error.message : '处理失败'
+        const message = controllerErrorMessage(error, i18n.t('workstation:errors.processingFailed'))
         if (descriptor) { setResultReadFailureCount(1); setResultReadError(message) }
         else setSubmissionError(message)
       }
@@ -419,7 +458,11 @@ export function useImageWorkstationController({
   const completeOutpaint = useCallback((sourceAsset: ImageAsset, targetSize: { width: number; height: number }, originOffset: { x: number; y: number }, sourceSize: { width: number; height: number }, parentGenerationId?: GenerationId) => completeSync({
     sourceAsset, capability: Capability.Outpaint, params: { sourceImageUrl: sourceAsset.url, targetSize, originOffset, sourceSize }, parentGenerationId,
     prepare: async original => {
-      validateOutpaintOutputSize(targetSize.width, targetSize.height)
+      try {
+        validateOutpaintOutputSize(targetSize.width, targetSize.height)
+      } catch (error) {
+        throw new Error(translateSharedOutpaintError(error instanceof Error ? error.message : String(error)), { cause: error })
+      }
       const padding = paddingAround(sourceSize.width, sourceSize.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
       const needsScale = sourceSize.width !== sourceAsset.width || sourceSize.height !== sourceAsset.height
       const input = needsScale ? await renderScaledSource(new File([original], sourceAsset.name || 'source.jpg', { type: original.type }), sourceSize.width, sourceSize.height) : original
@@ -435,7 +478,9 @@ export function useImageWorkstationController({
     const recovery = syncRecoveryRef.current
     let failed = false
     try {
-      if (recovery && recovery.epoch === epochRef.current) await recovery.complete(await downloadImageResult(recovery.descriptor, '图片', readAbortRef.current.signal, recovery.ownerId))
+      if (recovery && recovery.epoch === epochRef.current) {
+        await recovery.complete(await downloadImageResult(recovery.descriptor, i18n.t('workstation:files.defaultImageName'), readAbortRef.current.signal, recovery.ownerId))
+      }
       else if (task?.status === 'succeeded') {
         const context = submissionsRef.current.get(task.id)
         if (context) await applyCompletedTask(task, [], context.ownerId, undefined, context.epoch)
@@ -444,7 +489,7 @@ export function useImageWorkstationController({
       if (epoch === epochRef.current) {
         failed = true
         setResultReadFailureCount(1)
-        setResultReadError(error instanceof Error ? error.message : '读取失败，请重试读取')
+        setResultReadError(controllerErrorMessage(error, i18n.t('workstation:errors.readFailedRetry')))
       }
     } finally { if (epoch === epochRef.current) setReadingResults(false) }
     // 返回是否读取成功，页面据此区分首次失败与重试后仍失败。
@@ -470,7 +515,7 @@ export function useImageWorkstationController({
     parentGenerationId: GenerationId | undefined,
     fusionReference?: ImageAsset,
   ) => {
-    if (submissionGateRef.current !== undefined) throw new Error('请等待当前提交完成')
+    if (submissionGateRef.current !== undefined) throw new Error(i18n.t('workstation:errors.waitCurrentSubmission'))
     const ownerId = currentWorkstationHistoryOwner()
     const epoch = beginOperation()
     const signal = readAbortRef.current.signal
@@ -535,7 +580,7 @@ export function useImageWorkstationController({
         if (inputPreparationRef.current) updateInputPreparation({ ...inputPreparationRef.current, phase: 'failed' })
       } else {
         updateInputPreparation(undefined)
-        setSubmissionError(error instanceof Error ? error.message : '生成任务提交失败')
+        setSubmissionError(controllerErrorMessage(error, i18n.t('workstation:errors.taskSubmitFailed')))
       }
       throw error
     } finally {
@@ -546,7 +591,7 @@ export function useImageWorkstationController({
   const retryInputPreparation = useCallback(async () => {
     const snapshot = inputRetryRef.current
     if (!snapshot || submissionGateRef.current !== undefined || !isCurrentWorkstationHistoryOwner(snapshot.ownerId)) return
-    if (!capabilityReady(Capability.Fusion)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
+    if (!capabilityReady(Capability.Fusion)) throw new Error(comingSoonSubmitMessage())
     return submitRequest(snapshot.request, snapshot.sourceAsset, snapshot.parentGenerationId, snapshot.referenceAsset)
   }, [capabilityReady, submitRequest])
   const cancelInputPreparation = useCallback(() => {
@@ -557,15 +602,15 @@ export function useImageWorkstationController({
   }, [beginOperation, updateInputPreparation])
 
   const generate = useCallback(async (canvasHandle: WorkstationCanvasHandle | null) => {
-    if (submissionGateRef.current !== undefined) throw new Error('请等待当前提交完成')
+    if (submissionGateRef.current !== undefined) throw new Error(i18n.t('workstation:errors.waitCurrentSubmission'))
     const sourceOwner = currentWorkstationHistoryOwner()
     const sourceEpoch = epochRef.current
-    if (!isWorkstationToolReady(activeTool, capabilityReady)) throw new Error(COMING_SOON_SUBMIT_MESSAGE)
+    if (!isWorkstationToolReady(activeTool, capabilityReady)) throw new Error(comingSoonSubmitMessage())
     const product = useProductAsset ? productAsset : inputAsset
     if (activeTool.slug === 'fusion' && (!product || !referenceAsset?.url)) {
-      throw new Error('请先上传商品图和场景图')
+      throw new Error(fusionInputsRequiredReason())
     }
-    if (!product) throw new Error('请先上传需要编辑的图片')
+    if (!product) throw new Error(i18n.t('workstation:errors.uploadSourceFirst'))
     registerAsset(useEditorStore.getState().project?.assets[product.id] ?? product)
     if (activeTool.slug === 'fusion' && referenceAsset) registerAsset(referenceAsset)
     const keepSource = activeTool.slug === 'retouch' && keepSourceSize === true
@@ -583,10 +628,10 @@ export function useImageWorkstationController({
       relight,
     }
     const validation = activeTool.validate?.(initialContext)
-    if (validation && !validation.valid) throw new Error(validation.message ?? '当前参数不完整')
+    if (validation && !validation.valid) throw new Error(validation.message ?? i18n.t('workstation:errors.incompleteParams'))
 
     if (activeTool.slug === 'repaint' && !liveCapabilityReady(Capability.Inpaint)) {
-      if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
+      if (!canvasHandle?.exportMask) throw new Error(i18n.t('workstation:errors.maskCanvasNotReady'))
       try {
         return completeRepaint(product, prompt?.trim() ?? '', canvasHandle.exportMask().maskDataUrl, product.generationId)
       } catch (error) {
@@ -595,7 +640,7 @@ export function useImageWorkstationController({
     }
 
     if (activeTool.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
-      if (!canvasHandle?.getTargetSize || !canvasHandle.getOriginOffset) throw new Error('扩图画布尚未准备好')
+      if (!canvasHandle?.getTargetSize || !canvasHandle.getOriginOffset) throw new Error(i18n.t('workstation:errors.outpaintCanvasNotReady'))
       return completeOutpaint(
         product,
         canvasHandle.getTargetSize(),
@@ -606,7 +651,7 @@ export function useImageWorkstationController({
     }
 
     if (activeTool.slug === 'remove' && !liveCapabilityReady(Capability.Inpaint)) {
-      if (!canvasHandle?.exportMask) throw new Error('蒙版画布尚未准备好')
+      if (!canvasHandle?.exportMask) throw new Error(i18n.t('workstation:errors.maskCanvasNotReady'))
       try {
         return completeErase(product, canvasHandle.exportMask().maskDataUrl, prompt ?? '', product.generationId)
       } catch (error) {
@@ -616,10 +661,10 @@ export function useImageWorkstationController({
 
     let canvasContext = {}
     if (activeTool.interactionMode !== 'params-only' && activeTool.interactionMode !== 'multi-source') {
-      if (!canvasHandle) throw new Error('当前工具的画布交互仍在后续迭代中')
+      if (!canvasHandle) throw new Error(i18n.t('workstation:errors.canvasNotReadyFallback'))
       const mask = canvasHandle.exportMask()
       const maskUrl = await uploadDataUrl(mask.maskDataUrl)
-      if (!isCurrentWorkstationHistoryOwner(sourceOwner) || sourceEpoch !== epochRef.current) throw new DOMException('提交已取消', 'AbortError')
+      if (!isCurrentWorkstationHistoryOwner(sourceOwner) || sourceEpoch !== epochRef.current) throw new DOMException(i18n.t('errors:client.submitCancelled'), 'AbortError')
       canvasContext = {
         maskUrl,
         targetSize: canvasHandle.getTargetSize?.(),
@@ -644,19 +689,19 @@ export function useImageWorkstationController({
       ? context.request.params as InpaintTaskParams
       : undefined
     if (inpaintParams?.mode === 'repaint' && !liveCapabilityReady(Capability.Inpaint)) {
-      if (!inpaintParams.maskUrl) throw new Error('请重新涂抹后再试')
+      if (!inpaintParams.maskUrl) throw new Error(i18n.t('workstation:errors.repaintRemaskRequired'))
       return completeRepaint(sourceAsset, inpaintParams.prompt ?? '', inpaintParams.maskUrl, context.options.parentGenerationId)
     }
     if (inpaintParams?.mode === 'remove' && !liveCapabilityReady(Capability.Inpaint)) {
-      if (!inpaintParams.maskUrl) throw new Error('请先涂抹要消除的区域')
+      if (!inpaintParams.maskUrl) throw new Error(emptyMaskMessage('remove'))
       return completeErase(sourceAsset, inpaintParams.maskUrl, inpaintParams.prompt ?? '', context.options.parentGenerationId)
     }
     if (context.request.capability !== Capability.Outpaint && !capabilityReady(context.request.capability)) {
-      throw new Error(COMING_SOON_SUBMIT_MESSAGE)
+      throw new Error(comingSoonSubmitMessage())
     }
     if (context.request.capability === Capability.Outpaint && !liveCapabilityReady(Capability.Outpaint)) {
       const params = context.request.params as OutpaintTaskParams
-      if (!params.targetSize || !params.originOffset) throw new Error('扩图画布尚未准备好')
+      if (!params.targetSize || !params.originOffset) throw new Error(i18n.t('workstation:errors.outpaintCanvasNotReady'))
       return completeOutpaint(
         sourceAsset,
         params.targetSize,
@@ -671,7 +716,7 @@ export function useImageWorkstationController({
   /** 取消进行中的任务；状态由轮询收敛，不在此处伪造完成态。 */
   const cancel = useCallback(async () => {
     const taskId = activeTaskId
-    if (!taskId) throw new Error('当前任务尚不可取消')
+    if (!taskId) throw new Error(i18n.t('workstation:errors.taskNotCancellable'))
     setCancelling(true)
     try {
       await cancelTask(taskId)
@@ -692,7 +737,7 @@ export function useImageWorkstationController({
 
   const replaceSourceAsset = useCallback((asset: ImageAsset) => {
     beginOperation()
-    if (!useEditorStore.getState().project) createProject('图片工作台', { width: asset.width, height: asset.height })
+    if (!useEditorStore.getState().project) createProject(i18n.t('workstation:projectDefaultName'), { width: asset.width, height: asset.height })
     registerAsset(asset)
     setInputAssetId(asset.id)
     setOutputAssetIds([])

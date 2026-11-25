@@ -3,13 +3,26 @@ import { blobFromImageSource } from '@/features/image-workstation/download'
 import type { NormBox, NormPoint, SegmentSession } from '@shared/smart-select'
 import { fitMattingWorkingSize, SMART_SELECT_MISS_CODE, SMART_SELECT_MISS_MESSAGE } from '@shared/smart-select'
 import type { DetectionClientTiming } from '@shared/detection'
+import { i18n } from '@/i18n'
+import { extractErrorExtra, extractRequestId, translateApiError } from '@/i18n/apiErrors'
+import zhErrors from '@/i18n/locales/zh-CN/errors.json'
+import zhToolbox from '@/i18n/locales/zh-CN/toolbox.json'
 import { measureClientDetection } from './detectionTiming'
 import { apiErrorCode, apiErrorText, responseErrorText } from './apiErrorText'
-import { SMART_SELECT_LABEL } from './smartSelectLabels'
+import { getSmartSelectLabel, SMART_SELECT_LABEL } from './smartSelectLabels'
 
 export const SMART_SELECT_TIMEOUT_MS = 60_000
-export const SMART_SELECT_TIMEOUT_MESSAGE = `${SMART_SELECT_LABEL}超时，请重试`
-export const SMART_SELECT_RETRY_MESSAGE = `${SMART_SELECT_LABEL}失败，请重试`
+export const SMART_SELECT_TIMEOUT_MESSAGE = zhErrors.client.smartSelectTimeout.replace('{{label}}', SMART_SELECT_LABEL)
+export const SMART_SELECT_RETRY_MESSAGE = zhErrors.client.smartSelectRetry.replace('{{label}}', SMART_SELECT_LABEL)
+const SMART_SELECT_LOG_PREFIX = `[${zhToolbox.aspectRatio.smartSelect}]`
+
+export function getSmartSelectTimeoutMessage() {
+  return i18n.t('errors:client.smartSelectTimeout', { label: getSmartSelectLabel() })
+}
+
+export function getSmartSelectRetryMessage() {
+  return i18n.t('errors:client.smartSelectRetry', { label: getSmartSelectLabel() })
+}
 
 export interface SmartSelectRequest {
   imageUrl: string
@@ -79,7 +92,7 @@ function fileToBase64(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
-    reader.onerror = () => reject(new Error('读取图片失败'))
+    reader.onerror = () => reject(new Error(i18n.t('errors:client.imageReadFailed')))
     reader.readAsDataURL(blob)
   })
 }
@@ -93,12 +106,12 @@ async function displayedJpeg(imageUrl: string, width: number, height: number, ob
     canvas.width = fitted.width
     canvas.height = fitted.height
     const context = canvas.getContext('2d')
-    if (!context) throw new Error('无法读取图片')
+    if (!context) throw new Error(i18n.t('errors:client.imageUnreadable'))
     const jpeg = await measureClientDetection(timings, 'encode', async () => {
       context.drawImage(bitmap, 0, 0, fitted.width, fitted.height)
       return new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85))
     })
-    if (!jpeg) throw new Error('读取图片失败')
+    if (!jpeg) throw new Error(i18n.t('errors:client.imageReadFailed'))
     return jpeg
   } finally { bitmap.close?.(); canvas.width = 0; canvas.height = 0 }
 }
@@ -108,7 +121,7 @@ function mockMask(width: number, height: number, point: NormPoint): SmartSelectR
   canvas.width = width
   canvas.height = height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(`当前浏览器不支持${SMART_SELECT_LABEL}`)
+  if (!context) throw new Error(i18n.t('errors:client.smartSelectUnsupported', { label: getSmartSelectLabel() }))
   const radius = Math.max(8, Math.min(width, height) * 0.12)
   context.fillStyle = '#ffffff'
   context.beginPath()
@@ -153,10 +166,10 @@ export function isSmartSelectTimeout(error: unknown) {
 }
 
 export function smartSelectErrorMessage(error: unknown) {
-  if (isSmartSelectTimeout(error)) return SMART_SELECT_TIMEOUT_MESSAGE
+  if (isSmartSelectTimeout(error)) return getSmartSelectTimeoutMessage()
   if (error instanceof SmartSelectRequestError && error.message.trim()) return error.message
   if (error instanceof Error && error.message.trim()) return error.message
-  return SMART_SELECT_RETRY_MESSAGE
+  return getSmartSelectRetryMessage()
 }
 
 export function isSmartSelectMiss(value: unknown): value is SmartSelectMiss {
@@ -204,7 +217,7 @@ async function postSmartSelect(body: Record<string, unknown>, report: (metric: R
     metric.status = response.status
     const readStarted = performance.now()
     const payload = await response.json().catch(error => {
-      if (isSmartSelectTimeout(error)) throw new SmartSelectRequestError(SMART_SELECT_TIMEOUT_MESSAGE)
+      if (isSmartSelectTimeout(error)) throw new SmartSelectRequestError(getSmartSelectTimeoutMessage())
       return null
     }) as SmartSelectResponse | null
     metric.responseReadMs = Math.round(performance.now() - readStarted)
@@ -215,9 +228,18 @@ async function postSmartSelect(body: Record<string, unknown>, report: (metric: R
       return miss
     }
     if (!response.ok || !payload?.maskBase64 || !payload.width || !payload.height || !payload.bbox) {
+      const code = apiErrorCode(payload)
+      const fallback = response.status === 504 ? getSmartSelectTimeoutMessage() : getSmartSelectRetryMessage()
       throw new SmartSelectRequestError(
-        responseErrorText(payload) || (response.status === 504 ? SMART_SELECT_TIMEOUT_MESSAGE : SMART_SELECT_RETRY_MESSAGE),
-        apiErrorCode(payload),
+        translateApiError({
+          code,
+          extra: extractErrorExtra(payload),
+          message: responseErrorText(payload),
+          status: response.status,
+          requestId: extractRequestId(payload),
+          fallback,
+        }),
+        code,
         payload?.session,
       )
     }
@@ -230,12 +252,12 @@ async function postSmartSelect(body: Record<string, unknown>, report: (metric: R
       session: payload.session ?? null,
     } satisfies SmartSelectResult
   } catch (error) {
-    if (isSmartSelectTimeout(error) || (error instanceof Error && error.message === SMART_SELECT_TIMEOUT_MESSAGE)) metric.outcome = 'timeout'
+    if (isSmartSelectTimeout(error) || (error instanceof Error && (error.message === SMART_SELECT_TIMEOUT_MESSAGE || error.message === getSmartSelectTimeoutMessage()))) metric.outcome = 'timeout'
     throw error
   } finally {
     metric.elapsedMs = Math.round(performance.now() - started)
     report(metric)
-    console.debug('[智能选区]', { operation: 'post', ...metric })
+    console.debug(SMART_SELECT_LOG_PREFIX, { operation: 'post', ...metric })
   }
 }
 
@@ -285,10 +307,10 @@ export async function requestSmartSelect(input: SmartSelectRequest): Promise<Sma
     outcome = 'success'
     return result
   } catch (error) {
-    if (isSmartSelectTimeout(error) || (error instanceof Error && error.message === SMART_SELECT_TIMEOUT_MESSAGE)) outcome = 'timeout'
+    if (isSmartSelectTimeout(error) || (error instanceof Error && (error.message === SMART_SELECT_TIMEOUT_MESSAGE || error.message === getSmartSelectTimeoutMessage()))) outcome = 'timeout'
     if (error instanceof SmartSelectRequestError) throw error
     throw new SmartSelectRequestError(smartSelectErrorMessage(error))
   } finally {
-    console.debug('[智能选区]', { operation: 'complete', outcome, requestCount, requestBytes, clientTimingMs: timings, elapsedMs: Math.round(performance.now() - started) })
+    console.debug(SMART_SELECT_LOG_PREFIX, { operation: 'complete', outcome, requestCount, requestBytes, clientTimingMs: timings, elapsedMs: Math.round(performance.now() - started) })
   }
 }

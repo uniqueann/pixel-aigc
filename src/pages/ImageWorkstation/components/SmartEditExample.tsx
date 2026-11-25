@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ProductSilhouette } from './exampleArt'
 
 /**
@@ -5,13 +6,14 @@ import { ProductSilhouette } from './exampleArt'
  * 与重新打光示例共用虚线框 + 主色高亮的语法，避免用照片伪造生成结果。
  */
 export default function SmartEditExample() {
+  const { t } = useTranslation('workstation')
   return (
     <details className="tool-example concept-example smart-edit-example" open>
-      <summary>示例</summary>
+      <summary>{t('examples.summary')}</summary>
       <div className="tool-example-row">
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="换背景示意：保留商品，把背景换成新场景">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.smartEdit.bgAria')}>
               <rect
                 x="10"
                 y="12"
@@ -35,11 +37,11 @@ export default function SmartEditExample() {
               <ProductSilhouette />
             </svg>
           </div>
-          <figcaption>换背景</figcaption>
+          <figcaption>{t('examples.smartEdit.bgCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="换颜色示意：只改变商品的颜色或材质">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.smartEdit.colorAria')}>
               <ProductSilhouette
                 fill="var(--color-accent-soft)"
                 stroke="var(--color-accent-text)"
@@ -50,11 +52,11 @@ export default function SmartEditExample() {
               <rect x="63" y="91" width="7" height="7" rx="2" fill="var(--color-text-muted)" opacity=".45" />
             </svg>
           </div>
-          <figcaption>换颜色</figcaption>
+          <figcaption>{t('examples.smartEdit.colorCaption')}</figcaption>
         </figure>
         <figure>
           <div className="concept-example-art">
-            <svg viewBox="0 0 112 112" role="img" aria-label="加元素示意：在商品周围补充道具或装饰">
+            <svg viewBox="0 0 112 112" role="img" aria-label={t('examples.smartEdit.propsAria')}>
               <ProductSilhouette />
               <path d="M21 84c0-8 5-13 13-13 0 8-5 13-13 13Z" fill="var(--color-accent-text)" opacity=".35" />
               <path
@@ -76,10 +78,10 @@ export default function SmartEditExample() {
               <path d="M82 29v10M77 34h10" stroke="var(--color-accent-text)" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </div>
-          <figcaption>加元素</figcaption>
+          <figcaption>{t('examples.smartEdit.propsCaption')}</figcaption>
         </figure>
       </div>
-      <p className="concept-example-note">虚线框与高亮 = 描述里要改的部分；其余内容在提示词里说明保留。</p>
+      <p className="concept-example-note">{t('examples.smartEdit.note')}</p>
     </details>
   )
 }

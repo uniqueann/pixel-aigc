@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { SUITE_CATEGORY_TEMPLATES } from '@shared/ecommerce-suite-templates'
 import { isSuiteFactReady, type SuiteFact, type SuiteSlotConfig, type SuiteSubcategory } from '@shared/ecommerce-suite'
 
@@ -11,19 +12,19 @@ export function getSlotUnreadyReason(
   subcategory: SuiteSubcategory,
   facts: readonly Pick<SuiteFact, 'confirmed' | 'kind' | 'value'>[]
 ): string {
-  if (!slot.enabled) return '已跳过'
+  if (!slot.enabled) return i18n.t('ecommerce:plan.unready.skipped')
   const template = SUITE_CATEGORY_TEMPLATES[subcategory]?.slots.find(item => item.key === slot.key)
   const isDetailRef = template?.strategy === 'detail_reference' || slot.kind === 'detail'
   if (isDetailRef && !slot.referenceAssetIds.length) {
-    return '需细节参考图'
+    return i18n.t('ecommerce:plan.unready.needsDetailRef')
   }
   if (slot.kind === 'size') {
     const hasDimension = facts.some(fact => isSuiteFactReady(fact) && ['dimension', 'capacity'].includes(fact.kind))
-    if (!hasDimension) return '需添加尺寸规格'
+    if (!hasDimension) return i18n.t('ecommerce:plan.unready.needsDimension')
   }
   if (template?.requires.includes('confirmed_facts' as never)) {
     const hasConfirmed = facts.some(isSuiteFactReady)
-    if (!hasConfirmed) return '需补充商品卖点'
+    if (!hasConfirmed) return i18n.t('ecommerce:plan.unready.needsFeature')
   }
   return ''
 }

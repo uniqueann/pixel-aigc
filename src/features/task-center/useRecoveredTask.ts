@@ -2,6 +2,7 @@ import { useEffect,useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { CloudError } from '@/cloud/client'
+import { i18n } from '@/i18n'
 import { useUserStore } from '@/store/useUserStore'
 import { taskIsActive, type TaskTool } from '@shared/task-center'
 import { readTaskDetail, readTaskSummary, recordPresentation, sameTaskActor, taskCenterKeys } from './client'
@@ -21,8 +22,8 @@ export function useRecoveredTask(tools: readonly TaskTool[], projectId?: string,
     enabled, retry: false, staleTime: 30000,
     queryFn: async ({ signal }) => {
       const value = await readTaskDetail(actor!, identity!.sourceKind, identity!.sourceId, signal)
-      if(value.task.taskKey!==identity!.taskKey)throw new CloudError(400,'任务身份与请求不匹配','TASK_ROUTE_MISMATCH')
-      if (!taskMatchesTool(value.task, tools, projectId)) throw new CloudError(400,'此任务不属于当前工具或项目','TASK_ROUTE_MISMATCH')
+      if(value.task.taskKey!==identity!.taskKey)throw new CloudError(400,i18n.t('taskCenter:errors.routeMismatch'),'TASK_ROUTE_MISMATCH')
+      if (!taskMatchesTool(value.task, tools, projectId)) throw new CloudError(400,i18n.t('taskCenter:errors.taskToolOrProjectMismatch'),'TASK_ROUTE_MISMATCH')
       return value
     } })
   // 摘要有变化才重新读取结果地址，持续观察不反复签名或检查对象。

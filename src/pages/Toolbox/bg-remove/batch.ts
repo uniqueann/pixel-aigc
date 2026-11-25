@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import type { BatchImage } from './types'
 import { BG_REMOVE_CONCURRENCY } from './types'
 
@@ -41,7 +42,7 @@ export async function processRemovalBatch({
       if (shouldStop()) { update(item.id, { status: 'pending' }); return }
       update(item.id, {
         status: 'failed', output: undefined, outputMime: undefined,
-        error: error instanceof Error ? error.message : '抠图失败',
+        error: error instanceof Error ? error.message : i18n.t('toolbox:errors.bgRemoveFailed'),
       })
     }
   }

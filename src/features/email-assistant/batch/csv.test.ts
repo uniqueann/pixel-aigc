@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
-import { describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { useLocaleStore } from '@/i18n/store'
 import { buildEmailAssistRequest } from '../requestBuilder'
 import { EMAIL_BATCH_HEADERS, EMAIL_BATCH_MAX_BYTES } from '../options'
 import { createEmailBatchTemplate, exportEmailBatchCsv, formatEmailOperation, parseEmailBatchCsv, readEmailBatchFile } from './csv'
@@ -116,5 +117,105 @@ describe('邮件批量 CSV', () => {
     await expect(readEmailBatchFile(file('邮件.csv', new Uint8Array([0xff, 0xfe])), preferences)).rejects.toThrow('CSV UTF-8')
     const rows = await readEmailBatchFile(file('邮件.CSV', new TextEncoder().encode(csv([['中文邮件', '', '', '']]))), preferences)
     expect(rows[0].params?.sourceText).toBe('中文邮件')
+  })
+})
+
+describe('bilingual CSV import & export', () => {
+  afterEach(async () => {
+    await useLocaleStore.getState().setLocale('zh-CN')
+  })
+
+  afterAll(async () => {
+    await useLocaleStore.getState().setLocale('zh-CN')
+  })
+
+  it('parses Chinese CSV headers and values in both zh-CN and en-US UI locales', async () => {
+    const input = csv([
+      ['请跟进合同签署进度', '语气礼貌', '润色：提升表达清晰度+缩短', '美式英语'],
+      ['Thanks for the quote', '', '检查语法', '英语'],
+    ])
+    for (const locale of ['zh-CN', 'en-US'] as const) {
+      await useLocaleStore.getState().setLocale(locale)
+      const rows = parseEmailBatchCsv(input, preferences)
+      expect(rows).toHaveLength(2)
+      expect(rows[0].params).toEqual({
+        sourceText: '请跟进合同签署进度',
+        instruction: '语气礼貌',
+        operation: 'polish',
+        language: 'en-US',
+        polishStyles: ['clear', 'shorten'],
+      })
+      expect(rows[1].params).toEqual({
+        sourceText: 'Thanks for the quote',
+        operation: 'grammar',
+        language: 'en',
+      })
+    }
+  })
+
+  it('parses English CSV headers and values (including Polish styles and Fix Grammar) in both locales', async () => {
+    const enHeaders = ['Source Email', 'Instructions', 'Settings', 'Language']
+    const input = csv([
+      ['Client asked for updated invoice', 'Be concise', 'Polish: Clearer+Shorter', 'English (US)'],
+      ['Draft to review', '', 'Fix Grammar', 'Japanese'],
+      ['Weekly status update', 'Key metrics first', 'summarize', 'French'],
+    ], enHeaders)
+    for (const locale of ['zh-CN', 'en-US'] as const) {
+      await useLocaleStore.getState().setLocale(locale)
+      const rows = parseEmailBatchCsv(input, preferences)
+      expect(rows).toHaveLength(3)
+      expect(rows[0].params).toEqual({
+        sourceText: 'Client asked for updated invoice',
+        instruction: 'Be concise',
+        operation: 'polish',
+        language: 'en-US',
+        polishStyles: ['clear', 'shorten'],
+      })
+      expect(rows[1].params).toEqual({
+        sourceText: 'Draft to review',
+        operation: 'grammar',
+        language: 'ja',
+      })
+      expect(rows[2].params).toEqual({
+        sourceText: 'Weekly status update',
+        instruction: 'Key metrics first',
+        operation: 'summarize',
+        language: 'fr',
+      })
+    }
+  })
+
+  it('parses mixed Chinese and English headers/values and builds locale-aware template & export', async () => {
+    const mixedInput = csv(
+      [['Hello team', 'Keep brief', '回复', 'German']],
+      ['Source Email', '编写指导', 'Settings', '语言'],
+    )
+    await useLocaleStore.getState().setLocale('en-US')
+    const rows = parseEmailBatchCsv(mixedInput, preferences)
+    expect(rows[0].params).toEqual({
+      sourceText: 'Hello team',
+      instruction: 'Keep brief',
+      operation: 'reply',
+      language: 'de',
+    })
+
+    const enTemplate = Papa.parse<string[]>(createEmailBatchTemplate(), { skipEmptyLines: true }).data
+    expect(enTemplate).toEqual([['Source Email', 'Instructions', 'Settings', 'Language']])
+
+    rows[0] = { ...rows[0], status: 'succeeded', resultText: 'Drafted reply', creditsCost: 2 }
+    const exportedEn = Papa.parse<string[]>(exportEmailBatchCsv(rows), { skipEmptyLines: true }).data
+    expect(exportedEn[0]).toEqual([
+      'Source Email', 'Instructions', 'Settings', 'Language',
+      'Generated Result', 'Status', 'Error', 'Model', 'Credits Charged',
+    ])
+    expect(exportedEn[1]).toEqual([
+      'Hello team', 'Keep brief', '回复', 'German',
+      'Drafted reply', 'Succeeded', '', '', '2',
+    ])
+    expect(formatEmailOperation(rows[0].params!)).toBe('Reply')
+
+    await useLocaleStore.getState().setLocale('zh-CN')
+    const zhTemplate = Papa.parse<string[]>(createEmailBatchTemplate(), { skipEmptyLines: true }).data
+    expect(zhTemplate).toEqual([['原始邮件内容', '编写指导', '生成设置', '语言']])
   })
 })

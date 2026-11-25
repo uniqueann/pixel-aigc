@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { useLocaleStore } from '@/i18n/store'
 import { Capability } from '@/types'
 import { capabilityLabel, emailOperationLabel, taskStatusLabel, workstationSlugForCapability, workstationToolLabel } from './labels'
 
@@ -25,5 +26,38 @@ describe('资产列表文案', () => {
     expect(workstationToolLabel('text-to-image')).toBe('文生图')
     expect(capabilityLabel(Capability.TextToImage)).toBe('文生图')
     expect(capabilityLabel(Capability.TextToImage, 'text-to-image')).toBe('文生图')
+  })
+})
+
+describe('assets labels (en-US)', () => {
+  afterEach(async () => {
+    await useLocaleStore.getState().setLocale('zh-CN')
+  })
+
+  afterAll(async () => {
+    await useLocaleStore.getState().setLocale('zh-CN')
+  })
+
+  it('resolves workstation, toolbox, canvas, email, and status labels in English', async () => {
+    await useLocaleStore.getState().setLocale('en-US')
+    expect(workstationToolLabel('repaint')).toBe('Inpaint')
+    expect(workstationToolLabel('remove')).toBe('Erase')
+    expect(workstationToolLabel('outpaint')).toBe('Outpaint')
+    expect(workstationToolLabel('variation')).toBe('Variation')
+    expect(workstationToolLabel('smart-edit')).toBe('Smart Edit')
+    expect(workstationToolLabel('bg-remove')).toBe('Background Removal')
+    expect(workstationToolLabel('text-to-image')).toBe('Text to Image')
+    expect(workstationToolLabel()).toBe('Image Studio')
+    expect(capabilityLabel(Capability.Inpaint, 'repaint')).toBe('Inpaint')
+    expect(capabilityLabel(Capability.Variation)).toBe('Variation')
+    expect(capabilityLabel(Capability.EmailAssist)).toBe('Email Assistant')
+    expect(emailOperationLabel('summarize')).toBe('Summarize')
+    expect(emailOperationLabel()).toBe('Email Assistant')
+    expect(taskStatusLabel('succeeded')).toBe('Completed')
+    expect(taskStatusLabel('failed')).toBe('Failed')
+    expect(taskStatusLabel('cancelled')).toBe('Cancelled')
+    expect(taskStatusLabel('queued')).toBe('Queued')
+    expect(taskStatusLabel('pending')).toBe('Queued')
+    expect(taskStatusLabel('processing')).toBe('In progress')
   })
 })

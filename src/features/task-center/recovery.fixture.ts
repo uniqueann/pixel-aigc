@@ -13,5 +13,5 @@ export function recoveryImage(ordinal=0):TaskCenterMedia {
     url:`https://example.invalid/${ordinal}.png`,urlExpiresAt:new Date(Date.now()+900000).toISOString(),availability:'available'}
 }
 export function recoveryDetail(patch:Partial<TaskCenterDetail>={}):TaskCenterDetail {
-  return {task:recoverySummary(),params:{prompt:'原提示词',size:{width:64,height:64},count:2,resolution:'1k'},errorMessage:null,results:[recoveryImage()],...patch}
+  return {task:recoverySummary(),params:{prompt:'Original prompt',size:{width:64,height:64},count:2,resolution:'1k'},errorMessage:null,results:[recoveryImage()],...patch}
 }

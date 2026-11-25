@@ -19,7 +19,8 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { NAV_META, SUB_ROUTE_LABELS } from '@/router/meta'
+import { useTranslation } from 'react-i18next'
+import { getNavLabel, getSubRouteLabel } from '@/router/meta'
 import { useUserStore } from '@/store/useUserStore'
 import { useThemeStore } from '@/store/useThemeStore'
 import { TaskCenterProvider } from '@/features/task-center/TaskCenterRuntime'
@@ -47,37 +48,41 @@ import { PixelIcon, PixelWordmark } from '@/components/brand/PixelLogo'
 const { Sider, Content, Header } = Layout
 
 function EcommerceNavLabel() {
+  const { t } = useTranslation('nav')
   return (
     <span className="nav-item-label">
-      <span className="nav-item-label-text">电商套图</span>
-      <span className="nav-item-badge">新</span>
+      <span className="nav-item-label-text">{t('routes.ecommerce')}</span>
+      <span className="nav-item-badge">{t('badges.new')}</span>
     </span>
   )
 }
 
-const NAV_ITEMS = [
-  { key: '/', icon: <AppstoreOutlined />, label: '工作台首页' },
-  { key: '/email', icon: <MailOutlined />, label: '邮件助手' },
-  { key: '/ecommerce', icon: <ShoppingOutlined />, label: <EcommerceNavLabel /> },
-  { key: '/image-workstation', icon: <PictureOutlined />, label: '图片工作站' },
-  { key: '/toolbox', icon: <ToolOutlined />, label: '工具箱' },
-  { key: '/canvas', icon: <BgColorsOutlined />, label: '自由画布' },
-  { key: '/assets', icon: <FolderOutlined />, label: '我的资产' },
-]
-
 const SIDEBAR_FOLD_MIN = 112
 
-function accountMenuItems() {
+function buildNavItems(t: (key: string) => string) {
   return [
-    { key: 'personalization', icon: <UserOutlined />, label: '个性化' },
-    { key: 'settings', icon: <SettingOutlined />, label: '设置' },
-    { key: 'help', icon: <QuestionCircleOutlined />, label: '帮助与支持' },
+    { key: '/', icon: <AppstoreOutlined />, label: t('nav:routes.home') },
+    { key: '/email', icon: <MailOutlined />, label: t('nav:routes.email') },
+    { key: '/ecommerce', icon: <ShoppingOutlined />, label: <EcommerceNavLabel /> },
+    { key: '/image-workstation', icon: <PictureOutlined />, label: t('nav:routes.imageWorkstation') },
+    { key: '/toolbox', icon: <ToolOutlined />, label: t('nav:routes.toolbox') },
+    { key: '/canvas', icon: <BgColorsOutlined />, label: t('nav:routes.canvas') },
+    { key: '/assets', icon: <FolderOutlined />, label: t('nav:routes.assets') },
+  ]
+}
+
+function accountMenuItems(t: (key: string) => string) {
+  return [
+    { key: 'personalization', icon: <UserOutlined />, label: t('nav:accountMenu.personalization') },
+    { key: 'settings', icon: <SettingOutlined />, label: t('nav:accountMenu.settings') },
+    { key: 'help', icon: <QuestionCircleOutlined />, label: t('nav:accountMenu.help') },
     { type: 'divider' as const },
-    { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
+    { key: 'logout', icon: <LogoutOutlined />, label: t('nav:accountMenu.logout') },
   ]
 }
 
 function SidebarResizeHandle({ width, onChange }: { width: number; onChange: (width: number, commit: boolean) => void }) {
+  const { t } = useTranslation('nav')
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
@@ -120,11 +125,11 @@ function SidebarResizeHandle({ width, onChange }: { width: number; onChange: (wi
     className="sidebar-resize-handle"
     role="separator"
     aria-orientation="vertical"
-    aria-label="调整侧边栏宽度"
+    aria-label={t('sidebar.resize')}
     aria-valuemin={SIDEBAR_WIDTH_MIN}
     aria-valuemax={SIDEBAR_WIDTH_MAX}
     aria-valuenow={width}
-    aria-valuetext={`${width} 像素`}
+    aria-valuetext={t('sidebar.widthPixels', { width })}
     tabIndex={0}
     onPointerDown={onPointerDown}
     onDoubleClick={() => onChange(SIDEBAR_WIDTH_MAX, true)}
@@ -242,6 +247,7 @@ function AppSidebar({
   onAccountMenu: (key: string) => void
   sidebar: SidebarController
 }) {
+  const { t } = useTranslation('nav')
   const navigate = useNavigate()
   const account = useUserStore(state => state.account)
   const resolvedTheme = useThemeStore(state => state.resolvedTheme)
@@ -249,7 +255,7 @@ function AppSidebar({
   const isMobile = sidebar.narrowLocked
   const iconOnly = !isMobile && (!sidebar.sidebarOpen || (sidebar.canResizeSidebar && sidebar.sidebarWidth < SIDEBAR_WIDTH_COMPACT))
   const showFold = sidebar.sidebarOpen && (!sidebar.canResizeSidebar || sidebar.sidebarWidth >= SIDEBAR_FOLD_MIN || isMobile)
-  const accountName = account?.displayName ?? '个人账号'
+  const accountName = account?.displayName ?? t('sidebar.personalAccount')
 
   const { toggleSidebar, sidebarOpen } = sidebar
   useEffect(() => {
@@ -269,7 +275,7 @@ function AppSidebar({
         navigate('/')
         if (isMobile) sidebar.toggleSidebar(false)
       }}
-      aria-label="返回工作台首页"
+      aria-label={t('sidebar.backToHome')}
     >
       {iconOnly ? <PixelIcon className="app-brand-mark" /> : <PixelWordmark className="app-brand-wordmark" />}
     </button>
@@ -297,16 +303,16 @@ function AppSidebar({
         <div className={`app-sidebar-header${sidebar.sidebarOpen ? '' : ' is-collapsed'}`}>
           {sidebar.sidebarOpen ? (
             <>
-              {iconOnly ? <Tooltip title="返回工作台首页" placement="right">{brandButton}</Tooltip> : brandButton}
+              {iconOnly ? <Tooltip title={t('sidebar.backToHome')} placement="right">{brandButton}</Tooltip> : brandButton}
               {showFold ? (
-                <button className="sidebar-icon-button" type="button" onClick={() => sidebar.toggleSidebar(false)} aria-label="收起侧边栏">
+                <button className="sidebar-icon-button" type="button" onClick={() => sidebar.toggleSidebar(false)} aria-label={t('sidebar.collapse')}>
                   <MenuFoldOutlined />
                 </button>
               ) : null}
             </>
           ) : (
             !isMobile ? (
-              <button className="collapsed-brand-toggle" type="button" onClick={() => sidebar.toggleSidebar(true)} aria-label="展开侧边栏">
+              <button className="collapsed-brand-toggle" type="button" onClick={() => sidebar.toggleSidebar(true)} aria-label={t('sidebar.expand')}>
                 <PixelIcon className="app-brand-mark collapsed-brand-mark" />
                 <MenuUnfoldOutlined className="collapsed-brand-icon" />
               </button>
@@ -318,7 +324,7 @@ function AppSidebar({
           mode="inline"
           inlineCollapsed={iconOnly}
           selectedKeys={[topKey]}
-          items={NAV_ITEMS.filter(item => item.key !== '/ecommerce' || account?.features?.ecommerceSuite)}
+          items={buildNavItems(key => t(key.replace(/^nav:/, '') as never)).filter(item => item.key !== '/ecommerce' || account?.features?.ecommerceSuite)}
           onClick={({ key }) => {
             navigate(key)
             if (isMobile) sidebar.toggleSidebar(false)
@@ -337,7 +343,7 @@ function AppSidebar({
                 onAccountMenu(key)
                 if (isMobile) sidebar.toggleSidebar(false)
               },
-              items: accountMenuItems(),
+              items: accountMenuItems(key => t(key.replace(/^nav:/, '') as never)),
             }}
           >
             <button className="account-trigger" type="button" aria-label={iconOnly ? accountName : undefined} title={iconOnly ? accountName : undefined}>
@@ -345,7 +351,7 @@ function AppSidebar({
               {iconOnly ? null : (
                 <span className="account-trigger-copy">
                   <span className="account-name">{accountName}</span>
-                  <span className="account-meta">{account?.email ?? '本地模式'}</span>
+                  <span className="account-meta">{account?.email ?? t('sidebar.localMode')}</span>
                 </span>
               )}
             </button>
@@ -378,6 +384,7 @@ export default function MainLayout() {
 }
 
 function MainLayoutContent() {
+  const { t, i18n } = useTranslation(['nav', 'common'])
   const sidebar = useSidebarState()
   const location = useLocation()
   const navigate = useNavigate()
@@ -419,22 +426,23 @@ function MainLayoutContent() {
       try {
         const order=await getCreditOrder(id,owner)
         if(!active || useUserStore.getState().userId!==owner) return
-        if(order.status === 'paid') {await refreshBillingBalance(owner);message.success('充值积分已到账');return}
+        if(order.status === 'paid') {await refreshBillingBalance(owner);message.success(t('nav:header.creditOrderPaid'));return}
         if(order.status !== 'pending') return
-      } catch { if(active && attempt===0) message.info('支付确认可能稍有延迟，可在积分明细中查询到账') }
+      } catch { if(active && attempt===0) message.info(t('nav:header.creditOrderPending')) }
       if(active && ++attempt<12) timer=setTimeout(()=>void check(),5000)
     }
     void check()
     return()=>{active=false;clearTimeout(timer)}
-  },[location.search,account?.userId,message])
+  },[location.search,account?.userId,message,t])
   const segments = location.pathname.split('/').filter(Boolean)
   const topKey = getActiveTopKey(location.pathname)
-  const topTitle = NAV_META[topKey] ?? NAV_META['/']
-  const subTitle = segments.length > 1 ? SUB_ROUTE_LABELS[segments[0]]?.[segments[1]] : undefined
+  const topTitle = getNavLabel(topKey)
+  const subTitle = segments.length > 1 ? getSubRouteLabel(segments[0], segments[1]) : undefined
+  const workbenchTitle = t('common:brand.workbenchTitle')
 
   useEffect(() => {
-    document.title = subTitle ? `${subTitle} · ${topTitle} · AIGC 工作台` : `${topTitle} · AIGC 工作台`
-  }, [topTitle, subTitle])
+    document.title = subTitle ? `${subTitle} · ${topTitle} · ${workbenchTitle}` : `${topTitle} · ${workbenchTitle}`
+  }, [topTitle, subTitle, workbenchTitle, i18n.language])
 
   useEffect(() => {
     try {
@@ -470,8 +478,8 @@ function MainLayoutContent() {
     }
     if (key === 'logout' && authEnabled) {
       void (async () => {
-        try { await flushProject() } catch { message.warning('本地项目保存未完成，请稍后检查当前账号的本地存档') }
-        if (useCloudStore.getState().busy) message.warning('云端同步可能尚未完成；本地存档会保留在当前账号下')
+        try { await flushProject() } catch { message.warning(t('nav:logoutWarnings.localSaveIncomplete')) }
+        if (useCloudStore.getState().busy) message.warning(t('nav:logoutWarnings.cloudSyncIncomplete'))
         useUserStore.getState().setAccount(null)
         const { error } = await supabase!.auth.signOut({ scope: 'local' })
         if (error) throw error
@@ -479,12 +487,12 @@ function MainLayoutContent() {
       })().catch(error => message.error(String(error.message)))
       return
     }
-    message.info(key === 'logout' ? '退出登录功能尚未接入' : '该功能将在后续版本开放')
+    message.info(key === 'logout' ? t('nav:accountMenu.logoutPending') : t('nav:accountMenu.comingSoon'))
   }
 
   return (
     <TaskNavigationProvider><TaskCenterProvider onCredits={() => setCreditsOpen(true)}>
-      <a className="skip-link" href="#app-main-content">跳到主要内容</a>
+      <a className="skip-link" href="#app-main-content">{t('nav:sidebar.skipToMain')}</a>
       <Layout className="app-shell" style={{ height: '100vh' }}>
         <AppSidebar
           key={sidebarOwner}
@@ -500,8 +508,8 @@ function MainLayoutContent() {
                   className="mobile-sidebar-toggle"
                   type="button"
                   onClick={() => sidebar.toggleSidebar(true)}
-                  aria-label="展开侧边栏"
-                  title="展开侧边栏"
+                  aria-label={t('nav:sidebar.expand')}
+                  title={t('nav:sidebar.expand')}
                 >
                   <MenuUnfoldOutlined />
                 </button>
@@ -519,10 +527,10 @@ function MainLayoutContent() {
                 overlayClassName="account-dropdown"
                 menu={{
                   onClick: ({ key }) => handleAccountMenu({ key }),
-                  items: accountMenuItems(),
+                  items: accountMenuItems(key => t(key.replace(/^nav:/, '') as never)),
                 }}
               >
-                <button type="button" className="header-account-trigger" aria-label="账号与设置" title="账号与设置">
+                <button type="button" className="header-account-trigger" aria-label={t('nav:accountMenu.triggerAria')} title={t('nav:accountMenu.triggerAria')}>
                   <SettingOutlined />
                 </button>
               </Dropdown>
@@ -530,13 +538,13 @@ function MainLayoutContent() {
                 <button
                   type="button"
                   className="credits-trigger"
-                  aria-label={`积分余额 ${credits}`}
+                  aria-label={t('nav:header.creditsAria', { credits })}
                   onClick={() => {
                     setCreditsInitialTab('ledger')
                     setCreditsOpen(true)
                   }}
                 >
-                  积分 {credits}
+                  {t('nav:header.creditsLabel', { credits })}
                 </button>
               )}
               {isCanvasRoute(location.pathname) ? <CanvasProjectMenu /> : null}

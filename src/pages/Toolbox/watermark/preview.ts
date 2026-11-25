@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 export type WatermarkPreviewMode = 'result' | 'source'
 
 interface PreviewSourceArgs {
@@ -21,11 +23,15 @@ interface PreviewAltArgs {
 
 /** alt 必须跟随当前展示的内容，避免把原图描述成水印结果。 */
 export function watermarkPreviewAlt({ mode, name, hasResult }: PreviewAltArgs) {
-  if (mode === 'source') return `${name} 原图`
-  return hasResult ? `${name} 的水印结果` : `${name} 的水印预览`
+  if (mode === 'source') return i18n.t('toolbox:watermark.previewAlt.source', { name })
+  return hasResult
+    ? i18n.t('toolbox:watermark.previewAlt.result', { name })
+    : i18n.t('toolbox:watermark.previewAlt.preview', { name })
 }
 
 export function watermarkPreviewMeta({ mode, hasResult }: { mode: WatermarkPreviewMode; hasResult: boolean }) {
-  if (mode === 'source') return '原图'
-  return hasResult ? '水印结果' : '水印预览'
+  if (mode === 'source') return i18n.t('toolbox:watermark.previewMeta.source')
+  return hasResult
+    ? i18n.t('toolbox:watermark.previewMeta.result')
+    : i18n.t('toolbox:watermark.previewMeta.preview')
 }

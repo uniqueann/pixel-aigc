@@ -1,4 +1,5 @@
 import type { PublicImageModel } from '@/services/api/imageModels'
+import { i18n } from '@/i18n'
 import { outpaintCreditPrice } from '@shared/billing'
 import { paddingAround } from '@shared/outpaint'
 
@@ -22,7 +23,7 @@ export function imageCreditAmount(model: PublicImageModel | undefined, count: nu
     ? unitPrice * count : undefined
 }
 
-/** 有效张数还不是正整数时（例如尚未上传、张数被算成 0），报价改用当前选择。 */
+/** Fallback to selected count when effective count is not yet a positive integer (e.g. before uploads). */
 export function positiveQuoteCount(effectiveCount: number, selectedCount: number): number | undefined {
   if (Number.isInteger(effectiveCount) && effectiveCount > 0) return effectiveCount
   if (Number.isInteger(selectedCount) && selectedCount > 0) return selectedCount
@@ -35,7 +36,7 @@ export interface OutpaintQuoteGeometry {
   originOffset: { x: number; y: number }
 }
 
-/** 报价与提交共用整数几何和扩图轮次；没有留白时只处理本地图片。 */
+/** Shared integer geometry calculation for outpaint pricing; local-only when there is no padding. */
 export function outpaintCreditAmount(geometry: OutpaintQuoteGeometry): number {
   const { sourceSize, targetSize, originOffset } = geometry
   const padding = paddingAround(sourceSize.width, sourceSize.height, originOffset.x, originOffset.y, targetSize.width, targetSize.height)
@@ -44,11 +45,13 @@ export function outpaintCreditAmount(geometry: OutpaintQuoteGeometry): number {
 }
 
 export function creditQuoteLabel(quote: CreditQuote): string {
-  if (quote.status === 'loading') return '报价加载中'
-  if (quote.status === 'unavailable') return '报价暂不可用'
-  if (quote.status === 'mock') return '模拟，不扣积分'
-  if (quote.credits === 0) return quote.estimatedFree ? '预计免费' : '免费'
-  return `${quote.maximum ? '最多 ' : ''}${quote.credits} 积分`
+  if (quote.status === 'loading') return i18n.t('credits:quotes.loading')
+  if (quote.status === 'unavailable') return i18n.t('credits:quotes.unavailable')
+  if (quote.status === 'mock') return i18n.t('credits:quotes.mock')
+  if (quote.credits === 0) return quote.estimatedFree ? i18n.t('credits:quotes.estimatedFree') : i18n.t('credits:quotes.free')
+  return quote.maximum
+    ? i18n.t('credits:quotes.maxCredits', { credits: quote.credits })
+    : i18n.t('credits:quotes.credits', { credits: quote.credits })
 }
 
 export function creditQuoteBlocked(quote?: CreditQuote): boolean {

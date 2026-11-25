@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Input, Radio, Segmented, Switch, Tooltip } from 'antd'
 import ModelChoice from '@/components/ModelChoice'
 import GenerationCountPicker from '@/components/GenerationCountPicker'
@@ -6,6 +7,7 @@ import { PROMPT_MAX_LENGTH, VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewResultStrip from '@/components/PreviewResultStrip'
 import { downloadImageSource, extensionForMime } from '@/features/image-workstation/download'
+import { translateApiError } from '@/i18n/apiErrors'
 import { Capability, type GenerationTask } from '@/types'
 import type { Asset } from '@/editor/types'
 import type { PublicImageModel } from '@/services/api/imageModels'
@@ -22,7 +24,7 @@ import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits
 import type { VideoModelProfile, VideoRatio, VideoResolution } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
-import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { insufficientCreditsReason, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { modelProfileIdForRetry } from './retryModel'
 import { videoRetryParametersSupported } from './videoParameters'
@@ -114,6 +116,7 @@ export default function GenerationPanel({
   videoModels, selectedVideoModelId, videoResolution, onVideoModelChange, onVideoResolutionChange,
   videoAvailability, onReloadModels,
 }: GenerationPanelProps) {
+  const { t } = useTranslation('canvas')
   const textToVideo = mode === 'text-to-video'
   const balance = useUserStore(state => state.credits)
   const knownBalance = useKnownCreditBalance()
@@ -123,15 +126,25 @@ export default function GenerationPanel({
   const taskDuration = task?.params && 'durationSeconds' in task.params
     ? task.params.durationSeconds
     : durationSeconds
+  const taskFailureSummary = task?.status === 'failed' || task?.status === 'cancelled'
+    ? translateApiError({
+      code: task.errorCode,
+      message: taskFailureText(task.errorCode, task.errorMessage, t('panel.taskIncompleteFallback')),
+      fallback: t('panel.taskIncompleteFallback'),
+    })
+    : undefined
   const taskSummary = task?.status === 'succeeded'
     ? taskIsVideo
-      ? '视频已生成并加入画布'
-      : `成功 ${task.resultImages?.length ?? task.resultUrls?.length ?? 0} / ${task.params.count} 张图片${mockGateway ? '' : `，实际消耗 ${task.creditsCost} 积分`}`
-    : task?.status === 'failed' || task?.status === 'cancelled'
-      ? taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
-      : taskIsVideo || textToVideo
-        ? `本次生成 1 段 ${taskDuration} 秒视频`
-        : `本次生成 ${task?.params.count ?? count} 张图片`
+      ? t('panel.videoAddedSummary')
+      : t('panel.imageSucceededSummary', {
+        succeeded: task.resultImages?.length ?? task.resultUrls?.length ?? 0,
+        total: task.params.count,
+        costSuffix: mockGateway ? '' : t('panel.actualCostSuffix', { credits: task.creditsCost }),
+      })
+    : taskFailureSummary
+      ?? (taskIsVideo || textToVideo
+        ? t('panel.currentVideoCount', { duration: taskDuration })
+        : t('panel.currentImageCount', { count: task?.params.count ?? count }))
   const resultUrls = task?.resultVideos?.length ? task.resultVideos.map(video => video.url) : task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
   const previewItems = resultUrls.map((url, index) => {
     const image = task?.resultVideos?.[index] ?? task?.resultImages?.[index]
@@ -140,7 +153,7 @@ export default function GenerationPanel({
     return { id: `${task?.id}:${index}`, mediaType: taskIsVideo ? 'video' as const : 'image' as const,
       posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
       thumbSrc: taskIsVideo ? '' : src, fullSrc: src,
-      ...(taskIsVideo && task?.params && 'durationSeconds' in task.params ? { durationLabel: `${task.params.durationSeconds} 秒` } : {}), title: `生成结果 ${(image?.ordinal ?? index) + 1}`, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
+      ...(taskIsVideo && task?.params && 'durationSeconds' in task.params ? { durationLabel: t('panel.durationSeconds', { count: task.params.durationSeconds }) } : {}), title: t('panel.resultTitle', { index: (image?.ordinal ?? index) + 1 }), objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt }
   })
   const originalModelId = task ? modelProfileIdForRetry(task) : undefined
   const originalModel = task ? matchImageModel(models, originalModelId) : model
@@ -160,8 +173,8 @@ export default function GenerationPanel({
   const retryQuote = creditQuote(taskIsVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
   const activePreset = IMAGE_SIZE_PRESETS.find((preset) => preset.key === presetKey) ?? IMAGE_SIZE_PRESETS[0]
   const advancedSummary = textToVideo
-    ? `${videoModel?.label ?? '视频模型'} · ${videoResolution ?? videoModel?.resolution ?? '720p'}`
-    : `${model?.label ?? '默认模型'} · ${resolution.toUpperCase()}`
+    ? `${videoModel?.label ?? t('video.settings.defaultModelName')} · ${videoResolution ?? videoModel?.resolution ?? '720p'}`
+    : `${model?.label ?? t('panel.defaultImageModelName')} · ${resolution.toUpperCase()}`
   const imageCreditBlocked = !textToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote, balance: knownBalance })
   const imageRetryBlocked = !taskIsVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
 
@@ -169,12 +182,12 @@ export default function GenerationPanel({
     <aside className="free-canvas-generation-panel">
       <div className="free-canvas-panel-body">
       <div>
-        <h2>{textToVideo ? '文生视频' : '文生图'}</h2>
-        {showForm && <p>{textToVideo ? '描述镜头内容，生成结果会作为可播放视频加入画布。' : '输入创意描述，结果会直接加入当前视口中心。'}</p>}
+        <h2>{textToVideo ? t('panel.textToVideoTitle') : t('panel.textToImageTitle')}</h2>
+        {showForm && <p>{textToVideo ? t('panel.textToVideoDescription') : t('panel.textToImageDescription')}</p>}
       </div>
       {!showForm ? <VideoAvailabilityNotice state={videoState} onRetry={onReloadModels} /> : <>
       <label className="free-canvas-field">
-        <span>画面描述</span>
+        <span>{t('panel.promptLabel')}</span>
         <Input.TextArea
           data-canvas-prompt
           rows={6}
@@ -183,12 +196,12 @@ export default function GenerationPanel({
           showCount
           disabled={formLocked}
           onChange={(event) => onPromptChange(event.target.value)}
-          placeholder="例如：雨夜里的未来城市，霓虹灯倒映在街道上"
+          placeholder={t('panel.promptPlaceholder')}
         />
       </label>
 
       <label className="free-canvas-field">
-        <span>生成比例</span>
+        <span>{t('panel.ratioLabel')}</span>
         <Segmented
           block
           className="free-canvas-aspect-ratio-segmented"
@@ -198,7 +211,7 @@ export default function GenerationPanel({
               ? !videoModel?.ratios?.length || videoModel.ratios.includes(preset.key as VideoRatio)
               : supportedPresets.some(item => item.key === preset.key)
             const baseTooltip = preset.tooltip ?? getAspectRatioTooltip(preset.key)
-            const tooltipTitle = isSupported ? baseTooltip : `${baseTooltip}（当前模型不支持）`
+            const tooltipTitle = isSupported ? baseTooltip : t('panel.unsupportedRatioSuffix', { tooltip: baseTooltip })
             return {
               value: preset.key,
               disabled: !isSupported,
@@ -218,45 +231,45 @@ export default function GenerationPanel({
           onChange={(value) => onPresetChange(String(value))}
         />
         {/* 图标只是辅助，把当前比例的含义与像素直接写出来，不用悬停也读得懂。 */}
-        <p className="free-canvas-field-hint">{activePreset.tooltip ?? getAspectRatioTooltip(activePreset.key)} · {activePreset.width}×{activePreset.height} · 只影响本次生成，不改变画布</p>
+        <p className="free-canvas-field-hint">{t('panel.ratioHint', { tooltip: activePreset.tooltip ?? getAspectRatioTooltip(activePreset.key), width: activePreset.width, height: activePreset.height })}</p>
       </label>
 
       {textToVideo ? (
         <label className="free-canvas-field">
-          <span>视频时长</span>
+          <span>{t('panel.videoDurationLabel')}</span>
           <Radio.Group
             buttonStyle="solid"
             value={durationSeconds}
             disabled={formLocked}
             onChange={(event) => onDurationChange(Number(event.target.value))}
           >
-            {[5, 10].map((value) => <Radio.Button key={value} value={value}>{value} 秒</Radio.Button>)}
+            {[5, 10].map((value) => <Radio.Button key={value} value={value}>{t('panel.durationSeconds', { count: value })}</Radio.Button>)}
           </Radio.Group>
         </label>
       ) : (
         <label className="free-canvas-field">
-          <span>生成数量</span>
+          <span>{t('panel.countLabel')}</span>
           <GenerationCountPicker value={count} max={model?.ui.maxCount ?? 4} disabled={formLocked} onChange={onCountChange} />
         </label>
       )}
 
       <details className="free-canvas-advanced">
         <summary>
-          <span className="free-canvas-advanced-title">高级设置</span>
+          <span className="free-canvas-advanced-title">{t('panel.advancedTitle')}</span>
           <span className="free-canvas-advanced-value">{advancedSummary}</span>
         </summary>
         <div className="free-canvas-advanced-fields">
           {!textToVideo && <>
-            <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="文生图模型" hintScope="text_to_image" models={models} value={model?.id} disabled={formLocked || modelsLoading} onChange={onModelChange} />
-            <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="文生图分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
+            <ModelChoice className="free-canvas-field" label={t('panel.modelLabel')} ariaLabel={t('panel.textToImageModelAria')} hintScope="text_to_image" models={models} value={model?.id} disabled={formLocked || modelsLoading} onChange={onModelChange} />
+            <label className="free-canvas-field"><span>{t('panel.resolutionLabel')}</span><Radio.Group aria-label={t('panel.textToImageResolutionAria')} value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
               {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
             </Radio.Group></label>
             {model?.provider === 'bailian' && <>
               <label className="free-canvas-field free-canvas-switch-field">
-                <span>自动扩写</span>
-                <Switch aria-label="自动扩写" checked={enableThinking} disabled={formLocked} onChange={onThinkingChange} />
+                <span>{t('panel.autoExpandLabel')}</span>
+                <Switch aria-label={t('panel.autoExpandLabel')} checked={enableThinking} disabled={formLocked} onChange={onThinkingChange} />
               </label>
-              <p>开启后模型将丰富细节描述；耗时相对增加，画面细节更为丰富。</p>
+              <p>{t('panel.autoExpandHint')}</p>
             </>}
           </>}
           {textToVideo && <VideoGenerationSettings generateAudio={generateAudio} onAudioChange={onAudioChange} disabled={formLocked}
@@ -267,14 +280,14 @@ export default function GenerationPanel({
       </details>
 
       {!textToVideo && <>
-        {resolutionAdjusted && <p role="status">当前模型或生成比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
-        {ratioAdjusted && <p role="status">当前模型不支持所选比例，已按 {presetKey} 计算本次参数。</p>}
-        {countAdjusted && <p role="status">当前模型最多支持本次数量，已按 {count} 张计算本次参数与积分。</p>}
-        {modelsLoading ? <p role="status">正在加载文生图模型配置…</p>
-          : <p>{mockGateway ? '模拟生成，不消耗积分' : estimatedCredits === undefined
-            ? '模型积分报价尚未就绪，请重新读取文生图配置。'
-            : `本次预计消耗 ${estimatedCredits} 积分，按实际成功张数结算。`}</p>}
-        {!modelsLoading && generateDisabled && <p className="toolbox-hint">文生图服务暂不可用，请检查网络或稍后重试。</p>}
+        {resolutionAdjusted && <p role="status">{t('panel.resolutionAdjusted', { resolution: resolution.toUpperCase() })}</p>}
+        {ratioAdjusted && <p role="status">{t('panel.ratioAdjusted', { ratio: presetKey })}</p>}
+        {countAdjusted && <p role="status">{t('panel.countAdjusted', { count })}</p>}
+        {modelsLoading ? <p role="status">{t('panel.loadingTextToImageModels')}</p>
+          : <p>{mockGateway ? t('video.credits.mock') : estimatedCredits === undefined
+            ? t('panel.quoteUnavailableReload')
+            : t('panel.estimatedCredits', { credits: estimatedCredits })}</p>}
+        {!modelsLoading && generateDisabled && <p className="toolbox-hint">{t('panel.textToImageUnavailable')}</p>}
       </>}
 
       </>}
@@ -294,26 +307,29 @@ export default function GenerationPanel({
         onRetry={taskIsVideo && videoState !== 'ready' ? undefined : onRetry}
         retryDisabled={taskIsVideo ? videoState !== 'ready' || generateDisabled || videoRetryBlocked : modelsLoading || generateDisabled || imageRetryBlocked}
         retryQuote={retryQuote}
-        retryLabel={!taskIsVideo && !textToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
+        retryLabel={!taskIsVideo && !textToVideo && !mockGateway ? t('panel.retryCountLabel', { count: task?.params.count ?? count }) : undefined}
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
       />
       {!taskIsVideo && !textToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
-        手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
+        {t('panel.retryNotice', {
+          count: task.params.count,
+          quotePart: retryCredits === undefined ? t('panel.retryQuoteUnavailable') : t('panel.retryQuoteEstimated', { credits: retryCredits }),
+        })}
       </p>}
-      {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? '原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成。' : retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
+      {taskIsVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? t('panel.videoRetryLegacySilentH3') : retryVideoCredits === undefined ? t('panel.videoRetryQuoteMissing') : t('panel.videoRetryReserveNotice', { credits: retryVideoCredits })}</p>}
 
       {task?.status === 'succeeded' && <PreviewResultStrip items={previewItems} onDownload={item => {
         const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
         const image = task.resultImages?.[index]
-        return downloadImageSource(item.fullSrc, `生成结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
+        return downloadImageSource(item.fullSrc, `${t('panel.downloadFilenamePrefix')}_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
       }} />}
 
-      {showForm && <p className="free-canvas-panel-hint">生成期间可以拖动占位框调整位置；生成完成后会自动替换为实际内容。</p>}
+      {showForm && <p className="free-canvas-panel-hint">{t('panel.footerHint')}</p>}
       </div>
       {showForm && <div className="free-canvas-panel-footer">
         <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
-        <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+        <Tooltip title={imageCreditBlocked ? insufficientCreditsReason() : undefined}>
           <span style={{ display: 'block' }}>
             <CreditActionButton data-task-generate
               className="free-canvas-generate"
@@ -324,7 +340,7 @@ export default function GenerationPanel({
               disabled={formLocked || generateDisabled || imageCreditBlocked || videoCreditSubmitBlocked || (textToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || prompt.trim().length > VIDEO_PROMPT_MAX)) || (!textToVideo && (modelsLoading || prompt.trim().length > imagePromptMax)) || !prompt.trim()}
               onClick={onGenerate}
             >
-              {active ? '正在生成' : textToVideo ? '生成' : `生成 ${count} 张`}
+              {active ? t('panel.generatingButton') : textToVideo ? t('panel.generateVideoButton') : t('panel.generateImagesButton', { count })}
             </CreditActionButton>
           </span>
         </Tooltip>

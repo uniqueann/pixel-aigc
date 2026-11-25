@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import type { SuiteActor, SuiteQuote } from '@shared/ecommerce-suite'
 import type { SuiteProjectDetail } from '@shared/ecommerce-suite-runtime'
 
@@ -9,9 +10,9 @@ async function open() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open('pixel-ecommerce-suite-v1', 1)
     request.onupgradeneeded = () => { for (const name of ['projects', 'images', 'pending', 'creation']) request.result.createObjectStore(name) }
-    request.onerror = () => reject(request.error ?? new Error('本地备份不可用'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('ecommerce:backup.errors.unavailable')))
     let blocked = false
-    request.onblocked = () => { blocked = true; reject(new Error('本地备份正在升级，请关闭其他页面后重试')) }
+    request.onblocked = () => { blocked = true; reject(new Error(i18n.t('ecommerce:backup.errors.upgrading'))) }
     request.onsuccess = () => { if (blocked) { request.result.close(); return }; request.result.onversionchange = () => request.result.close(); resolve(request.result) }
   })
 }
@@ -31,7 +32,7 @@ async function write(store: string, recordKey: string, value: unknown) {
     else tx.objectStore(store).put(value, recordKey)
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
-    tx.onabort = () => reject(tx.error ?? new Error('本地存储空间不足'))
+    tx.onabort = () => reject(tx.error ?? new Error(i18n.t('ecommerce:backup.errors.quotaExceeded')))
   }) } finally { db.close() }
 }
 export const readSuiteBackup = (actor: SuiteActor, id: string) => read<Backup>('projects', key(actor, id))

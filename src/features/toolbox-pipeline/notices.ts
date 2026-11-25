@@ -1,27 +1,36 @@
+import { i18n } from '@/i18n'
 import { unavailableCropSummary } from '@/pages/Toolbox/aspect-ratio/subjectFocus'
 import { itemStatus, type PipelineItem } from './types'
 
-const phaseLabels = {
-  detect: '正在识别主体',
-  ratio: '正在转比例',
-  watermark: '正在加水印',
-  encode: '正在生成成品',
-} as const
-
 /** 检测不可用时优先展示降级说明，避免被「已完成」文案盖住。 */
 export function pipelineQueueNote(item: PipelineItem, runState: 'idle' | 'running' | 'paused') {
-  if (itemStatus(item) === 'failed') return item.failedStep === 'watermark' ? '加水印失败，可重试' : '转比例失败，可重试'
+  if (itemStatus(item) === 'failed') {
+    return item.failedStep === 'watermark'
+      ? i18n.t('toolbox:pipeline.queue.watermarkFailed')
+      : i18n.t('toolbox:pipeline.queue.ratioFailed')
+  }
   if (item.cropFocus?.unavailable) return item.cropFocus.note
-  if (item.phase) return phaseLabels[item.phase]
+  if (item.phase) return i18n.t(`toolbox:pipeline.phases.${item.phase}`)
   if (item.cropFocus?.source === 'grid' && item.cropFocus.note) return item.cropFocus.note
-  if (itemStatus(item) === 'succeeded') return item.watermarkStatus === 'skipped' ? '转比例完成 · 已跳过水印' : '转比例完成 · 水印完成'
-  if (item.intermediate) return '转比例完成 · 等待生成成品'
-  return runState === 'paused' ? '已暂停 · 等待继续处理' : '等待转比例'
+  if (itemStatus(item) === 'succeeded') {
+    return item.watermarkStatus === 'skipped'
+      ? i18n.t('toolbox:pipeline.queue.doneSkippedWatermark')
+      : i18n.t('toolbox:pipeline.queue.doneAll')
+  }
+  if (item.intermediate) return i18n.t('toolbox:pipeline.queue.ratioDoneWaitingEncode')
+  return runState === 'paused'
+    ? i18n.t('toolbox:pipeline.queue.pausedWaiting')
+    : i18n.t('toolbox:pipeline.queue.waitingRatio')
 }
 
 export function pipelineProgressLabel(items: PipelineItem[]) {
   const completed = items.filter(item => itemStatus(item) === 'succeeded')
   const failed = items.filter(item => itemStatus(item) === 'failed').length
   const degrade = unavailableCropSummary(completed.map(item => item.cropFocus))
-  return `${completed.length} / ${items.length} 张已完成${failed ? ` · ${failed} 张失败` : ''}${degrade ? ` · ${degrade}` : ''}`
+  return i18n.t('toolbox:pipeline.progress', {
+    completed: completed.length,
+    total: items.length,
+    failed: failed ? i18n.t('toolbox:pipeline.progressFailedSuffix', { count: failed }) : '',
+    degrade: degrade ? ` · ${degrade}` : '',
+  })
 }

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 const stageSource = readFileSync(resolve(process.cwd(), 'src/features/free-canvas/FreeCanvasStage.tsx'), 'utf8')
 const panelSource = readFileSync(resolve(process.cwd(), 'src/features/free-canvas/generation/GenerationPanel.tsx'), 'utf8')
 const pageSource = readFileSync(resolve(process.cwd(), 'src/pages/FreeCanvas/index.tsx'), 'utf8')
+const zhCanvas = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/locales/zh-CN/canvas.json'), 'utf8'))
 
 describe('视频路径收口', () => {
   it('暂停中的视频有 ▶ 角标，播放时消失，且不抢命中', () => {
@@ -31,6 +32,7 @@ describe('视频路径收口', () => {
   it('视频比例按模型能力过滤，并在提交前再校验一次', () => {
     expect(panelSource).toContain('videoModel.ratios.includes(preset.key as VideoRatio)')
     expect(pageSource).toContain('videoModel.ratios.some((ratio) => ratio === preset.key)')
-    expect(pageSource).toContain('当前视频模型不支持该比例，请重新选择画面比例')
+    expect(pageSource).toContain("t('errors.unsupportedVideoRatio')")
+    expect(zhCanvas.errors.unsupportedVideoRatio).toBe('当前视频模型不支持该比例，请重新选择画面比例')
   })
 })

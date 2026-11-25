@@ -1,0 +1,94 @@
+{
+  "quickStart": {
+    "title": "Quick Start",
+    "subtitle": "Choose a tool to get started",
+    "configLoadFailed": "Failed to load feature configuration",
+    "retryConfig": "Retry config",
+    "openToolAria": "Open {{label}}",
+    "continueToolAria": "Continue {{label}}",
+    "groups": {
+      "image": {
+        "title": "Image Processing",
+        "description": "Edit and refine product photos"
+      },
+      "batch": {
+        "title": "Batch Creation",
+        "description": "Generate variations, scene fusions, and batch pipelines"
+      },
+      "generate": {
+        "title": "Generate from Scratch",
+        "description": "Create images or videos on the canvas"
+      },
+      "email": {
+        "title": "Email Assistant",
+        "description": "Draft single replies or process batches"
+      }
+    },
+    "entries": {
+      "pipeline": "Pipeline",
+      "batchEmail": "Batch Email",
+      "singleEmail": "Single Email"
+    }
+  },
+  "continueWork": {
+    "title": "Continue Working",
+    "subtitle": "Pick up where you left off",
+    "recentCanvases": "Recent Canvases",
+    "untitledCanvas": "Untitled Canvas",
+    "localSave": "Local Save",
+    "cloudProject": "Cloud Project",
+    "continueEdit": "Continue",
+    "continueEditAria": "Continue editing {{name}}",
+    "noCanvases": "No recent canvases yet",
+    "cloudLoadFailed": "Failed to load cloud projects",
+    "recentTools": "Recent Tools",
+    "lastVisited": "Visited {{time}}",
+    "noTools": "Visited tools will appear here for quick access",
+    "accountSwitched": "Account switched"
+  },
+  "recentWorks": {
+    "title": "Recent Works",
+    "syncing": "Syncing recent works...",
+    "listAria": "Recent works",
+    "videoWork": "Video",
+    "imageWork": "Image",
+    "readFailed": "Failed to load recent works",
+    "partialSyncFailed": "{{count}} item(s) failed to sync",
+    "cloudSyncFailed": "Cloud works could not be synced right now",
+    "playAria": "Play {{label}} {{time}}",
+    "previewAria": "Preview {{label}} {{time}}",
+    "durationSeconds": "{{seconds}}s"
+  },
+  "emptyWorks": {
+    "title": "No recent works yet",
+    "subtitle": "Generated images and videos will appear here",
+    "action": "Create on Canvas"
+  },
+  "newUserCard": {
+    "regionAria": "Create your first work",
+    "closeAria": "Dismiss starter card",
+    "title": "Start with your first product image",
+    "description": "Your {{credits}} welcome credits are ready. Try Background Removal first — {{freeCount}} free images every month.",
+    "action": "Try Background Removal"
+  },
+  "projectOpen": {
+    "needEditAccess": "Acquire edit access to this project first",
+    "unfinishedTasks": "Current canvas has unfinished tasks. Return and handle them first.",
+    "saveFailed": "Current canvas failed to save. Return and save first.",
+    "conflict": "Current canvas has a version conflict. Resolve it first.",
+    "syncing": "Sync in progress. Please retry once finished.",
+    "accountSwitched": "Account switched; opening project cancelled",
+    "invalidParams": "Invalid project parameters. Please select from Home.",
+    "cloudDisabled": "Cloud projects are not enabled in this environment",
+    "openFailed": "Failed to open project",
+    "confirmTitle": "Keep current canvas and open another project?",
+    "confirmDescription": "Unsynced changes will be saved locally before switching. You can return via Recent Canvases on Home.",
+    "confirmOk": "Save Locally & Open",
+    "errorTitle": "Unable to Open Project",
+    "retryOpen": "Retry",
+    "backToCanvas": "Back to Current Canvas",
+    "backToHome": "Back to Home",
+    "opening": "Opening canvas...",
+    "cancelOpen": "Cancel"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "routes": {
+    "home": "工作台首页",
+    "email": "邮件助手",
+    "ecommerce": "电商套图",
+    "imageWorkstation": "图片工作站",
+    "toolbox": "工具箱",
+    "canvas": "自由画布",
+    "assets": "我的资产",
+    "help": "帮助中心"
+  },
+  "badges": {
+    "new": "新"
+  },
+  "sidebar": {
+    "skipToMain": "跳到主要内容",
+    "backToHome": "返回工作台首页",
+    "expand": "展开侧边栏",
+    "collapse": "收起侧边栏",
+    "resize": "调整侧边栏宽度",
+    "widthPixels": "{{width}} 像素",
+    "personalAccount": "个人账号",
+    "localMode": "本地模式",
+    "brandLabel": "Pixel AIGC"
+  },
+  "accountMenu": {
+    "triggerAria": "账号与设置",
+    "personalization": "个性化",
+    "settings": "设置",
+    "help": "帮助与支持",
+    "logout": "退出登录",
+    "logoutPending": "退出登录功能尚未接入",
+    "comingSoon": "该功能将在后续版本开放",
+    "localUser": "本地用户"
+  },
+  "header": {
+    "creditsAria": "积分余额 {{credits}}",
+    "creditsLabel": "积分 {{credits}}",
+    "creditOrderPaid": "充值积分已到账",
+    "creditOrderPending": "支付确认可能稍有延迟，可在积分明细中查询到账"
+  },
+  "logoutWarnings": {
+    "localSaveIncomplete": "本地项目保存未完成，请稍后检查当前账号的本地存档",
+    "cloudSyncIncomplete": "云端同步可能尚未完成；本地存档会保留在当前账号下"
+  },
+  "projectHeader": {
+    "breadcrumbAria": "面包屑",
+    "canvasCrumb": "自由画布",
+    "untitledCanvas": "未命名画布",
+    "projectNameAria": "项目名称",
+    "editProjectNameAria": "编辑项目名称 {{name}}",
+    "actionsAria": "项目操作",
+    "selectJsonAria": "选择项目 JSON",
+    "saveNow": "立即保存",
+    "exportJson": "导出 JSON",
+    "importJson": "导入 JSON",
+    "newProject": "新建项目",
+    "newConfirmTitle": "新建空白项目？",
+    "newConfirmContent": "当前项目会保留本地存档；未同步的内容建议先导出 JSON。",
+    "newConfirmOk": "新建",
+    "importConfirmTitle": "导入「{{name}}」？",
+    "importConfirmContent": "将整体替换当前项目。如需保留，请先取消并导出当前项目。",
+    "importConfirmOk": "导入",
+    "operationFailed": "项目操作失败",
+    "status": {
+      "saved": "✓ 已保存",
+      "savedWord": "已保存",
+      "dirty": "未保存",
+      "saving": "保存中…",
+      "error": "保存失败"
+    }
+  }
+}

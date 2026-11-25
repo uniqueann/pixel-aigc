@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { suiteCompositionSchema, type SuiteComposition, type SuiteLayer } from '@shared/ecommerce-suite'
 import { formatSuiteFact, orderSuiteLayers, suiteRendererSupported } from '@shared/ecommerce-suite-annotations'
 import { suiteFontCoverage } from './fontCoverage'
@@ -11,7 +12,7 @@ async function loadFont(family: string) {
       const face = new FontFace(family, `url(/fonts/${family === 'Noto Sans SC' ? 'NotoSansSC' : 'NotoSans'}.woff2)`, { weight: '100 900', style: 'normal' })
       await face.load(); document.fonts.add(face)
       await document.fonts.ready
-    })().catch(error => { fontLoads.delete(family); throw new Error(`固定字体读取失败，请重试：${error instanceof Error ? error.message : '字体不可用'}`) })
+    })().catch(error => { fontLoads.delete(family); throw new Error(i18n.t('ecommerce:render.errors.fontLoadFailed', { reason: error instanceof Error ? error.message : i18n.t('ecommerce:render.errors.fontUnavailable') })) })
     fontLoads.set(family, pending)
   }
   return pending
@@ -25,7 +26,7 @@ export async function loadSuiteFonts(composition: SuiteComposition) {
       const supports = (family: string) => suiteFontCoverage[family].some(([start,end]) => code >= start && code <= end)
       if (supports(layer.fontFamily)) continue
       if (supports('Noto Sans SC')) families.add('Noto Sans SC')
-      else throw new Error(`固定字体暂不支持字符“${character}”，请替换后再导出`)
+      else throw new Error(i18n.t('ecommerce:render.errors.unsupportedChar', { char: character }))
     }
   }
   await Promise.all([...families].map(loadFont))
@@ -83,13 +84,13 @@ export async function paintSuite(canvas: HTMLCanvasElement, base: Blob, composit
   await loadSuiteFonts(composition)
   signal?.throwIfAborted()
   const { width, height } = composition.renderSize
-  if (width * height > 40_000_000) throw new Error('画板超过 4000 万像素，请缩小后导出')
+  if (width * height > 40_000_000) throw new Error(i18n.t('ecommerce:render.errors.canvasExceedsMaxPixels'))
   const image = decoded ?? await createImageBitmap(base)
   try {
     signal?.throwIfAborted()
     canvas.width = width; canvas.height = height
     const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('当前浏览器不能创建画板')
+    if (!ctx) throw new Error(i18n.t('ecommerce:render.errors.canvasUnavailable'))
     if (background !== 'transparent') { ctx.fillStyle = background; ctx.fillRect(0, 0, width, height) }
     const scale = Math.min(width / image.width, height / image.height)
     ctx.drawImage(image, (width - image.width * scale) / 2, (height - image.height * scale) / 2, image.width * scale, image.height * scale)
@@ -98,18 +99,18 @@ export async function paintSuite(canvas: HTMLCanvasElement, base: Blob, composit
 }
 export async function encodeSuiteImage(base: Blob, composition: SuiteComposition, format: 'png' | 'jpeg' | 'webp' = 'png', background?: string, quality = .94, signal?: AbortSignal) {
   suiteCompositionSchema.parse(composition)
-  if (!suiteRendererSupported(composition)) throw new Error('当前客户端不支持该渲染器，请更新客户端')
+  if (!suiteRendererSupported(composition)) throw new Error(i18n.t('ecommerce:export.errors.unsupportedRenderer'))
   const canvas = document.createElement('canvas')
   try {
     signal?.throwIfAborted()
     const boxes = await paintSuite(canvas, base, composition, background ?? (format === 'jpeg' ? '#ffffff' : 'transparent'), signal)
     const outside = boxes.filter(box => box.x < 0 || box.y < 0 || box.x + box.width > canvas.width + .1 || box.y + box.height > canvas.height + .1)
-    if (outside.length) throw new Error('部分文字或标注超出画板，请调整后再导出')
-    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('图片编码失败')), `image/${format}`, quality))
+    if (outside.length) throw new Error(i18n.t('ecommerce:render.errors.layersOutOfBounds'))
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error(i18n.t('ecommerce:render.errors.encodeFailed'))), `image/${format}`, quality))
     signal?.throwIfAborted()
-    if (blob.type !== `image/${format}`) throw new Error('浏览器未返回所选图片格式')
+    if (blob.type !== `image/${format}`) throw new Error(i18n.t('ecommerce:render.errors.formatMismatch'))
     const decoded = await createImageBitmap(blob)
-    try { if (decoded.width !== composition.renderSize.width || decoded.height !== composition.renderSize.height) throw new Error('实际文件像素与画板不一致') }
+    try { if (decoded.width !== composition.renderSize.width || decoded.height !== composition.renderSize.height) throw new Error(i18n.t('ecommerce:render.errors.sizeMismatch')) }
     finally { decoded.close() }
     return blob
   } finally { canvas.width = 1; canvas.height = 1 }

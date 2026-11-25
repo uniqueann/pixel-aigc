@@ -5245,15 +5245,15 @@ body.sidebar-resizing * {
   }
 
   /* 小屏只保留状态、原文和操作；序号由行顺序隐含，其余字段进详情弹窗。 */
-  .email-batch-table td[data-label="序号"],
-  .email-batch-table td[data-label="编写指导"],
-  .email-batch-table td[data-label="生成设置"],
-  .email-batch-table td[data-label="语言"],
-  .email-batch-table td[data-label="生成结果"] {
+  .email-batch-table td[data-col="index"],
+  .email-batch-table td[data-col="instruction"],
+  .email-batch-table td[data-col="settings"],
+  .email-batch-table td[data-col="language"],
+  .email-batch-table td[data-col="result"] {
     display: none !important;
   }
 
-  .email-batch-table td[data-label="原始邮件内容"] .email-batch-cell {
+  .email-batch-table td[data-col="source"] .email-batch-cell {
     -webkit-line-clamp: 1;
   }
 
@@ -5667,6 +5667,17 @@ body.sidebar-resizing * {
 .auth-screen .auth-password-toggle:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; border-radius: 2px; }
 /* 按钮保留 antd 自身圆角，只加焦点环，避免聚焦时按钮形状跳变。 */
 .auth-screen .ant-btn:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
+.auth-screen-top {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.auth-locale-toggle {
+  flex: none;
+  color: var(--color-text-secondary);
+}
 .auth-wordmark { width: 176px; line-height: 0; }
 /* 触屏上把输入框、按钮与链接的命中区补到 44px。 */
 @media (max-width: 480px) {
@@ -8040,3 +8051,21 @@ html[data-theme='dark'] .assets-delete-confirm .ant-btn-dangerous.ant-btn-primar
 }
 .task-recovery-panel .preview-video-frame { max-width: 100%; }
 .task-recovery-panel .preview-video-frame video { max-width: 100% !important; max-height: 160px !important; }
+
+/* English layout & typography adjustments for expanded UI labels */
+html[lang='en-US'] {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+html[lang='en-US'] .settings-layout:not(.is-narrow) {
+  grid-template-columns: 204px minmax(0, 1fr);
+}
+html[lang='en-US'] .preference-control {
+  flex: 0 0 210px;
+}
+html[lang='en-US'] .page-tab-row .ant-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+html[lang='en-US'] .app-sidebar-menu .nav-item-label-text {
+  letter-spacing: -0.01em;
+}

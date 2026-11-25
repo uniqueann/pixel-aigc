@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { VIDEO_REFERENCE_MAX_BYTES, type VideoReference } from '@shared/video-replication'
 import { apiClient } from './client'
 
@@ -9,12 +10,12 @@ export function inspectVideoReference(key: string, signal?: AbortSignal) {
 
 export async function uploadVideoReference(file: File, signal: AbortSignal) {
   if (!file.size || file.size > VIDEO_REFERENCE_MAX_BYTES || !/\.mp4$/i.test(file.name)) {
-    throw new Error('请选择 50 MB 以内的 H.264 MP4 文件')
+    throw new Error(i18n.t('errors:client.videoReferenceInvalid'))
   }
   const { uploadId, uploadUrl } = await apiClient.post<unknown, { uploadId: string; uploadUrl: string }>(
     '/video-references/uploads', { size: file.size }, { signal },
   )
   const upload = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'video/mp4' }, body: file, signal })
-  if (!upload.ok) throw new Error('参考视频上传失败，请重试')
+  if (!upload.ok) throw new Error(i18n.t('errors:client.videoReferenceUploadFailed'))
   return apiClient.post<unknown, PreviewVideoReference>('/video-references/complete', { uploadId, size: file.size }, { signal, timeout: 55_000 })
 }

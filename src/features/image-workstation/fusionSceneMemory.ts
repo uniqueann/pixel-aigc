@@ -1,4 +1,5 @@
 import type { ImageAsset } from '@/editor/types'
+import { i18n } from '@/i18n'
 
 /** 只记住最近一次用过的场景图；元数据与图片分表，空槽位提示无需读取整张图。 */
 const DATABASE_NAME = 'pixel-aigc-fusion-scene'
@@ -26,7 +27,7 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'ownerId' })
       if (!db.objectStoreNames.contains(FILES)) db.createObjectStore(FILES, { keyPath: 'ownerId' })
     }
-    request.onerror = () => reject(request.error ?? new Error('无法打开上次场景'))
+    request.onerror = () => reject(request.error ?? new Error(i18n.t('workstation:errors.openLastSceneFailed')))
     request.onsuccess = () => {
       request.result.onversionchange = () => request.result.close()
       resolve(request.result)
@@ -39,7 +40,7 @@ function transaction<T>(names: string[], mode: IDBTransactionMode, operation: (t
     const tx = db.transaction(names, mode)
     let value: T
     tx.oncomplete = () => { db.close(); resolve(value) }
-    tx.onabort = tx.onerror = () => { db.close(); reject(tx.error ?? new Error('上次场景操作失败')) }
+    tx.onabort = tx.onerror = () => { db.close(); reject(tx.error ?? new Error(i18n.t('workstation:errors.lastSceneOpFailed'))) }
     try { operation(tx, result => { value = result }) } catch (error) { tx.abort(); db.close(); reject(error) }
   }))
 }

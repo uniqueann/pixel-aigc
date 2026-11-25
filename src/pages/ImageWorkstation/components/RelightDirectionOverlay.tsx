@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { RelightDirection } from '@shared/relight'
 import { directionFromPoint } from './relightDirection'
 import { relightImageContentBox, relightOverlayGeometry } from './relightOverlayGeometry'
@@ -31,6 +32,7 @@ function CameraGlyph() {
 
 /** 预览图上的方向示意：平面光用实线主光箭头，正面用镜头徽标，逆光用背后辉光；虚线始终表示投影。 */
 export default function RelightDirectionOverlay({ direction, disabled = false, muted = false, onDirectionChange }: Props) {
+  const { t } = useTranslation('workstation')
   const rootRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
@@ -186,7 +188,7 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
           <span
             className={`relight-light-handle is-${geometry.kind}${disabled || !onDirectionChange ? ' is-disabled' : ''}`}
             style={{ left: geometry.handle.x - 22, top: geometry.handle.y - 22 }}
-            title="拖动光源调整方向"
+            title={t('relight.overlay.dragHandleTitle')}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={stopDragging}
@@ -204,7 +206,7 @@ export default function RelightDirectionOverlay({ direction, disabled = false, m
                 top: isFront ? geometry.handle.y - 36 : geometry.handle.y + 28,
               }}
             >
-              {isFront ? '正面光' : '逆光'}
+              {isFront ? t('relight.directions.front') : t('relight.directions.back')}
             </span>
           )}
         </div>

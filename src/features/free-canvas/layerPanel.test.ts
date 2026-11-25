@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const stageSource = readFileSync(resolve(process.cwd(), 'src/features/free-canvas/FreeCanvasStage.tsx'), 'utf8')
 const css = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
+const zhCanvas = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/locales/zh-CN/canvas.json'), 'utf8'))
 
 describe('图层面板接线', () => {
   it('列表数据来自 layers 模块，按叠放顺序渲染', () => {
@@ -12,11 +13,12 @@ describe('图层面板接线', () => {
   })
 
   it('工具条提供开关，面板带无障碍标签与关闭按钮', () => {
-    expect(stageSource).toContain('aria-label="图层"')
+    expect(stageSource).toContain("aria-label={t('stage.layers.title')}")
+    expect(zhCanvas.stage.layers.title).toBe('图层')
     expect(stageSource).toContain('aria-pressed={layersOpen}')
     expect(stageSource).toContain('className="free-canvas-layers"')
-    expect(stageSource).toContain('aria-label="图层"')
-    expect(stageSource).toContain('aria-label="关闭图层面板"')
+    expect(stageSource).toContain("aria-label={t('stage.layers.closeAria')}")
+    expect(zhCanvas.stage.layers.closeAria).toBe('关闭图层面板')
     expect(stageSource).toContain('free-canvas-layers-empty')
   })
 

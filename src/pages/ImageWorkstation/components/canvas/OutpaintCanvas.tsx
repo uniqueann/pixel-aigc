@@ -1,5 +1,7 @@
 import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react'
 import { Canvas, FabricImage, Rect } from 'fabric'
+import { useTranslation } from 'react-i18next'
+import { i18n } from '@/i18n'
 import { computeOutpaintMask, type MaskExportResult } from '../../utils/maskExport'
 import { useCanvasDisplay } from '../../utils/useCanvasDisplay'
 import type { OutpaintOutputMode } from '@shared/outpaint'
@@ -70,6 +72,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
   { imageUrl, imageNaturalSize, presetTargetSize, outputMode = 'original', targetSize, comparing = false, compareImageUrl, onTargetSizeChange },
   ref,
 ) {
+  const { t } = useTranslation('workstation')
   const { hostRef, display } = useCanvasDisplay()
   const keyboardHelpId = useId()
   const [keyboardActive, setKeyboardActive] = useState(false)
@@ -88,7 +91,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
   }, [display.scale])
 
   const getModel = () => {
-    if (!modelRef.current) throw new Error('扩图画布尚未准备好')
+    if (!modelRef.current) throw new Error(i18n.t('workstation:errors.outpaintCanvasNotReady'))
     return modelRef.current
   }
 
@@ -353,7 +356,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
       className="workstation-paint-host"
       tabIndex={0}
       role="application"
-      aria-label="扩图边界画布"
+      aria-label={t('canvas.outpaintAria')}
       aria-describedby={keyboardHelpId}
       onKeyDown={handleKeyDown}
       onFocus={handleFocus}
@@ -361,10 +364,14 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
     >
       <p id={keyboardHelpId} className="sr-only">
         {comparing
-          ? '正在查看扩图前原图；切回「结果」可继续扩图。Esc 退出画布。'
+          ? t('canvas.outpaintComparingHelp')
           : presetTargetSize
-            ? `平台预设目标 ${targetSize ? `${targetSize.width} × ${targetSize.height} 像素` : '已锁定'}，边框不可拖拽；Esc 退出画布。`
-            : `当前目标 ${targetSize ? `${targetSize.width} × ${targetSize.height} 像素` : '尚未确定'}。使用左右方向键调整目标宽度，上下方向键调整目标高度；按住 Shift 每次调整 ${KEYBOARD_STEP_FAST} 像素；Esc 退出画布。`}
+            ? targetSize
+              ? t('canvas.outpaintPresetHelpWithSize', { width: targetSize.width, height: targetSize.height })
+              : t('canvas.outpaintPresetHelpLocked')
+            : targetSize
+              ? t('canvas.outpaintFreeHelpWithSize', { width: targetSize.width, height: targetSize.height, step: KEYBOARD_STEP_FAST })
+              : t('canvas.outpaintFreeHelpPending', { step: KEYBOARD_STEP_FAST })}
       </p>
       <div className="workstation-paint-frame" style={{ width: display.width, height: display.height }}>
         <div
@@ -384,7 +391,7 @@ const OutpaintCanvas = forwardRef<OutpaintCanvasHandle, OutpaintCanvasProps>(fun
         </div>
         {keyboardActive && !comparing ? (
           <div className="workstation-paint-keyboard-hint">
-            {presetTargetSize ? '平台预设已锁定' : '方向键调整 · Shift 加速'}
+            {presetTargetSize ? t('canvas.outpaintPresetLockedHint') : t('canvas.outpaintKeyboardHint')}
           </div>
         ) : null}
       </div>

@@ -76,9 +76,47 @@ describe('积分明细展示', () => {
     }
     expect(presentCreditLedgerRow({ ...base, kind: 'settle' })).toMatchObject({
       label: '免费抠图', title: '免费抠图', summary: '本月免费额度', deltaText: '免费',
+      presentation: { entryType: 'free_bg_remove', tool: 'bg-remove', status: 'settled' },
     })
     expect(presentCreditLedgerRow({ ...base, kind: 'refund' })).toMatchObject({
       label: '免费抠图', summary: '免费额度已退回', deltaText: '免费',
+      presentation: { entryType: 'free_bg_remove', tool: 'bg-remove', status: 'refunded' },
     })
+  })
+
+  it('生成结构化 presentation 字段供多语言渲染和退款筛选使用', () => {
+    const grant = presentCreditLedgerRow({
+      id: '00000000-0000-4000-8000-000000000204',
+      kind: 'grant',
+      delta: 30,
+      balance_after: 30,
+      charged: null,
+      meta: null,
+      reason: '首次赠送',
+      idempotency_key: 'initial',
+      created_at: '2026-10-04T12:00:00.000Z',
+      capability: null,
+      params: null,
+      requested_count: null,
+      provider_params: null,
+    })
+    expect(grant.presentation).toEqual({ entryType: 'account', reasonCode: 'initial_grant' })
+
+    const revoke = presentCreditLedgerRow({
+      id: '00000000-0000-4000-8000-000000000205',
+      kind: 'adjust',
+      delta: -100,
+      balance_after: 0,
+      charged: null,
+      meta: { orderId: 'o1', uncollectedCredits: 0 },
+      reason: '现金退款或支付争议收回充值积分',
+      idempotency_key: 'order:o1:revoke:100',
+      created_at: '2026-10-04T12:00:00.000Z',
+      capability: null,
+      params: null,
+      requested_count: null,
+      provider_params: null,
+    })
+    expect(revoke.presentation).toEqual({ entryType: 'account', reasonCode: 'cash_refund_reclaim' })
   })
 })

@@ -2,10 +2,14 @@ import { useContext,useEffect,useMemo,useRef,useState } from 'react'
 import { UNSAFE_LocationContext,useSearchParams } from 'react-router-dom'
 import { useQuery,useQueryClient } from '@tanstack/react-query'
 import { Alert,Button,Space } from 'antd'
+import { useTranslation } from 'react-i18next'
+import { i18n } from '@/i18n'
+import { formatShortDateTime } from '@/i18n/format'
 import { useUserStore } from '@/store/useUserStore'
 import { taskIsActive,type TaskCenterDetail,type TaskCenterMedia,type TaskTool } from '@shared/task-center'
 import { CloudError } from '@/cloud/client'
 import { readTaskDetail,readTaskHistory,sameTaskActor,taskCenterKeys,type TaskActor } from './client'
+import { formatCaughtError } from './format'
 import { readRecoveryImage,assertRecoveryActor } from './recoveryMedia'
 import { taskMatchesTool } from './route'
 import { readWorkstationSession,saveWorkstationSession } from './workstationSession'
@@ -27,6 +31,7 @@ export default function WorkstationRecovery(props:Props) {
   return <RecoverySession key={`${userId}:${account.runtimeScope}:${props.tool}`} {...props} actor={{owner:account.userId,scope:account.runtimeScope}}/>
 }
 function RecoverySession({tool,nativeBusy,hasDraft,onRestoreInput,actor:inputActor}:Props&{actor:TaskActor}) {
+  const { t } = useTranslation('taskCenter')
   const actor=useMemo(()=>({owner:inputActor.owner,scope:inputActor.scope}),[inputActor.owner,inputActor.scope])
   const [params,setParams]=useSearchParams(),client=useQueryClient(),center=useTaskCenter()
   const [inputError,setInputError]=useState<string>(),[retry,setRetry]=useState(0)
@@ -73,21 +78,21 @@ function RecoverySession({tool,nativeBusy,hasDraft,onRestoreInput,actor:inputAct
     const abort=new AbortController()
     void (async()=>{
       const detail=await readTaskDetail(actor,input.sourceKind,input.sourceId,abort.signal)
-      if(!taskMatchesTool(detail.task,[tool]))throw new Error('上次输入不属于当前工具')
+      if(!taskMatchesTool(detail.task,[tool]))throw new Error(i18n.t('taskCenter:errors.lastInputWrongTool'))
       const result=detail.results.find(result=>result.kind==='image'&&result.ordinal===input.ordinal)
-      if(!result||result.kind==='text')throw new Error('上次输入结果已不可读取')
+      if(!result||result.kind==='text')throw new Error(i18n.t('taskCenter:errors.lastInputUnreadable'))
       const image=await readRecoveryImage(result,actor,abort.signal)
       assertRecoveryActor(actor,abort.signal)
       if(current.current.hasDraft||current.current.nativeBusy)return
       await current.current.onRestoreInput(result,image,detail,{actor,signal:abort.signal})
       if(!abort.signal.aborted)setInputError(undefined)
-    })().catch(error=>{if(!abort.signal.aborted&&sameTaskActor(actor))setInputError(error instanceof Error?error.message:'上次输入暂不可读取')})
+    })().catch(error=>{if(!abort.signal.aborted&&sameTaskActor(actor))setInputError(formatCaughtError(error,'taskCenter:errors.lastInputUnavailable'))})
     return()=>abort.abort()
   },[actor,tool,retry])
   return <>
-    {query.data?.pending&&!params.has('task')?<Alert type="info" message="任务确认中" description="正在同步任务状态，请稍候..."/>:null}
-    {query.error&&!params.has('task')?<Alert type="warning" message="进行中的任务加载失败" action={<Button onClick={()=>void query.refetch()}>重新查询</Button>}/>:null}
-    {!query.isFetching&&!params.has('task')&&query.data&&query.data.items.length>1?<Alert type="info" message="有多项进行中的任务，请选择查看" action={<Space wrap>{query.data.items.map(task=><Button key={task.taskKey} onClick={()=>{discoveryDone.current=true;const next=new URLSearchParams(params);next.set('task',task.taskKey);setParams(next,{replace:true})}}>{new Date(task.createdAt).toLocaleTimeString()} · {task.completedCount}/{task.requestedCount}</Button>)}<Button onClick={()=>{center?.show(undefined,tool);center?.filter(tool,'active')}}>查看当前工具任务</Button></Space>}/>:null}
-    {inputError&&!hasDraft?<Alert type="warning" message="上次编辑的图片恢复失败，请重新选择图片" description={inputError} action={<Button onClick={()=>setRetry(value=>value+1)}>重新读取</Button>}/>:null}
+    {query.data?.pending&&!params.has('task')?<Alert type="info" message={t('pending.title')} description={t('pending.description')}/>:null}
+    {query.error&&!params.has('task')?<Alert type="warning" message={t('workstation.activeLoadFailed')} action={<Button onClick={()=>void query.refetch()}>{t('actions.refetch')}</Button>}/>:null}
+    {!query.isFetching&&!params.has('task')&&query.data&&query.data.items.length>1?<Alert type="info" message={t('workstation.multipleActive')} action={<Space wrap>{query.data.items.map(task=><Button key={task.taskKey} onClick={()=>{discoveryDone.current=true;const next=new URLSearchParams(params);next.set('task',task.taskKey);setParams(next,{replace:true})}}>{formatShortDateTime(task.createdAt)} · {task.completedCount}/{task.requestedCount}</Button>)}<Button onClick={()=>{center?.show(undefined,tool);center?.filter(tool,'active')}}>{t('workstation.viewToolTasks')}</Button></Space>}/>:null}
+    {inputError&&!hasDraft?<Alert type="warning" message={t('workstation.restoreInputFailed')} description={inputError} action={<Button onClick={()=>setRetry(value=>value+1)}>{t('actions.reload')}</Button>}/>:null}
   </>
 }

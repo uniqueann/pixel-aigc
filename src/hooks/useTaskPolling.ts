@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { App } from 'antd'
+import { i18n } from '@/i18n'
 import { getTask } from '@/services/api/task'
 import { useTaskStore } from '@/store/useTaskStore'
 import { useUserStore } from '@/store/useUserStore'
@@ -55,18 +56,18 @@ export function useTaskPolling(
     queryKey: ['task', user ?? 'local', scope, taskId],
     queryFn: async ({ signal }) => {
       if (signal.aborted)
-        throw signal.reason ?? new DOMException('查询已取消', 'AbortError')
+        throw signal.reason ?? new DOMException(i18n.t('common:taskPolling.aborted'), 'AbortError')
       const sharedQuery = queryClient.getQueryCache().find({ queryKey: ['task', user ?? 'local', scope, taskId], exact: true })
       if (sharedQuery) observeTaskPollRequest(sharedQuery, taskId!, scope)
       const value = await getTask(taskId!, { signal })
       if (signal.aborted)
-        throw signal.reason ?? new DOMException('查询已取消', 'AbortError')
+        throw signal.reason ?? new DOMException(i18n.t('common:taskPolling.aborted'), 'AbortError')
       const current = useUserStore.getState()
       if (
         current.userId !== user ||
         (current.account?.runtimeScope ?? 'local') !== scope
       )
-        throw new CloudError(401, '账号已切换', 'ACCOUNT_CHANGED')
+        throw new CloudError(401, i18n.t('common:taskPolling.accountSwitched'), 'ACCOUNT_CHANGED')
       return value
     },
     enabled: !!taskId && enabled,
@@ -108,16 +109,16 @@ export function useTaskPolling(
     ) {
       if (task.status === 'succeeded' && successNotification)
         notification.success({
-          message: '任务已完成',
-          description: '生成结果已就绪，可在结果区查看',
+          message: i18n.t('common:taskPolling.succeededTitle'),
+          description: i18n.t('common:taskPolling.succeededDescription'),
         })
       else if (task.status === 'failed')
         notification.error({
-          message: '任务失败',
+          message: i18n.t('common:taskPolling.failedTitle'),
           description: taskFailureText(
             task.errorCode,
             task.errorMessage,
-            '请重试或更换参数',
+            i18n.t('common:taskPolling.failedFallback'),
           ),
         })
     }

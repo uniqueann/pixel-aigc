@@ -1,8 +1,12 @@
+import { i18n } from '@/i18n'
+import { formatMegabytes } from '@/i18n/format'
 import type { SuiteActor, SuiteAssetRef, SuiteSlotVersion } from '@shared/ecommerce-suite'
 import type { SuiteClient } from './api'
 import { listArchivedSuiteDrafts, readSuiteBlob } from './backup'
 import { fetchOwnedObject } from '@/services/api/objects'
 import { createResultZip } from '@/pages/Toolbox/shared/zip'
+
+const MAX_PACKAGE_BYTES = 200 * 1024 * 1024
 
 export async function verifySuiteBlob(blob: Blob, asset: Pick<SuiteAssetRef, 'bytes' | 'checksum'>) {
   if (blob.size !== asset.bytes) return false
@@ -18,16 +22,16 @@ export async function loadFullSuite(client: SuiteClient, id: string) {
   const final = await client.get(id)
   if (final.project.revision !== detail.project.revision || JSON.stringify(final.project.slotHeads) !== JSON.stringify(detail.project.slotHeads)
     || final.versions.some(version => !versions.some(saved => saved.id === version.id)))
-    throw new Error('备份期间项目或候选已有更新，请重新备份，当前不会标记完整')
+    throw new Error(i18n.t('ecommerce:backup.errors.changedDuringBackup'))
   const references = new Set([final.project.config.baseAssetId, ...final.project.config.slots.flatMap(slot => slot.referenceAssetIds), ...versions.map(version => version.assetId)])
-  if ([...references].some(id => !final.assets.some(asset => asset.assetId === id))) throw new Error('部分图片尚未保存，无法形成完整备份')
+  if ([...references].some(id => !final.assets.some(asset => asset.assetId === id))) throw new Error(i18n.t('ecommerce:backup.errors.missingImages'))
   return { ...final, versions }
 }
 export async function backupAssetBlob(actor: SuiteActor, asset: SuiteAssetRef, signal?: AbortSignal) {
   const local = await readSuiteBlob(actor, asset.projectId, asset.assetId).catch(() => undefined)
   if (local && await verifySuiteBlob(local, asset)) return local
   const blob = await fetchOwnedObject(asset.objectKey, undefined, signal)
-  if (!await verifySuiteBlob(blob, asset)) throw new Error('图片校验失败，请重新读取原图')
+  if (!await verifySuiteBlob(blob, asset)) throw new Error(i18n.t('ecommerce:backup.errors.checksumFailed'))
   return blob
 }
 /** 恢复包只包含配置、版本和图片；不包含可执行批次、报价、提交凭据或签名地址。 */
@@ -38,7 +42,7 @@ export async function exportSuiteRecovery(client: SuiteClient, id: string, actor
   let bytes = 0
   for (const asset of detail.assets) {
     client.assertCurrent()
-    if (bytes + asset.bytes > 200 * 1024 * 1024) throw new Error('恢复包超过 200 MB，请分别保存图片并保留云端项目')
+    if (bytes + asset.bytes > MAX_PACKAGE_BYTES) throw new Error(i18n.t('ecommerce:backup.errors.packageTooLarge', { limit: formatMegabytes(MAX_PACKAGE_BYTES) }))
     const blob = await backupAssetBlob(actor, asset, signal)
     const name = `images/${asset.assetId}.${asset.mimeType === 'image/jpeg' ? 'jpg' : asset.mimeType === 'image/webp' ? 'webp' : 'png'}`
     files.push({ name, blob }); bytes += blob.size
@@ -47,7 +51,7 @@ export async function exportSuiteRecovery(client: SuiteClient, id: string, actor
   const manifest = { format: 'pixel-suite-recovery', formatVersion: 1, config: detail.project.config, slotHeads: detail.project.slotHeads,
     draftArchives: (await listArchivedSuiteDrafts(actor, id)).map(draft => ({ slotId: draft.slotId, value: draft.value })),
     versions: detail.versions, assets, drafts: detail.drafts.filter(draft => draft.value).map(draft => ({ slotId: draft.slotId, value: draft.value })),
-    note: '仅保存商品配置、成品、图层草稿和图片。导入会在当前账号创建新项目并重新上传图片，不授予原云端权限、不恢复原任务或收费队列。' }
+    note: i18n.t('ecommerce:backup.recoveryManifestNote') }
   files.push({ name: 'manifest.json', blob: new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }) })
   client.assertCurrent()
   return createResultZip(files)

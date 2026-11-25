@@ -1,4 +1,6 @@
 import type { ImageAsset } from '@/editor/types'
+import { i18n } from '@/i18n'
+import zhWorkstation from '@/i18n/locales/zh-CN/workstation.json'
 import { uploadTaskInput, type TaskInputUploadMetrics } from '@/services/api/upload'
 import { blobFromImageSource } from './download'
 
@@ -26,17 +28,25 @@ interface PreparationOptions {
 }
 export const FUSION_INPUT_CACHE_MS = 30 * 60_000
 export const FUSION_INPUT_TIMEOUT_MS = 120_000
+const FUSION_INPUT_LOG_PREFIX = `[${zhWorkstation.logs.fusionInput}]`
 
 export function sameFusionInput(left?: ImageAsset, right?: ImageAsset) {
   if (!left || !right) return left === right
   return left.id === right.id && left.url === right.url && left.width === right.width && left.height === right.height
     && left.mimeType === right.mimeType && (left.objectKey ?? left.storage?.objectKey) === (right.objectKey ?? right.storage?.objectKey)
 }
-export function fusionAbortError() { return new DOMException('输入准备已取消', 'AbortError') }
+export function fusionAbortError() { return new DOMException(i18n.t('workstation:errors.fusionPrepCancelled'), 'AbortError') }
 export function isPreparationCancelled(error: unknown) { return error instanceof Error && error.name === 'AbortError' }
 export class FusionInputPreparationError extends Error {
   constructor(public failures: Partial<Record<FusionInputRole, string>>) {
-    super(Object.entries(failures).map(([role, error]) => `${role === 'product' ? '商品图' : '场景图'}：${error}`).join('；'))
+    super(
+      Object.entries(failures)
+        .map(([role, error]) => i18n.t('workstation:errors.fusionSlotFailureEntry', {
+          slot: i18n.t(role === 'product' ? 'workstation:fusion.productSlot' : 'workstation:fusion.referenceSlot'),
+          error,
+        }))
+        .join(i18n.t('workstation:common.semicolon')),
+    )
     this.name = 'FusionInputPreparationError'
   }
 }
@@ -67,7 +77,7 @@ export class FusionInputPreparation {
       const cancel = () => controller.abort(fusionAbortError())
       options.signal.addEventListener('abort', cancel, { once: true })
       if (options.signal.aborted) cancel()
-      const timer = setTimeout(() => controller.abort(new Error('图片准备超时，请重试失败图片')), FUSION_INPUT_TIMEOUT_MS)
+      const timer = setTimeout(() => controller.abort(new Error(i18n.t('workstation:errors.fusionImageTimeout'))), FUSION_INPUT_TIMEOUT_MS)
       const signal = controller.signal
       const progress: { phase: FusionInputStage } = { phase: 'reading' }
       const metric: FusionInputMetrics = { source: 'upload', readMs: 0, elapsedMs: 0, validateMs: 0, signMs: 0, uploadMs: 0, inputBytes: 0, uploadedBytes: 0, outcome: 'failed' }
@@ -103,9 +113,15 @@ export class FusionInputPreparation {
         if (options.signal.aborted || !options.isCurrent()) { metric.outcome = 'cancelled'; throw fusionAbortError() }
         metric.outcome = 'failed'
         const raw = error instanceof Error ? error.message : ''
-        const message = signal.aborted ? '图片准备超时，请重试失败图片' : /timeout|timed out/i.test(raw) ? '申请上传地址超时，请重试失败图片'
-          : /failed to fetch|networkerror|network error|load failed/i.test(raw) ? `${progress.phase === 'signing' ? '申请上传地址' : progress.phase === 'reading' ? '图片读取' : '图片上传'}中断，请重试失败图片`
-            : raw || '图片准备失败，请重试'
+        const interruptedPhase = progress.phase === 'signing'
+          ? i18n.t('workstation:errors.fusionPhaseSigning')
+          : progress.phase === 'reading'
+            ? i18n.t('workstation:errors.fusionPhaseReading')
+            : i18n.t('workstation:errors.fusionPhaseUploading')
+        const message = signal.aborted ? i18n.t('workstation:errors.fusionImageTimeout')
+          : /timeout|timed out/i.test(raw) ? i18n.t('workstation:errors.fusionSignTimeout')
+            : /failed to fetch|networkerror|network error|load failed/i.test(raw) ? i18n.t('workstation:errors.fusionPhaseInterrupted', { phase: interruptedPhase })
+              : raw || i18n.t('workstation:errors.fusionImagePrepFailed')
         update({ stage: 'failed', error: message })
         throw Object.assign(new Error(message), { cause: error })
       } finally {
@@ -113,7 +129,7 @@ export class FusionInputPreparation {
         options.signal.removeEventListener('abort', cancel)
         metric.elapsedMs = Math.round(performance.now() - started)
         measurements[role] = metric
-        console.debug('[融合输入]', { preparationId, role, ...metric })
+        console.debug(FUSION_INPUT_LOG_PREFIX, { preparationId, role, ...metric })
       }
     }
     check()
@@ -122,7 +138,7 @@ export class FusionInputPreparation {
     const referenceMetric = measurements.reference!
     const overlapMs = Math.max(0, Math.min(productMetric.uploadEnded ?? 0, referenceMetric.uploadEnded ?? 0) - Math.max(productMetric.uploadStarted ?? Infinity, referenceMetric.uploadStarted ?? Infinity))
     const outcome = options.signal.aborted || !options.isCurrent() ? 'cancelled' : results.some(result => result.status === 'rejected') ? 'failed' : 'success'
-    console.debug('[融合输入]', { preparationId, operation: 'complete', outcome, elapsedMs: Math.round(performance.now() - started), overlapMs: Math.round(overlapMs), putAttempts: Object.values(measurements).filter(metric => metric.uploadStarted !== undefined).length })
+    console.debug(FUSION_INPUT_LOG_PREFIX, { preparationId, operation: 'complete', outcome, elapsedMs: Math.round(performance.now() - started), overlapMs: Math.round(overlapMs), putAttempts: Object.values(measurements).filter(metric => metric.uploadStarted !== undefined).length })
     check()
     const [productResult, referenceResult] = results
     if (productResult.status === 'rejected' || referenceResult.status === 'rejected') {

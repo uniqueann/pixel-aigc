@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { containRect, sameAspect } from './geometry'
 import type { AspectRatioSettings, BatchImage, RenderResult } from './types'
 import { presetOutpaintSize, validateOutpaintOutputSize, type OutpaintOutputMode } from '@shared/outpaint'
@@ -6,10 +7,10 @@ import { presetOutpaintSize, validateOutpaintOutputSize, type OutpaintOutputMode
 export const OUTPAINT_CONCURRENCY = 2
 
 export function outpaintProgressLabel(completed: number, total: number, names: string[]) {
-  const shown = names.slice(0, 2).join('、')
-  const more = names.length > 2 ? ` 等 ${names.length} 张` : ''
-  const current = shown ? `，当前 ${shown}${more}` : ''
-  return `正在智能扩展，已完成 ${completed} / ${total}${current}`
+  const shown = names.slice(0, 2).join(i18n.t('toolbox:shared.listSeparator'))
+  const more = names.length > 2 ? i18n.t('toolbox:aspectRatio.crop.progressMore', { count: names.length }) : ''
+  const current = shown ? i18n.t('toolbox:aspectRatio.crop.progressCurrent', { shown, more }) : ''
+  return i18n.t('toolbox:aspectRatio.outpaintProgress', { completed, total, current })
 }
 
 export interface ExpansionPlan {
@@ -76,13 +77,13 @@ export async function processOutpaintBatch({
       if (plan.mode === 'remote') validateOutpaintOutputSize(plan.targetSize.width, plan.targetSize.height)
       const result = plan.mode === 'local' ? await renderLocal(item, plan) : await expandRemote(item, plan)
       if (shouldStop()) { update(item.id, { status: 'pending' }); return }
-      if (result.width !== plan.targetSize.width || result.height !== plan.targetSize.height) throw new Error('输出尺寸与预计尺寸不一致')
+      if (result.width !== plan.targetSize.width || result.height !== plan.targetSize.height) throw new Error(i18n.t('toolbox:errors.expectedSizeMismatch'))
       update(item.id, { status: 'succeeded', output: result.blob, outputMime: result.mimeType, error: undefined })
     } catch (error) {
       if (shouldStop()) { update(item.id, { status: 'pending' }); return }
       update(item.id, {
         status: 'failed', output: undefined, outputMime: undefined,
-        error: error instanceof Error ? error.message : '扩图失败',
+        error: error instanceof Error ? error.message : i18n.t('toolbox:errors.outpaintFailed'),
       })
     } finally {
       active -= 1

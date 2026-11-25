@@ -1,23 +1,17 @@
 import { Alert, Button, Spin } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { GenerationTask } from '@/types'
 import { Capability } from '@/types'
 import CreditActionButton from '@/features/credits/CreditActionButton'
 import type { CreditQuote } from '@/features/credits/quotes'
 
-const WARNING_LABELS: Record<string, string> = {
-  RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO: '当前比例不支持 4K，已按 2K 生成',
-  PARTIAL: '部分图片生成成功',
-  LATE_RESULT_NO_CHARGE: '结果在超时后送达，未计入消耗',
-}
+const WARNING_CODES = new Set([
+  'RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO',
+  'PARTIAL',
+  'LATE_RESULT_NO_CHARGE',
+])
 
-const STATUS_LABELS = {
-  pending: '准备中',
-  queued: '排队中',
-  processing: '生成中',
-  succeeded: '生成完成',
-  failed: '生成失败',
-  cancelled: '任务已取消',
-}
+const PHASE_KEYS = new Set(['submitting', 'queued', 'generating', 'transferring'])
 
 interface GenerationTaskStatusProps {
   task?: GenerationTask<unknown>
@@ -58,47 +52,52 @@ export default function GenerationTaskStatus({
   historySaved = false,
   onRetrySave,
   onRetry,
-  retryLabel = '按原参数重试',
+  retryLabel,
   retryDisabled = false,
   retryQuote,
   onModifyParameters,
   onRefetch,
 }: GenerationTaskStatusProps) {
+  const { t, i18n } = useTranslation('common')
   const terminalFailure = task?.status === 'failed' || task?.status === 'cancelled'
   const video = task?.capability === Capability.TextToVideo
-  const phaseLabel = task?.phase ? ({ submitting: '提交确认中', queued: '排队中', generating: '视频生成中', transferring: '视频转存中' })[task.phase] : undefined
+  const phaseLabel = task?.phase && PHASE_KEYS.has(task.phase)
+    ? t(`taskStatus.phases.${task.phase}` as never)
+    : undefined
+  const warningSeparator = i18n.language === 'en-US' ? '; ' : '；'
+
   return (
     <div className="generation-task-status-stack">
       {resultUnavailable ? null : (task || submitting) ? (
         <div className={`generation-task-status is-${task?.status ?? 'pending'}`} role="status" aria-live="polite">
           <div className="generation-task-status-title">
-            <strong>{readingResults ? '读取结果中' : phaseLabel ?? (task ? STATUS_LABELS[task.status] : '正在提交')}</strong>
+            <strong>{readingResults ? t('taskStatus.readingResults') : phaseLabel ?? (task ? t(`taskStatus.states.${task.status}` as never) : t('taskStatus.submitting'))}</strong>
             {(active || polling || readingResults) ? <Spin size="small" /> : null}
           </div>
           {summary ? <span>{summary}</span> : null}
           {task?.warnings?.length ? (
-            <span>{task.warnings.map(code => WARNING_LABELS[code] ?? code).join('；')}</span>
+            <span>{task.warnings.map(code => WARNING_CODES.has(code) ? t(`taskStatus.warnings.${code}` as never) : code).join(warningSeparator)}</span>
           ) : null}
           {terminalFailure && (onRetry || onModifyParameters) ? (
             <div className="generation-task-status-actions">
-              {onRetry ? <CreditActionButton size="small" type="primary" loading={submitting} disabled={retryDisabled} quote={retryQuote} onClick={onRetry}>{retryLabel}</CreditActionButton> : null}
-              {onModifyParameters ? <Button size="small" onClick={onModifyParameters}>修改参数</Button> : null}
+              {onRetry ? <CreditActionButton size="small" type="primary" loading={submitting} disabled={retryDisabled} quote={retryQuote} onClick={onRetry}>{retryLabel ?? t('taskStatus.retryDefault')}</CreditActionButton> : null}
+              {onModifyParameters ? <Button size="small" onClick={onModifyParameters}>{t('taskStatus.modifyParameters')}</Button> : null}
             </div>
           ) : null}
         </div>
       ) : null}
 
-      {!resultUnavailable && task?.status === 'succeeded' && historySaved ? <span>{video ? '视频已保存到我的资产，保留 30 天' : '完整图片已保存到本地历史'}</span> : null}
-      {historyError ? <Alert type="warning" showIcon message={video ? '视频可用，资产记录未保存' : '图片可用，历史未保存'} description={historyError} action={onRetrySave ? <Button size="small" onClick={onRetrySave}>重试保存</Button> : undefined} /> : null}
-      {submissionError ? <Alert type="error" showIcon message="提交失败" description={submissionError} /> : null}
-      {protocolError ? <Alert type="error" showIcon message="结果异常" description={protocolError} /> : null}
+      {!resultUnavailable && task?.status === 'succeeded' && historySaved ? <span>{video ? t('taskStatus.videoSaved') : t('taskStatus.imageSaved')}</span> : null}
+      {historyError ? <Alert type="warning" showIcon message={video ? t('taskStatus.videoHistoryError') : t('taskStatus.imageHistoryError')} description={historyError} action={onRetrySave ? <Button size="small" onClick={onRetrySave}>{t('taskStatus.retrySave')}</Button> : undefined} /> : null}
+      {submissionError ? <Alert type="error" showIcon message={t('taskStatus.submitFailed')} description={submissionError} /> : null}
+      {protocolError ? <Alert type="error" showIcon message={t('taskStatus.protocolError')} description={protocolError} /> : null}
       {pollError ? (
         <Alert
           type="warning"
           showIcon
-          message="任务状态查询失败"
-          description="任务仍然保留，可以重新查询同一任务。"
-          action={onRefetch ? <Button size="small" onClick={onRefetch}>重新查询</Button> : undefined}
+          message={t('taskStatus.pollErrorTitle')}
+          description={t('taskStatus.pollErrorDescription')}
+          action={onRefetch ? <Button size="small" onClick={onRefetch}>{t('actions.refetch')}</Button> : undefined}
         />
       ) : null}
     </div>

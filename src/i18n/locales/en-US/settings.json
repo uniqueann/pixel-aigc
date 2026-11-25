@@ -1,0 +1,165 @@
+{
+  "title": "Settings",
+  "tabs": {
+    "general": "General",
+    "personalization": "Personalization",
+    "data": "Data Controls",
+    "account": "Account"
+  },
+  "general": {
+    "title": "General",
+    "description": "Customize interface display and general experience.",
+    "languageLabel": "Language",
+    "languageDetail": "Interface display language",
+    "languageSelectAria": "Select interface language",
+    "languages": {
+      "zh-CN": "简体中文",
+      "en-US": "English"
+    },
+    "appearanceLabel": "Appearance",
+    "appearanceAria": "Choose appearance theme",
+    "appearanceSystemDetail": "Follow system setting (currently {{mode}})",
+    "appearanceDarkDetail": "Always use dark appearance",
+    "appearanceLightDetail": "Always use light appearance",
+    "modes": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    }
+  },
+  "data": {
+    "title": "Data Controls",
+    "description": "Manage project data and product improvement preferences.",
+    "analyticsLabel": "Usage Data & Product Improvement",
+    "analyticsDetail": "Only counts feature usage frequency to improve the product. We never collect your images, emails, or prompts.",
+    "analyticsAria": "Allow recording usage events",
+    "analyticsSaveFailed": "Failed to save usage data preference. Please retry."
+  },
+  "account": {
+    "title": "Account",
+    "localDescription": "Running in local mode without a connected account.",
+    "description": "Manage your Pixel AIGC profile and workspace.",
+    "displayNameLabel": "Display Name",
+    "displayNameDetail": "Shown only inside Pixel AIGC",
+    "workspaceLabel": "Personal Workspace",
+    "workspaceDetail": "Default workspace",
+    "emailLabel": "Email",
+    "emailVerified": "Verified",
+    "emailUnverified": "Unverified",
+    "providersLabel": "Sign-in Methods",
+    "providersDetail": "Linked sign-in methods",
+    "providerNames": {
+      "google": "Google",
+      "email": "Email & Password"
+    },
+    "providerSeparator": ", ",
+    "securityLabel": "Account Security",
+    "securityDetail": "Changing your password also affects linked ContentUp and EDM services.",
+    "resetPassword": "Reset password",
+    "googleSecurityHint": "Manage sign-in security in your Google Account",
+    "saveFailed": "Save failed"
+  },
+  "personalization": {
+    "loadingGate": "Loading personalization...",
+    "title": "Personalization",
+    "description": "Customize default parameters and workspace habits, synced across devices.",
+    "syncStatus": {
+      "saving": "Syncing...",
+      "saved": "Synced to account",
+      "local": "Saved locally",
+      "loading": "Loading...",
+      "idle": "Not synced"
+    },
+    "syncRetry": "Retry sync",
+    "syncErrors": {
+      "network": "Network error. Check your connection and retry.",
+      "generic": "Sync failed. Please try again later.",
+      "clearNetwork": "Clear failed due to network error. Check your connection and retry.",
+      "clearGeneric": "Failed to clear remembered image parameters. Please try again later.",
+      "browserStorageUnavailable": "This browser cannot save preferences; settings may be lost on refresh. Check browser storage settings.",
+      "loadFailed": "Failed to load preferences; using local defaults: {{reason}}",
+      "notSynced": "Preferences not synced yet: {{reason}}",
+      "refreshFailed": "Failed to refresh preferences: {{reason}}"
+    },
+    "workbenchGroup": "Workbench Habits",
+    "startPageLabel": "Default Landing Page",
+    "startPageDetail": "Preferred page when opening the workbench",
+    "startPages": {
+      "home": "Home",
+      "email": "Email Assistant",
+      "imageWorkstation": "Image Studio",
+      "toolbox": "Toolbox",
+      "canvas": "Free Canvas",
+      "assets": "My Assets",
+      "last": "Last visited page"
+    },
+    "rememberSidebarLabel": "Remember Sidebar State",
+    "rememberSidebarDetail": "Remember expanded/collapsed sidebar state (auto-collapsed on mobile)",
+    "assetsViewLabel": "Assets View",
+    "assetsViewDetail": "Default view style for My Assets",
+    "assetsViews": {
+      "grid": "Grid",
+      "list": "List",
+      "remember": "Remember last view"
+    },
+    "imageGroup": "Image Processing",
+    "defaultCountLabel": "Default Output Count",
+    "defaultCountDetail": "Default number of outputs per tool (adjusted automatically when restricted by model or aspect ratio)",
+    "defaultCountAria": "Default output count for {{tool}}",
+    "countOption": "{{count}}",
+    "countTools": {
+      "smart-edit": "Smart Edit",
+      "relight": "Relight",
+      "variation": "Variation",
+      "fusion": "Fusion",
+      "retouch": "Retouch"
+    },
+    "defaultResolutionLabel": "Default Resolution",
+    "defaultResolutionDetail": "Default output resolution for image generation and editing",
+    "rememberParametersLabel": "Remember Last Parameters",
+    "rememberParametersDetail": "Automatically restore the last used parameters when revisiting a tool",
+    "memoryPrivacyHint": "Only common options such as output count and resolution are remembered; images and prompts are never stored here.",
+    "clearMemoryTitle": "Clear remembered image parameters?",
+    "clearMemoryDescription": "Your personal defaults will be used next time you open a tool.",
+    "clearMemoryConfirm": "Clear",
+    "clearMemoryButton": "Clear remembered image parameters",
+    "clearMemorySuccess": "Cleared remembered image parameters",
+    "countMemory": {
+      "lastUsed": "Last used",
+      "restoreAria": "Restore default output count",
+      "restore": "Use default"
+    },
+    "emailGroup": "Email Assistant",
+    "emailLanguageLabel": "Default Output Language",
+    "emailLanguageDetail": "Output language for new email tasks, separate from UI language",
+    "emailOperationLabel": "Default Action",
+    "emailOperationDetail": "Default action for new email tasks",
+    "emailOperations": {
+      "reply": "Reply",
+      "summarize": "Summarize",
+      "polish": "Polish",
+      "grammar": "Fix Grammar"
+    },
+    "emailPolishStylesLabel": "Default Polish Styles",
+    "emailPolishStylesDetail": "Default styles when polishing emails (multi-select)",
+    "emailPolishStyles": {
+      "clear": "Clearer",
+      "shorten": "Shorter",
+      "lengthen": "Longer",
+      "simplify": "Simpler"
+    },
+    "footerAutoSave": "Settings save automatically and take effect on your next new task.",
+    "resetAllTitle": "Reset all personalization defaults?",
+    "resetAllDescription": "This also clears remembered image parameters and syncs to your account.",
+    "resetAllConfirm": "Reset to defaults",
+    "resetAllButton": "Reset to defaults",
+    "emailModel": {
+      "loadFailed": "Failed to load email model preference",
+      "label": "Default Email Model",
+      "detail": "Recommended by output language when auto; charged per successful generation",
+      "auto": "Recommended by output language",
+      "creditsUnit": "{{label}} · {{credits}} credits",
+      "updated": "Default email model updated"
+    }
+  }
+}

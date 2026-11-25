@@ -4,14 +4,16 @@ import {
   ArrowLeftOutlined, CheckCircleOutlined, ClockCircleOutlined, CopyOutlined, DeleteOutlined,
   InboxOutlined, MoreOutlined, PictureOutlined, PlusOutlined, ReloadOutlined, RollbackOutlined, WarningOutlined,
 } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { i18n } from '@/i18n'
+import { formatShortDateTime } from '@/i18n/format'
 import { useUserStore } from '@/store/useUserStore'
-import { formatShortDateTime } from '@/utils/datetime'
 import type { SuiteActor, SuiteProject } from '@shared/ecommerce-suite'
 import type { SuiteProjectList } from '@shared/ecommerce-suite-runtime'
-import { SUITE_CATEGORY_TEMPLATES } from '@shared/ecommerce-suite-templates'
 import { suiteClient, type SuiteClient } from '@/features/ecommerce-suite/api'
 import { copySuite } from '@/features/ecommerce-suite/copy'
+import { formatSuiteError, suiteCategoryLabel, suitePlatformLabel } from '@/features/ecommerce-suite/i18n'
 import CreateSuite from '@/features/ecommerce-suite/CreateSuite'
 import SuiteWorkspace from '@/features/ecommerce-suite/SuiteWorkspace'
 import RecoveryImport from '@/features/ecommerce-suite/RecoveryImport'
@@ -25,15 +27,18 @@ const RETENTION_MS = 7 * 86400000
 function retentionInfo(project: SuiteProject, observedAt: number) {
   if (!project.deletedAt) return { expired: false, urgent: false, label: '' }
   const expiresAt = Date.parse(project.deletedAt) + RETENTION_MS
-  if (!Number.isFinite(expiresAt)) return { expired: false, urgent: false, label: '保留期未知' }
+  if (!Number.isFinite(expiresAt)) return { expired: false, urgent: false, label: i18n.t('ecommerce:list.retentionUnknown') }
   const expired = observedAt >= expiresAt
   const urgent = !expired && expiresAt - observedAt < 86400000
+  const date = formatShortDateTime(new Date(expiresAt).toISOString())
   return {
     expired,
     urgent,
     label: expired
-      ? '已超过 7 天保留期'
-      : `保留至 ${formatShortDateTime(new Date(expiresAt).toISOString())}${urgent ? '（不足 1 天）' : ''}`,
+      ? i18n.t('ecommerce:list.retentionExpired')
+      : urgent
+        ? i18n.t('ecommerce:list.retentionUntilUrgent', { date })
+        : i18n.t('ecommerce:list.retentionUntil', { date }),
   }
 }
 
@@ -47,6 +52,7 @@ function SuiteProjectCard({ item, deleted, observedAt, busy, onOpen, onCopy, onR
   onRecycle: () => void
   onRestore: () => void
 }) {
+  const { t } = useTranslation('ecommerce')
   const { project, readySlots, enabledSlots, baseReady } = item
   const title = project.config.title
   const retention = deleted ? retentionInfo(project, observedAt) : undefined
@@ -55,47 +61,47 @@ function SuiteProjectCard({ item, deleted, observedAt, busy, onOpen, onCopy, onR
       key: 'copy',
       icon: <CopyOutlined />,
       disabled: busy || !baseReady,
-      label: baseReady ? '复制配置' : '复制配置（需先上传主体图）',
+      label: baseReady ? t('list.copyConfig') : t('list.copyConfigNeedsBase'),
     },
     { type: 'divider' },
-    { key: 'recycle', danger: true, icon: <DeleteOutlined />, disabled: busy, label: '移入回收站' },
+    { key: 'recycle', danger: true, icon: <DeleteOutlined />, disabled: busy, label: t('list.moveToTrash') },
   ]
   return <article className="suite-card" role="listitem">
     <div className="suite-card-tags">
       <Tag className={`suite-tag${project.config.platform === 'amazon' ? ' is-platform' : ''}`}>
-        {project.config.platform === 'amazon' ? 'Amazon 美国站' : '通用模板'}
+        {suitePlatformLabel(project.config.platform)}
       </Tag>
-      <Tag className="suite-tag">{SUITE_CATEGORY_TEMPLATES[project.config.subcategory].label}</Tag>
+      <Tag className="suite-tag">{suiteCategoryLabel(project.config.subcategory)}</Tag>
     </div>
     <h2 className="suite-card-title"><Link to={`/ecommerce/${project.id}`} title={title}>{title}</Link></h2>
     <div className="suite-card-progress">
-      <div className="suite-card-progress-label"><span>图片进度</span><strong>{readySlots} / {enabledSlots}</strong></div>
+      <div className="suite-card-progress-label"><span>{t('list.imageProgress')}</span><strong>{readySlots} / {enabledSlots}</strong></div>
       {enabledSlots > 0 ? <div
         className="suite-slot-track"
         role="progressbar"
-        aria-label={`${title} 的图片槽位就绪进度`}
+        aria-label={t('list.progressAria', { title })}
         aria-valuemin={0}
         aria-valuemax={enabledSlots}
         aria-valuenow={readySlots}
-        aria-valuetext={`${readySlots} / ${enabledSlots} 张已就绪`}
+        aria-valuetext={t('list.progressValueText', { ready: readySlots, total: enabledSlots })}
       >
         {Array.from({ length: enabledSlots }, (_, index) => <span key={index} className={index < readySlots ? 'is-ready' : ''} />)}
-      </div> : <p className="suite-card-no-slots">尚未启用图片槽位</p>}
+      </div> : <p className="suite-card-no-slots">{t('list.noSlotsEnabled')}</p>}
     </div>
     <div className="suite-card-meta">
       {baseReady
-        ? <span className="suite-card-status"><CheckCircleOutlined aria-hidden="true" />主体图已上传</span>
-        : <span className="suite-card-status is-warning"><WarningOutlined aria-hidden="true" />待上传主体图</span>}
-      <time dateTime={project.updatedAt}>更新于 {formatShortDateTime(project.updatedAt)}</time>
+        ? <span className="suite-card-status"><CheckCircleOutlined aria-hidden="true" />{t('list.baseUploaded')}</span>
+        : <span className="suite-card-status is-warning"><WarningOutlined aria-hidden="true" />{t('list.basePending')}</span>}
+      <time dateTime={project.updatedAt}>{t('list.updatedAt', { time: formatShortDateTime(project.updatedAt) })}</time>
     </div>
     {retention && <p className={`suite-card-retention${retention.expired ? ' is-expired' : retention.urgent ? ' is-urgent' : ''}`}>
       <ClockCircleOutlined aria-hidden="true" />{retention.label}
     </p>}
     <div className="suite-card-actions">
-      {deleted ? <Button type="primary" icon={<RollbackOutlined />} aria-label="恢复项目" disabled={busy || retention?.expired} onClick={onRestore}>
-        恢复项目
+      {deleted ? <Button type="primary" icon={<RollbackOutlined />} aria-label={t('list.restoreProject')} disabled={busy || retention?.expired} onClick={onRestore}>
+        {t('list.restoreProject')}
       </Button> : <>
-        <Button type="primary" onClick={onOpen}>{baseReady ? '打开项目' : '上传主体图'}</Button>
+        <Button type="primary" onClick={onOpen}>{baseReady ? t('list.openProject') : t('list.uploadBaseImage')}</Button>
         <Dropdown
           trigger={['click']}
           overlayClassName="suite-card-menu"
@@ -104,7 +110,7 @@ function SuiteProjectCard({ item, deleted, observedAt, busy, onOpen, onCopy, onR
             onClick: ({ key }) => { if (key === 'copy') onCopy(); if (key === 'recycle') onRecycle() },
           }}
         >
-          <Button className="suite-card-more" icon={<MoreOutlined />} aria-label={`更多操作：${title}`} aria-haspopup="menu" disabled={busy} />
+          <Button className="suite-card-more" icon={<MoreOutlined />} aria-label={t('list.moreActionsAria', { title })} aria-haspopup="menu" disabled={busy} />
         </Dropdown>
       </>}
     </div>
@@ -112,8 +118,9 @@ function SuiteProjectCard({ item, deleted, observedAt, busy, onOpen, onCopy, onR
 }
 
 function SuiteListSkeleton() {
+  const { t } = useTranslation('ecommerce')
   return <>
-    <p className="sr-only" role="status">正在加载套图项目…</p>
+    <p className="sr-only" role="status">{t('list.loadingProjects')}</p>
     <div className="suite-list-grid" aria-hidden="true">
       {Array.from({ length: 6 }, (_, index) => <div className="suite-card suite-card-skeleton" key={index}>
         <Skeleton active title={{ width: '58%' }} paragraph={{ rows: 3 }} />
@@ -123,19 +130,21 @@ function SuiteListSkeleton() {
 }
 
 function SuiteListEmpty({ deleted, onCreate }: { deleted: boolean; onCreate: () => void }) {
+  const { t } = useTranslation('ecommerce')
   return <div className="suite-empty">
     <span className="suite-empty-icon" aria-hidden="true">{deleted ? <InboxOutlined /> : <PictureOutlined />}</span>
-    <h2>{deleted ? '回收站为空' : '还没有套图项目'}</h2>
+    <h2>{deleted ? t('list.trashEmptyTitle') : t('list.emptyTitle')}</h2>
     <p>{deleted
-      ? '移入回收站的项目会在这里保留 7 天，期间可随时恢复。'
-      : '上传一张商品主体图，设置规格与卖点，就能生成整套展示图。'}</p>
+      ? t('list.trashEmptyDesc')
+      : t('list.emptyDesc')}</p>
     {!deleted && <div className="suite-actions">
-      <Button type="primary" icon={<PlusOutlined />} aria-label="新建第一个套图项目" onClick={onCreate}>新建第一个套图项目</Button>
+      <Button type="primary" icon={<PlusOutlined />} aria-label={t('list.createFirstProject')} onClick={onCreate}>{t('list.createFirstProject')}</Button>
     </div>}
   </div>
 }
 
 export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client: SuiteClient; signal: AbortSignal }) {
+  const { t } = useTranslation(['ecommerce', 'common'])
   const [list, setList] = useState<SuiteProjectList>()
   const [cursor, setCursor] = useState('1')
   const [deleted, setDeleted] = useState(false)
@@ -155,7 +164,9 @@ export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client
       setList(result)
       setObservedAt(Date.now())
       setError('')
-      setAnnouncement(deleted ? `回收站已加载 ${result.items.length} 个项目` : `已加载 ${result.items.length} 个项目`)
+      setAnnouncement(deleted
+        ? i18n.t('ecommerce:list.announcedTrashCount', { count: result.items.length })
+        : i18n.t('ecommerce:list.announcedCount', { count: result.items.length }))
     })
   }, [client, cursor, deleted, signal])
   useEffect(() => {
@@ -166,7 +177,7 @@ export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client
   useEffect(() => {
     void refresh().catch(error => {
       if (signal.aborted) return
-      setError(error instanceof Error ? error.message : '项目列表读取失败')
+      setError(formatSuiteError(error, 'ecommerce:list.loadFailed'))
     })
   }, [refresh, signal])
   const run = async (action: () => Promise<unknown>, success?: string) => {
@@ -176,7 +187,7 @@ export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client
       client.assertCurrent()
     } catch (error) {
       if (!signal.aborted) {
-        setError(error instanceof Error ? error.message : '操作失败'); setBusy(false)
+        setError(formatSuiteError(error, 'ecommerce:errors.actionFailed')); setBusy(false)
       }
       return
     }
@@ -186,8 +197,8 @@ export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client
       if (success) setAnnouncement(success)
     } catch (error) {
       if (!signal.aborted) {
-        const text = error instanceof Error ? error.message : '列表刷新失败'
-        setError(`操作已完成，但列表刷新失败：${text}`)
+        const text = formatSuiteError(error, 'ecommerce:list.refreshFailed')
+        setError(t('ecommerce:list.actionDoneRefreshFailed', { reason: text }))
       }
     } finally { if (!signal.aborted) setBusy(false) }
   }
@@ -196,7 +207,7 @@ export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client
     try { await refresh() }
     catch (error) {
       if (!signal.aborted) {
-        setError(error instanceof Error ? error.message : '项目列表读取失败')
+        setError(formatSuiteError(error, 'ecommerce:list.loadFailed'))
       }
     } finally { if (!signal.aborted) setBusy(false) }
   }
@@ -221,29 +232,29 @@ export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client
   const copyProject = (id: string) => { void run(async () => {
     const copy = await copySuite(client, await client.get(id))
     navigate(`/ecommerce/${copy.id}`)
-  }, '项目配置与图片已成功复制') }
+  }, t('ecommerce:list.copySuccess')) }
   const recycleProject = (id: string) => Modal.confirm({
-    title: '移入回收站？',
-    content: '可在回收站保留 7 天；正在生成的图片任务不受影响。',
-    okText: '移入回收站',
-    cancelText: '取消',
-    onOk: () => run(() => client.recycle(id), '项目已移入回收站'),
+    title: t('ecommerce:list.recycleConfirmTitle'),
+    content: t('ecommerce:list.recycleConfirmContent'),
+    okText: t('ecommerce:list.moveToTrash'),
+    cancelText: t('common:actions.cancel'),
+    onOk: () => run(() => client.recycle(id), t('ecommerce:list.recycleSuccess')),
   })
-  const restoreProject = (id: string) => { void run(() => client.restore(id), '项目已恢复') }
+  const restoreProject = (id: string) => { void run(() => client.restore(id), t('ecommerce:list.restoreSuccess')) }
   return <div className="suite-list-page">
     <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
     <header className="suite-list-header">
       <div className="suite-list-heading">
-        <h1>{deleted ? '回收站' : '电商套图'}</h1>
+        <h1>{deleted ? t('ecommerce:list.trashHeading') : t('ecommerce:title')}</h1>
         <p>{deleted
-          ? '移入回收站的项目保留 7 天，期间可随时恢复；正在生成的图片任务不受影响。'
-          : '基于真实商品图制作整套电商展示图：设置规格与卖点，生成多槽位场景图，精修后批量导出。'}</p>
+          ? t('ecommerce:list.trashSubtitle')
+          : t('ecommerce:list.subtitle')}</p>
       </div>
       <div className="suite-actions suite-list-header-actions">
-        {deleted ? <Button icon={<ArrowLeftOutlined />} aria-label="返回项目列表" disabled={busy} onClick={() => changeMode(false)}>返回项目列表</Button> : <>
-          <Button icon={<InboxOutlined />} aria-label="回收站" disabled={busy} onClick={() => changeMode(true)}>回收站</Button>
+        {deleted ? <Button icon={<ArrowLeftOutlined />} aria-label={t('ecommerce:list.backToList')} disabled={busy} onClick={() => changeMode(false)}>{t('ecommerce:list.backToList')}</Button> : <>
+          <Button icon={<InboxOutlined />} aria-label={t('ecommerce:list.trashButton')} disabled={busy} onClick={() => changeMode(true)}>{t('ecommerce:list.trashButton')}</Button>
           <RecoveryImport actor={actor} client={client} onImported={id => navigate(`/ecommerce/${id}`)} />
-          {!(list && !list.items.length) && <Button type="primary" icon={<PlusOutlined />} aria-label="新建套图项目" disabled={busy} onClick={() => setCreating(true)}>新建套图项目</Button>}
+          {!(list && !list.items.length) && <Button type="primary" icon={<PlusOutlined />} aria-label={t('ecommerce:list.createProject')} disabled={busy} onClick={() => setCreating(true)}>{t('ecommerce:list.createProject')}</Button>}
         </>}
       </div>
     </header>
@@ -251,19 +262,19 @@ export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client
       className="suite-list-error"
       type="error"
       showIcon
-      message={list ? '操作未完成' : '项目列表读取失败'}
+      message={list ? t('ecommerce:list.actionIncomplete') : t('ecommerce:list.loadFailed')}
       description={error}
-      action={<Button icon={<ReloadOutlined />} aria-label={list ? '刷新列表' : '重试读取'} onClick={() => { void retry() }}>{list ? '刷新列表' : '重试读取'}</Button>}
+      action={<Button icon={<ReloadOutlined />} aria-label={list ? t('ecommerce:list.refreshList') : t('common:actions.retryLoad')} onClick={() => { void retry() }}>{list ? t('ecommerce:list.refreshList') : t('common:actions.retryLoad')}</Button>}
     />}
     {!list ? (error ? null : <SuiteListSkeleton />) : !list.items.length
       ? <SuiteListEmpty deleted={deleted} onCreate={() => setCreating(true)} />
       : <>
         <div className="suite-list-meta">
-          <span>本页 {list.items.length} 个项目</span>
+          <span>{t('ecommerce:list.pageCount', { count: list.items.length })}</span>
           <div className="suite-list-pagination">
-            <Button disabled={busy || cursor === '1'} onClick={() => goToPage(String(Number(cursor) - 1))}>上一页</Button>
-            <span className="suite-page-indicator" aria-current="page">第 {cursor} 页</span>
-            <Button disabled={busy || !list.nextCursor} onClick={() => goToPage(list.nextCursor!)}>下一页</Button>
+            <Button disabled={busy || cursor === '1'} onClick={() => goToPage(String(Number(cursor) - 1))}>{t('ecommerce:list.prevPage')}</Button>
+            <span className="suite-page-indicator" aria-current="page">{t('ecommerce:list.pageIndicator', { page: cursor })}</span>
+            <Button disabled={busy || !list.nextCursor} onClick={() => goToPage(list.nextCursor!)}>{t('ecommerce:list.nextPage')}</Button>
           </div>
         </div>
         <div className="suite-list-grid" role="list" aria-busy={busy}>
@@ -285,20 +296,22 @@ export function SuiteList({ actor, client, signal }: { actor: SuiteActor; client
 }
 
 function SuiteSession({ actor }: { actor: SuiteActor }) {
+  const { t } = useTranslation('ecommerce')
   const { id } = useParams()
   const [lifetime, setLifetime] = useState<AbortController>()
   useEffect(() => { const controller = new AbortController(); queueMicrotask(() => { if (!controller.signal.aborted) setLifetime(controller) }); return () => controller.abort() }, [])
   const client = useMemo(() => suiteClient(actor, lifetime?.signal), [actor, lifetime])
   if (!lifetime) return <Spin />
-  if (id && !/^[0-9a-f-]{36}$/i.test(id)) return <Alert type="error" message="套图项目编号无效" />
+  if (id && !/^[0-9a-f-]{36}$/i.test(id)) return <Alert type="error" message={t('errors.invalidProjectId')} />
   return id ? <SuiteWorkspace key={id} id={id} actor={actor} client={client} signal={lifetime.signal} /> : <SuiteList actor={actor} client={client} signal={lifetime.signal} />
 }
 export default function EcommerceSuite() {
+  const { t } = useTranslation('ecommerce')
   const userId = useUserStore(state => state.account?.userId)
   const runtimeScope = useUserStore(state => state.account?.runtimeScope)
   const enabled = useUserStore(state => state.account?.features?.ecommerceSuite)
   const actor = useMemo(() => userId && runtimeScope ? { userId, runtimeScope } : null, [userId, runtimeScope])
-  if (!actor) return <div className="suite-list-page"><h1 className="sr-only">电商套图</h1><Alert type="info" showIcon message="请先登录账号" description="登录后即可保存套图项目并使用 AI 批量生成展示图。" /></div>
-  if (!enabled) return <div className="suite-list-page"><h1 className="sr-only">电商套图</h1><Alert type="info" showIcon message="电商套图功能正在内测中，敬请期待" /></div>
+  if (!actor) return <div className="suite-list-page"><h1 className="sr-only">{t('title')}</h1><Alert type="info" showIcon message={t('auth.signInRequired')} description={t('auth.signInRequiredDesc')} /></div>
+  if (!enabled) return <div className="suite-list-page"><h1 className="sr-only">{t('title')}</h1><Alert type="info" showIcon message={t('auth.featureBeta')} /></div>
   return <SuiteSession key={`${actor.userId}:${actor.runtimeScope}`} actor={actor} />
 }

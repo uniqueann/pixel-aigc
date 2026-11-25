@@ -1,4 +1,8 @@
-const RAW_NETWORK_ERROR = /failed to fetch|networkerror|network request failed|load failed|err_internet|err_network|err_connection|timeout|超时|the operation was aborted|aborterror/i
+import { i18n } from '@/i18n'
+import { activeLocale } from '@/i18n/format'
+
+const RAW_NETWORK_ERROR = /failed to fetch|networkerror|network request failed|load failed|err_internet|err_network|err_connection|timeout|\u8d85\u65f6|the operation was aborted|aborterror/i
+const CJK_RE = /[\u4e00-\u9fff]/
 
 export function isLikelyNetworkError(error: unknown): boolean {
   const raw = error instanceof Error ? error.message : String(error ?? '')
@@ -6,20 +10,24 @@ export function isLikelyNetworkError(error: unknown): boolean {
 }
 
 export function preferenceUserMessage(error: unknown): string {
-  if (typeof console !== 'undefined') console.error('个性化设置同步失败', error)
-  if (isLikelyNetworkError(error)) return '网络异常，请检查网络后重试'
+  if (typeof console !== 'undefined') console.error('Failed to sync preferences', error)
+  if (isLikelyNetworkError(error)) return i18n.t('settings:personalization.syncErrors.network')
   const raw = error instanceof Error ? error.message.trim() : ''
-  if (raw.includes('网络异常')) return '网络异常，请检查网络后重试'
-  if (raw && /[一-龥]/.test(raw) && !RAW_NETWORK_ERROR.test(raw)) return raw
-  return '同步失败，请稍后重试'
+  const networkMsg = i18n.t('settings:personalization.syncErrors.network')
+  if (raw.includes(networkMsg)) return networkMsg
+  if (raw && !RAW_NETWORK_ERROR.test(raw) && (activeLocale() === 'zh-CN' || !CJK_RE.test(raw))) return raw
+  return i18n.t('settings:personalization.syncErrors.generic')
 }
 
 export function clearImageMemoryFailureMessage(error: unknown): string {
-  if (typeof console !== 'undefined') console.error('清除图片参数记忆失败', error)
+  if (typeof console !== 'undefined') console.error('Failed to clear image parameter memory', error)
   const raw = error instanceof Error ? error.message : String(error ?? '')
-  if (raw.includes('清除失败，网络异常')) return '清除失败，网络异常，请检查网络后重试'
-  if (isLikelyNetworkError(error) || raw.includes('网络异常')) return '清除失败，网络异常，请检查网络后重试'
-  return '清除图片参数记忆失败，请稍后重试'
+  const clearNetworkMsg = i18n.t('settings:personalization.syncErrors.clearNetwork')
+  const networkMsg = i18n.t('settings:personalization.syncErrors.network')
+  if (raw.includes(clearNetworkMsg) || isLikelyNetworkError(error) || raw.includes(networkMsg)) {
+    return clearNetworkMsg
+  }
+  return i18n.t('settings:personalization.syncErrors.clearGeneric')
 }
 
 export const CLEAR_IMAGE_MEMORY_SUCCESS_DURATION = 3

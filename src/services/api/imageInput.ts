@@ -1,12 +1,13 @@
 import type { ImageAsset } from '@/editor/types'
 import { blobFromImageSource } from '@/features/image-workstation/download'
+import { i18n } from '@/i18n'
 import { uploadTaskInput } from './upload'
 
 export const imageObjectKey = (asset: ImageAsset) => asset.objectKey ?? asset.storage?.objectKey
 
-/** 同一次提交复用对象键；没有远端对象的原图先上传，原始本地内容继续保留。 */
+/** Reuse existing objectKey in a single submit; upload local sources first while retaining local state. */
 export async function taskInputKey(asset: ImageAsset, message: string, options?: { ownerId: string; signal: AbortSignal; forceUpload?: boolean }) {
-  if (options?.signal.aborted) throw new DOMException('提交已取消', 'AbortError')
+  if (options?.signal.aborted) throw new DOMException(i18n.t('errors:client.submitCancelled'), 'AbortError')
   const existing = imageObjectKey(asset)
   if (existing && !options?.forceUpload) return existing
   let blob: Blob

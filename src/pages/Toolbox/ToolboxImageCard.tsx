@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Tooltip } from 'antd'
 import {
   ArrowUpOutlined,
@@ -13,7 +14,9 @@ import {
   PlusOutlined,
   RedoOutlined,
 } from '@ant-design/icons'
-import { MAX_FILES } from './shared/inspect'
+import { activeLocale, formatMegabytes } from '@/i18n/format'
+import { MAX_BATCH_BYTES, MAX_FILES, MAX_IMAGE_BYTES } from './shared/inspect'
+import { resultStatusLabel } from './shared/resultStatus'
 import CreditActionButton from '@/features/credits/CreditActionButton'
 import type { CreditQuote } from '@/features/credits/quotes'
 
@@ -39,11 +42,11 @@ interface CardProps {
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp'
 
-const statusMeta = {
-  pending: { label: '等待', icon: <ClockCircleOutlined /> },
-  processing: { label: '处理中', icon: <LoadingOutlined spin /> },
-  succeeded: { label: '完成', icon: <CheckOutlined /> },
-  failed: { label: '失败', icon: <CloseCircleOutlined /> },
+const statusIcons = {
+  pending: <ClockCircleOutlined />,
+  processing: <LoadingOutlined spin />,
+  succeeded: <CheckOutlined />,
+  failed: <CloseCircleOutlined />,
 } as const
 
 function isNarrowViewport() {
@@ -77,19 +80,27 @@ export function PreviewResultActions({
   onRetry: () => void
   retryQuote?: CreditQuote
 }) {
+  const { t } = useTranslation(['toolbox', 'common'])
   const showRetry = status === 'failed' || retry
   const canDownload = status === 'succeeded' && hasOutput
+  const downloadLockedTip = t('imageCard.downloadAfterComplete')
   return (
     <>
       {showRetry && (
-        <CreditActionButton size="small" autoInsertSpace={false} icon={<RedoOutlined />} disabled={busy} quote={retryQuote} onClick={onRetry}>重试</CreditActionButton>
+        <CreditActionButton size="small" autoInsertSpace={false} icon={<RedoOutlined />} disabled={busy} quote={retryQuote} onClick={onRetry}>
+          {t('common:actions.retry')}
+        </CreditActionButton>
       )}
       {status !== 'failed' && (canDownload ? (
-        <Button size="small" autoInsertSpace={false} icon={<DownloadOutlined />} onClick={onDownload}>下载</Button>
+        <Button size="small" autoInsertSpace={false} icon={<DownloadOutlined />} onClick={onDownload}>
+          {t('common:actions.download')}
+        </Button>
       ) : (
-        <Tooltip title="处理完成后可下载">
-          <span className="toolbox-preview-download-lock" title="处理完成后可下载">
-            <Button size="small" autoInsertSpace={false} icon={<DownloadOutlined />} disabled>下载</Button>
+        <Tooltip title={downloadLockedTip}>
+          <span className="toolbox-preview-download-lock" title={downloadLockedTip}>
+            <Button size="small" autoInsertSpace={false} icon={<DownloadOutlined />} disabled>
+              {t('common:actions.download')}
+            </Button>
           </span>
         </Tooltip>
       ))}
@@ -115,8 +126,10 @@ export default function ToolboxImageCard({
   onSelect,
   onRemove,
   onClear,
-  processingHint = '图片仅在本机处理',
+  processingHint,
 }: CardProps) {
+  const { t } = useTranslation('toolbox')
+  const resolvedHint = processingHint ?? t('imageCard.defaultProcessingHint')
   const inputRef = useRef<HTMLInputElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
   const dragDepth = useRef(0)
@@ -189,23 +202,23 @@ export default function ToolboxImageCard({
   return (
     <section
       className={`toolbox-image-card${dragOver ? ' is-dragover' : ''}`}
-      aria-label="图片"
+      aria-label={t('imageCard.title')}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       <div className="toolbox-section-heading">
-        <div><strong>图片</strong><span>{items.length} / {MAX_FILES} 张</span></div>
-        {items.length > 0 && <Button size="small" autoInsertSpace={false} disabled={disabled} onClick={onClear}>清空</Button>}
+        <div><strong>{t('imageCard.title')}</strong><span>{t('imageCard.count', { count: items.length, max: MAX_FILES })}</span></div>
+        {items.length > 0 && <Button size="small" autoInsertSpace={false} disabled={disabled} onClick={onClear}>{t('imageCard.clear')}</Button>}
       </div>
 
       {items.length === 0 ? (
         <button type="button" className="toolbox-image-drop" disabled={disabled} onClick={openPicker}>
           <span className="toolbox-image-drop-icon" aria-hidden><PictureOutlined /></span>
           <span className="toolbox-image-drop-copy">
-            <strong>选择图片，或拖入文件</strong>
-            <span>静态 JPG / PNG / WebP，最多 20 张；{processingHint}</span>
+            <strong>{t('imageCard.emptyTitle')}</strong>
+            <span>{t('imageCard.emptySub', { max: MAX_FILES, hint: resolvedHint })}</span>
           </span>
         </button>
       ) : (
@@ -215,35 +228,36 @@ export default function ToolboxImageCard({
               type="button"
               className="toolbox-image-add"
               disabled={disabled || atLimit}
-              title={atLimit ? `最多 ${MAX_FILES} 张` : undefined}
+              title={atLimit ? t('imageCard.maxFilesTitle', { max: MAX_FILES }) : undefined}
               onClick={openPicker}
             >
               <span aria-hidden><PlusOutlined /></span>
-              <span>{atLimit ? '已达上限' : '添加图片'}</span>
+              <span>{atLimit ? t('imageCard.atLimit') : t('imageCard.addImage')}</span>
             </button>
             {items.map(item => {
-              const meta = statusMeta[item.status]
-              const detail = [meta.label, item.note, item.error].filter(Boolean).join(' · ')
+              const statusLabel = resultStatusLabel(item.status)
+              const detail = [statusLabel, item.note, item.error].filter(Boolean).join(' · ')
+              const removeLabel = t('imageCard.removeItemAria', { name: item.name })
               return (
                 <div key={item.id} data-image-tile className={`toolbox-image-tile${item.id === selectedId ? ' is-selected' : ''}`}>
                   <button
                     type="button"
                     className="toolbox-image-select"
                     title={item.name}
-                    aria-label={`预览 ${item.name}，${detail}`}
+                    aria-label={t('imageCard.previewItemAria', { name: item.name, detail })}
                     aria-current={item.id === selectedId ? 'true' : undefined}
                     onClick={() => onSelect(item.id)}
                   >
                     <img src={item.url} alt="" />
                   </button>
                   <span className={`toolbox-image-badge is-${item.status}`} title={detail}>
-                    {meta.icon}{meta.label}
+                    {statusIcons[item.status]}{statusLabel}
                   </span>
                   <button
                     type="button"
                     className="toolbox-image-remove"
-                    aria-label={`移除 ${item.name}`}
-                    title={disabled ? undefined : `移除 ${item.name}`}
+                    aria-label={removeLabel}
+                    title={disabled ? undefined : removeLabel}
                     disabled={disabled}
                     onClick={() => onRemove(item.id)}
                   >
@@ -253,15 +267,18 @@ export default function ToolboxImageCard({
               )
             })}
           </div>
-          {hiddenCount > 0 && <div className="toolbox-image-more">还有 {hiddenCount} 张 · 滚动查看</div>}
+          {hiddenCount > 0 && <div className="toolbox-image-more">{t('imageCard.moreCount', { count: hiddenCount })}</div>}
         </div>
       )}
 
       <p className="toolbox-hint">
-        单张最多 20 MB，整批最多 150 MB；桌面设备最多 24 MP，触屏设备最多 12 MP。
-        {items.length > 0 && '桌面端也可拖入图片到此卡片任意位置添加。'}
+        {t('imageCard.limitsDesktop', {
+          maxSingle: formatMegabytes(MAX_IMAGE_BYTES),
+          maxBatch: formatMegabytes(MAX_BATCH_BYTES),
+        })}
+        {items.length > 0 && `${activeLocale() === 'en-US' ? ' ' : ''}${t('imageCard.dragAddHint')}`}
       </p>
-      {dragOver && <div className="toolbox-image-drop-hint" role="status"><span aria-hidden><ArrowUpOutlined /></span>松开即可添加</div>}
+      {dragOver && <div className="toolbox-image-drop-hint" role="status"><span aria-hidden><ArrowUpOutlined /></span>{t('imageCard.dropHint')}</div>}
       <input
         ref={inputRef}
         className="toolbox-image-file"
@@ -270,7 +287,7 @@ export default function ToolboxImageCard({
         multiple
         tabIndex={-1}
         aria-hidden="true"
-        aria-label="选择图片"
+        aria-label={t('imageCard.selectInputAria')}
         onChange={event => {
           addFiles(event.target.files)
           event.target.value = ''

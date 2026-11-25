@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+import zhWorkstation from '@/i18n/locales/zh-CN/workstation.json'
 import { blobFromImageSource } from './download'
 
 const SAMPLE_SIZE = 64
@@ -18,7 +20,7 @@ function readBlobBytes(blob: Blob): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as ArrayBuffer)
-    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
+    reader.onerror = () => reject(reader.error ?? new Error(i18n.t('errors:client.imageReadFailed')))
     reader.readAsArrayBuffer(blob)
   })
 }
@@ -88,4 +90,8 @@ export async function isVisuallySameImage(source: Blob | string, result: Blob | 
   return meanAbsoluteDiff(sourceSample, resultSample) <= MEAN_DIFF_LIMIT
 }
 
-export const SOURCE_ECHO_ERROR = '任务已完成，但没有返回新的生成结果'
+export const SOURCE_ECHO_ERROR = zhWorkstation.errors.sourceEcho
+
+export function sourceEchoError() {
+  return i18n.t('workstation:errors.sourceEcho')
+}

@@ -16,6 +16,14 @@
           var dark = mode === 'dark' || (mode === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
           document.documentElement.dataset.theme = dark ? 'dark' : 'light';
           document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+          var storedLocale = localStorage.getItem('pixel:locale');
+          var locale = (storedLocale === 'zh-CN' || storedLocale === 'en-US') ? storedLocale : '';
+          if (!locale) {
+            var langs = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'zh-CN']);
+            locale = /^zh\b/i.test(String(langs[0] || '')) ? 'zh-CN' : 'en-US';
+          }
+          document.documentElement.lang = locale;
+          if (locale === 'en-US') document.title = 'AIGC Workbench';
         } catch (e) {}
       })();
     </script>

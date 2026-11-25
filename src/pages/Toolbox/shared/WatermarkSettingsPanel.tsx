@@ -1,26 +1,20 @@
 import { useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Input, Radio, Slider, Switch, Upload } from 'antd'
 import { UploadOutlined } from '@ant-design/icons'
 import type { WatermarkAnchor, WatermarkSettings } from '../watermark/types'
 import ColorDialog, { type ColorPreset } from './ColorDialog'
 
-const textColorPresets: readonly ColorPreset[] = [
-  { label: '白色', value: '#FFFFFF' },
-  { label: '黑色', value: '#000000' },
-  { label: '品牌绿', value: '#21CFA0' },
-  { label: '深灰', value: '#374151' },
-]
-
-const anchors: { value: WatermarkAnchor; label: string }[] = [
-  { value: 'top-left', label: '左上' },
-  { value: 'top-center', label: '上中' },
-  { value: 'top-right', label: '右上' },
-  { value: 'middle-left', label: '左中' },
-  { value: 'middle-center', label: '正中' },
-  { value: 'middle-right', label: '右中' },
-  { value: 'bottom-left', label: '左下' },
-  { value: 'bottom-center', label: '下中' },
-  { value: 'bottom-right', label: '右下' },
+const anchorValues: readonly WatermarkAnchor[] = [
+  'top-left',
+  'top-center',
+  'top-right',
+  'middle-left',
+  'middle-center',
+  'middle-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
 ]
 
 interface Props {
@@ -32,31 +26,44 @@ interface Props {
 }
 
 export default function WatermarkSettingsPanel({ settings, disabled, onChange, onLogo, templates }: Props) {
+  const { t } = useTranslation('toolbox')
   const [colorDialogOpen, setColorDialogOpen] = useState(false)
+  const textColorPresets: readonly ColorPreset[] = [
+    { label: t('colors.white'), value: '#FFFFFF' },
+    { label: t('colors.black'), value: '#000000' },
+    { label: t('colors.brandGreen'), value: '#21CFA0' },
+    { label: t('colors.darkGray'), value: '#374151' },
+  ]
   return (
-    <section className="toolbox-settings-panel" aria-label="水印设置">
-      <div className="toolbox-section-heading"><div><strong>水印设置</strong><span>一次设置，应用到整批</span></div></div>
-      <div role="radiogroup" aria-label="水印类型">
+    <section className="toolbox-settings-panel" aria-label={t('watermark.settingsAria')}>
+      <div className="toolbox-section-heading"><div><strong>{t('watermark.settingsTitle')}</strong><span>{t('shared.applyToBatch')}</span></div></div>
+      <div role="radiogroup" aria-label={t('watermark.typeAria')}>
         <Radio.Group
           value={settings.kind}
           disabled={disabled}
           onChange={event => onChange({ kind: event.target.value })}
-          options={[{ label: '文字水印', value: 'text' }, { label: 'Logo 水印', value: 'logo' }]}
+          options={[
+            { label: t('watermark.textType'), value: 'text' },
+            { label: t('watermark.logoType'), value: 'logo' },
+          ]}
           optionType="button"
           buttonStyle="solid"
         />
       </div>
       {settings.kind === 'text' ? (
         <>
-          <label className="toolbox-field-label" htmlFor="watermark-text">水印文字</label>
-          <Input id="watermark-text" value={settings.text} maxLength={80} disabled={disabled} placeholder="例如：© 我的品牌" onChange={event => onChange({ text: event.target.value })} />
-          <span id="watermark-color-label" className="toolbox-field-label">文字颜色</span>
+          <label className="toolbox-field-label" htmlFor="watermark-text">{t('watermark.textLabel')}</label>
+          <Input id="watermark-text" value={settings.text} maxLength={80} disabled={disabled} placeholder={t('watermark.textPlaceholder')} onChange={event => onChange({ text: event.target.value })} />
+          <span id="watermark-color-label" className="toolbox-field-label">{t('watermark.textColorLabel')}</span>
           <div className="toolbox-layout-options" role="radiogroup" aria-labelledby="watermark-color-label">
             <Radio.Group
               value={settings.colorMode}
               disabled={disabled}
               onChange={event => onChange({ colorMode: event.target.value })}
-              options={[{ label: '自动', value: 'auto' }, { label: '自定义', value: 'custom' }]}
+              options={[
+                { label: t('watermark.colorAuto'), value: 'auto' },
+                { label: t('watermark.colorCustom'), value: 'custom' },
+              ]}
               optionType="button"
               buttonStyle="solid"
             />
@@ -64,11 +71,11 @@ export default function WatermarkSettingsPanel({ settings, disabled, onChange, o
           {settings.colorMode === 'custom' && (
             <>
               <div className="toolbox-field-row">
-                <span>自定义颜色</span>
+                <span>{t('watermark.customColor')}</span>
                 <button
                   type="button"
                   className="toolbox-color-trigger"
-                  aria-label={`自定义颜色，当前 ${settings.color.toUpperCase()}`}
+                  aria-label={t('watermark.customColorAria', { color: settings.color.toUpperCase() })}
                   aria-haspopup="dialog"
                   aria-expanded={colorDialogOpen}
                   disabled={disabled}
@@ -81,8 +88,8 @@ export default function WatermarkSettingsPanel({ settings, disabled, onChange, o
               <ColorDialog
                 open={colorDialogOpen}
                 value={settings.color}
-                title="水印文字颜色"
-                presetsLabel="常用文字颜色"
+                title={t('watermark.colorDialogTitle')}
+                presetsLabel={t('watermark.colorDialogPresets')}
                 presets={textColorPresets}
                 idPrefix="watermark-color"
                 onClose={() => setColorDialogOpen(false)}
@@ -91,83 +98,102 @@ export default function WatermarkSettingsPanel({ settings, disabled, onChange, o
             </>
           )}
           <div className="toolbox-field-row">
-            <span>可读性描边</span>
-            <Switch checked={settings.readability} disabled={disabled} aria-label="可读性描边" onChange={checked => onChange({ readability: checked })} />
+            <span>{t('watermark.readabilityStroke')}</span>
+            <Switch checked={settings.readability} disabled={disabled} aria-label={t('watermark.readabilityStroke')} onChange={checked => onChange({ readability: checked })} />
           </div>
-          <p className="toolbox-hint">自动根据背景明暗选择黑白文字；开启描边后使用高对比色，确保文字在复杂背景下清晰可读。</p>
-          <label className="toolbox-field-label" id="watermark-text-size-label">文字大小：短边的 {settings.textSizePercent}%</label>
+          <p className="toolbox-hint">{t('watermark.readabilityHint')}</p>
+          <label className="toolbox-field-label" id="watermark-text-size-label">{t('watermark.textSizeLabel', { value: settings.textSizePercent })}</label>
           <Slider
             min={1}
             max={15}
             value={settings.textSizePercent}
             disabled={disabled}
             ariaLabelledByForHandle="watermark-text-size-label"
-            ariaValueTextFormatterForHandle={value => `短边的 ${value}%`}
+            ariaValueTextFormatterForHandle={value => t('watermark.shortEdgeValue', { value })}
             onChange={value => onChange({ textSizePercent: value })}
           />
         </>
       ) : (
         <>
-          <label className="toolbox-field-label">Logo 图片</label>
+          <label className="toolbox-field-label">{t('watermark.logoImageLabel')}</label>
           <Upload accept="image/png,image/webp" showUploadList={false} disabled={disabled} beforeUpload={file => { void onLogo(file); return Upload.LIST_IGNORE }}>
-            <Button icon={<UploadOutlined />} disabled={disabled}>选择 PNG / WebP</Button>
+            <Button icon={<UploadOutlined />} disabled={disabled}>{t('watermark.chooseLogoBtn')}</Button>
           </Upload>
-          <span className="toolbox-logo-name" title={settings.logoName ?? ''}>{settings.logoName ?? '推荐使用透明背景 Logo'}</span>
-          <label className="toolbox-field-label" id="watermark-logo-size-label">Logo 宽度：短边的 {settings.logoSizePercent}%</label>
+          <span className="toolbox-logo-name" title={settings.logoName ?? ''}>{settings.logoName ?? t('watermark.logoHint')}</span>
+          <label className="toolbox-field-label" id="watermark-logo-size-label">{t('watermark.logoSizeLabel', { value: settings.logoSizePercent })}</label>
           <Slider
             min={5}
             max={50}
             value={settings.logoSizePercent}
             disabled={disabled}
             ariaLabelledByForHandle="watermark-logo-size-label"
-            ariaValueTextFormatterForHandle={value => `短边的 ${value}%`}
+            ariaValueTextFormatterForHandle={value => t('watermark.shortEdgeValue', { value })}
             onChange={value => onChange({ logoSizePercent: value })}
           />
         </>
       )}
-      <label className="toolbox-field-label" id="watermark-layout-label">排列方式</label>
+      <label className="toolbox-field-label" id="watermark-layout-label">{t('watermark.layoutLabel')}</label>
       <div className="toolbox-layout-options" role="radiogroup" aria-labelledby="watermark-layout-label">
         <Radio.Group
           value={settings.layout}
           disabled={disabled}
           onChange={event => onChange({ layout: event.target.value })}
-          options={[{ label: '单个', value: 'single' }, { label: '平铺', value: 'tile' }]}
+          options={[
+            { label: t('watermark.layoutSingle'), value: 'single' },
+            { label: t('watermark.layoutTile'), value: 'tile' },
+          ]}
           optionType="button"
           buttonStyle="solid"
         />
       </div>
       {settings.layout === 'tile' ? (
         <>
-          <label className="toolbox-field-label" id="watermark-tile-gap-label">平铺间距：短边的 {settings.tileGapPercent}%</label>
+          <label className="toolbox-field-label" id="watermark-tile-gap-label">{t('watermark.tileGapLabel', { value: settings.tileGapPercent })}</label>
           <Slider
             min={0}
             max={30}
             value={settings.tileGapPercent}
             disabled={disabled}
             ariaLabelledByForHandle="watermark-tile-gap-label"
-            ariaValueTextFormatterForHandle={value => `短边的 ${value}%`}
+            ariaValueTextFormatterForHandle={value => t('watermark.shortEdgeValue', { value })}
             onChange={value => onChange({ tileGapPercent: value })}
           />
-          <label className="toolbox-field-label" id="watermark-tile-rotation-label">旋转角度：{settings.tileRotation}°</label>
+          <label className="toolbox-field-label" id="watermark-tile-rotation-label">{t('watermark.tileRotationLabel', { value: settings.tileRotation })}</label>
           <Slider
             min={-60}
             max={60}
             value={settings.tileRotation}
             disabled={disabled}
             ariaLabelledByForHandle="watermark-tile-rotation-label"
-            ariaValueTextFormatterForHandle={value => `${value} 度`}
+            ariaValueTextFormatterForHandle={value => t('watermark.degreesValue', { value })}
             onChange={value => onChange({ tileRotation: value })}
           />
         </>
       ) : (
         <>
-          <span id="watermark-anchor-label" className="toolbox-field-label">位置</span>
+          <span id="watermark-anchor-label" className="toolbox-field-label">{t('watermark.anchorLabel')}</span>
           <div className="toolbox-anchor-grid" role="group" aria-labelledby="watermark-anchor-label">
-            {anchors.map(anchor => <button key={anchor.value} type="button" className={settings.anchor === anchor.value ? 'is-active' : ''} disabled={disabled} aria-label={anchor.label} aria-pressed={settings.anchor === anchor.value} title={anchor.label} onClick={() => onChange({ anchor: anchor.value })}>{anchor.label}</button>)}
+            {anchorValues.map(anchor => {
+              const label = t(`anchors.${anchor}`)
+              return (
+                <button
+                  key={anchor}
+                  type="button"
+                  className={settings.anchor === anchor ? 'is-active' : ''}
+                  disabled={disabled}
+                  aria-label={label}
+                  aria-pressed={settings.anchor === anchor}
+                  title={label}
+                  onClick={() => onChange({ anchor })}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </>
       )}
-      <label className="toolbox-field-label" id="watermark-opacity-label">透明度：{settings.opacity}%</label>
+      <label className="toolbox-field-label" id="watermark-opacity-label">{t('watermark.opacityLabel', { value: settings.opacity })}</label>
       <Slider
         min={10}
         max={100}
@@ -179,14 +205,14 @@ export default function WatermarkSettingsPanel({ settings, disabled, onChange, o
       />
       {settings.layout === 'single' && (
         <>
-          <label className="toolbox-field-label" id="watermark-margin-label">边距：短边的 {settings.marginPercent}%</label>
+          <label className="toolbox-field-label" id="watermark-margin-label">{t('watermark.marginLabel', { value: settings.marginPercent })}</label>
           <Slider
             min={0}
             max={10}
             value={settings.marginPercent}
             disabled={disabled}
             ariaLabelledByForHandle="watermark-margin-label"
-            ariaValueTextFormatterForHandle={value => `短边的 ${value}%`}
+            ariaValueTextFormatterForHandle={value => t('watermark.shortEdgeValue', { value })}
             onChange={value => onChange({ marginPercent: value })}
           />
         </>

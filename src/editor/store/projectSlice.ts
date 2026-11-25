@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand'
+import { i18n } from '@/i18n'
 import type { Asset, EditorNode, GenerationJob, PixelProject, SceneId } from '@/editor/types'
 import type { EditorStoreState } from './editorStore'
 
@@ -31,7 +32,7 @@ export const createProjectSlice: StateCreator<EditorStoreState, [], [], ProjectS
         activeSceneId: sceneId,
         scenes: [{
           id: sceneId,
-          name: '场景 1',
+          name: i18n.t('canvas:editor.defaultSceneName'),
           width: size.width,
           height: size.height,
           nodes: [],
@@ -55,7 +56,7 @@ export const createProjectSlice: StateCreator<EditorStoreState, [], [], ProjectS
   },
   loadProject: (project) => {
     const activeScene = project.document.scenes.find((scene) => scene.id === project.document.activeSceneId)
-    if (!activeScene) throw new Error('项目的活动场景不存在')
+    if (!activeScene) throw new Error(i18n.t('canvas:editor.errors.missingActiveScene'))
     set({
       project,
       activeSceneId: activeScene.id,

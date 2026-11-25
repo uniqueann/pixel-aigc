@@ -1,4 +1,5 @@
 import { Radio } from 'antd'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   value: number
@@ -9,11 +10,12 @@ interface Props {
 }
 
 /** 离散张数选择。工作站和自由画布共用，避免滑块刻度在窄面板里溢出。 */
-export default function GenerationCountPicker({ value, max, disabled = false, onChange, label = '生成数量' }: Props) {
+export default function GenerationCountPicker({ value, max, disabled = false, onChange, label }: Props) {
+  const { t } = useTranslation('common')
   const limit = Math.max(1, Math.floor(max))
   const current = Math.min(Math.max(1, value), limit)
   return (
-    <div className="generation-count-picker" role="radiogroup" aria-label={label}>
+    <div className="generation-count-picker" role="radiogroup" aria-label={label ?? t('controls.generationCount')}>
       <Radio.Group
         buttonStyle="solid"
         value={current}

@@ -6,11 +6,18 @@ import {
   CloseOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import VideoPlayer from '@/components/VideoPlayer'
 import type { TaskCenterDetail, TaskCenterMedia, TaskTool } from '@shared/task-center'
-import { taskBillingLabel, taskStateLabel, taskToolLabels } from '@shared/task-center'
 import { useRecoveredTask } from './useRecoveredTask'
 import { useTaskCenter } from './context'
+import {
+  formatCaughtError,
+  formatTaskErrorMessage,
+  localizedTaskBillingLabel,
+  localizedTaskStateLabel,
+  taskToolLabel,
+} from './format'
 import { assertRecoveryActor, prepareRecoveryParameters, readRecoveryImage, type PreparedRecoveryParameters } from './recoveryMedia'
 import type { TaskActor } from './client'
 import { useUserStore } from '@/store/useUserStore'
@@ -34,6 +41,7 @@ export default function TaskRecoveryPanel(props: Props) {
 }
 
 function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, onAddResult, blockedReason, onObserve }: Props) {
+  const { t } = useTranslation('taskCenter')
   const recovery = useRecoveredTask(tools, projectId), center = useTaskCenter()
   const { message } = App.useApp()
   const [busy, setBusy] = useState(false), [actionError, setActionError] = useState<string>()
@@ -43,7 +51,11 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
   useEffect(() => {
     if (!recovery.data || !recovery.actor || !onObserve || !controller.current) return
     const context = { actor: recovery.actor, signal: controller.current.signal }
-    void onObserve(recovery.data, context).catch(error => { if (!context.signal.aborted) setActionError(error instanceof Error ? error.message : '原任务恢复失败，可继续查看结果') })
+    void onObserve(recovery.data, context).catch(error => {
+      if (!context.signal.aborted) {
+        setActionError(formatCaughtError(error, 'taskCenter:errors.recoveryFailed'))
+      }
+    })
   }, [recovery.data, onObserve, recovery.actor])
 
   if (!recovery.present) return null
@@ -54,8 +66,8 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
         <Alert
           type="error"
           showIcon
-          message="任务链接无效或已过期"
-          action={<Button size="small" type="text" onClick={recovery.close}>关闭</Button>}
+          message={t('recovery.invalidLink')}
+          action={<Button size="small" type="text" onClick={recovery.close}>{t('actions.close')}</Button>}
           style={{ width: '100%' }}
         />
       </div>
@@ -68,8 +80,8 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
         <Alert
           type="info"
           showIcon
-          message="任务恢复服务暂不可用，请确认已登录"
-          action={<Button size="small" type="text" onClick={recovery.close}>关闭</Button>}
+          message={t('recovery.serviceUnavailable')}
+          action={<Button size="small" type="text" onClick={recovery.close}>{t('actions.close')}</Button>}
           style={{ width: '100%' }}
         />
       </div>
@@ -80,7 +92,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
     return (
       <div className="task-recovery-panel task-recovery-banner is-loading">
         <Spin size="small" />
-        <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>正在读取历史任务…</span>
+        <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('recovery.loading')}</span>
       </div>
     )
   }
@@ -91,12 +103,12 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
         <Alert
           type="warning"
           showIcon
-          message="任务详情加载失败，请重试"
-          description={recovery.error instanceof Error ? recovery.error.message : undefined}
+          message={t('recovery.detailLoadFailed')}
+          description={formatCaughtError(recovery.error, 'taskCenter:errors.detailLoadFailed')}
           action={
             <Space size="small">
-              <Button size="small" onClick={recovery.refresh}>重新读取</Button>
-              <Button size="small" type="text" onClick={recovery.close}>关闭</Button>
+              <Button size="small" onClick={recovery.refresh}>{t('actions.reload')}</Button>
+              <Button size="small" type="text" onClick={recovery.close}>{t('actions.close')}</Button>
             </Space>
           }
           style={{ width: '100%' }}
@@ -115,8 +127,9 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
     try { await operation(context); assertRecoveryActor(context.actor, context.signal) }
     catch (error) {
       if (!context.signal.aborted) {
-        setActionError(error instanceof Error ? error.message : '操作失败')
-        message.error(error instanceof Error ? error.message : '操作失败')
+        const msg = formatCaughtError(error, 'taskCenter:errors.actionFailed')
+        setActionError(msg)
+        message.error(msg)
       }
     }
     finally { if (!context.signal.aborted) setBusy(false) }
@@ -138,7 +151,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
           button?.focus()
         }
       })
-      message.success('已恢复原任务参数，可微调后生成')
+      message.success(t('recovery.paramsRestored'))
     }
   })
 
@@ -153,37 +166,39 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
     await onAddResult(result, detail, context)
   })
 
-  const toolName = detail.task.tool ? (taskToolLabels[detail.task.tool] ?? detail.task.tool) : '历史任务'
+  const toolName = taskToolLabel(detail.task.tool, 'history')
+  const billingLabel = localizedTaskBillingLabel(detail.task)
+  const detailError = formatTaskErrorMessage(detail.task, detail.errorMessage)
 
   return (
-    <div className="task-recovery-panel task-recovery-banner" role="region" aria-label="历史任务恢复">
+    <div className="task-recovery-panel task-recovery-banner" role="region" aria-label={t('recovery.bannerAria')}>
       <div className="task-recovery-banner-main">
         <div className="task-recovery-banner-left">
           <ClockCircleOutlined className="task-recovery-banner-icon" />
           <span className="task-recovery-banner-title">
-            历史任务：<strong>{toolName}</strong>
+            {t('recovery.bannerPrefix')}<strong>{toolName}</strong>
           </span>
           <Tag
             bordered={false}
             color={detail.task.state === 'succeeded' ? 'success' : detail.task.state === 'failed' ? 'error' : 'default'}
             style={{ margin: 0, fontSize: 12, lineHeight: '20px', padding: '0 6px' }}
           >
-            {taskStateLabel(detail.task)}
+            {localizedTaskStateLabel(detail.task)}
           </Tag>
           {medias.length > 0 ? (
-            <span className="task-recovery-meta-tag">{medias.length} 张结果</span>
+            <span className="task-recovery-meta-tag">{t('recovery.mediaCount', { count: medias.length })}</span>
           ) : null}
-          {taskBillingLabel(detail.task) ? (
-            <span className="task-recovery-meta-tag">{taskBillingLabel(detail.task)}</span>
+          {billingLabel ? (
+            <span className="task-recovery-meta-tag">{billingLabel}</span>
           ) : null}
           {detail.task.origin?.entry === 'canvas' && detail.task.origin.sceneId !== undefined ? (
-            <span className="task-recovery-meta-tag">原场景：{detail.task.origin.sceneId}</span>
+            <span className="task-recovery-meta-tag">{t('recovery.originScene', { sceneId: detail.task.origin.sceneId })}</span>
           ) : null}
         </div>
 
         <div className="task-recovery-banner-actions">
           {onLoadParameters ? (
-            <Tooltip title={!detail.params ? '此任务未保存参数记录' : undefined}>
+            <Tooltip title={!detail.params ? t('recovery.noParamsTooltip') : undefined}>
               <Button
                 size="small"
                 type="primary"
@@ -191,7 +206,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                 loading={busy}
                 onClick={loadParameters}
               >
-                恢复原参数
+                {t('recovery.restoreParams')}
               </Button>
             </Tooltip>
           ) : null}
@@ -215,7 +230,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                       ) : (
                         <Image
                           src={medias[0].url}
-                          alt="原任务结果"
+                          alt={t('recovery.resultAlt')}
                           width={140}
                           height={140}
                           style={{ objectFit: 'contain', borderRadius: 4 }}
@@ -227,7 +242,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                 >
                   <img
                     src={medias[0].url}
-                    alt="原任务结果"
+                    alt={t('recovery.resultAlt')}
                     className="task-recovery-thumb-single"
                   />
                 </Popover>
@@ -239,7 +254,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                   loading={busy}
                   onClick={() => applyMedia(medias[0])}
                 >
-                  基于此图继续编辑
+                  {t('recovery.useImageToEdit')}
                 </Button>
               ) : null}
               {onAddResult && medias[0].availability === 'available' ? (
@@ -249,7 +264,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                   loading={busy}
                   onClick={() => addResult(medias[0])}
                 >
-                  添加到画板
+                  {t('recovery.addToCanvas')}
                 </Button>
               ) : null}
             </div>
@@ -263,7 +278,9 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                     <div style={{ textAlign: 'center', maxWidth: 180 }}>
                       {result.availability !== 'available' ? (
                         <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                          结果 {result.ordinal + 1}：{result.availability === 'expired' ? '已过期' : '暂不可读取'}
+                          {result.availability === 'expired'
+                            ? t('recovery.resultExpired', { index: result.ordinal + 1 })
+                            : t('recovery.resultUnavailable', { index: result.ordinal + 1 })}
                         </p>
                       ) : (
                         <>
@@ -280,7 +297,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                           ) : (
                             <Image
                               src={result.url}
-                              alt={`结果 ${result.ordinal + 1}`}
+                              alt={t('recovery.indexedResultAlt', { index: result.ordinal + 1 })}
                               width={140}
                               height={140}
                               style={{ objectFit: 'contain', borderRadius: 4 }}
@@ -295,7 +312,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                                 loading={busy}
                                 onClick={() => applyMedia(result)}
                               >
-                                基于此图继续编辑
+                                {t('recovery.useImageToEdit')}
                               </Button>
                             ) : null}
                             {onAddResult ? (
@@ -305,7 +322,7 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                                 loading={busy}
                                 onClick={() => addResult(result)}
                               >
-                                添加到画板
+                                {t('recovery.addToCanvas')}
                               </Button>
                             ) : null}
                           </div>
@@ -318,9 +335,9 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
                     className="task-recovery-thumb-item"
                     role="button"
                     tabIndex={0}
-                    title={`结果 ${result.ordinal + 1}（点击查看及选用）`}
+                    title={t('recovery.thumbTooltip', { index: result.ordinal + 1 })}
                   >
-                    <img src={result.url} alt={`结果 ${result.ordinal + 1}`} />
+                    <img src={result.url} alt={t('recovery.indexedResultAlt', { index: result.ordinal + 1 })} />
                     <span className="task-recovery-thumb-index">{result.ordinal + 1}</span>
                   </div>
                 </Popover>
@@ -335,26 +352,26 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
               onClick={() => void run(async context => {
                 assertRecoveryActor(context.actor, context.signal)
                 await navigator.clipboard.writeText(result.editedText ?? result.text)
-                message.success('结果已复制')
+                message.success(t('recovery.resultCopied'))
               })}
             >
-              复制结果
+              {t('actions.copyResult')}
             </Button>
           ))}
 
           <Button
             size="small"
             onClick={() => center?.show(detail.task)}
-            title="查看完整详情及下载"
+            title={t('recovery.viewDetailsTooltip')}
           >
-            查看详情
+            {t('recovery.viewDetails')}
           </Button>
 
           <Button
             size="small"
             icon={<ReloadOutlined />}
             onClick={recovery.refresh}
-            title="重新读取任务"
+            title={t('recovery.reloadTooltip')}
           />
 
           <Button
@@ -364,15 +381,15 @@ function RecoveryPanelContent({ tools, projectId, onUseImage, onLoadParameters, 
             icon={<CloseOutlined />}
             onClick={recovery.close}
             disabled={busy}
-            title="退出历史恢复并返回编辑"
+            title={t('recovery.exitTooltip')}
           >
-            退出恢复
+            {t('recovery.exit')}
           </Button>
         </div>
       </div>
 
-      {detail.errorMessage ? (
-        <Alert type="warning" showIcon message={detail.errorMessage} style={{ margin: 0 }} />
+      {detailError ? (
+        <Alert type="warning" showIcon message={detailError} style={{ margin: 0 }} />
       ) : null}
       {blockedReason ? (
         <Alert type="info" showIcon message={blockedReason} style={{ margin: 0 }} />

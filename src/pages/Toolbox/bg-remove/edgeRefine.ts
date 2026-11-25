@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 export interface RefineMarks {
   remove: Uint8Array
   restore: Uint8Array
@@ -56,7 +58,7 @@ export function applyEdgeRefinePixels(
   restore: Uint8Array,
 ) {
   if (source.length !== matte.length || remove.length * 4 !== matte.length || restore.length !== remove.length) {
-    throw new Error('精修结果尺寸与原图不一致')
+    throw new Error(i18n.t('toolbox:errors.edgeRefineSizeMismatch'))
   }
   const output = new Uint8ClampedArray(matte)
   for (let pixel = 0; pixel < remove.length; pixel += 1) {
@@ -80,7 +82,7 @@ async function readPixels(blob: Blob) {
     canvas.width = bitmap.width
     canvas.height = bitmap.height
     const context = canvas.getContext('2d')
-    if (!context) throw new Error('无法读取精修图片')
+    if (!context) throw new Error(i18n.t('toolbox:errors.edgeRefineReadFailed'))
     context.drawImage(bitmap, 0, 0)
     const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height)
     return { width: bitmap.width, height: bitmap.height, data: pixels.data }
@@ -94,19 +96,19 @@ function encodePng(width: number, height: number, pixels: Uint8ClampedArray) {
   canvas.width = width
   canvas.height = height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error('无法导出精修结果')
+  if (!context) throw new Error(i18n.t('toolbox:errors.edgeRefineExportFailed'))
   const image = context.createImageData(width, height)
   image.data.set(pixels)
   context.putImageData(image, 0, 0)
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('精修结果编码失败')), 'image/png')
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error(i18n.t('toolbox:errors.edgeRefineEncodeFailed'))), 'image/png')
   })
 }
 
 export async function renderRefinedMatte(source: Blob, matte: Blob, marks: ImageData) {
   const [sourcePixels, mattePixels] = await Promise.all([readPixels(source), readPixels(matte)])
   if (sourcePixels.width !== mattePixels.width || sourcePixels.height !== mattePixels.height) {
-    throw new Error('精修结果尺寸与原图不一致')
+    throw new Error(i18n.t('toolbox:errors.edgeRefineSizeMismatch'))
   }
   const sampled = sampleRefineMarks(marks.data, marks.width, marks.height, sourcePixels.width, sourcePixels.height)
   const pixels = applyEdgeRefinePixels(sourcePixels.data, mattePixels.data, sampled.remove, sampled.restore)

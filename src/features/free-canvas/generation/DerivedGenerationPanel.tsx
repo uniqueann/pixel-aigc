@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { Button, Input, Radio, Spin, Tooltip } from 'antd'
 import ModelChoice from '@/components/ModelChoice'
@@ -7,6 +8,7 @@ import { VIDEO_PROMPT_MAX } from '@shared/prompt-limits'
 import GenerationTaskStatus from '@/components/GenerationTaskStatus'
 import PreviewResultStrip from '@/components/PreviewResultStrip'
 import { downloadImageSource, extensionForMime } from '@/features/image-workstation/download'
+import { translateApiError } from '@/i18n/apiErrors'
 import type { Asset, ImageAsset } from '@/editor/types'
 import type { PublicImageModel } from '@/services/api/imageModels'
 import { VARIATION_USER_PROMPT_MAX } from '@shared/variation'
@@ -21,7 +23,7 @@ import { videoCreditBlocksSubmit, videoCreditsForDuration } from './videoCredits
 import type { VideoModelProfile, VideoResolution } from '@shared/video-models'
 import CreditActionButton, { CreditBalanceNotice, CreditQuoteNotice, CreditSettlementHint } from '@/features/credits/CreditActionButton'
 import { creditQuote, imageCreditAmount } from '@/features/credits/quotes'
-import { INSUFFICIENT_CREDITS_REASON, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
+import { insufficientCreditsReason, imageCreditBlocksSubmit } from '@/features/credits/imageCredits'
 import { useKnownCreditBalance } from '@/features/credits/useKnownCreditBalance'
 import { modelProfileIdForRetry } from './retryModel'
 import { videoRetryParametersSupported } from './videoParameters'
@@ -114,21 +116,32 @@ export default function DerivedGenerationPanel({
   videoModels, videoResolution, selectedVideoModelId, onVideoModelChange, onVideoResolutionChange,
   videoAvailability, onReloadModels,
 }: DerivedGenerationPanelProps) {
+  const { t } = useTranslation('canvas')
   const imageToVideo = mode === 'image-to-video'
   const balance = useUserStore(state => state.credits)
   const knownBalance = useKnownCreditBalance()
-  const title = imageToVideo ? '从图片生成视频' : '图片裂变'
+  const title = imageToVideo ? t('derived.imageToVideoTitle') : t('derived.variationTitle')
+  const taskFailureSummary = task?.status === 'failed' || task?.status === 'cancelled'
+    ? translateApiError({
+      code: task.errorCode,
+      message: taskFailureText(task.errorCode, task.errorMessage, t('panel.taskIncompleteFallback')),
+      fallback: t('panel.taskIncompleteFallback'),
+    })
+    : undefined
   const summary = autoRetrying
-    ? '首次生成失败，正在自动重试（1/1）'
+    ? t('derived.autoRetrying')
     : task?.status === 'succeeded'
       ? imageToVideo
-        ? '视频已生成并加入画布'
-        : `成功 ${task.resultImages?.length ?? task.resultUrls?.length ?? 0} / ${task.params.count} 张裂变图片${mockGateway ? '' : `，实际消耗 ${task.creditsCost} 积分`}`
-      : task?.status === 'failed' || task?.status === 'cancelled'
-        ? taskFailureText(task.errorCode, task.errorMessage, '任务没有完成，请重试')
-        : imageToVideo
-          ? `本次生成 1 段 ${durationSeconds} 秒视频`
-          : `本次生成 ${count} 张裂变图片`
+        ? t('panel.videoAddedSummary')
+        : t('derived.variationSucceededSummary', {
+          succeeded: task.resultImages?.length ?? task.resultUrls?.length ?? 0,
+          total: task.params.count,
+          costSuffix: mockGateway ? '' : t('panel.actualCostSuffix', { credits: task.creditsCost }),
+        })
+      : taskFailureSummary
+        ?? (imageToVideo
+          ? t('panel.currentVideoCount', { duration: durationSeconds })
+          : t('derived.currentVariationCount', { count }))
   const resultUrls = task?.resultVideos?.length ? task.resultVideos.map(video => video.url) : task?.resultImages?.length ? task.resultImages.map(image => image.url) : task?.resultUrls ?? []
   const previewItems = resultUrls.map((url, index) => {
     const image = task?.resultVideos?.[index] ?? task?.resultImages?.[index]
@@ -137,7 +150,7 @@ export default function DerivedGenerationPanel({
     return { id: `${task?.id}:${index}`, mediaType: imageToVideo ? 'video' as const : 'image' as const,
       posterKey: task?.resultVideos?.[index]?.posterKey, retentionExpiresAt: task?.resultVideos?.[index]?.retentionExpiresAt,
       thumbSrc: imageToVideo ? '' : src, fullSrc: src,
-      ...(imageToVideo && task?.params && 'durationSeconds' in task.params ? { durationLabel: `${task.params.durationSeconds} 秒` } : {}), originalSrc: imageToVideo || sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: `${imageToVideo ? '视频' : '裂变'}结果 ${(image?.ordinal ?? index) + 1}` }
+      ...(imageToVideo && task?.params && 'durationSeconds' in task.params ? { durationLabel: t('panel.durationSeconds', { count: task.params.durationSeconds }) } : {}), originalSrc: imageToVideo || sourceAsset.missing ? undefined : sourceAsset.url, objectKey: asset?.objectKey ?? asset?.storage?.objectKey ?? image?.objectKey, ownerId: currentWorkstationHistoryOwner(), expiresAt: asset?.accessExpiresAt ?? image?.expiresAt, title: imageToVideo ? t('derived.videoResultTitle', { index: (image?.ordinal ?? index) + 1 }) : t('derived.variationResultTitle', { index: (image?.ordinal ?? index) + 1 }) }
   })
   const model = matchImageModel(models, modelProfileId)
   const originalModelId = task ? modelProfileIdForRetry(task) : undefined
@@ -156,8 +169,8 @@ export default function DerivedGenerationPanel({
   const quote = creditQuote(estimatedCredits, { mock: mockGateway, loading: modelsLoading })
   const retryQuote = creditQuote(imageToVideo ? retryVideoCredits : retryCredits, { mock: mockGateway, loading: modelsLoading })
   const advancedSummary = imageToVideo
-    ? `${videoModel?.label ?? '视频模型'} · ${videoResolution ?? videoModel?.resolution ?? '720p'}`
-    : `${model?.label ?? '默认模型'} · ${resolution.toUpperCase()}`
+    ? `${videoModel?.label ?? t('video.settings.defaultModelName')} · ${videoResolution ?? videoModel?.resolution ?? '720p'}`
+    : `${model?.label ?? t('panel.defaultImageModelName')} · ${resolution.toUpperCase()}`
   const imageCreditBlocked = !imageToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote, balance: knownBalance })
   const imageRetryBlocked = !imageToVideo && imageCreditBlocksSubmit({ mock: mockGateway, quote: retryQuote, balance: knownBalance })
 
@@ -171,11 +184,11 @@ export default function DerivedGenerationPanel({
           icon={<ArrowLeftOutlined />}
           disabled={active || formLocked}
           onClick={onBack}
-          aria-label="返回基础生成"
+          aria-label={t('derived.backAria')}
         />
         <div>
           <h2>{title}</h2>
-          {showForm && <p>{imageToVideo ? '让选中的图片按描述动起来。' : '基于选中的图片探索更多视觉方案。'}</p>}
+          {showForm && <p>{imageToVideo ? t('derived.imageToVideoSubtitle') : t('derived.variationSubtitle')}</p>}
         </div>
       </div>
 
@@ -188,13 +201,16 @@ export default function DerivedGenerationPanel({
       </div>
 
       {imageToVideo && showForm && <p className="free-canvas-field-hint">
-        比例跟随源图（{Math.round(sourceAsset.width)} × {Math.round(sourceAsset.height)}，不可单独选择）· 源图作为首帧
-        {videoModel?.provider === 'seedance' ? ' · 首期暂不支持含真人人脸的图片' : ''}
+        {t('derived.imageToVideoRule', {
+          width: Math.round(sourceAsset.width),
+          height: Math.round(sourceAsset.height),
+          faceNote: videoModel?.provider === 'seedance' ? t('derived.seedanceFaceNote') : '',
+        })}
       </p>}
 
       {!showForm ? <VideoAvailabilityNotice state={videoState} onRetry={onReloadModels} /> : <>
       <label className="free-canvas-field">
-        <span>{imageToVideo ? '动态描述' : '变化描述（可选）'}</span>
+        <span>{imageToVideo ? t('derived.motionPromptLabel') : t('derived.variationPromptLabel')}</span>
         <Input.TextArea
           data-canvas-prompt
           rows={5}
@@ -204,39 +220,39 @@ export default function DerivedGenerationPanel({
           disabled={formLocked}
           onChange={(event) => onPromptChange(event.target.value)}
           placeholder={imageToVideo
-            ? '例如：镜头缓慢推进，树叶随风摆动，阳光流过画面'
-            : '例如：保持主体，尝试不同构图与光线'}
+            ? t('derived.motionPromptPlaceholder')
+            : t('derived.variationPromptPlaceholder')}
         />
       </label>
 
       {imageToVideo ? (
         <label className="free-canvas-field">
-          <span>视频时长</span>
+          <span>{t('panel.videoDurationLabel')}</span>
           <Radio.Group
             buttonStyle="solid"
             value={durationSeconds}
             disabled={formLocked}
             onChange={(event) => onDurationChange(Number(event.target.value))}
           >
-            {[5, 10].map((value) => <Radio.Button key={value} value={value}>{value} 秒</Radio.Button>)}
+            {[5, 10].map((value) => <Radio.Button key={value} value={value}>{t('panel.durationSeconds', { count: value })}</Radio.Button>)}
           </Radio.Group>
         </label>
       ) : (
         <label className="free-canvas-field">
-          <span>生成数量</span>
+          <span>{t('panel.countLabel')}</span>
           <GenerationCountPicker value={count} max={model?.ui.maxCount ?? 4} disabled={formLocked} onChange={onCountChange} />
         </label>
       )}
 
       <details className="free-canvas-advanced">
         <summary>
-          <span className="free-canvas-advanced-title">高级设置</span>
+          <span className="free-canvas-advanced-title">{t('panel.advancedTitle')}</span>
           <span className="free-canvas-advanced-value">{advancedSummary}</span>
         </summary>
         <div className="free-canvas-advanced-fields">
           {!imageToVideo && <>
-            <ModelChoice className="free-canvas-field" label="生成模型" ariaLabel="裂变模型" hintScope="single_image" models={models} value={model?.id} disabled={formLocked} onChange={onModelChange} />
-            <label className="free-canvas-field"><span>分辨率</span><Radio.Group aria-label="裂变分辨率" value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
+            <ModelChoice className="free-canvas-field" label={t('panel.modelLabel')} ariaLabel={t('derived.variationModelAria')} hintScope="single_image" models={models} value={model?.id} disabled={formLocked} onChange={onModelChange} />
+            <label className="free-canvas-field"><span>{t('panel.resolutionLabel')}</span><Radio.Group aria-label={t('derived.variationResolutionAria')} value={resolution} disabled={formLocked} onChange={event => onResolutionChange?.(event.target.value)}>
               {(model?.ui.resolutions ?? ['1k', '2k', '4k']).map(value => <Radio.Button key={value} value={value}>{value.toUpperCase()}</Radio.Button>)}
             </Radio.Group></label>
           </>}
@@ -251,13 +267,13 @@ export default function DerivedGenerationPanel({
       </details>
 
       {!imageToVideo && <>
-        {resolutionAdjusted && <p role="status">当前模型或图片比例不支持所选分辨率，已按 {resolution.toUpperCase()} 计算本次参数与积分。</p>}
+        {resolutionAdjusted && <p role="status">{t('derived.resolutionAdjusted', { resolution: resolution.toUpperCase() })}</p>}
         {modelsLoading
-          ? <p role="status">正在加载模型配置…</p>
-          : <p>{mockGateway ? '模拟生成，不消耗积分' : estimatedCredits === undefined ? '模型积分报价尚未就绪，请重新加载。' : `本次预计消耗 ${estimatedCredits} 积分，按实际成功张数结算。`}</p>}
+          ? <p role="status">{t('derived.loadingModels')}</p>
+          : <p>{mockGateway ? t('video.credits.mock') : estimatedCredits === undefined ? t('derived.quoteUnavailableReload') : t('panel.estimatedCredits', { credits: estimatedCredits })}</p>}
       </>}
       {modelsLoading || imageToVideo ? null : generateDisabled ? (
-        <p className="toolbox-hint">裂变服务暂不可用，请检查网络或稍后重试。</p>
+        <p className="toolbox-hint">{t('derived.variationUnavailable')}</p>
       ) : null}
       {preparationPhase && <p role="status">{preparationPhase}</p>}
       </>}
@@ -277,26 +293,29 @@ export default function DerivedGenerationPanel({
         onRetry={imageToVideo && videoState !== 'ready' ? undefined : onRetry}
         retryDisabled={imageToVideo ? videoState !== 'ready' || generateDisabled || videoRetryBlocked : modelsLoading || generateDisabled || imageRetryBlocked}
         retryQuote={retryQuote}
-        retryLabel={!imageToVideo && !mockGateway ? `按原参数重试 ${task?.params.count ?? count} 张` : undefined}
+        retryLabel={!imageToVideo && !mockGateway ? t('panel.retryCountLabel', { count: task?.params.count ?? count }) : undefined}
         onModifyParameters={onModifyParameters}
         onRefetch={onRefetch}
       />
       {!imageToVideo && !mockGateway && (task?.status === 'failed' || task?.status === 'cancelled') && <p>
-        手动重试将按原参数重新生成 {task.params.count} 张，{retryCredits === undefined ? '原模型报价暂不可用，请修改参数后重新生成。' : `预计消耗 ${retryCredits} 积分。`}
+        {t('panel.retryNotice', {
+          count: task.params.count,
+          quotePart: retryCredits === undefined ? t('panel.retryQuoteUnavailable') : t('panel.retryQuoteEstimated', { credits: retryCredits }),
+        })}
       </p>}
-      {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? '原任务要求无声，H3 现仅提供原生有声视频，请修改参数后重新生成。' : retryVideoCredits === undefined ? '请先读取视频配置与报价，再决定是否重新生成。' : `重新生成将创建新任务并预扣 ${retryVideoCredits} 积分。`}</p>}
+      {imageToVideo && !mockGateway && task?.status === 'failed' && <p>{legacySilentH3 ? t('panel.videoRetryLegacySilentH3') : retryVideoCredits === undefined ? t('panel.videoRetryQuoteMissing') : t('panel.videoRetryReserveNotice', { credits: retryVideoCredits })}</p>}
 
       {task?.status === 'succeeded' && <PreviewResultStrip items={previewItems} onDownload={item => {
         const index = Number(item.id.slice(item.id.lastIndexOf(':') + 1))
         const image = task.resultImages?.[index]
-        return downloadImageSource(item.fullSrc, `裂变结果_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
+        return downloadImageSource(item.fullSrc, `${t('derived.downloadFilenamePrefix')}_${(image?.ordinal ?? index) + 1}.${extensionForMime(image?.mimeType)}`, item.objectKey ?? image?.objectKey)
       }} />}
 
-      {showForm && <p className="free-canvas-panel-hint">结果会落在画板内可见位置；生成后仍可继续作为新的派生起点。</p>}
+      {showForm && <p className="free-canvas-panel-hint">{t('derived.footerHint')}</p>}
       </div>
       {showForm && <div className="free-canvas-panel-footer">
         <CreditQuoteNotice quote={quote} onRetry={onReloadModels} />
-        <Tooltip title={imageCreditBlocked ? INSUFFICIENT_CREDITS_REASON : undefined}>
+        <Tooltip title={imageCreditBlocked ? insufficientCreditsReason() : undefined}>
           <span style={{ display: 'block' }}>
             <CreditActionButton data-task-generate
               className="free-canvas-generate"
@@ -307,7 +326,7 @@ export default function DerivedGenerationPanel({
               disabled={formLocked || generateDisabled || imageCreditBlocked || videoCreditSubmitBlocked || (imageToVideo && (modelsLoading || (!videoConfigured && !mockGateway) || !prompt.trim() || prompt.trim().length > VIDEO_PROMPT_MAX))}
               onClick={onGenerate}
             >
-              {active ? '正在生成' : imageToVideo ? '生成' : `生成 ${count} 张`}
+              {active ? t('panel.generatingButton') : imageToVideo ? t('panel.generateVideoButton') : t('panel.generateImagesButton', { count })}
             </CreditActionButton>
           </span>
         </Tooltip>

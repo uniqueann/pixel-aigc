@@ -1,5 +1,7 @@
 import { authEnabled, supabase } from '@/cloud/client'
-import { responseErrorText } from './apiErrorText'
+import { i18n } from '@/i18n'
+import { extractErrorExtra, extractRequestId, translateApiError } from '@/i18n/apiErrors'
+import { apiErrorCode, responseErrorText } from './apiErrorText'
 
 export async function fetchOwnedObject(objectKey: string, filename?: string, signal?: AbortSignal) {
   const token = authEnabled
@@ -17,9 +19,19 @@ export async function fetchOwnedObject(objectKey: string, filename?: string, sig
   })
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null)
+    const fallback = response.status === 404
+      ? i18n.t('errors:client.resultNotFound')
+      : i18n.t('errors:client.readResultFailed')
     throw new OwnedObjectError(
       response.status,
-      responseErrorText(payload) || (response.status === 404 ? '结果对象不存在' : '读取结果失败，请重试读取'),
+      translateApiError({
+        code: apiErrorCode(payload),
+        extra: extractErrorExtra(payload),
+        message: responseErrorText(payload),
+        status: response.status === 413 ? undefined : response.status,
+        requestId: extractRequestId(payload),
+        fallback,
+      }),
     )
   }
   return response.blob()
@@ -42,10 +54,20 @@ export async function signedOwnedObject(objectKey: string, signal?: AbortSignal,
   })
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null)
-    throw new OwnedObjectError(response.status, responseErrorText(payload) || '读取图片地址失败')
+    throw new OwnedObjectError(
+      response.status,
+      translateApiError({
+        code: apiErrorCode(payload),
+        extra: extractErrorExtra(payload),
+        message: responseErrorText(payload),
+        status: response.status === 413 ? undefined : response.status,
+        requestId: extractRequestId(payload),
+        fallback: i18n.t('errors:client.readImageUrlFailed'),
+      }),
+    )
   }
   const signed = await response.json() as { url?: string; expiresAt?: number }
-  if (!signed.url) throw new Error('未取得图片地址')
+  if (!signed.url) throw new Error(i18n.t('errors:client.missingImageUrl'))
   return { url: signed.url, expiresAt: signed.expiresAt }
 }
 

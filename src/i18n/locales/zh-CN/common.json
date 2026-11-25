@@ -1,0 +1,160 @@
+{
+  "brand": {
+    "name": "Pixel AIGC",
+    "workbenchTitle": "AIGC 工作台",
+    "loadingAria": "Pixel AIGC 加载中"
+  },
+  "actions": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "saving": "保存中…",
+    "saved": "已保存",
+    "retry": "重试",
+    "retryLoad": "重试读取",
+    "refetch": "重新查询",
+    "close": "关闭",
+    "delete": "删除",
+    "open": "打开",
+    "download": "下载",
+    "upload": "上传",
+    "uploadImage": "上传图片",
+    "addImage": "添加图片",
+    "loadMore": "加载更多",
+    "refreshPage": "刷新页面",
+    "viewAll": "查看全部",
+    "edit": "编辑",
+    "replace": "替换",
+    "reset": "重置",
+    "undo": "撤销",
+    "copy": "复制",
+    "copySuffix": "（副本）"
+  },
+  "status": {
+    "loading": "加载中…",
+    "loadingConfig": "正在加载功能配置…",
+    "configLoadFailed": "功能配置加载失败，请重试。",
+    "comingSoon": "即将上线",
+    "loadFailed": "加载失败",
+    "preparingAccount": "正在准备账号…",
+    "ready": "就绪"
+  },
+  "time": {
+    "unknown": "时间未知",
+    "seconds": "{{count}} 秒"
+  },
+  "units": {
+    "mb": "{{value}} MB"
+  },
+  "errorBoundary": {
+    "title": "页面出了点问题",
+    "chunkUpdated": "页面资源已更新，刷新后即可继续使用",
+    "genericSubTitle": "可以尝试刷新，如果持续出现请反馈给开发同学"
+  },
+  "taskStatus": {
+    "warnings": {
+      "RESOLUTION_DOWNGRADED_4K_UNSUPPORTED_RATIO": "当前比例不支持 4K，已按 2K 生成",
+      "PARTIAL": "部分图片生成成功",
+      "LATE_RESULT_NO_CHARGE": "结果在超时后送达，未计入消耗"
+    },
+    "states": {
+      "pending": "准备中",
+      "queued": "排队中",
+      "processing": "生成中",
+      "succeeded": "生成完成",
+      "failed": "生成失败",
+      "cancelled": "任务已取消"
+    },
+    "phases": {
+      "submitting": "提交确认中",
+      "queued": "排队中",
+      "generating": "视频生成中",
+      "transferring": "视频转存中"
+    },
+    "readingResults": "读取结果中",
+    "submitting": "正在提交",
+    "retryDefault": "按原参数重试",
+    "modifyParameters": "修改参数",
+    "videoSaved": "视频已保存到我的资产，保留 30 天",
+    "imageSaved": "完整图片已保存到本地历史",
+    "videoHistoryError": "视频可用，资产记录未保存",
+    "imageHistoryError": "图片可用，历史未保存",
+    "retrySave": "重试保存",
+    "submitFailed": "提交失败",
+    "protocolError": "结果异常",
+    "pollErrorTitle": "任务状态查询失败",
+    "pollErrorDescription": "任务仍然保留，可以重新查询同一任务。"
+  },
+  "preview": {
+    "onCanvasCaption": "已在画布上 · 共 {{count}} 项，点缩略图可放大或下载",
+    "videoRetentionSuffix": " · 视频保留 30 天",
+    "stripAria": "生成结果预览",
+    "resultTitle": "结果 {{index}}",
+    "playResultAria": "播放结果 {{index}}",
+    "zoomResultAria": "放大结果 {{index}}",
+    "imageLoadFailed": "图片加载失败",
+    "videoPreviewTitle": "视频预览",
+    "imagePreviewTitle": "图片预览",
+    "currentVideo": "当前视频",
+    "videoAlt": "视频",
+    "imageAlt": "图片",
+    "mediaAlt": "媒体预览",
+    "closePreview": "关闭预览",
+    "downloadVideo": "下载视频",
+    "downloadOriginalDefault": "下载原始大图",
+    "downloadOriginalTooltip": "下载原图",
+    "compareOriginalAndResult": "对比原图与结果",
+    "compareModalTitle": "原图 / 结果对比",
+    "compareLegend": "左：原图 · 右：结果",
+    "holdToViewOriginal": "按住查看原图（空格）",
+    "resetView": "重置视图",
+    "compareStageAria": "拖动分割线对比原图和结果；双击重置视图",
+    "resultImageLabel": "结果图",
+    "originalImageLabel": "原图",
+    "compareLoadFailed": "{{label}}加载失败",
+    "originalShort": "原图",
+    "resultShort": "结果",
+    "prevImage": "上一张",
+    "nextImage": "下一张",
+    "videoPosterBadge": "视频",
+    "videoPosterAlt": "视频封面",
+    "videoLoadFailed": "视频读取失败",
+    "videoPlayFailed": "视频播放失败，请重试读取",
+    "videoPreviewAria": "视频预览",
+    "accountSwitchedRead": "账号已切换，无法读取其他账号的图片",
+    "accountNotReady": "登录账号尚未就绪",
+    "imageReadFailed": "图片读取失败",
+    "accountSwitchedDownload": "账号已切换，无法下载其他账号的图片"
+  },
+  "taskPolling": {
+    "aborted": "查询已取消",
+    "accountSwitched": "账号已切换",
+    "succeededTitle": "任务已完成",
+    "succeededDescription": "生成结果已就绪，可在结果区查看",
+    "failedTitle": "任务失败",
+    "failedFallback": "请重试或更换参数"
+  },
+  "controls": {
+    "generationCount": "生成数量",
+    "helpLinkAria": "当前工具使用帮助",
+    "helpLinkTitle": "使用帮助"
+  },
+  "files": {
+    "defaultVideoName": "视频.mp4"
+  },
+  "mock": {
+    "variation": "图片裂变",
+    "outpaint": "扩图",
+    "capabilityResult": "{{capability}} 模拟结果",
+    "smartEdit": "智能编辑",
+    "smartEditCandidate": "智能编辑候选 {{index}}",
+    "emailOps": {
+      "summarize": "邮件摘要",
+      "reply": "建议回复",
+      "polish": "润色结果",
+      "grammar": "语法检查结果"
+    },
+    "emailGuidance": "\n\n已结合编写指导：{{instruction}}",
+    "emailResult": "{{operation}}（{{language}}）\n\n{{source}}{{ellipsis}}{{guidance}}"
+  }
+}

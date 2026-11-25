@@ -97,14 +97,17 @@ describe('积分明细文案', () => {
       {
         id: 'r3', kind: 'reserve', delta: -2, balanceAfter: 98, charged: null,
         createdAt: '2026-09-29T10:00:00.000Z', title: '精修 1K×1', reason: null,
+        presentation: { entryType: 'image_job', tool: 'retouch', capability: 'image_edit', resolution: '1K', count: 1, status: 'reserved' },
       },
       {
         id: 'f3', kind: 'refund', delta: 2, balanceAfter: 100, charged: 0,
         createdAt: '2026-09-29T10:03:00.000Z', title: '精修 1K×1', reason: null,
+        presentation: { entryType: 'image_job', tool: 'retouch', capability: 'image_edit', resolution: '1K', count: 1, status: 'refunded' },
       },
     ])
     expect(refunded).toMatchObject({
       summary: '失败/超时已退款', delta: 0, deltaText: '0', balanceAfter: 100,
+      presentation: { entryType: 'image_job', tool: 'retouch', capability: 'image_edit', resolution: '1K', count: 1, status: 'refunded', refunded: 2 },
     })
     const pending = mergeCreditJobEntries([
       {

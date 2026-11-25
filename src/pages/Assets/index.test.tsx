@@ -3,7 +3,8 @@
 import { App } from 'antd'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useLocaleStore } from '@/i18n/store'
 import { Capability } from '@/types'
 
 const flags = vi.hoisted(() => ({ textToVideo: false as boolean | undefined, imageToVideo: false as boolean | undefined, error: null as Error | null, refetch: vi.fn() }))
@@ -539,5 +540,107 @@ describe('我的资产缩略图预览入口', () => {
     fireEvent.click(await screen.findByRole('button', { name: /撤销删除/ }))
     await waitFor(() => expect(restoreWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-1'))
     await waitFor(() => expect(document.querySelector('.sr-only')?.textContent).toContain('已恢复'))
+  })
+})
+
+describe('Assets page (en-US)', () => {
+  const CJK_RE = /[\u4e00-\u9fff]/
+  const enHistoryItem = {
+    ...historyItem,
+    id: 'hist-en-1',
+    prompt: 'Headphones on table',
+  }
+
+  beforeEach(async () => {
+    openAt.mockReset()
+    flags.textToVideo = false; flags.imageToVideo = false; flags.error = null; flags.refetch.mockReset()
+    cloud.authEnabled = false
+    taskApi.listTasks.mockReset().mockResolvedValue({ items: [], total: 0 })
+    vi.mocked(listHistoryPreviews).mockReset().mockResolvedValue([enHistoryItem])
+    vi.mocked(deleteWorkstationHistory).mockReset()
+    vi.mocked(restoreWorkstationHistory).mockReset().mockResolvedValue(true)
+    localStorage.clear()
+    usePreferencesStore.getState().reset()
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addListener: vi.fn(), removeListener: vi.fn() })))
+    URL.createObjectURL = vi.fn(() => 'blob:assets-thumb')
+    URL.revokeObjectURL = vi.fn()
+    await useLocaleStore.getState().setLocale('en-US')
+  })
+
+  afterEach(async () => {
+    cleanup()
+    cloud.authEnabled = false
+    useUserStore.getState().setAccount(null)
+    vi.unstubAllGlobals()
+    await useLocaleStore.getState().setLocale('zh-CN')
+  })
+
+  afterAll(async () => {
+    await useLocaleStore.getState().setLocale('zh-CN')
+  })
+
+  it('renders headings, filters, search, sort, cards, and batch actions in English without CJK', async () => {
+    const { container } = renderAssets()
+    const cover = await waitFor(() => screen.getByRole('button', { name: 'View Headphones on table full size' }))
+    expect(cover).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'My Assets' })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: 'Filter asset types' })).toBeTruthy()
+    expect(screen.getByText('All')).toBeTruthy()
+    expect(screen.getByText('Images')).toBeTruthy()
+    expect(screen.getByText('Videos')).toBeTruthy()
+    expect(screen.getByText('Email Assistant')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'List view' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Grid view' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: 'Search assets' })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Sort order' })).toBeTruthy()
+    expect(document.querySelector('.assets-card-meta')?.textContent).toContain('Fusion')
+    expect(document.querySelector('.assets-group-title')?.textContent).toBe('October 2')
+    expect(container.textContent).not.toMatch(CJK_RE)
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search assets' }), { target: { value: 'missing' } })
+    await waitFor(() => screen.getByText('No assets found matching "missing"'))
+    expect(document.querySelector('.assets-search-count')?.textContent).toBe('Found 0 asset(s)')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    await waitFor(() => screen.getByRole('button', { name: 'Select' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }))
+    expect(document.querySelector('.assets-selection-count')?.textContent).toBe('0 selected')
+    fireEvent.click(screen.getByRole('button', { name: 'Select all' }))
+    expect(document.querySelector('.assets-selection-count')?.textContent).toBe('1 selected')
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Delete 1 selected asset(s)?', { selector: '.ant-modal-confirm-title' })).toBeTruthy()
+    expect(dialog.textContent).not.toMatch(CJK_RE)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(deleteWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-en-1'))
+    expect(document.querySelector('.sr-only')?.textContent).toContain('Deleted 1 asset(s)')
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo deleting 1 asset(s)' }))
+    await waitFor(() => expect(restoreWorkstationHistory).toHaveBeenCalledWith('anonymous', 'hist-en-1'))
+  })
+
+  it('localizes video metadata and download filename in en-US', async () => {
+    const video = { url: '', objectKey: 'videos/history.mp4', ordinal: 0, width: 1280, height: 720, mimeType: 'video/mp4' as const, durationSeconds: 5, sizeBytes: 1024, hasAudio: false, retentionExpiresAt: '2099-11-01T00:00:00Z' }
+    vi.mocked(listHistoryPreviews).mockResolvedValue([{ ...enHistoryItem, id: 'video-en-1', toolSlug: 'text-to-video', capability: Capability.TextToVideo, mediaType: 'video', video }])
+    renderAssets()
+    const play = 'Play Headphones on table'
+    await waitFor(() => screen.getByRole('button', { name: play }))
+    expect(screen.getByText('5s')).toBeTruthy()
+    expect(document.querySelector('.assets-card-expiry')?.textContent).toContain('Expires')
+    fireEvent.click(screen.getByRole('button', { name: /More actions/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Download/ }))
+    await waitFor(() => expect(downloadOwnedVideo).toHaveBeenCalledWith(video, 'Seedance_5.0s.mp4', 'anonymous'))
+  })
+
+  it('translates unmapped CJK error messages in loadMoreEmails via translateApiError in en-US', async () => {
+    cloud.authEnabled = true
+    useUserStore.getState().setUser(OWNER, 'free')
+    vi.mocked(listHistoryPreviews).mockResolvedValue([])
+    taskApi.listTasks.mockImplementation(({ page }: { page?: number }) => page === 2
+      ? Promise.reject(new Error('网络错误'))
+      : Promise.resolve({ items: [{ id: 'mail-en-1', operation: 'reply', preview: 'Next week schedule', status: 'succeeded' as const, createdAt: '2026-10-03T09:00:00.000Z', updatedAt: '2026-10-03T09:00:00.000Z' }], total: 2 }))
+    renderAssets()
+    await screen.findByRole('button', { name: 'View email task: Next week schedule' })
+    fireEvent.click(screen.getByRole('button', { name: 'Load more email tasks' }))
+    await waitFor(() => expect(document.querySelector('.sr-only')?.textContent).toBe('Failed to load email tasks'))
   })
 })

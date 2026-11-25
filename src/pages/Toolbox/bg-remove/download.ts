@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 import { createResultZip, downloadBlob } from '../shared/zip'
 import type { BatchImage } from './types'
 
@@ -7,7 +8,7 @@ export function outputNames(files: { name: string; mimeType: string }[]) {
   const used = new Set<string>()
   return files.map(({ name, mimeType }) => {
     const extension = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg'
-    const base = (name.replace(/\.[^.]+$/, '').replace(/[\\/]/g, '_').split('').map(char => char.charCodeAt(0) < 32 ? '_' : char).join('').trim() || '图片') + '_cutout'
+    const base = (name.replace(/\.[^.]+$/, '').replace(/[\\/]/g, '_').split('').map(char => char.charCodeAt(0) < 32 ? '_' : char).join('').trim() || i18n.t('toolbox:shared.defaultImageName')) + '_cutout'
     let candidate = `${base}.${extension}`
     let index = 2
     while (used.has(candidate.toLowerCase())) candidate = `${base}_${index++}.${extension}`

@@ -1,5 +1,6 @@
 import type { CanvasDrafts } from '@/editor/persistence/types'
 import { usePersistenceStore } from '@/editor/persistence/persistenceStore'
+import { i18n } from '@/i18n'
 
 export function canvasDraftDirty(drafts: CanvasDrafts) {
   return [drafts['text-to-image'].prompt, drafts['text-to-video'].prompt, drafts.derived?.prompt, drafts.videoReplication?.prompt].some(value => Boolean(value?.trim()))
@@ -20,7 +21,7 @@ export function abandonCanvasGenerationDraft() {
 
 /** 清空后的保存失败时恢复原提示词；新的草稿或项目已经出现时保持新内容。 */
 export async function saveAbandonedCanvasDraft(flush:()=>Promise<void>,epoch:number) {
-  if(usePersistenceStore.getState().epoch!==epoch)throw new Error('项目编辑状态已变化')
+  if(usePersistenceStore.getState().epoch!==epoch)throw new Error(i18n.t('taskCenter:errors.projectEditStateChanged'))
   const original=usePersistenceStore.getState().drafts
   abandonCanvasGenerationDraft()
   const cleared=usePersistenceStore.getState().drafts

@@ -12,10 +12,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from 'antd'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useLocaleStore } from '@/i18n/store'
 import { useUserStore, type AccountContext } from '@/store/useUserStore'
 import type { TaskCenterSummary } from '@shared/task-center'
 import { TaskCenterContext, type TaskCenterContextValue } from './context'
 import { TaskCenterDrawer } from './TaskCenterDrawer'
+import { TaskCenterSidebar } from './TaskCenterSidebar'
 const mocks = vi.hoisted(() => ({ request: vi.fn(), copy: vi.fn() }))
 vi.mock('@/cloud/client', () => ({
   CloudError: class extends Error {
@@ -105,11 +107,12 @@ beforeEach(() => {
         },
   )
 })
-afterEach(() => {
+afterEach(async () => {
   cleanup()
   client.clear()
   useUserStore.getState().setAccount(null)
   vi.unstubAllGlobals()
+  await useLocaleStore.getState().setLocale('zh-CN')
 })
 function mount(overrides: Partial<TaskCenterContextValue> = {}) {
   const context: TaskCenterContextValue = {
@@ -224,5 +227,109 @@ describe('共用只读任务抽屉', () => {
     expect(css).toContain('.task-center-drawer .ant-drawer-footer')
     expect(css).toMatch(/\.task-center-drawer \.ant-drawer-footer\s*\{[^}]*background:\s*var\(--color-surface\)/)
     expect(css).toMatch(/\.task-drawer-footer \.ant-btn-primary\s*\{[^}]*background:\s*var\(--color-accent\)/)
+  })
+})
+
+describe('taskCenter en-US localization', () => {
+  const CJK_RE = /[\u4e00-\u9fff]/
+
+  it('renders drawer detail, legacy model, warnings, and server error codes in en-US without leaking CJK', async () => {
+    await useLocaleStore.getState().setLocale('en-US')
+    const failedTask: TaskCenterSummary = {
+      ...task,
+      tool: 'smart-edit',
+      capability: 'image_edit',
+      state: 'failed',
+      completedCount: 0,
+      billingState: 'refunded',
+      creditsCharged: 0,
+      creditsReturned: 1,
+      errorCode: 'MODEL_UNAVAILABLE',
+      warnings: ['LATE_RESULT_NO_CHARGE'],
+    }
+    mocks.request.mockImplementation(async (_path: string, method: string) =>
+      method === 'PATCH'
+        ? failedTask
+        : {
+            task: failedTask,
+            params: null,
+            errorMessage: '所选模型暂不可用',
+            results: [{ kind: 'text', text: 'English output text', editedText: 'English edited text' }],
+          },
+    )
+    mount({ selected: failedTask })
+    expect(await screen.findByText('English output text')).toBeTruthy()
+    expect(screen.getByText('Task Details')).toBeTruthy()
+    expect(screen.getByText('Smart Edit')).toBeTruthy()
+    expect(screen.getByText('Failed')).toBeTruthy()
+    expect(screen.getByText('Legacy model')).toBeTruthy()
+    expect(screen.getByText('Refunded 1 credits')).toBeTruthy()
+    expect(screen.getByText(/Selected model is unavailable/)).toBeTruthy()
+    expect(screen.getByText(/Latest generated results synced/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'View credit history' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Remove from list' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open in tool' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Copy result' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Copy edited draft' })).toBeTruthy()
+    expect(document.querySelector('.task-center-drawer')?.textContent ?? '').not.toMatch(CJK_RE)
+  })
+
+  it('renders drawer history list and sidebar in en-US without leaking CJK', async () => {
+    await useLocaleStore.getState().setLocale('en-US')
+    const activeTask: TaskCenterSummary = {
+      ...task,
+      sourceKind: 'image_job',
+      tool: 'relight',
+      capability: 'image_edit',
+      state: 'processing',
+      requestedCount: 2,
+      completedCount: 0,
+      partial: false,
+      billingState: 'reserved',
+      creditsReserved: 6,
+      creditsCharged: null,
+      creditsReturned: null,
+      outcomeVersion: null,
+    }
+    mocks.request.mockResolvedValue({
+      items: [activeTask],
+      nextCursor: null,
+      snapshotAt: new Date().toISOString(),
+    })
+    const context: TaskCenterContextValue = {
+      actor,
+      sidebar: { items: [activeTask], activeCount: 1, unseenCount: 0, snapshotAt: new Date().toISOString() },
+      selected: null,
+      open: true,
+      loading: false,
+      error: null,
+      receipts: [],
+      tool: undefined,
+      state: 'all',
+      show: vi.fn(),
+      close: vi.fn(),
+      filter: vi.fn(),
+      refresh: vi.fn(),
+      forget: vi.fn(),
+      credits: vi.fn(),
+    }
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <App>
+            <TaskCenterContext.Provider value={context}>
+              <TaskCenterSidebar compact={false} />
+              <TaskCenterDrawer />
+            </TaskCenterContext.Provider>
+          </App>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('Recent Tasks')).toBeTruthy()
+    expect(await screen.findByText('Est. 6 credits')).toBeTruthy()
+    expect(screen.getAllByText('Relight').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('Tasks · 1')).toBeTruthy()
+    expect(container.textContent ?? '').not.toMatch(CJK_RE)
+    expect(document.querySelector('.task-center-drawer')?.textContent ?? '').not.toMatch(CJK_RE)
   })
 })

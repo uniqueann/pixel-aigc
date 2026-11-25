@@ -1,8 +1,14 @@
+import { i18n } from '@/i18n'
+import zhCredits from '@/i18n/locales/zh-CN/credits.json'
 import type { CreditQuote } from './quotes'
 
-export const INSUFFICIENT_CREDITS_REASON = '积分不足'
+export const INSUFFICIENT_CREDITS_REASON = zhCredits.quotes.insufficientShort
 
-/** 余额尚未读到、未登录、模拟生成或报价未就绪时不拦截。已知余额低于报价（含最多）才禁用。 */
+export function insufficientCreditsReason() {
+  return i18n.t('credits:quotes.insufficientShort')
+}
+
+/** Skip blocking before balance/auth loads, in mock mode, or when quote is not ready. */
 export function imageCreditBlocksSubmit(input: {
   mock?: boolean
   quote?: CreditQuote
