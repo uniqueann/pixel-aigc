@@ -27,7 +27,8 @@ describe('视频路径第二批（文案与规格可见性）', () => {
   })
 
   it('视频模式用运动描述示例', () => {
-    expect(emptyState).toContain("mode === 'video' ? VIDEO_EXAMPLE_PROMPTS : IMAGE_EXAMPLE_PROMPTS")
+    expect(emptyState).toContain("const isVideo = mode === 'video'")
+    expect(emptyState).toContain('isVideo ? VIDEO_EXAMPLE_PROMPTS : IMAGE_EXAMPLE_PROMPTS')
   })
 
   it('重试说明排在任务状态之后（先看到失败，再读会扣多少）', () => {
